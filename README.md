@@ -75,3 +75,4 @@ pip install -r requirements.txt
 # 4. Executar o aplicativo
 python src/main.py
 ```
+
