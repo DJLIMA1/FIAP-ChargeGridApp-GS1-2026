@@ -34,6 +34,8 @@ cd apps/mobile
 
 O primeiro comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/mobile/assets/app_config.json`, que contém apenas essa URL pública. O Flet 1.0.0 prepara automaticamente o Flutter 3.44.8, o JDK 17 e o Android SDK usados pelo build na primeira execução. O APK gerado fica em `apps/mobile/build/apk/chargegrid.apk`. Instale esse arquivo novamente no aparelho depois de cada build; o APK já instalado conserva os metadados da versão com que foi compilado. O build usa a identidade visual aprovada em `apps/mobile/assets/icon.png` e `apps/mobile/assets/splash_android.png`.
 
+O APK 0.3.5 (build 19) foi gerado a partir de checkout limpo da revisão `b87eb6c` em `builds/chargegrid-0.3.5.apk` (SHA-256 `492fa0db671baba0d67e3212f2c995d3a61346c506b4359839079c93abbd47c0`). Ele usa a URL de prévia existente da API; alterações locais não relacionadas em `stations.py` e `maps.py` não foram incluídas.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
