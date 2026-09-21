@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.3.1"
+version = "0.3.2"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,7 +22,7 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 15
+build_number = 16
 permissions = ["camera"]
 
 [tool.flet.dev_packages]

@@ -8,18 +8,23 @@
 
 struct ClaimStorage {
   bool owned = false, failWrites = false, failRemove = false;
-  std::string token;
+  std::string token, deviceKey = "legacy-key";
   bool getBool(const char* name, bool) { assert(std::string(name) == "owned"); return owned; }
   size_t putBool(const char* name, bool value) {
     assert(std::string(name) == "owned");
     if (failWrites) return 0;
     owned = value; return 1;
   }
-  bool isKey(const char* name) { assert(std::string(name) == "claim_token"); return !token.empty(); }
+  bool isKey(const char* name) {
+    assert(std::string(name) == "claim_token" || std::string(name) == "device_key");
+    return std::string(name) == "claim_token" ? !token.empty() : !deviceKey.empty();
+  }
   bool remove(const char* name) {
-    assert(std::string(name) == "claim_token");
+    assert(std::string(name) == "claim_token" || std::string(name) == "device_key");
     if (failRemove) return false;
-    token.clear(); return true;
+    if (std::string(name) == "claim_token") token.clear();
+    else deviceKey.clear();
+    return true;
   }
   size_t putString(const char* name, const char* value) {
     assert(std::string(name) == "claim_token");
@@ -126,6 +131,15 @@ int main(int argc, char** argv) {
   assert(!savePanelClaim(claimStorage, claimToken, true, false, false));
   claimStorage.failRemove = false;
   assert(rememberPanelOwnership(claimStorage) && claimStorage.token.empty());
+  assert(!preparePanelForFactoryReprovision(claimStorage, false, false));
+  assert(!preparePanelForFactoryReprovision(claimStorage, true, true));
+  assert(claimStorage.owned && !claimStorage.deviceKey.empty());
+  claimStorage.failRemove = true;
+  assert(!preparePanelForFactoryReprovision(claimStorage, true, false));
+  assert(claimStorage.owned);
+  claimStorage.failRemove = false;
+  assert(preparePanelForFactoryReprovision(claimStorage, true, false));
+  assert(!claimStorage.owned && claimStorage.deviceKey.empty() && claimStorage.token.empty());
   claimStorage = ClaimStorage{};
   assert(validPanelNetwork("open-network", ""));
   assert(!validPanelNetwork("", ""));

@@ -7,7 +7,7 @@ from ..ui.components import button, card, field, title
 
 
 async def build(app, station_id=None):
-    credential = field('Código de vinculação')
+    credential = field('Código privado do QR')
     credential.password = True
     credential.autocorrect = False
     credential.enable_suggestions = False
@@ -89,20 +89,21 @@ async def build(app, station_id=None):
         await app.go('operator', station_id=result['station_id'], point_id=result['connector_id'],
                      onboarding=True, step=1)
 
-    camera_button = button('Escanear QR do equipamento', app.action(scan))
+    camera_button = button('Abrir câmera para ler o QR', app.action(scan))
     cancel_camera = button('Fechar câmera', app.action(cancel_scan), secondary=True)
     cancel_camera.visible = False
     return ft.Column([
-        title('Vincular equipamento', 'Seu ponto, na sua conta'),
+        title('Vincular tela', 'Seu ponto, na sua conta'),
         card([
             ft.Icon(ft.Icons.QR_CODE_SCANNER, size=42, color=theme.RED),
-            ft.Text('Escaneie o QR de vinculação fornecido com o ponto de carregamento.',
+            ft.Text('Aponte a câmera para o QR exibido no visor do ESP32.',
                     color=theme.TEXT_COLOR),
             hint,
         ]),
         camera_button, preview, cancel_camera, credential,
         button('Vincular ponto à minha conta', app.action(claim)),
-        ft.Text('Pontos que já têm dono não podem ser tomados por outra conta. '
+        ft.Text('O QR aparece no visor somente enquanto o ponto não tem dono. '
+                'Se a tela mostra “Disponível”, ela já está vinculada; abra Meus postos para editá-la. '
                 'O código de recarga continua separado do QR de propriedade.',
                 size=12, color=theme.GRAY_TEXT),
         button('Voltar', app.link('operator', **({'station_id': station_id} if station_id else {})), secondary=True),

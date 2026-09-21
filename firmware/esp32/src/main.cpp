@@ -99,6 +99,7 @@ bool savePanelConnection(const char* ssid, const char* password, const char* dev
 void handleSerialMaintenance() {
   static uint8_t step = 0;
   static String pendingSsid;
+  static String migrationCode;
   static String input;
   static unsigned long inputStarted = 0;
   static unsigned long connectStarted = 0;
@@ -128,6 +129,23 @@ void handleSerialMaintenance() {
   }
   String line = input;
   input = ""; inputStarted = 0;
+  if (step == 6) {
+    step = 0;
+    if (line != String("MIGRATE ") + migrationCode || state != "idle" || sessionId.length() ||
+        reading.powerW > 0 || WiFi.status() != WL_CONNECTED || !hasSynced || lastSyncHttpStatus != 200) {
+      Serial.println("[setup] Migration cancelled: confirmation or idle sync missing"); return;
+    }
+    if (!preparePanelForFactoryReprovision(configStore, true, false)) {
+      Serial.println("[setup] Migration NVS write failed; retry while idle"); return;
+    }
+    version = 0; lastCommand = ""; persist();
+    panelDeviceKey = ""; panelClaimToken = ""; panelOwned = false;
+    panelIdentityConfigured = panelIntegrationEnabled = false;
+    hasSynced = false; lastSyncHttpStatus = 0;
+    Serial.println("[setup] Old identity retired; Wi-Fi preserved. Provision new key and claim token over USB.");
+    delay(120); ESP.restart();
+    return;
+  }
   if (step == 5) {
     step = 0;
     if (!savePanelClaim(configStore, line.c_str(), state == "idle", sessionId.length() > 0, panelOwned)) {
@@ -156,6 +174,17 @@ void handleSerialMaintenance() {
     return;
   }
   if (step == 0) {
+    if (line == "CG_MIGRATE") {
+      if (state != "idle" || sessionId.length() || reading.powerW > 0 ||
+          !panelOwned || !hasSynced || lastSyncHttpStatus != 200 ||
+          WiFi.status() != WL_CONNECTED || connectorPublicCode == "--") {
+        Serial.println("[setup] Migration requires an owned, online, idle point without a session"); return;
+      }
+      migrationCode = connectorPublicCode;
+      step = 6;
+      Serial.printf("[setup] Type MIGRATE %s to retire old identity (Wi-Fi preserved):\n", migrationCode.c_str());
+      return;
+    }
     if (line == "CG_CLAIM") {
       if (state != "idle" || sessionId.length() || panelOwned || configStore.getBool("owned", false)) {
         Serial.println("[setup] Claim provisioning requires an unowned idle point"); return;
@@ -176,7 +205,7 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.1\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.2\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);

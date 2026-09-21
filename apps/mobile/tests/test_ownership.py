@@ -30,7 +30,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'account_type': 'vendor', 'operator_enabled': False}
         screen = await operator.build(app)
-        await click(screen, 'Vincular equipamento')(None)
+        await click(screen, 'Escanear QR da tela')(None)
         app.go.assert_awaited_once_with('operator', claim=True)
         screen = await operator.build(app, claim=True)
         self.assertTrue(click(screen, 'Vincular ponto à minha conta'))
@@ -40,6 +40,24 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = {'account_type': 'consumer', 'operator_enabled': False}
         screen = await operator.build(app, claim=True)
         self.assertNotIn('Vincular ponto à minha conta', [item.value for item in descendants(screen) if isinstance(item, ft.Text)])
+
+    async def test_vendor_dashboard_exposes_the_panel_setup_flow(self):
+        app = HandlerApp()
+        responses = {
+            'me': {'account_type': 'vendor', 'operator_enabled': True},
+            'operator/summary': {'stations': 1, 'total_sessions': 0,
+                                 'total_energy_wh': 0, 'total_estimated_cost': 0},
+            'operator/stations': {'items': [], 'total': 0},
+        }
+        async def request(method, path, **kwargs):
+            return responses[path]
+        app.api.request.side_effect = request
+        screen = await operator.build(app)
+        text = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item, ft.Text))
+        self.assertIn('O QR aparece no visor do ESP32 ainda sem dono.', text)
+        self.assertIn('Defina nome, local e tarifa', text)
+        await click(screen, 'Escanear QR da tela')(None)
+        app.go.assert_awaited_once_with('operator', claim=True)
 
     async def test_claim_sends_secret_only_on_confirmation_and_clears_after_success(self):
         app = HandlerApp()
@@ -75,7 +93,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.page.web = True
         screen = await ownership.build(app)
         with self.assertRaisesRegex(ApiError, 'APK Android'):
-            await click(screen, 'Escanear QR do equipamento')(None)
+            await click(screen, 'Abrir câmera para ler o QR')(None)
         app.api.request.assert_not_called()
 
     async def test_scan_stops_camera_then_requires_explicit_confirmation(self):
@@ -86,7 +104,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict('sys.modules', {'chargegrid_scanner': SimpleNamespace(QRScanner=constructor)}):
             screen = await ownership.build(app)
             constructor.assert_not_called()
-            await click(screen, 'Escanear QR do equipamento')(None)
+            await click(screen, 'Abrir câmera para ler o QR')(None)
             await constructor.call_args.kwargs['on_scan'](SimpleNamespace(data=URI))
         self.assertFalse(scanner.active)
         app.api.request.assert_not_called()

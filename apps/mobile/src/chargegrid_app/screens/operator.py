@@ -20,11 +20,13 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         return await onboarding_screen.build(app, station_id=station_id, point_id=point_id, step=step)
     if not profile.get('operator_enabled'):
         return ft.Column([
-            title('Seu primeiro ponto', 'Vincule o equipamento à sua conta de vendedor'),
+            title('Configure sua primeira tela', 'Vincule o ESP32 à sua conta de vendedor'),
             card([ft.Icon(ft.Icons.QR_CODE_SCANNER, size=48, color=theme.RED),
-                  ft.Text('Seu equipamento já vem com um QR de vinculação. Escaneie para se tornar o proprietário e configurar seu posto.'),
-                  ft.Text('Não é necessário aguardar aprovação. O QR é a prova de posse do equipamento.', size=13, color=theme.GRAY_TEXT)]),
-            button('Vincular equipamento', app.link('operator', claim=True)),
+                  ft.Text('A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
+                          color=theme.TEXT_COLOR),
+                  ft.Text('Depois informe nome, endereço e tarifa. O ponto só aparece aos consumidores quando você publicar.',
+                          size=13, color=theme.GRAY_TEXT)]),
+            button('Escanear QR da tela', app.link('operator', claim=True)),
         ], spacing=15)
     if connector_id:
         if connector_id == 'new':
@@ -40,12 +42,19 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     result = await app.api.request('GET','operator/stations',params={'limit':100,'offset':offset})
     stations = result['items']
     controls = [title('Meus postos','Acompanhe seus pontos, recargas e configurações'),
+                card([ft.Text('CONFIGURAR UMA NOVA TELA',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+                      ft.Text('O QR aparece no visor do ESP32 ainda sem dono.',size=15,
+                              weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+                      ft.Text('1. Ligue a tela e configure o Wi-Fi, se necessário.\n'
+                              '2. Escaneie o QR com sua conta de vendedor.\n'
+                              '3. Defina nome, local e tarifa; revise e publique.',
+                              size=12,color=theme.GRAY_TEXT),
+                      button('Escanear QR da tela',app.link('operator',claim=True))]),
                 card([ft.Text('VISÃO GERAL',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
                       ft.Text(f"{summary['stations']} postos · {summary['total_sessions']} recargas",size=18,
                               weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
                       ft.Text(f"{float(summary['total_energy_wh'])/1000:.3f} kWh entregues · {money(summary['total_estimated_cost'])} estimados",
-                              size=12,color=theme.GRAY_TEXT)]),
-                button('Vincular novo equipamento',app.link('operator',claim=True))]
+                              size=12,color=theme.GRAY_TEXT)])]
     for station in stations:
         points = station.get('connectors') or []
         drafts = [point for point in points if not point.get('active')]
@@ -101,7 +110,7 @@ async def station_form(app, station=None):
         await app.go('operator',station_id=result['id'])
     controls = [title('Editar posto' if station else 'Novo posto'),card(ft.Column([name,address,button('Localizar endereço',app.action(locate),secondary=True),latitude,longitude,active],spacing=12)),button('Salvar posto',app.action(save))]
     if station:
-        controls += [button('Vincular equipamento a este posto',app.link('operator',station_id=station['id'],claim=True))]
+        controls += [button('Vincular outra tela a este posto',app.link('operator',station_id=station['id'],claim=True))]
         for connector in station['connectors']:
             controls.append(card([ft.Text(f"{connector['public_code']} · {connector['connector_type']}"),ft.Text('Online' if connector.get('online') else 'Offline'),button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],connector=connector))]))
     controls.append(button('Voltar à gestão',app.link('operator'),secondary=True))

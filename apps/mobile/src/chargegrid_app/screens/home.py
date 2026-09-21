@@ -62,8 +62,8 @@ async def build(app):
     if app.profile.get('account_type') == 'vendor':
         controls.append(card([
             ft.Text('Sua conta de vendedor',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-            ft.Text('Gerencie seus postos e acompanhe as recargas.' if app.profile.get('operator_enabled') else 'Escaneie o QR do equipamento para vincular seu primeiro ponto.',size=13,color=theme.GRAY_TEXT),
-            button('Gerenciar postos' if app.profile.get('operator_enabled') else 'Vincular equipamento',app.link('operator'),secondary=True),
+            ft.Text('Gerencie seus postos e acompanhe as recargas.' if app.profile.get('operator_enabled') else 'Ligue a tela e escaneie o QR exibido no ESP32 para configurar seu primeiro ponto.',size=13,color=theme.GRAY_TEXT),
+            button('Gerenciar postos' if app.profile.get('operator_enabled') else 'Configurar minha primeira tela',app.link('operator'),secondary=True),
         ]))
 
     def describe_state(reservation, session):
