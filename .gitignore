@@ -1,31 +1,37 @@
 # Python
 __pycache__/
 *.py[cod]
-
-# Virtual environments
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .venv/
+.pio-venv/
 venv/
 env/
-
-# Environments / secrets
 .env
+.env.*
+!.env.example
+.vercel/
+
+# Flet e arquivos locais legados
+src/.flet/
+apps/mobile/.flet/
 ev_data.json
+apps/mobile/assets/app_config.json
 
-# Tool caches
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
+# Configuração e estado privado dos dispositivos
+firmware/esp32/include/chargegrid_config.h
+.device-simulator-state.json
+*.device-state.json
+tmp/
 
-# Flet
-.flet/
-build/
-storage/
-*.apk
-dist/
-
-# IDE
-.idea/
+# Builds e IDEs
+builds/
+apps/mobile/build/
+src/build/
+firmware/esp32/.pio/
+.pio/
 .vscode/
-
-# macOS
+.idea/
+*.log
 .DS_Store
