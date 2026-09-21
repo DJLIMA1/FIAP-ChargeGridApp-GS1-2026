@@ -7,17 +7,19 @@ from pathlib import Path
 def main():
     root = Path(__file__).resolve().parents[1]
     build = root / "firmware/esp32/.pio/build/waveshare_panel_ui"
-    output = root / "builds/chargegrid-waveshare-7-0.3.2.zip"
+    output = root / "builds/chargegrid-waveshare-7-0.3.3.zip"
     files = {name: (build / name).read_bytes() for name in
              ("firmware.bin", "bootloader.bin", "partitions.bin")}
     for name in ("panel-idle.png", "panel-charging.png", "panel-maintenance.png", "panel-physical-0.3.0.png"):
         path = root / "tmp/panel-validation" / name
         if path.exists():
             files[name] = path.read_bytes()
-    files["README.md"] = b"""# ChargeGrid panel 0.3.2
+    files["README.md"] = b"""# ChargeGrid panel 0.3.3
 
 Only for Waveshare ESP32-S3-Touch-LCD-7 (not 7B), 800x480,
 ESP32-S3, 16 MB flash, 8 MB OPI PSRAM, DIO/40 MHz.
+Version 0.3.3 uses two RGB framebuffers with VSYNC synchronization and a
+20-line bounce buffer to reduce intermittent screen flicker.
 
 Update an already configured panel (preserves NVS, Wi-Fi, identity and session journal):
 

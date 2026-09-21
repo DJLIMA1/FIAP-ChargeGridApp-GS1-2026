@@ -10,7 +10,7 @@ O firmware é operacional e reflete somente estados recebidos da API. Sem config
 pio run -d firmware/esp32 -e waveshare_panel_ui
 ```
 
-O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/chargegrid-waveshare-7-0.3.2.zip`. Para atualizar uma placa configurada, grave **somente firmware.bin em 0x10000**, com ponto ocioso e nenhuma reserva/sessão pendente. Não use `erase_flash` nem imagem mesclada: preserve NVS, identidade, Wi-Fi e diário de sessão.
+O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/chargegrid-waveshare-7-0.3.3.zip`. Para atualizar uma placa configurada, grave **somente firmware.bin em 0x10000**, com ponto ocioso e nenhuma reserva/sessão pendente. Não use `erase_flash` nem imagem mesclada: preserve NVS, identidade, Wi-Fi e diário de sessão.
 
 ## Configurar pelo touch
 
@@ -61,3 +61,11 @@ A unidade conectada ao Mac era legada e já possuía proprietário; por isso o Q
 O novo ponto `CG-PAINEL-02` foi criado sem dono e inativo. O ponto físico anterior `CG-PAINEL-01` foi desativado e sua chave revogada; o posto de bancada e seu outro ponto permaneceram ativos, com histórico preservado. O framebuffer capturado diretamente do LCD mostrou o QR de vinculação, e um decodificador confirmou correspondência exata ao token privado sem expô-lo em arquivos versionados. O ESP32 sincronizou com a API em `idle`, Wi-Fi conectado, HTTP 200. Deixe o painel ligado nessa tela e, no app 0.3.2, entre como vendedor → **Meus postos** → **Escanear QR da tela** → conclua localização, tarifa e publicação. Após o vínculo, o QR desaparece do LCD.
 
 O QR é uma credencial de propriedade; a captura da tela física e o `provisioning.json` ficam privados em `tmp/` e `/tmp`, respectivamente, e não entram no pacote de firmware nem no Git. Não execute `CG_MIGRATE` para uma unidade em produção sem antes preparar uma nova identidade e auditar o histórico.
+
+## Redução das piscadas do LCD — 0.3.3
+
+O usuário relatou piscadas ocasionais mesmo após a otimização que evitou redraws periódicos. O ESP32-S3 usava um framebuffer RGB; o LVGL escrevia nele enquanto o LCD o lia. O port agora usa o modo 3 recomendado pela biblioteca (`double-buffer` + `direct-mode`) e troca os buffers no VSYNC. O bounce buffer foi ampliado de 10 para 20 linhas para dar mais margem às transferências entre PSRAM e LCD durante o uso de Wi-Fi. A [documentação da Espressif](https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32s3/api-reference/peripherals/lcd/rgb_lcd.html) descreve que atrasos de transferência nessa interface podem produzir flicker, mesmo com o framebuffer correto.
+
+O firmware 0.3.3 compilou e passou em `tools/validate_firmware.py`. Foi gravado na placa física somente em `0x10000`, com hash conferido pelo esptool. O boot registrou `Avoid tearing is enabled, mode: 3`; depois, `state=idle`, Wi-Fi conectado, HTTP 200, sem sessão. A captura posterior do framebuffer mostrou a tela normal de `CG-PAINEL-02`, já vinculada. Em sete consultas ao longo de 30 segundos, a API confirmou o ponto com proprietário, ativo, online e disponível. Uma captura estática e logs não medem piscadas na luz emitida pelo LCD; a eliminação completa do sintoma ainda depende de observação visual prolongada da placa.
+
+O pacote local é `builds/chargegrid-waveshare-7-0.3.3.zip` (SHA-256 `2fd48faea0634ecddcd42a90aeebd3ddacb92e54e1fa3ead00dc4ca05d0dfc15`). Não inclui NVS, chaves ou QR privado.

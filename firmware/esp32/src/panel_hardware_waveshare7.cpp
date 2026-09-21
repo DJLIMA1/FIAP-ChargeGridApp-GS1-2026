@@ -16,12 +16,14 @@ bool chargegridPanelHardwareSetup() {
   board = new Board();
   if (!board || !board->init()) return false;
 
-  // O bounce buffer reduz drift no RGB quando Wi-Fi e PSRAM estão ativos.
+  // A tela RGB lê continuamente da PSRAM. Dois framebuffers permitem trocar
+  // a imagem no VSYNC, sem desenhar no buffer que está sendo exibido.
   auto* lcd = board->getLCD();
   auto* bus = lcd ? lcd->getBus() : nullptr;
-  if (lcd && bus && bus->getBasicAttributes().type == ESP_PANEL_BUS_TYPE_RGB) {
-    static_cast<BusRGB*>(bus)->configRGB_BounceBufferSize(lcd->getFrameWidth() * 10);
-  }
+  if (!lcd || !bus || bus->getBasicAttributes().type != ESP_PANEL_BUS_TYPE_RGB) return false;
+  if (!lcd->configFrameBufferNumber(LVGL_PORT_DISP_BUFFER_NUM)) return false;
+  // 20 linhas por bloco (antes 10) dão mais margem à DMA durante o Wi-Fi.
+  if (!static_cast<BusRGB*>(bus)->configRGB_BounceBufferSize(lcd->getFrameWidth() * 20)) return false;
   if (!board->begin()) return false;
   return lvgl_port_init(board->getLCD(), board->getTouch());
 }
