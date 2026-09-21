@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chargegrid-app"
+version = "0.2.1"
+description = "Aplicativo Flet do ChargeGrid"
+requires-python = ">=3.10"
+dependencies = [
+    "flet==1.0.0",
+    "pillow>=11,<13",
+    "httpx>=0.28,<1",
+]
+
+[project.scripts]
+chargegrid-app = "chargegrid_app.main:run"
+
+[tool.flet]
+# Metadata used by `flet build` for Android and other packaged targets.
+product = "ChargeGrid"
+artifact = "chargegrid"
+bundle_id = "br.com.ffive.chargegrid"
+build_number = 11
+
+[tool.flet.app]
+# The mobile build uses only assets/app_config.json, generated from the public
+# API URL. Never package local environment files.
+exclude = [
+    ".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", ".flet",
+    "__pycache__", "src/chargegrid_app/__pycache__",
+    "src/chargegrid_app/screens/__pycache__", "src/chargegrid_app/services/__pycache__",
+    "src/chargegrid_app/ui/__pycache__",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
