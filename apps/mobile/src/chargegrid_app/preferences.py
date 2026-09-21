@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+DEFAULT_DARK_MODE = True
+
 
 class Preferences:
     def __init__(self, path=None):
@@ -11,10 +13,10 @@ class Preferences:
     def load(self):
         try:
             data = json.loads(self.path.read_text())
-            value = data.get('dark_mode', True) if isinstance(data, dict) else True
-            return value if isinstance(value, bool) else True
+            value = data.get('dark_mode', DEFAULT_DARK_MODE) if isinstance(data, dict) else DEFAULT_DARK_MODE
+            return value if isinstance(value, bool) else DEFAULT_DARK_MODE
         except (OSError, ValueError, TypeError):
-            return True
+            return DEFAULT_DARK_MODE
 
     def save(self, dark):
         try:
@@ -23,3 +25,6 @@ class Preferences:
             return True
         except OSError:
             return False
+
+    def reset(self):
+        return self.save(DEFAULT_DARK_MODE)
