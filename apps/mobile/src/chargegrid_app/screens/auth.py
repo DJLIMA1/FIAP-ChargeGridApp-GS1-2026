@@ -43,11 +43,11 @@ def brand():
     return ft.Row(
         [
             ft.Container(
-                ft.Icon(ft.Icons.EV_STATION, size=28, color='#FFFFFF'),
+                ft.Image(src='/icon.png', width=44, height=44, fit=ft.BoxFit.COVER),
                 width=44,
                 height=44,
-                bgcolor=theme.RED,
                 border_radius=10,
+                clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                 alignment=ft.Alignment(0, 0),
             ),
             ft.Text(

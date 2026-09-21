@@ -18,7 +18,7 @@ Copie `.env.example` para `.env` na raiz do repositório. Defina `CHARGEGRID_API
 
 ### Estado atual
 
-Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. A versão atual é 0.3.0, build Android 14, com migração `d85af641bc01`: [ownership por QR e reconciliação após reboot](validacao-ownership-0.3.0.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
+Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. A versão atual do aplicativo é 0.3.3, build Android 17, com a marca do login aplicada também ao ícone e à abertura. A migração `d85af641bc01` implementa [ownership por QR e reconciliação após reboot](validacao-ownership-0.3.0.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
 
 A revisão de propriedade exige a migração `d85af641bc01` antes do código novo: pontos novos nascem na fábrica, sem dono e inativos, e passam ao vendedor mediante QR de propriedade. A validação local dessa revisão não implica migração ou publicação automática no ambiente remoto.
 

@@ -205,7 +205,7 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.3\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.4\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);

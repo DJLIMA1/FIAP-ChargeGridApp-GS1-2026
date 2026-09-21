@@ -23,18 +23,22 @@ void panelTick() {}
 // O port da placa deve chamar lv_disp_drv_register/lv_indev_drv_register antes
 // de panelSetup(). A escolha do port depende do modelo Waveshare 7 ou 7B.
 namespace {
-const lv_color_t COLOR_BG = LV_COLOR_MAKE(0x13, 0x13, 0x13);
-const lv_color_t COLOR_CARD = LV_COLOR_MAKE(0x1F, 0x1F, 0x1F);
-const lv_color_t COLOR_CONTROL = LV_COLOR_MAKE(0x34, 0x34, 0x34);
+const lv_color_t COLOR_BG = LV_COLOR_MAKE(0x12, 0x13, 0x14);
+const lv_color_t COLOR_CARD = LV_COLOR_MAKE(0x20, 0x22, 0x23);
+const lv_color_t COLOR_CONTROL = LV_COLOR_MAKE(0x34, 0x36, 0x37);
 const lv_color_t COLOR_RED = LV_COLOR_MAKE(0xD7, 0x2B, 0x32);
+const lv_color_t COLOR_RED_DARK = LV_COLOR_MAKE(0xA6, 0x1C, 0x29);
 const lv_color_t COLOR_TEXT = LV_COLOR_MAKE(0xF5, 0xF5, 0xF5);
 const lv_color_t COLOR_MUTED = LV_COLOR_MAKE(0xAA, 0xAC, 0xAF);
 const lv_color_t COLOR_GREEN = LV_COLOR_MAKE(0x54, 0xC6, 0x91);
 const lv_color_t COLOR_AMBER = LV_COLOR_MAKE(0xF3, 0xBC, 0x60);
 
-lv_obj_t *statusLabel, *codeLabel, *connectionLabel, *socLabel;
-lv_obj_t *energyLabel, *powerLabel, *costLabel, *timeLabel;
-lv_obj_t *instructionLabel, *sourceLabel, *stopButton, *footerLabel, *progressBar;
+lv_obj_t *statusLabel, *codeLabel, *connectionLabel, *eyebrowLabel;
+lv_obj_t *energyLabel, *costLabel, *timeLabel, *sessionTimeLabel;
+lv_obj_t *instructionLabel, *stopButton, *heroNoteLabel;
+lv_obj_t *codeCaptionLabel, *codeHintLabel;
+lv_obj_t *stepsCard, *reservationCard, *sessionCard, *messageCard;
+lv_obj_t *messageTitle, *messageDetail;
 lv_obj_t *configScreen, *configKeyboard, *ssidInput, *passwordInput, *keyInput, *configStatus;
 lv_obj_t *claimCard, *claimQr, *claimNetworkButton;
 char lastClaimQr[80]{};
@@ -45,15 +49,17 @@ unsigned long lastRefresh = 0;
 bool ready = false;
 volatile bool localStopRequested = false;
 portMUX_TYPE snapshotMux = portMUX_INITIALIZER_UNLOCKED;
+enum class PanelMode : uint8_t { Ready, Reserved, Charging, Message };
 struct PanelSnapshot {
-  char status[64], code[64], connection[48], soc[16], energy[24];
-  char power[24], cost[24], remaining[32], instruction[128];
+  char eyebrow[48], status[64], code[64], connection[48], energy[24];
+  char cost[24], remaining[32], instruction[128];
+  char heroNote[64], codeCaption[32], codeHint[64];
+  char messageTitle[64], messageDetail[128];
   char claimUrl[80];
+  PanelMode mode;
   bool showClaim;
   bool showStop;
   bool online;
-  bool reserved;
-  int progress;
 } snapshot{};
 
 lv_obj_t* label(lv_obj_t* parent, const char* text, const lv_font_t* font,
@@ -128,30 +134,32 @@ void logoEvent(lv_event_t* event) {
 
 const char* statusTitle() {
   if (state == "charging") return "Recarga em andamento";
-  if (panelIntegrationEnabled && WiFi.status() != WL_CONNECTED) return "Wi-Fi desconectado";
-  if (panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && (lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403)) return "Revise a chave do ponto";
-  if (!hasSynced) return "Conectando ao servidor";
-  if (millis() - lastContact >= 45000 && state == "idle") return "Ponto offline";
-  if (state == "reserved") return "Reservado para você";
+  if (state == "reserved") return "Ponto reservado";
   if (state == "stopped") return "Recarga encerrada";
-  if (state == "fault") return "Falha no equipamento";
-  if (connectorOwnershipKnown && !panelOwned) return "Vincule este ponto";
-  if (!connectorActive) return "Ponto ainda inativo";
-  return "Disponível";
+  if (state == "fault") return "Ponto indisponível";
+  if (panelIntegrationEnabled && WiFi.status() != WL_CONNECTED) return "Ponto indisponível";
+  if (panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && (lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403)) return "Ponto indisponível";
+  if (!hasSynced) return "Só um instante";
+  if (millis() - lastContact >= 45000 && state == "idle") return "Ponto indisponível";
+  if (connectorOwnershipKnown && !panelOwned) return "Em configuração";
+  if (!connectorActive) return "Em breve";
+  return "Pronto para você";
 }
 
 const char* instruction() {
-  if (WiFi.status() != WL_CONNECTED) return "Wi-Fi desconectado. Segure o logo por 5 segundos para configurar.";
-  if (lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403) return "Revise a chave individual na configuração de manutenção.";
-  if (!hasSynced) return "Wi-Fi conectado. Aguardando autenticação da API.";
-  if (WiFi.status() != WL_CONNECTED || !hasSynced || millis() - lastContact >= 45000) return "Offline: reconectando ao servidor. Acompanhe pelo app.";
-  if (state == "reserved") return "Tudo pronto. Inicie a recarga simulada pelo app antes do fim da reserva.";
-  if (state == "charging") return "Acompanhe a recarga pelo app. Você pode encerrar aqui a qualquer momento.";
-  if (state == "stopped") return "Sessão encerrada. Consulte o resumo no app.";
-  if (state == "fault") return "Não use o ponto. Procure outro posto no app.";
-  if (connectorOwnershipKnown && !panelOwned) return "Vincule o ponto à sua conta de vendedor pelo QR de instalação.";
-  if (!connectorActive) return "No app, revise os dados do seu posto e ative este ponto para receber recargas.";
-  return "Use o app ChargeGrid para autenticar, reservar e iniciar.";
+  if (state == "charging") return "Acompanhe pelo app. Para parar, toque em Encerrar.";
+  if (state == "reserved") return WiFi.status() == WL_CONNECTED ?
+      "Sua reserva está ativa. Inicie pelo app antes do prazo." :
+      "Sua reserva continua ativa. Aguarde a conexão para iniciar.";
+  if (state == "stopped") return "Obrigado por usar ChargeGrid. Seu resumo está no app.";
+  if (state == "fault") return "Este ponto está indisponível. Encontre outro no app.";
+  if (WiFi.status() != WL_CONNECTED) return "Estamos reconectando. Encontre outro ponto pelo app.";
+  if (lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403) return "Este ponto precisa de configuração. Procure outro no app.";
+  if (!hasSynced) return "Estamos preparando este ponto para você.";
+  if (millis() - lastContact >= 45000) return "A conexão caiu. Encontre outro ponto pelo app.";
+  if (connectorOwnershipKnown && !panelOwned) return "O responsável está preparando este ponto.";
+  if (!connectorActive) return "Este ponto ainda não está aberto para recargas.";
+  return "Abra o app ChargeGrid e use o código ao lado.";
 }
 
 void refresh() {
@@ -169,24 +177,34 @@ void refresh() {
     if (hidden) lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(target, LV_OBJ_FLAG_HIDDEN);
   };
-  static bool painted = false, lastOnline = false, lastStop = false, lastReserved = false;
+  static bool painted = false, lastOnline = false;
+  static PanelMode lastMode = PanelMode::Message;
+  setTextIfChanged(eyebrowLabel, current.eyebrow);
   setTextIfChanged(statusLabel, current.status);
   setTextIfChanged(codeLabel, current.code);
+  setTextIfChanged(codeCaptionLabel, current.codeCaption);
+  setTextIfChanged(codeHintLabel, current.codeHint);
   setTextIfChanged(connectionLabel, current.connection);
   if (!painted || current.online != lastOnline)
     lv_obj_set_style_text_color(connectionLabel, current.online ? COLOR_GREEN : COLOR_AMBER, 0);
-  if (!painted || current.showStop != lastStop || current.reserved != lastReserved)
-    lv_obj_set_style_text_color(statusLabel, current.showStop ? COLOR_GREEN : (current.reserved ? COLOR_AMBER : COLOR_TEXT), 0);
-  setTextIfChanged(socLabel, current.soc);
+  if (!painted || current.mode != lastMode) {
+    lv_obj_set_style_text_color(eyebrowLabel,
+        current.mode == PanelMode::Reserved ? COLOR_AMBER :
+        current.mode == PanelMode::Charging ? COLOR_GREEN : COLOR_RED, 0);
+  }
   setTextIfChanged(energyLabel, current.energy);
-  setTextIfChanged(powerLabel, current.power);
   setTextIfChanged(costLabel, current.cost);
   setTextIfChanged(timeLabel, current.remaining);
+  setTextIfChanged(sessionTimeLabel, current.remaining);
   setTextIfChanged(instructionLabel, current.instruction);
+  setTextIfChanged(heroNoteLabel, current.heroNote);
+  setTextIfChanged(messageTitle, current.messageTitle);
+  setTextIfChanged(messageDetail, current.messageDetail);
+  setHiddenIfChanged(stepsCard, current.mode != PanelMode::Ready);
+  setHiddenIfChanged(reservationCard, current.mode != PanelMode::Reserved);
+  setHiddenIfChanged(sessionCard, current.mode != PanelMode::Charging);
+  setHiddenIfChanged(messageCard, current.mode != PanelMode::Message);
   setHiddenIfChanged(stopButton, !current.showStop);
-  if (current.progress >= 0 && lv_bar_get_value(progressBar) != current.progress)
-    lv_bar_set_value(progressBar, current.progress, LV_ANIM_OFF);
-  setHiddenIfChanged(progressBar, current.progress < 0);
   if (current.showClaim) {
     if (std::strcmp(lastClaimQr, current.claimUrl) != 0) {
       if (lv_qrcode_update(claimQr, current.claimUrl, std::strlen(current.claimUrl)) == LV_RES_OK)
@@ -202,8 +220,7 @@ void refresh() {
       memset(lastClaimQr, 0, sizeof(lastClaimQr));
     }
   }
-  lastOnline = current.online; lastStop = current.showStop;
-  lastReserved = current.reserved; painted = true;
+  lastOnline = current.online; lastMode = current.mode; painted = true;
 }
 
 void uiTask(void*) {
@@ -233,74 +250,127 @@ void panelSetup() {
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* brand = label(screen, "ChargeGrid", &chargegrid_montserrat_24, COLOR_TEXT);
-  lv_obj_set_pos(brand, 76, 20);
+  lv_obj_set_pos(brand, 84, 21);
   lv_obj_t* mark = lv_img_create(screen);
   lv_img_set_src(mark, &chargegrid_logo_64x64);
   lv_img_set_pivot(mark, 0, 0);
   lv_img_set_zoom(mark, 160);
-  lv_obj_set_pos(mark, 24, 12);
+  lv_obj_set_pos(mark, 28, 14);
   lv_obj_add_flag(mark, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(mark, logoEvent, LV_EVENT_ALL, nullptr);
 
-  connectionLabel = label(screen, "● Offline", &chargegrid_montserrat_16, COLOR_MUTED);
-  lv_obj_align(connectionLabel, LV_ALIGN_TOP_RIGHT, -24, 24);
+  lv_obj_t* connectionPill = card(screen, 566, 16, 210, 44);
+  lv_obj_set_style_bg_color(connectionPill, COLOR_CARD, 0);
+  lv_obj_set_style_radius(connectionPill, 22, 0);
+  lv_obj_set_style_pad_all(connectionPill, 0, 0);
+  connectionLabel = label(connectionPill, "● Preparando", &chargegrid_montserrat_14, COLOR_AMBER);
+  lv_obj_center(connectionLabel);
 
-  lv_obj_t* mainCard = card(screen, 24, 72, 752, 152);
-  statusLabel = label(mainCard, "Disponível", &chargegrid_montserrat_28, COLOR_TEXT);
-  codeLabel = label(mainCard, "Posto --", &chargegrid_montserrat_18, COLOR_RED);
-  lv_obj_set_pos(codeLabel, 0, 42);
-  instructionLabel = label(mainCard, "Use o app ChargeGrid para autenticar, reservar e iniciar.", &chargegrid_montserrat_16, COLOR_MUTED);
-  lv_obj_set_pos(instructionLabel, 0, 76);
+  lv_obj_t* hero = card(screen, 24, 78, 752, 256);
+  lv_obj_set_style_bg_grad_color(hero, LV_COLOR_MAKE(0x28, 0x23, 0x25), 0);
+  lv_obj_set_style_bg_grad_dir(hero, LV_GRAD_DIR_HOR, 0);
+  lv_obj_t* accent = lv_obj_create(hero);
+  lv_obj_set_pos(accent, 4, 22); lv_obj_set_size(accent, 5, 176);
+  lv_obj_set_style_bg_color(accent, COLOR_RED, 0);
+  lv_obj_set_style_border_width(accent, 0, 0);
+  lv_obj_set_style_radius(accent, 3, 0);
+  eyebrowLabel = label(hero, "PONTO DISPONÍVEL", &chargegrid_montserrat_14, COLOR_RED);
+  lv_obj_set_pos(eyebrowLabel, 28, 26);
+  statusLabel = label(hero, "Pronto para você", &chargegrid_montserrat_28, COLOR_TEXT);
+  lv_obj_set_pos(statusLabel, 28, 66); lv_obj_set_width(statusLabel, 432);
+  lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_DOT);
+  instructionLabel = label(hero, "Abra o app ChargeGrid e use o código ao lado.", &chargegrid_montserrat_18, COLOR_TEXT);
+  lv_obj_set_pos(instructionLabel, 28, 117);
   lv_label_set_long_mode(instructionLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(instructionLabel, 700);
-  progressBar = lv_bar_create(screen);
-  lv_obj_set_pos(progressBar, 40, 206); lv_obj_set_size(progressBar, 720, 4);
-  lv_bar_set_range(progressBar, 0, 100);
-  lv_obj_set_style_bg_color(progressBar, LV_COLOR_MAKE(0x34, 0x34, 0x34), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(progressBar, COLOR_RED, LV_PART_INDICATOR);
-  lv_obj_add_flag(progressBar, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_width(instructionLabel, 414);
+  heroNoteLabel = label(hero, "Simples, seguro e no seu ritmo.", &chargegrid_montserrat_14, COLOR_MUTED);
+  lv_obj_set_pos(heroNoteLabel, 28, 204);
 
-  lv_obj_t* metrics = card(screen, 24, 240, 752, 128);
-  const char* names[] = {"Bateria", "Energia", "Potência", "Custo estimado", "Tempo restante"};
-  lv_obj_t** values[] = {&socLabel, &energyLabel, &powerLabel, &costLabel, &timeLabel};
-  for (int i = 0; i < 5; ++i) {
-    const int x = i * 145;
-    lv_obj_t* name = label(metrics, names[i], &chargegrid_montserrat_14, COLOR_MUTED);
-    lv_obj_set_pos(name, x, 8);
-    *values[i] = label(metrics, "--", &chargegrid_montserrat_24, COLOR_TEXT);
-    lv_obj_set_pos(*values[i], x, 38);
-    lv_obj_set_width(*values[i], 136);
-    lv_label_set_long_mode(*values[i], LV_LABEL_LONG_WRAP);
+  lv_obj_t* codeCard = card(hero, 488, 14, 224, 196);
+  lv_obj_set_style_bg_color(codeCard, COLOR_RED, 0);
+  lv_obj_set_style_bg_grad_color(codeCard, COLOR_RED_DARK, 0);
+  lv_obj_set_style_bg_grad_dir(codeCard, LV_GRAD_DIR_VER, 0);
+  codeCaptionLabel = label(codeCard, "CÓDIGO DO PONTO", &chargegrid_montserrat_14, COLOR_TEXT);
+  lv_obj_set_pos(codeCaptionLabel, 0, 10);
+  codeLabel = label(codeCard, "--", &chargegrid_montserrat_20, lv_color_white());
+  lv_obj_set_pos(codeLabel, 0, 58); lv_obj_set_width(codeLabel, 192);
+  lv_label_set_long_mode(codeLabel, LV_LABEL_LONG_DOT);
+  codeHintLabel = label(codeCard, "Use no app ChargeGrid", &chargegrid_montserrat_14, COLOR_TEXT);
+  lv_obj_set_pos(codeHintLabel, 0, 133);
+
+  stepsCard = card(screen, 24, 350, 752, 94);
+  const char* stepTitles[] = {"Abra o app", "Use o código", "Comece a recarga"};
+  const char* stepDetails[] = {"ChargeGrid no celular", "Encontre este ponto", "Confirme pelo app"};
+  for (int i = 0; i < 3; ++i) {
+    const int x = 6 + i * 238;
+    lv_obj_t* number = lv_obj_create(stepsCard);
+    lv_obj_set_pos(number, x, 12); lv_obj_set_size(number, 38, 38);
+    lv_obj_set_style_bg_color(number, LV_COLOR_MAKE(0x3D, 0x25, 0x29), 0);
+    lv_obj_set_style_border_width(number, 0, 0);
+    lv_obj_set_style_radius(number, 19, 0);
+    lv_obj_set_style_pad_all(number, 0, 0);
+    char digit[2] = {static_cast<char>('1' + i), '\0'};
+    lv_obj_t* numberText = label(number, digit, &chargegrid_montserrat_18, COLOR_RED);
+    lv_obj_center(numberText);
+    lv_obj_t* stepTitle = label(stepsCard, stepTitles[i], &chargegrid_montserrat_16, COLOR_TEXT);
+    lv_obj_set_pos(stepTitle, x + 50, 7);
+    lv_obj_t* stepDetail = label(stepsCard, stepDetails[i], &chargegrid_montserrat_14, COLOR_MUTED);
+    lv_obj_set_pos(stepDetail, x + 50, 35);
   }
-  lv_obj_set_style_text_font(energyLabel, &chargegrid_montserrat_20, 0);
-  lv_obj_set_style_text_font(powerLabel, &chargegrid_montserrat_20, 0);
-  lv_obj_set_style_text_font(costLabel, &chargegrid_montserrat_20, 0);
-  sourceLabel = label(metrics, "Bancada • dados simulados", &chargegrid_montserrat_14, COLOR_MUTED);
-  lv_obj_set_pos(sourceLabel, 0, 84);
 
-  stopButton = lv_btn_create(screen);
-  lv_obj_set_pos(stopButton, 24, 394); lv_obj_set_size(stopButton, 220, 52);
+  reservationCard = card(screen, 24, 350, 752, 94);
+  lv_obj_t* reservationCaption = label(reservationCard, "TEMPO PARA INICIAR", &chargegrid_montserrat_14, COLOR_AMBER);
+  lv_obj_set_pos(reservationCaption, 6, 4);
+  timeLabel = label(reservationCard, "--", &chargegrid_montserrat_28, COLOR_TEXT);
+  lv_obj_set_pos(timeLabel, 6, 30);
+  lv_obj_t* reservationHelp = label(reservationCard, "Seu ponto está guardado.\nInicie a recarga no aplicativo.", &chargegrid_montserrat_16, COLOR_TEXT);
+  lv_obj_set_pos(reservationHelp, 242, 14);
+
+  sessionCard = card(screen, 24, 350, 752, 94);
+  const char* metricNames[] = {"ENERGIA", "VALOR ESTIMADO", "TEMPO RESTANTE"};
+  lv_obj_t** metricValues[] = {&energyLabel, &costLabel, &sessionTimeLabel};
+  for (int i = 0; i < 3; ++i) {
+    const int x = 6 + i * 170;
+    lv_obj_t* name = label(sessionCard, metricNames[i], &chargegrid_montserrat_14, COLOR_MUTED);
+    lv_obj_set_pos(name, x, 4);
+    *metricValues[i] = label(sessionCard, "--", &chargegrid_montserrat_20, COLOR_TEXT);
+    lv_obj_set_pos(*metricValues[i], x, 34);
+    lv_obj_set_width(*metricValues[i], 160);
+    lv_label_set_long_mode(*metricValues[i], LV_LABEL_LONG_DOT);
+  }
+  stopButton = lv_btn_create(sessionCard);
+  lv_obj_set_pos(stopButton, 548, 8); lv_obj_set_size(stopButton, 166, 56);
   lv_obj_set_style_bg_color(stopButton, COLOR_RED, 0);
   lv_obj_set_style_radius(stopButton, 8, 0);
   lv_obj_set_style_shadow_width(stopButton, 0, 0);
   lv_obj_add_event_cb(stopButton, stopClicked, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* stopText = label(stopButton, "Encerrar recarga", &chargegrid_montserrat_18, lv_color_white());
+  lv_obj_t* stopText = label(stopButton, "Encerrar", &chargegrid_montserrat_18, lv_color_white());
   lv_obj_center(stopText);
   lv_obj_add_flag(stopButton, LV_OBJ_FLAG_HIDDEN);
-  footerLabel = label(screen, "Reserve · Inicie · Acompanhe no app", &chargegrid_montserrat_14, COLOR_MUTED);
-  lv_obj_align(footerLabel, LV_ALIGN_BOTTOM_RIGHT, -24, -43);
+
+  messageCard = card(screen, 24, 350, 752, 94);
+  messageTitle = label(messageCard, "Precisa de ajuda?", &chargegrid_montserrat_18, COLOR_TEXT);
+  lv_obj_set_pos(messageTitle, 6, 3);
+  messageDetail = label(messageCard, "Encontre outro ponto pelo app ChargeGrid.", &chargegrid_montserrat_14, COLOR_MUTED);
+  lv_obj_set_pos(messageDetail, 6, 35); lv_obj_set_width(messageDetail, 690);
+  lv_label_set_long_mode(messageDetail, LV_LABEL_LONG_WRAP);
 
   // Factory onboarding overlays operational metrics but leaves the brand and
   // connection status visible. Only a separate claim token can produce this QR.
   claimCard = card(screen, 24, 72, 752, 384);
-  lv_obj_t* claimEyebrow = label(claimCard, "SEU PONTO CHARGEGRID", &chargegrid_montserrat_14, COLOR_RED);
+  lv_obj_t* claimAccent = lv_obj_create(claimCard);
+  lv_obj_set_pos(claimAccent, 0, 12); lv_obj_set_size(claimAccent, 5, 162);
+  lv_obj_set_style_bg_color(claimAccent, COLOR_RED, 0);
+  lv_obj_set_style_border_width(claimAccent, 0, 0);
+  lv_obj_set_style_radius(claimAccent, 3, 0);
+  lv_obj_t* claimEyebrow = label(claimCard, "CONFIGURAÇÃO DO VENDEDOR", &chargegrid_montserrat_14, COLOR_RED);
   lv_obj_set_pos(claimEyebrow, 8, 8);
-  lv_obj_t* claimTitle = label(claimCard, "Vincule seu ponto", &chargegrid_montserrat_28, COLOR_TEXT);
+  lv_obj_t* claimTitle = label(claimCard, "Ative seu ponto", &chargegrid_montserrat_28, COLOR_TEXT);
   lv_obj_set_pos(claimTitle, 8, 40);
-  lv_obj_t* claimDescription = label(claimCard, "Uma leitura do QR conecta este ponto\nà sua conta de vendedor.", &chargegrid_montserrat_16, COLOR_MUTED);
+  lv_obj_t* claimDescription = label(claimCard, "Este QR conecta o ponto à sua conta\nde vendedor no app ChargeGrid.", &chargegrid_montserrat_16, COLOR_MUTED);
   lv_obj_set_pos(claimDescription, 8, 90); lv_obj_set_width(claimDescription, 414);
   lv_obj_t* claimSteps = label(claimCard,
-      "1. Abra o app ChargeGrid no celular.\n\n2. Entre na sua conta e leia o QR.\n\n3. Escolha o posto e ative seu ponto.",
+      "1. Entre como vendedor no app.\n\n2. Escaneie este QR.\n\n3. Defina nome, local e tarifa.",
       &chargegrid_montserrat_16, COLOR_TEXT);
   lv_obj_set_pos(claimSteps, 8, 156); lv_obj_set_width(claimSteps, 418);
   claimNetworkButton = lv_btn_create(claimCard);
@@ -315,7 +385,7 @@ void panelSetup() {
   lv_obj_set_style_radius(qrBorder, 8, 0);
   claimQr = lv_qrcode_create(qrBorder, 216, lv_color_black(), lv_color_white());
   lv_obj_center(claimQr);
-  lv_obj_t* qrCaption = label(claimCard, "QR exclusivo deste ponto", &chargegrid_montserrat_14, COLOR_MUTED);
+  lv_obj_t* qrCaption = label(claimCard, "QR privado de vinculação", &chargegrid_montserrat_14, COLOR_MUTED);
   lv_obj_set_pos(qrCaption, 456, 310); lv_obj_set_width(qrCaption, 248);
   lv_obj_set_style_text_align(qrCaption, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_add_flag(claimCard, LV_OBJ_FLAG_HIDDEN);
@@ -409,39 +479,53 @@ void panelTick() {
   if (next.showClaim) snprintf(next.claimUrl, sizeof(next.claimUrl), "chargegrid://claim?token=%s", panelClaimToken.c_str());
   if (!panelIntegrationEnabled) {
     const bool wifiConnected = panelNetworkConfigured && WiFi.status() == WL_CONNECTED;
-    snprintf(next.status, sizeof(next.status), "%s", wifiConnected ? "Configure o dispositivo" : "Configure este ponto");
-    snprintf(next.code, sizeof(next.code), "Código após conexão");
-    snprintf(next.connection, sizeof(next.connection), "%s", wifiConnected ? "● Wi-Fi conectado" :
-        (panelNetworkConfigured ? "● Conectando Wi-Fi" : "● Configuração pendente"));
-    snprintf(next.soc, sizeof(next.soc), "--");
+    next.mode = PanelMode::Message;
+    snprintf(next.eyebrow, sizeof(next.eyebrow), "NOVO PONTO");
+    snprintf(next.status, sizeof(next.status), "Em preparação");
+    snprintf(next.code, sizeof(next.code), "EM BREVE");
+    snprintf(next.codeCaption, sizeof(next.codeCaption), "SEU PONTO");
+    snprintf(next.codeHint, sizeof(next.codeHint), "Ainda não disponível");
+    snprintf(next.heroNote, sizeof(next.heroNote), "ChargeGrid estará aqui em breve.");
+    snprintf(next.connection, sizeof(next.connection), "%s", wifiConnected ? "● Preparando ponto" : "● Em instalação");
     snprintf(next.energy, sizeof(next.energy), "--");
-    snprintf(next.power, sizeof(next.power), "--");
     snprintf(next.cost, sizeof(next.cost), "--");
     snprintf(next.remaining, sizeof(next.remaining), "--");
-    snprintf(next.instruction, sizeof(next.instruction), "%s", wifiConnected ?
-        "Wi-Fi conectado. Segure o logo por 5 segundos para informar a chave do dispositivo." :
-        "Segure o logo ChargeGrid por 5 segundos para configurar Wi-Fi e dispositivo.");
-    next.showStop = false; next.progress = -1;
+    snprintf(next.instruction, sizeof(next.instruction), "Este ponto estará disponível em breve.");
+    snprintf(next.messageTitle, sizeof(next.messageTitle), "Instalação do ponto");
+    snprintf(next.messageDetail, sizeof(next.messageDetail), "Responsável: segure o logo por 5 segundos para configurar.");
+    next.showStop = false;
   } else {
-  snprintf(next.status, sizeof(next.status), "%s", statusTitle());
-  snprintf(next.code, sizeof(next.code), "Posto %s", connectorPublicCode.c_str());
   const bool authRejected = lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403;
   const bool apiOnline = WiFi.status() == WL_CONNECTED && !authRejected &&
       hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
-  next.online = apiOnline;
-  next.reserved = state == "reserved";
-  const char* connection = apiOnline ? "● Ponto conectado" :
-      (WiFi.status() != WL_CONNECTED ? "● Wi-Fi desconectado" :
-      (authRejected ? "● Chave inválida" : "● Aguardando API"));
+  next.mode = state == "charging" ? PanelMode::Charging :
+      state == "reserved" ? PanelMode::Reserved :
+      state == "idle" && apiOnline && connectorActive && panelOwned ? PanelMode::Ready : PanelMode::Message;
+  next.online = apiOnline && (next.mode != PanelMode::Message || state == "stopped");
+  snprintf(next.eyebrow, sizeof(next.eyebrow), "%s",
+      next.mode == PanelMode::Charging ? "RECARGA EM ANDAMENTO" :
+      next.mode == PanelMode::Reserved ? "RESERVA ATIVA" :
+      next.mode == PanelMode::Ready ? "PONTO DISPONÍVEL" : "PONTO CHARGEGRID");
+  snprintf(next.status, sizeof(next.status), "%s", statusTitle());
+  snprintf(next.code, sizeof(next.code), "%s", connectorPublicCode.c_str());
+  snprintf(next.codeCaption, sizeof(next.codeCaption), "CÓDIGO DO PONTO");
+  snprintf(next.codeHint, sizeof(next.codeHint), "%s", next.mode == PanelMode::Message ?
+      (state == "stopped" ? "Resumo no aplicativo" : "Indisponível agora") : "Use no app ChargeGrid");
+  snprintf(next.heroNote, sizeof(next.heroNote), "%s", next.mode == PanelMode::Charging ?
+      "Acompanhe tudo pelo aplicativo." : next.mode == PanelMode::Reserved ?
+      "Sua reserva está protegida." : next.mode == PanelMode::Ready ?
+      "Simples, seguro e no seu ritmo." : "Mais opções disponíveis no app.");
+  const char* connection = apiOnline ?
+      (state == "charging" ? "● Em uso" : state == "reserved" ? "● Reservado" :
+      state == "stopped" ? "● Recarga concluída" : !panelOwned ? "● Aguardando vínculo" :
+      !connectorActive ? "● Em preparação" : "● Pronto para uso") :
+      "● Temporariamente offline";
   snprintf(next.connection, sizeof(next.connection), "%s", connection);
   const bool hasValidSessionData = sessionId.length() && hasSynced;
-  snprintf(next.soc, sizeof(next.soc), hasValidSessionData ? "%.1f%%" : "--", reading.socPercent);
   if (hasValidSessionData) {
     snprintf(next.energy, sizeof(next.energy), "%.2f kWh", reading.energyWh / 1000.0f);
-    snprintf(next.power, sizeof(next.power), "%.1f kW", reading.powerW / 1000.0f);
   } else {
     snprintf(next.energy, sizeof(next.energy), "--");
-    snprintf(next.power, sizeof(next.power), "--");
   }
   const float estimatedCost = reading.energyWh / 1000.0f * price * (1.0f - discount / 100.0f);
   snprintf(next.cost, sizeof(next.cost), sessionId.length() && sessionPricingKnown ? "R$ %.2f" : "--", estimatedCost);
@@ -453,8 +537,13 @@ void panelTick() {
     snprintf(next.remaining, sizeof(next.remaining), "%ld min", ((long)(reservationDeadline - time(nullptr)) + 59) / 60L);
   } else snprintf(next.remaining, sizeof(next.remaining), "--");
   snprintf(next.instruction, sizeof(next.instruction), "%s", instruction());
+  snprintf(next.messageTitle, sizeof(next.messageTitle), "%s", state == "stopped" ?
+      "Até a próxima" : !connectorActive ? "Em breve por aqui" : "Encontre outro ponto");
+  snprintf(next.messageDetail, sizeof(next.messageDetail), "%s", state == "stopped" ?
+      "Veja o resumo da sua recarga no app ChargeGrid." : !connectorActive ?
+      "Outros pontos disponíveis estão no app ChargeGrid." :
+      "Abra o app ChargeGrid para encontrar uma opção próxima.");
   next.showStop = state == "charging";
-  next.progress = hasValidSessionData ? constrain((int)reading.socPercent, 0, 100) : -1;
   }
   taskENTER_CRITICAL(&snapshotMux);
   snapshot = next;

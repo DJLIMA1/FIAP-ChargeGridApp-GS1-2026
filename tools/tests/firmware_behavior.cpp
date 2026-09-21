@@ -206,7 +206,13 @@ int main(int argc, char** argv) {
   dd.hor_res = 800; dd.ver_res = 480; dd.flush_cb = flush; dd.draw_buf = &db;
   lv_disp_drv_register(&dd); panelSetup();
   sessionId = ""; state = "idle"; lastContact = testMillis;
+  panelOwned = true; connectorOwnershipKnown = true; connectorActive = true;
+  connectorPublicCode = "CG-01";
   screenshot(argv[1], "panel-idle");
+  assert(std::string(lv_label_get_text(statusLabel)) == "Pronto para você");
+  assert(std::string(lv_label_get_text(codeLabel)) == "CG-01");
+  assert(!lv_obj_has_flag(stepsCard, LV_OBJ_FLAG_HIDDEN));
+  assert(lv_obj_has_flag(sessionCard, LV_OBJ_FLAG_HIDDEN));
   flushCount = 0;
   panelTick(); refresh(); lv_refr_now(nullptr);
   assert(flushCount == 0); // An unchanged snapshot must not redraw the RGB panel.
@@ -214,15 +220,18 @@ int main(int argc, char** argv) {
   screenshot(argv[1], "panel-reserved");
   assert(flushCount > 0); // A real state transition still reaches the display.
   assert(std::string(lv_label_get_text(timeLabel)) == "1 min");
+  assert(!lv_obj_has_flag(reservationCard, LV_OBJ_FLAG_HIDDEN));
   state = "charging"; sessionId = "test-session"; reading = {42, 3210, 7200, true};
   screenshot(argv[1], "panel-charging");
+  assert(!lv_obj_has_flag(sessionCard, LV_OBJ_FLAG_HIDDEN));
   assert(!lv_obj_has_flag(stopButton, LV_OBJ_FLAG_HIDDEN));
   lv_event_send(stopButton, LV_EVENT_CLICKED, nullptr); panelTick();
   assert(state == "stopped" && reading.powerW == 0 && endReason == "requested");
   screenshot(argv[1], "panel-stopped");
   state = "idle"; sessionId = ""; lastSyncHttpStatus = 401;
   screenshot(argv[1], "panel-key-error");
-  assert(std::string(lv_label_get_text(statusLabel)) == "Revise a chave do ponto");
+  assert(std::string(lv_label_get_text(statusLabel)) == "Ponto indisponível");
+  assert(std::string(lv_label_get_text(instructionLabel)).find("chave") == std::string::npos);
   panelIntegrationEnabled = false;
   screenshot(argv[1], "panel-setup");
   lv_obj_clear_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
@@ -286,11 +295,11 @@ int main(int argc, char** argv) {
   assert(!savePanelClaim(claimStorage, claimToken, true, false, false));
   screenshot(argv[1], "panel-factory-claimed-inactive");
   assert(lv_obj_has_flag(claimCard, LV_OBJ_FLAG_HIDDEN) && lastClaimQr[0] == '\0');
-  assert(std::string(lv_label_get_text(statusLabel)) == "Ponto ainda inativo");
+  assert(std::string(lv_label_get_text(statusLabel)) == "Em breve");
   ownership["connector"]["active"] = true;
   apply(ownership);
   screenshot(argv[1], "panel-factory-claimed-active");
-  assert(std::string(lv_label_get_text(statusLabel)) == "Disponível");
+  assert(std::string(lv_label_get_text(statusLabel)) == "Pronto para você");
   panelClaimToken = claimToken; // Even a stale RAM copy cannot expose a legacy owner's QR.
   ownership["connector"].remove("owned");
   apply(ownership); screenshot(argv[1], "panel-legacy-owner-no-qr");

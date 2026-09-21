@@ -32,6 +32,12 @@ class FakeApp:
 
 
 class ScreenTests(unittest.IsolatedAsyncioTestCase):
+    async def test_login_uses_same_brand_asset_as_app_icon(self):
+        mark = auth.brand().controls[0]
+        self.assertIsInstance(mark.content, ft.Image)
+        self.assertEqual(mark.content.src, '/icon.png')
+        self.assertEqual(mark.border_radius, 10)
+
     async def test_forgot_password_matches_recovery_flow(self):
         control=await auth.build(FakeApp([]),mode='forgot')
         texts=[]
