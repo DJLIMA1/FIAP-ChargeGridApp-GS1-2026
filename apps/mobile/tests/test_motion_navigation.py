@@ -4,12 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
+
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.navigation import editable_controls, parent_route
+from chargegrid_app.screens import auth
 from chargegrid_app.session import Session
 from chargegrid_app.ui import motion
-from test_behavior import click
+from test_behavior import HandlerApp, click, descendants
 
 
 class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
@@ -209,6 +211,7 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.app.go.assert_awaited_once_with('reservations')
         self.client.request.assert_not_called()
 
+
     async def test_poll_cannot_replace_screen_during_pending_mutation(self):
         self.app.active_actions.add(object())
         original = self.app.scene.content
@@ -223,3 +226,96 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(self.app.scene.content, original)
         self.assertEqual(self.app.route, 'auth')
         self.client.request.assert_not_called()
+
+
+class AuthMotionTests(unittest.IsolatedAsyncioTestCase):
+    def tearDown(self):
+        motion.set_reduced(False)
+
+    async def test_indicator_slides_both_directions_without_rebuilding_fields(self):
+        app = HandlerApp()
+        screen = await auth.build(app, mode='register')
+        fields = [c for c in descendants(screen) if isinstance(c, ft.TextField)]
+        fields[0].value = 'Nome preservado'
+        indicator = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'account-indicator')
+        self.assertEqual(indicator.offset.x, 0)
+        self.assertEqual(indicator.animate_offset.duration, 280)
+        options = [c for c in descendants(screen) if isinstance(c, ft.Container) and c.data in ('consumer', 'vendor')]
+        self.assertEqual(len(options), 2)
+        self.assertTrue(all(not option.ink for option in options))
+        await click(screen, 'Sou vendedor')(None)
+        self.assertEqual(indicator.offset.x, 1)
+        selected = [c.content.data for c in descendants(screen) if isinstance(c, ft.Semantics) and c.selected]
+        self.assertEqual(selected, ['vendor'])
+        await click(screen, 'Sou consumidor')(None)
+        self.assertEqual(indicator.offset.x, 0)
+        self.assertEqual(fields[0].value, 'Nome preservado')
+
+    async def test_indicator_does_not_change_account_type_during_submission(self):
+        app = HandlerApp()
+        selection = {'value': 'consumer'}
+        screen = auth.account_selector(app, selection)
+        app.active_actions.add(object())
+        await click(screen, 'Sou vendedor')(None)
+        self.assertEqual(selection['value'], 'consumer')
+
+    async def test_reduced_motion_uses_instant_indicator(self):
+        motion.set_reduced(True)
+        screen = auth.account_selector(HandlerApp(), {'value': 'vendor'})
+        indicator = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'account-indicator')
+        self.assertEqual(indicator.offset.x, 1)
+        self.assertEqual(indicator.animate_offset.duration, 0)
+
+    async def test_invalid_email_marks_only_email_and_clears_on_edit(self):
+        app = HandlerApp()
+        screen = await auth.build(app, mode='register')
+        fields = [c for c in descendants(screen) if isinstance(c, ft.TextField)]
+        for field, value in zip(fields, ['Nome', 'invalido', 'senha1234']):
+            field.value = value
+        with patch('chargegrid_app.screens.auth.motion.shake', new=AsyncMock()) as shake:
+            await click(screen, 'Criar conta')(None)
+            self.assertIs(shake.call_args.args[0], fields[1])
+        errors = [c for c in descendants(screen) if isinstance(c, ft.Semantics) and c.live_region and c.visible]
+        self.assertEqual([c.content.value for c in errors], ['Informe um e-mail válido.'])
+        self.assertEqual(fields[1].border_color, auth.theme.ERROR)
+        app.api.request.assert_not_called()
+        fields[1].value = 'teste@example.com'
+        await fields[1].on_change(None)
+        self.assertFalse(errors[0].visible)
+        self.assertEqual(fields[1].border_color, auth.theme.LIGHT_GRAY)
+
+    async def test_weak_password_from_server_marks_password_not_email(self):
+        app = HandlerApp()
+        app.api.request.side_effect = ApiError('Escolha uma senha mais forte.', code='weak_password')
+        screen = await auth.build(app, mode='register')
+        fields = [c for c in descendants(screen) if isinstance(c, ft.TextField)]
+        for field, value in zip(fields, ['Nome', 'teste@example.com', '12345678']):
+            field.value = value
+        with patch('chargegrid_app.screens.auth.motion.shake', new=AsyncMock()) as shake:
+            await click(screen, 'Criar conta')(None)
+            self.assertIs(shake.call_args.args[0], fields[2])
+        self.assertEqual(fields[2].value, '12345678')
+
+    async def test_shake_has_alternating_offsets_and_settles(self):
+        control = ft.TextField()
+        offsets = []
+        with patch('chargegrid_app.ui.motion.asyncio.sleep', new=AsyncMock()):
+            await motion.shake(control, lambda: offsets.append(control.offset.x))
+        self.assertEqual(offsets, [-0.015, 0.015, -0.008, 0, 0])
+
+    async def test_shake_cancellation_restores_position(self):
+        control = ft.TextField()
+        task = asyncio.create_task(motion.shake(control, lambda: None))
+        await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(control.offset.x, 0)
+
+    async def test_reduced_or_stale_shake_never_moves(self):
+        update = Mock()
+        with patch('chargegrid_app.ui.motion.asyncio.sleep', new=AsyncMock()) as sleep:
+            await motion.shake(ft.TextField(), update, reduced=True)
+            await motion.shake(ft.TextField(), update, is_current=lambda: False)
+        sleep.assert_not_called()
+        update.assert_not_called()

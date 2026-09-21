@@ -18,7 +18,7 @@ docs/            decisões, operação e apresentação
 
 ## Estado do MVP
 
-O aplicativo 0.2.1 usa o tipo de conta somente no cadastro; entrar exige apenas e-mail e senha. Claro/escuro funcionam também na autenticação e na página inicial. Campos e botões foram padronizados, com navegação compacta e orientação retrato no aplicativo móvel. A atualização inclui transições suaves, respeito à redução de movimento, proteção de formulários e controles de voltar sem interromper operações em andamento.
+O aplicativo 0.2.3 usa o tipo de conta somente no cadastro; entrar exige apenas e-mail e senha. Claro/escuro funcionam também na autenticação e na página inicial. Campos e botões foram padronizados, com navegação compacta e orientação retrato no aplicativo móvel. A atualização inclui transições suaves, seletor deslizante sem efeito de onda, validação animada dos campos de autenticação, respeito à redução de movimento, proteção de formulários e controles de voltar sem interromper operações em andamento.
 
 O painel Waveshare conectado foi atualizado e provisionado como `CG-PAINEL-01`, no posto fictício `ChargeGrid • Bancada QA`. Reserva, recarga e parada foram validadas entre interface, API publicada e ESP32 físico. Segure o logo por 5 segundos para abrir a manutenção quando não houver operação ativa. Senha e chave permanecem mascaradas e não são mostradas depois de salvas em NVS.
 
@@ -26,7 +26,7 @@ Para vincular um painel, uma pessoa precisa primeiro ter aprovação de operador
 
 Cadastros novos iniciam sessão sem confirmação de e-mail neste MVP. A recuperação por e-mail continua pendente de SMTP próprio.
 
-Veja as evidências do MVP integrado em [docs/validacao-mvp-0.2.0.md](docs/validacao-mvp-0.2.0.md) e da atualização do app em [docs/validacao-mobile-0.2.1.md](docs/validacao-mobile-0.2.1.md). APKs e pacotes de firmware são artefatos locais em `builds/`, não arquivos versionados; os guias descrevem como gerá-los.
+Veja as evidências do MVP integrado em [docs/validacao-mvp-0.2.0.md](docs/validacao-mvp-0.2.0.md) e da atualização do app em [docs/validacao-mobile-0.2.3.md](docs/validacao-mobile-0.2.3.md). APKs e pacotes de firmware são artefatos locais em `builds/`, não arquivos versionados; os guias descrevem como gerá-los.
 
 ## Execução local rápida
 

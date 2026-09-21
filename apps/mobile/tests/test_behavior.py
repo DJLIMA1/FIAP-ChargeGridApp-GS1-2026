@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 import httpx
+
 from chargegrid_app.api_client import ApiClient, ApiError
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.screens import auth, charging, coupons, home, stations
@@ -247,7 +248,8 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         await click(screen, 'Sou vendedor')(None)
         consumer = next(item for item in descendants(screen)
                         if getattr(item, 'data', None) == 'consumer')
-        self.assertEqual(consumer.bgcolor, theme.LIGHT['WHITE'])
+        self.assertIsNone(consumer.bgcolor)
+        self.assertEqual(consumer.content.color, theme.LIGHT['TEXT_COLOR'])
 
     async def test_numeric_password_is_submitted_for_provider_policy_validation(self):
         app = HandlerApp()

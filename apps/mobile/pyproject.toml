@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.2.1"
+version = "0.2.3"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,7 +21,7 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 11
+build_number = 13
 
 [tool.flet.app]
 # The mobile build uses only assets/app_config.json, generated from the public
@@ -35,3 +35,13 @@ exclude = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["E701", "E702"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chargegrid_app", "test_behavior"]

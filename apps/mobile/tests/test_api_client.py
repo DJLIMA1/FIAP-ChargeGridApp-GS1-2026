@@ -3,6 +3,7 @@ import time
 import unittest
 
 import httpx
+
 from chargegrid_app.api_client import ApiClient, ApiError
 from chargegrid_app.config import validate_api_url
 from chargegrid_app.session import Session

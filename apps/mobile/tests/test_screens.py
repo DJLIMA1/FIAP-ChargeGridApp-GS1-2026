@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 import flet as ft
+
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.screens import auth, charging, home, reservations, stations
 from chargegrid_app.session import Session
@@ -115,7 +116,8 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         )
         await create.on_click()
         self.assertEqual(app.api.calls,[])
-        self.assertIn('Informe seu nome completo.',[item.value for item in control.controls if isinstance(item,ft.Text)])
+        self.assertEqual(control.controls[4].controls[2].content.value, 'Informe seu nome completo.')
+        self.assertTrue(control.controls[4].controls[2].visible)
 
     async def test_register_rejects_short_password_locally(self):
         class RegisterApi:
@@ -139,7 +141,8 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         create=next(item for item in control.controls if isinstance(getattr(item,'content',None),ft.Text) and item.content.value=='Criar conta')
         await create.on_click()
         self.assertEqual(app.api.calls,[])
-        self.assertIn('A senha precisa ter pelo menos 8 caracteres.',[item.value for item in control.controls if isinstance(item,ft.Text)])
+        self.assertEqual(control.controls[6].controls[2].content.value, 'A senha precisa ter pelo menos 8 caracteres.')
+        self.assertTrue(control.controls[6].controls[2].visible)
 
     async def test_register_shows_api_error_inside_form(self):
         class RegisterApi:

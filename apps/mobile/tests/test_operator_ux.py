@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import flet as ft
+
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import coupons, operator
 from test_behavior import HandlerApp, click, descendants

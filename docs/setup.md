@@ -18,7 +18,7 @@ Copie `.env.example` para `.env` na raiz do repositório. Defina `CHARGEGRID_API
 
 ### Estado atual
 
-Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. O MVP integrado 0.2.0 e a migração aditiva `c74ef532ab90` foram validados; consulte [o relatório](validacao-mvp-0.2.0.md). O app está na versão 0.2.1, build 11, com [animações e proteção de navegação](validacao-mobile-0.2.1.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
+Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. O MVP integrado 0.2.0 e a migração aditiva `c74ef532ab90` foram validados; consulte [o relatório](validacao-mvp-0.2.0.md). O app está na versão 0.2.3, build 13, com [seletor deslizante e validação animada](validacao-mobile-0.2.3.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
 
 ### APK Android
 

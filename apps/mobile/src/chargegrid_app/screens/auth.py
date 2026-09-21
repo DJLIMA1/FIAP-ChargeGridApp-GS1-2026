@@ -66,15 +66,25 @@ def brand():
 
 def account_selector(app, selection):
     options = []
+    semantics = []
+    indicator = ft.Container(
+        bgcolor=theme.RED, height=44, expand=True, border_radius=7,
+        offset=ft.Offset(1 if selection['value'] == 'vendor' else 0, 0),
+        animate_offset=motion.animation(280), data='account-indicator',
+    )
+
     def choose(value):
         async def changed(event):
+            if getattr(app, 'active_actions', None) or selection['value'] == value:
+                return
             theme.set_dark(getattr(app, 'dark_mode', theme.is_dark()))
             selection['value'] = value
-            for option in options:
+            indicator.offset = ft.Offset(1 if value == 'vendor' else 0, 0)
+            for option, accessible in zip(options, semantics):
                 active = option.data == value
-                option.bgcolor = theme.RED if active else theme.WHITE
                 option.content.color = '#FFFFFF' if active else theme.TEXT_COLOR
                 option.content.weight = ft.FontWeight.BOLD if active else ft.FontWeight.NORMAL
+                accessible.selected = active
             app.page.update()
         return changed
 
@@ -90,21 +100,25 @@ def account_selector(app, selection):
             ),
             height=44,
             expand=True,
-            bgcolor=theme.RED if active else theme.WHITE,
             alignment=ft.Alignment(0, 0),
             on_click=choose(value),
             data=value,
-            ink=True,
-            animate=motion.animation(200),
+            ink=False,
         )
         options.append(control)
-        return control
+        accessible = ft.Semantics(content=control, selected=active, expand=True)
+        semantics.append(accessible)
+        return accessible
 
     return ft.Container(
-        ft.Row(
-            [option('Sou consumidor', 'consumer'), option('Sou vendedor', 'vendor')],
-            spacing=0,
-        ),
+        ft.Stack([
+            ft.Container(ft.Row([indicator, ft.Container(expand=True)], spacing=0),
+                         left=0, right=0, top=0, bottom=0),
+            ft.Container(ft.Row([option('Sou consumidor', 'consumer'), option('Sou vendedor', 'vendor')], spacing=0),
+                         left=0, right=0, top=0, bottom=0),
+        ]),
+        height=46,
+        bgcolor=theme.WHITE,
         border=ft.Border.all(1, theme.LIGHT_GRAY),
         border_radius=8,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
@@ -127,6 +141,40 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
     feedback = ft.Text('', size=13, color=theme.RED, visible=False)
     submit_button = None
     submitting = False
+    errors = {}
+    for group in (name_field, email_field, password_field, code_field):
+        control = group.controls[1]
+        error = ft.Semantics(content=ft.Text('', size=12, color=theme.ERROR), live_region=True, visible=False)
+        group.controls.append(error)
+        control.offset = ft.Offset(0, 0)
+        control.animate_offset = ft.Animation(motion.duration(60), ft.AnimationCurve.EASE_IN_OUT)
+        errors[id(control)] = error
+
+        def clear_error(field, message):
+            async def changed(event):
+                theme.set_dark(getattr(app, 'dark_mode', theme.is_dark()))
+                if message.visible:
+                    message.visible = False
+                    field.border_color = theme.LIGHT_GRAY
+                    field.focused_border_color = None
+                    app.page.update()
+            return changed
+
+        control.on_change = clear_error(control, error)
+
+    async def show_invalid(control, message):
+        error = errors[id(control)]
+        error.content.value = message
+        error.visible = True
+        control.border_color = theme.ERROR
+        control.focused_border_color = theme.ERROR
+        feedback.visible = False
+        app.page.update()
+        if isinstance(app.page, ft.Page):
+            await control.focus()
+        generation = getattr(app, 'generation', 0)
+        await motion.shake(control, app.page.update, reduced=getattr(app, 'reduced_motion', False),
+                           is_current=lambda: not getattr(app, 'closed', False) and generation == getattr(app, 'generation', 0))
 
     def show_feedback(message, color=theme.RED):
         feedback.value = message
@@ -142,25 +190,32 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         full_name = name.value.strip()
         password_value = password.value or ''
         validation_message = None
+        invalid_field = email
         if mode == 'register' and not full_name:
+            invalid_field = name
             validation_message = 'Informe seu nome completo.'
         elif mode == 'register' and len(full_name) > 100:
+            invalid_field = name
             validation_message = 'Use até 100 caracteres no nome.'
         elif len(address) > 254:
             validation_message = 'O e-mail informado é muito longo.'
         elif not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', address):
             validation_message = 'Informe um e-mail válido.'
         elif mode == 'login' and not password_value:
+            invalid_field = password
             validation_message = 'Informe sua senha.'
         elif mode in ('register', 'reset') and len(password_value) < 8:
+            invalid_field = password
             validation_message = 'A senha precisa ter pelo menos 8 caracteres.'
         elif len(password_value) > 128:
+            invalid_field = password
             validation_message = 'Use até 128 caracteres na senha.'
         elif mode == 'reset' and len(code.value.strip()) < 6:
+            invalid_field = code
             validation_message = 'Informe o código recebido por e-mail.'
 
         if validation_message:
-            show_feedback(validation_message)
+            await show_invalid(invalid_field, validation_message)
             return
 
         submitting = True
@@ -214,7 +269,10 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
                 app.notice('Senha atualizada. Entre com sua nova senha.')
         except ApiError as exc:
             message = str(exc)
-            show_feedback(message)
+            if exc.code == 'weak_password':
+                await show_invalid(password, message)
+            else:
+                show_feedback(message)
         finally:
             submitting = False
             submit_button.disabled = False

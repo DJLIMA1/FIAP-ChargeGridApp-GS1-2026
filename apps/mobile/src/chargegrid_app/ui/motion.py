@@ -1,4 +1,5 @@
 """Short, non-blocking motion; never use animations as operation timers."""
+import asyncio
 from contextvars import ContextVar
 
 import flet as ft
@@ -35,3 +36,21 @@ async def hover(event):
         reduced = getattr(getattr(control, 'animate_scale', None), 'duration', duration()) == 0
         control.scale = 1.012 if not reduced and str(event.data).lower() == 'true' else 1
         control.update()
+
+
+async def shake(control, update, *, reduced=False, is_current=lambda: True):
+    """One small horizontal nudge; always settle, even if navigation cancels it."""
+    if reduced or not is_current():
+        return
+    control.animate_offset = ft.Animation(60, ft.AnimationCurve.EASE_IN_OUT)
+    try:
+        for x in (-0.015, 0.015, -0.008, 0):
+            if not is_current():
+                return
+            control.offset = ft.Offset(x, 0)
+            update()
+            await asyncio.sleep(0.065)
+    finally:
+        control.offset = ft.Offset(0, 0)
+        if is_current():
+            update()

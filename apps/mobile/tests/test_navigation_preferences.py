@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import flet as ft
+
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.navigation import parent_route
 from chargegrid_app.preferences import Preferences

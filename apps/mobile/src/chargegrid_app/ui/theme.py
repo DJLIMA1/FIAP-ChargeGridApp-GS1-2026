@@ -14,6 +14,7 @@ from contextvars import ContextVar
 LIGHT = {
     "BG_COLOR": "#F2F2F3",
     "RED": "#D72B32",
+    "ERROR": "#B91C24",
     "WHITE": "#FFFFFF",        # Cartões e superfícies
     "TEXT_COLOR": "#1D1F20",
     "GRAY_TEXT": "#62666B",
@@ -24,6 +25,7 @@ LIGHT = {
 DARK = {
     "BG_COLOR": "#131313",
     "RED": "#D72B32",
+    "ERROR": "#FF858A",
     "WHITE": "#1F1F1F",
     "TEXT_COLOR": "#FFFFFF",
     "GRAY_TEXT": "#ADB3BA",
