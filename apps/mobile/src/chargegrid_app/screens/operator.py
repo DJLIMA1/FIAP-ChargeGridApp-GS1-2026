@@ -203,6 +203,8 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         if status in ('pending', 'received', 'applied'):
             active.value = False
             active.disabled = True
+        elif status in ('failed', 'expired'):
+            active.disabled = False
         if status == 'applied':
             device_status.value = 'Desvinculado após restauração de fábrica'
             rotate_button.visible = revoke_button.visible = False
