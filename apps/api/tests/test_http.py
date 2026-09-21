@@ -427,6 +427,8 @@ def test_factory_reset_requires_owner_idle_recent_firmware_and_confirmed_ack(fac
         assert client.get(endpoint).json()["status"] == "pending"
         assert client.patch(f"/v1/connectors/{seed['point']}", json={"active": True}).status_code == 409
         assert client.post(f"/v1/connectors/{seed['point']}/device").status_code == 409
+        assert client.post(f"/v1/devices/{seed['device']}/rotate-key").status_code == 409
+        assert client.post(f"/v1/devices/{seed['device']}/revoke").status_code == 409
         with factory() as db:
             assert not db.get(Connector, seed["point"]).active
             assert db.get(Command, UUID(command_id)).parameters == {}

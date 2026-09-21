@@ -86,6 +86,9 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
 @router.post("/devices/{device_id}/rotate-key")
 def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
+    reset = _reset_command(db, obj.id)
+    if reset and reset.status in ("pending", "received") and reset.expires_at > now():
+        fail("reset_pending", "Aguarde o ESP32 confirmar a restauração", 409)
     if obj.revoked:
         fail("device_revoked", "Provisione um novo dispositivo")
     key = secrets.token_urlsafe(32)
@@ -97,6 +100,9 @@ def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
 @router.post("/devices/{device_id}/revoke")
 def revoke(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
+    reset = _reset_command(db, obj.id)
+    if reset and reset.status in ("pending", "received") and reset.expires_at > now():
+        fail("reset_pending", "Aguarde o ESP32 confirmar a restauração", 409)
     obj.revoked = True
     obj.reconciled = False
     return {"revoked": True}

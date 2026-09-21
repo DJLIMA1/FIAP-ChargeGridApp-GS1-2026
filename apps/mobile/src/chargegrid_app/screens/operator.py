@@ -203,11 +203,12 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         if status in ('pending', 'received', 'applied'):
             active.value = False
             active.disabled = True
+            rotate_button.visible = revoke_button.visible = False
         elif status in ('failed', 'expired'):
             active.disabled = False
+            rotate_button.visible = revoke_button.visible = True
         if status == 'applied':
             device_status.value = 'Desvinculado após restauração de fábrica'
-            rotate_button.visible = revoke_button.visible = False
         app.page.update()
     async def poll_reset():
         if reset_state.get('status') not in ('pending', 'received'):
@@ -239,7 +240,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         provision_button.visible = not linked_device
         rotate_button = button('Rotacionar chave',app.action(rotate),secondary=True)
         revoke_button = button('Revogar dispositivo',app.action(revoke),secondary=True)
-        rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False)
+        rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
         reset_button = button('Restaurar ESP32 de fábrica',app.action(reset_device),secondary=True)
         reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
         reset_info.visible = bool(linked_device)
