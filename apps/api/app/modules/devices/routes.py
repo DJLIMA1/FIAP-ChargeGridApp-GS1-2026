@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from ...database import db_session
 from ...errors import fail
@@ -154,6 +154,8 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
         fail("firmware_update_required", "Atualize o firmware do ESP32 antes de restaurar", 409)
     if active_res(db, point.id) or active_session(db, point.id):
         fail("point_busy", "Encerre reservas e recargas antes de restaurar", 409)
+    if not db.scalar(text("SELECT has_table_privilege(current_user, 'device_claims', 'INSERT')")):
+        fail("factory_reset_unavailable", "A restauração do equipamento está indisponível; contate o suporte", 503)
     other = db.scalar(select(Command.id).where(
         Command.device_id == obj.id,
         Command.status.in_(("pending", "received")),

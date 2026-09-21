@@ -5,6 +5,8 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
+from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import TextClause
 
 from app.database import db_session
 from app.http_helpers import point_row
@@ -487,5 +489,29 @@ def test_factory_reset_rejects_old_firmware_and_active_reservation(factory, seed
         assert created.status_code == 202
         selected["id"] = seed["owner"]
         assert reservation[0].post(endpoint).status_code == 409
+    finally:
+        clear_overrides()
+
+
+def test_factory_reset_refuses_before_deactivation_when_runtime_cannot_insert_claim(
+    factory, seed, monkeypatch
+):
+    with factory.begin() as db:
+        db.get(Device, seed["device"]).firmware_version = "0.3.5"
+    original_scalar = Session.scalar
+
+    def without_claim_insert(self, statement, *args, **kwargs):
+        if isinstance(statement, TextClause) and "has_table_privilege" in statement.text:
+            return False
+        return original_scalar(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "scalar", without_claim_insert)
+    client, _ = client_for(factory, seed["owner"])
+    try:
+        response = client.post(f"/v1/devices/{seed['device']}/factory-reset")
+        assert response.status_code == 503
+        with factory() as db:
+            assert db.get(Connector, seed["point"]).active
+            assert db.query(Command).filter_by(type="FACTORY_RESET").count() == 0
     finally:
         clear_overrides()

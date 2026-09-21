@@ -1,3 +1,5 @@
+import os
+
 from alembic import context
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
@@ -16,6 +18,12 @@ else:
     connect_args = {"prepare_threshold": None}
     if "sslmode=verify-full" in url:
         connect_args["sslrootcert"] = str(SUPABASE_CA_CERT)
+    # An SSH tunnel can reach an administrative database even when the local
+    # network blocks PostgreSQL. Keep the URL host for TLS hostname validation.
+    if hostaddr := os.getenv("CHARGEGRID_MIGRATION_HOSTADDR"):
+        connect_args["hostaddr"] = hostaddr
+        connect_args["port"] = int(os.getenv("CHARGEGRID_MIGRATION_PORT", "5432"))
+        connect_args["connect_timeout"] = 10
     engine = create_engine(
         url,
         poolclass=NullPool,
