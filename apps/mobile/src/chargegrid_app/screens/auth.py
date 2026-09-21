@@ -313,7 +313,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
             back_link(app),
             title('Criar conta', 'Escolha como você vai usar o ChargeGrid.'),
             account_selector(app, selection),
-            ft.Text('Vendedores precisam de aprovação para gerenciar postos.', size=12, color=theme.GRAY_TEXT),
+            ft.Text('Vendedores vinculam seus equipamentos pelo QR fornecido com o ponto.', size=12, color=theme.GRAY_TEXT),
             name_field,
             email_field,
             password_field,

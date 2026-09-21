@@ -7,14 +7,14 @@ from pathlib import Path
 def main():
     root = Path(__file__).resolve().parents[1]
     build = root / "firmware/esp32/.pio/build/waveshare_panel_ui"
-    output = root / "builds/chargegrid-waveshare-7-0.2.0.zip"
+    output = root / "builds/chargegrid-waveshare-7-0.3.1.zip"
     files = {name: (build / name).read_bytes() for name in
              ("firmware.bin", "bootloader.bin", "partitions.bin")}
-    for name in ("panel-idle.png", "panel-charging.png", "panel-maintenance.png", "panel-physical.png"):
+    for name in ("panel-idle.png", "panel-charging.png", "panel-maintenance.png", "panel-physical-0.3.0.png"):
         path = root / "tmp/panel-validation" / name
         if path.exists():
             files[name] = path.read_bytes()
-    files["README.md"] = b"""# ChargeGrid panel 0.2.0
+    files["README.md"] = b"""# ChargeGrid panel 0.3.1
 
 Only for Waveshare ESP32-S3-Touch-LCD-7 (not 7B), 800x480,
 ESP32-S3, 16 MB flash, 8 MB OPI PSRAM, DIO/40 MHz.
@@ -31,8 +31,10 @@ Perform updates only after the station is idle and no session is pending.
 This is a simulated lab: no relay or vehicle charger is controlled.
 START is authorized only by the server. Local Stop always de-energizes the
 simulated state. Wi-Fi and per-device key are provisioned separately.
+Factory units additionally receive a separate private ownership claim QR.
+Do not put a device API key in a QR. Existing owners are preserved on update.
 
-UI references use the actual firmware LVGL renderer. panel-physical.png,
+UI references use the actual firmware LVGL renderer. panel-physical-0.3.0.png,
 when included, is a 400x240 capture of the connected LCD framebuffer.
 No device key, network credentials, NVS image, or merged flash image is included.
 

@@ -27,7 +27,7 @@ async def build(app):
         await app.go('profile')
         if not saved:
             app.notice('Tema aplicado nesta sessão. Não foi possível salvar a preferência no dispositivo.')
-    operator_access = [button('Área do operador',app.link('operator'),secondary=True)] if profile.get('operator_enabled') else []
+    operator_access = [button('Meus equipamentos e postos',app.link('operator'),secondary=True)] if profile.get('operator_enabled') or profile.get('account_type') == 'vendor' else []
     account_label = 'Conta de vendedor' if profile.get('account_type') == 'vendor' else 'Conta de consumidor'
-    status = 'Operador aprovado' if profile.get('operator_enabled') else ('A gestão de postos será liberada após a aprovação. Você já pode usar as recargas.' if profile.get('account_type') == 'vendor' else 'Encontre um posto e acompanhe suas recargas pelo aplicativo.')
+    status = 'Gerencie seus postos e vincule novos equipamentos pelo QR.' if profile.get('operator_enabled') else ('Escaneie o QR do equipamento para vincular seu primeiro ponto. Você também pode usar as recargas.' if profile.get('account_type') == 'vendor' else 'Encontre um posto e acompanhe suas recargas pelo aplicativo.')
     return ft.Column([title('Minha conta',app.api.session.user.get('email','') if app.api.session.user else ''),ft.Text(account_label,color=theme.GRAY_TEXT),card(ft.Column([name,phone,vehicle],spacing=12)),button('Salvar informações',app.action(save)),ft.Switch(label='Tema escuro',value=theme.is_dark(),on_change=dark,data='preference'),ft.Text(status,color=theme.GRAY_TEXT),*operator_access,button('Meus cupons',app.link('coupons'),secondary=True),button('Sair da conta',app.action(app.logout),secondary=True),ft.Text('Sair não interrompe uma recarga em andamento.',size=12,color=theme.GRAY_TEXT)],scroll=ft.ScrollMode.AUTO,spacing=15)

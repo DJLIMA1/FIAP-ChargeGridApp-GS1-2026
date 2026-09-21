@@ -1,6 +1,6 @@
 # ChargeGrid — planejamento do MVP conectado
 
-Data: 18/09/2026. Status: aprovado — implementação em andamento.
+Data: 18/09/2026. Status: plano histórico aprovado. O onboarding manual de operadores e a criação manual de pontos descritos neste plano foram substituídos em 21/09/2026 por propriedade via QR de fábrica; o contrato vigente está em [api.md](api.md) e [setup.md](setup.md).
 
 ## 1. Objetivo e limites
 

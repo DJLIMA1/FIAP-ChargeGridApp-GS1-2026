@@ -140,22 +140,56 @@ def lock_point(db, user, connector_id):
     return connector
 
 
-def free(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
+def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
+    """Public state without identity data: available/offline/reserved/charging/
+    reconciling/disabled/fault/occupied. A deadline never implies availability.
+    """
     if device is _DEVICE_NOT_LOADED:
         device = device_for(db, connector)
     station = db.get(Station, connector.station_id)
     reservation = active_res(db, connector.id)
     session = active_session(db, connector.id)
-    return bool(
-        connector.active
-        and station.active
-        and online(device)
-        and device.reconciled
-        and not device.connected
-        and device.physical_state in ("idle", "stopped")
-        and not session
-        and (not reservation or reservation.id == allow_reservation)
+    reserved_until = (
+        reservation.expires_at
+        if reservation
+        and reservation.status == "confirmed"
+        and reservation.expires_at
+        and reservation.expires_at > now()
+        else None
     )
+    if not connector.active or not station or not station.active or station.owner_id is None:
+        status = "disabled"
+    elif not online(device):
+        status = "offline"
+    elif device.physical_state == "fault":
+        status = "fault"
+    elif session:
+        status = (
+            "charging"
+            if session.status == "charging" and device.physical_state == "charging" and device.reconciled
+            else "reconciling"
+        )
+    elif reservation and reservation.id != allow_reservation:
+        status = (
+            "reserved"
+            if reserved_until and device.physical_state == "reserved" and device.reconciled
+            else "reconciling"
+        )
+    elif not device.reconciled:
+        status = "reconciling"
+    elif device.connected or device.physical_state not in ("idle", "stopped"):
+        status = "occupied"
+    else:
+        status = "available"
+    return {
+        "available": status == "available",
+        "availability_status": status,
+        "reserved_until": reserved_until,
+    }
+
+
+def free(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
+    return availability(db, connector, allow_reservation, device=device)["available"]
 
 
 def ensure_user_free(db, user, reservation=None):

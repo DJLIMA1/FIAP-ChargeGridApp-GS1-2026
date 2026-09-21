@@ -66,7 +66,7 @@ class NavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(empty.visible)
         await app.poll()
         self.assertFalse(empty.visible)
-        self.assertIn('Este posto ainda não tem pontos de recarga disponíveis.', [item.value for item in descendants(screen) if isinstance(item,ft.Text)])
+        self.assertIn('Este posto ainda não tem pontos de recarga.', [item.value for item in descendants(screen) if isinstance(item,ft.Text)])
         await app.poll()
         self.assertTrue(empty.visible)
         self.assertEqual(home._station_status(station)[0], 'Sem pontos')

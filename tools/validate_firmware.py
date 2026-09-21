@@ -12,6 +12,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("tmp/panel-validation"))
+    parser.add_argument("--decode-qr", action="store_true", help="Decode rendered QR frames with Pillow and zxing-cpp")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     firmware = root / "firmware/esp32"
@@ -23,7 +24,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     objects = output / "objects"
     objects.mkdir(exist_ok=True)
-    flags = ["-DCHARGEGRID_PANEL_ENABLED", "-DLV_CONF_SKIP", "-DLV_COLOR_DEPTH=16", "-DLV_FONT_MONTSERRAT_14=1",
+    flags = ["-DCHARGEGRID_PANEL_ENABLED", "-DLV_CONF_SKIP", "-DLV_COLOR_DEPTH=16", "-DLV_FONT_MONTSERRAT_14=1", "-DLV_USE_QRCODE=1",
              "-I" + str(lvgl), "-I" + str(firmware / "include")]
     sources = sorted((lvgl / "src").rglob("*.c"))
     sources += sorted((firmware / "src").glob("panel_font*.c"))
@@ -45,6 +46,17 @@ def main():
                     str(root / "tools/tests/firmware_behavior.cpp"), *compiled,
                     "-o", str(executable)], check=True)
     subprocess.run([str(executable), str(output)], check=True)
+    if args.decode_qr:
+        import zxingcpp
+        from PIL import Image
+
+        expected = "chargegrid://claim?token=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg"
+        for name in ("panel-factory-qr-offline", "panel-factory-qr-online"):
+            found = zxingcpp.read_barcodes(Image.open(output / (name + ".ppm")))
+            assert [result.text for result in found] == [expected], f"Unexpected rendered QR in {name}"
+        for name in ("panel-factory-claimed-inactive", "panel-factory-claimed-active", "panel-legacy-owner-no-qr"):
+            assert not zxingcpp.read_barcodes(Image.open(output / (name + ".ppm"))), f"Claim QR leaked in {name}"
+        print("PASS: actual LVGL QR decoded offline/online, absent after ownership and for legacy owner")
     print(f"Actual firmware LVGL frames: {output}")
 
 

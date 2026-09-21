@@ -54,7 +54,7 @@ def test_auth_mapping_fails_closed():
         module.verify_accounts({"fake@example.test": uid}, client)
 
 
-def test_seed_reuses_station_and_connector():
+def test_seed_reuses_station_without_changing_existing_connectors():
     uid = "00000000-0000-0000-0000-000000000001"
     station = {
         "id": uid,
@@ -141,7 +141,7 @@ def test_auth_mapping_accepts_confirmed_exact_identity():
             module.verify_accounts({"other@example.test": uid}, client)
 
 
-def test_seed_requires_approved_operator():
+def test_seed_requires_vendor_with_equipment_or_legacy_operator():
     transport = httpx.MockTransport(
         lambda request: httpx.Response(
             200, json={"id": "fake", "operator_enabled": False}
@@ -154,6 +154,26 @@ def test_seed_requires_approved_operator():
         pytest.raises(ValueError),
     ):
         load("seed_demo").seed(client)
+
+
+def test_seed_creates_only_group_never_arbitrary_equipment():
+    writes = []
+
+    def respond(request):
+        if request.url.path == "/v1/me":
+            body = {"id": "vendor", "operator_enabled": True}
+        elif request.url.path == "/v1/operator/stations":
+            body = {"items": [], "total": 0}
+        else:
+            writes.append((request.method, request.url.path))
+            body = {"id": "new-station", "owner_id": "vendor", "connectors": []}
+        return httpx.Response(201 if request.method == "POST" else 200, json=body)
+
+    with httpx.Client(
+        base_url="https://api.example.test/v1", transport=httpx.MockTransport(respond)
+    ) as client:
+        assert load("seed_demo").seed(client) == "new-station"
+    assert writes == [("POST", "/v1/stations")]
 
 
 def test_seed_url_never_sends_token_to_lookalike_host():

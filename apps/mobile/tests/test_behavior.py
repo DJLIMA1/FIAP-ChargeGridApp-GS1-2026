@@ -77,7 +77,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = request
         screen = await home.build(app)
         original_controls = list(screen.controls)
-        active_card = next(item for item in screen.controls if isinstance(item,ft.Container) and isinstance(item.content,ft.Row) and item.on_click)
+        active_card = next(item for item in screen.controls if isinstance(item,ft.Container) and isinstance(item.content,ft.Column) and item.on_click)
         self.assertIn('Aguardando equipamento iniciar', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
         await app.poll()
         app.page.update.assert_not_called()
@@ -144,8 +144,8 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app.api.login.assert_awaited_once_with('user@example.com', ' old ')
         app.signed_in.assert_awaited_once_with()
 
-    async def test_signed_in_vendor_requires_approved_operator_before_operator_destination(self):
-        for approved, expected in [(False, 'home'), (True, 'operator')]:
+    async def test_signed_in_vendor_can_onboard_without_manual_approval(self):
+        for approved, expected in [(False, 'operator'), (True, 'operator')]:
             app = SimpleNamespace(api=SimpleNamespace(request=AsyncMock(return_value={
                 'account_type': 'vendor', 'operator_enabled': approved})), go=AsyncMock())
             await ChargeGridApp.signed_in(app)

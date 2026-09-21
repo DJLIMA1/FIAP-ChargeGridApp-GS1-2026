@@ -20,6 +20,9 @@ LIGHT = {
     "GRAY_TEXT": "#62666B",
     "LIGHT_GRAY": "#E1E2E3",
     "GREEN": "#2E7D32",        # Indicadores de sucesso / disponibilidade
+    "AMBER": "#9A5300",        # Reserva confirmada
+    "BLUE": "#205EA8",         # Sincronização em andamento
+    "SLATE": "#58626F",        # Estado indisponível sem erro
 }
 
 DARK = {
@@ -31,6 +34,9 @@ DARK = {
     "GRAY_TEXT": "#ADB3BA",
     "LIGHT_GRAY": "#2A2A2A",
     "GREEN": "#34C759",        # Indicadores de sucesso / disponibilidade
+    "AMBER": "#9A5300",
+    "BLUE": "#205EA8",
+    "SLATE": "#58626F",
 }
 
 _dark_enabled = ContextVar('chargegrid_dark_mode', default=True)

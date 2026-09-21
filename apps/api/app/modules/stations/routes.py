@@ -97,10 +97,7 @@ def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_use
 @router.post("/stations/{station_id}/connectors", status_code=201)
 def create_point(station_id: UUID, data: ConnectorInput, user=Depends(current_user), db=Depends(db_session)):
     owned(db, user, station_id)
-    obj = Connector(station_id=station_id, **data.model_dump())
-    db.add(obj)
-    db.flush()
-    return point_row(db, obj)
+    fail("claim_required", "Escaneie o QR de propriedade do equipamento para adicionar um ponto", 409)
 
 
 @router.patch("/connectors/{connector_id}")

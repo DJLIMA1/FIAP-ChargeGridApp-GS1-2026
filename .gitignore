@@ -23,6 +23,8 @@ apps/mobile/assets/app_config.json
 firmware/esp32/include/chargegrid_config.h
 .device-simulator-state.json
 *.device-state.json
+provisioning.json
+ownership-qr.svg
 tmp/
 
 # Builds e IDEs

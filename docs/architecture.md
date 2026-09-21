@@ -16,7 +16,9 @@ Cada ESP32 tem uma chave aleatória própria. O equipamento envia `Authorization
 
 ## Papéis e operação
 
-Uma pessoa pode usar a área de consumidor e operar os próprios postos. A tela não concede esse papel: `operator_enabled` é uma decisão administrativa no perfil. Para o piloto, a aprovação de operador é manual: o responsável registra ou habilita o perfil no banco pelo acesso administrativo e então permite que ela cadastre seus postos. Não exponha uma rota pública para promover operadores.
+Uma pessoa pode usar a área de consumidor e operar os próprios postos. A escolha de vendedor no cadastro não concede acesso a equipamento alheio: a pessoa escaneia o QR de propriedade entregue com seu ponto. `POST /ownership/claim` valida o segredo independente da chave de comunicação, vincula uma única vez o equipamento e habilita `operator_enabled` na mesma transação. O banco serializa claims concorrentes e nunca transfere proprietários existentes. Repetição pelo mesmo dono é idempotente.
+
+Somente a fábrica, com credencial administrativa separada, cria equipamento e claim. Antes do vínculo, posto sem dono e ponto permanecem inativos. Após o vínculo, o vendedor revisa endereço, tarifa e capacidade e os ativa. O QR secreto de propriedade não deve ser confundido com o código público de recarga: apenas seu hash é persistido no banco; ele não é retornado em consultas de pontos. Operadores/proprietários legados continuam válidos, sem reset automático. A aprovação administrativa antiga permanece somente como ferramenta excepcional de manutenção, não como onboarding normal.
 
 As migrações usam `MIGRATION_DATABASE_URL` quando presente. Elas criam o papel sem login `chargegrid_api`, concedem a ele apenas o acesso necessário, habilitam RLS nas tabelas do domínio e aplicam a política de execução para esse papel. Depois da migração, o administrador executa `apps/api/sql/grant_runtime_role.sql` para conceder `chargegrid_api` ao login usado em `DATABASE_URL`; esse login não é dono das tabelas e não pode ter `BYPASSRLS`. Migração e operação não usam a mesma credencial.
 

@@ -1,6 +1,6 @@
 # Roteiro de demonstração
 
-Prepare duas contas com senha: uma com permissão manual de operador e outra de consumidor. Neste MVP a confirmação de e-mail está desativada porque o SMTP padrão não entrega a usuários gerais. Crie previamente um posto do operador, dois pontos e um dispositivo com chave individual. Use dados fictícios e um banco exclusivo para a apresentação.
+Prepare duas contas com senha: uma de vendedor e outra de consumidor. Neste MVP a confirmação de e-mail está desativada porque o SMTP padrão não entrega a usuários gerais. Provisione dois equipamentos fictícios pela ferramenta administrativa, configure cada chave no dispositivo correspondente e vincule seus QRs na conta do vendedor. Use dados fictícios e um banco exclusivo para a apresentação.
 
 1. Abra o aplicativo como operador e mostre o posto, seus dois pontos e o estado de conexão.
 2. Execute o simulador Python ou o ESP32 configurado para aquele ponto e aguarde a sincronização que o deixa online e reconciliado.
@@ -16,8 +16,8 @@ No macOS, o simulador é executado com `python3 tools/device_simulator.py --api 
 
 ## Preparar e revisar a base fictícia
 
-1. Entre com uma conta aprovada como operador; configure `CHARGEGRID_OPERATOR_TOKEN` e `CHARGEGRID_API_URL` no ambiente do terminal, sem exibir os valores. Para carregar as variáveis do `.env` raiz em macOS/Linux, use o comando documentado em [docs/setup.md](setup.md#ferramentas-administrativas).
-2. Execute `python tools/seed_demo.py --points 2` na raiz. O posto fictício e seus dois pontos serão reutilizados nas próximas execuções sequenciais.
-3. Abra o posto na interface do operador e provisione o dispositivo. Use a chave mostrada uma vez para configurar o simulador conforme as instruções acima.
+1. Em um banco exclusivo de demonstração, execute `tools/provision_point.py` para cada equipamento conforme [o guia de fábrica](setup.md#provisionar-e-vincular-um-equipamento). Mantenha JSON e QR privados; a chave de comunicação é diferente do segredo de propriedade.
+2. Entre como vendedor, escaneie o primeiro QR e configure/ative o posto e ponto resultantes. Vincule o segundo QR ao mesmo posto e revise/ative esse segundo ponto. Não há aprovação manual nem criação de ponto por formulário.
+3. Configure o simulador com a chave individual entregue pela fábrica. `python tools/seed_demo.py` é opcional: cria/reutiliza apenas um agrupamento chamado `ChargeGrid Demo FIAP`, nunca equipamentos. A ferramenta usa `CHARGEGRID_OPERATOR_TOKEN` de vendedor já habilitado e `CHARGEGRID_API_URL`, sem imprimir os valores.
 4. Para revisar retenção, configure `DATABASE_URL` e execute `python tools/maintenance.py`. Após revisar as contagens, `--apply` remove telemetria com mais de sete dias e limites vencidos, preservando estado de replay.
 5. Dados antigos são opcionais: `python tools/import_legacy.py /caminho/privado/arquivo.json` fornece inventário sem gravar. Uma aplicação exige mapa explícito de contas confirmadas, `--source-id`, credenciais administrativas do Auth e `LEGACY_IMPORT_DATABASE_URL`; execute-a apenas fora do banco do pitch.

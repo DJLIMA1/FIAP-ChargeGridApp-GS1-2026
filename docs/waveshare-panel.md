@@ -10,15 +10,17 @@ O firmware é operacional e reflete somente estados recebidos da API. Sem config
 pio run -d firmware/esp32 -e waveshare_panel_ui
 ```
 
-O alias `waveshare_panel_demo` gera a mesma imagem. O pacote em [`builds/chargegrid-waveshare-7.zip`](../builds/chargegrid-waveshare-7.zip) contém componentes, imagem mesclada e hashes. Para atualizar uma placa configurada, grave os componentes nos offsets documentados no README do pacote; isso preserva o NVS. Use a imagem mesclada em `0x0` somente na instalação inicial, pois ela preenche intervalos e pode substituir configuração e estado existentes.
+O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/chargegrid-waveshare-7-0.3.1.zip`. Para atualizar uma placa configurada, grave **somente firmware.bin em 0x10000**, com ponto ocioso e nenhuma reserva/sessão pendente. Não use `erase_flash` nem imagem mesclada: preserve NVS, identidade, Wi-Fi e diário de sessão.
 
 ## Configurar pelo touch
 
 1. Segure o logo ChargeGrid por cerca de 5 segundos.
-2. Digite SSID de Wi-Fi 2,4 GHz, senha e a chave individual provisionada no app em **Conta → Operador aprovado → Posto → Ponto**.
+2. Digite SSID de Wi-Fi 2,4 GHz e senha. A chave individual já vem provisionada de fábrica; deixe vazia para preservá-la. Manutenção de equipamentos legados fica em **Conta → Meus equipamentos e postos → Posto → Ponto**. A partir do firmware 0.2.1, deixe a senha vazia para redes abertas; isso remove a senha anterior, sem alterar a identidade do dispositivo. Redes abertas não protegem o enlace Wi-Fi, mas a comunicação com a API continua usando HTTPS com certificado validado.
 3. Toque em **Salvar e conectar**; o painel reinicia no modo integrado.
 
 Rede e identidade são independentes: o painel pode associar ao Wi-Fi sem chave, mas só inicia a sincronização autenticada depois que uma chave individual estiver configurada.
+
+O suporte a redes abertas do firmware 0.2.1 foi validado na placa física: atualização somente em `0x10000`, configuração por serial com senha vazia, chave existente preservada e sincronização HTTP 200. Após reiniciar, o painel reconectou automaticamente e permaneceu `idle`, sem sessão e com potência zero. Os testes de host cobrem senha anterior removida, falha de gravação, SSID obrigatório e envio do formulário com senha vazia.
 
 Senha e chave são mascaradas, nunca reaparecem preenchidas e não são registradas no serial. Uma chave vazia preserva a chave existente. **Limpar rede** exige confirmação e remove apenas SSID/senha. Salvar/limpar a rede é bloqueado durante reserva ou recarga. Depois de uma parada, a rede pode ser corrigida para permitir reconciliação, mas a identidade não pode ser trocada enquanto existe sessão pendente.
 
@@ -37,3 +39,17 @@ Também foi exercitado o fluxo integrado com o aplicativo real e o ponto `CG-PAI
 `python tools/validate_firmware.py` compila os próprios arquivos `charging_controller.cpp`, `sensors.cpp` e `panel_ui.cpp` para um framebuffer LVGL 800 × 480, com interfaces de hardware substituídas. Exercita START autorizado/rejeitado, comandos repetidos, proibição de retomar sessão parada, watchdog de 45 s, teto de custo, evento de toque para encerrar e teclas `q`/backspace. Gera telas de disponível, reservado, recarga, encerrado, chave inválida, configuração pendente e manutenção. Este teste valida a renderização do código, sem representar uma fotografia do LCD físico.
 
 No pitch integrado, reserve e inicie pelo app; o painel apenas reflete comandos do servidor. **Encerrar recarga** encerra uma sessão ativa com `end_reason=requested`.
+
+## Vinculação de fábrica e validação 0.3.0
+
+`tools/provision_point.py` cria um ponto novo sem dono, inativo, com chave do dispositivo e token de propriedade independentes. O JSON e SVG gerados são privados. Provisione a chave com `CG_KEY`; para o token, envie `CG_CLAIM`, aguarde `Claim token (input hidden):` e envie exatamente os 43 caracteres base64url. Nunca coloque a chave da API no QR. O comando recusa equipamentos já vinculados ou fora de idle/sem sessão.
+
+O QR aparece também offline, acompanhado da opção de configurar Wi-Fi. O vendedor usa **Vincular equipamento** no APK; após confirmação, configura posto/ponto e ativa ambos. Quando a API informa `owned: true`, o firmware persiste a propriedade e remove o token/QR. Não existe transferência de dono por reescaneamento. Unidades legadas mantêm seus proprietários e não passam a exibir QR de reivindicação.
+
+O app 0.3.1 abre um assistente após a leitura: **1. localização** (nome, endereço e coordenadas, com busca opcional), **2. ponto e tarifa** (conector, potência, preço por kWh e duração máxima), **3. revisão e publicação**. As duas primeiras etapas são salvas na API; sair antes da última mantém o ponto inativo, identificado como configuração pendente em **Meus postos**. A publicação ativa primeiro o ponto e depois a estação; se a segunda requisição falhar, a estação permanece privada e a publicação pode ser tentada de novo. Um ESP32 offline pode ser publicado, mas só ficará disponível aos consumidores quando reconectar. O botão Voltar do Android retorna à etapa anterior sem perder o que já foi salvo.
+
+Em 21/09/2026, o firmware 0.3.0 foi gravado na placa física apenas em 0x10000. A rede aberta `beleza` e a identidade foram preservadas. O teste `tools/qa_panel_reboot.py` confirmou: idle/HTTP 200 → reserva confirmada → reset via RTS com marcador de boot ROM → reserved e mesmo `expires_at` → cancelamento → idle e API disponível. Nenhuma recarga foi iniciada nesse teste.
+
+`python tools/validate_firmware.py --decode-qr` executa o controlador real no host, renderiza 12 telas LVGL e decodifica os QR offline/online com Pillow/zxing-cpp; verifica também ausência do QR após vinculação e em equipamento legado. Isso não substitui leitura por câmera Android física, ainda não testada.
+
+Em 21/09/2026, o firmware 0.3.1 foi compilado e gravado na placa física apenas em `0x10000` após confirmação de `available=true`, sem reserva ou sessão ativa. O hash da gravação foi verificado pelo esptool; a placa reiniciou com a rede `beleza` e a identidade preservadas, retornando `state=idle`, `wifi=connected`, `synced=yes`, `HTTP 200`, `session=none`. A mudança evita invalidar controles LVGL quando o snapshot não mudou: no teste de host, um refresh ocioso repetido gerou zero flushes, enquanto uma transição real gerou redraw. Ainda não foi feita uma medição instrumental de cintilação diretamente no LCD.

@@ -22,6 +22,13 @@ def parent_route(route, data):
     if route == 'home':
         return None
     if route == 'operator':
+        if data.get('onboarding'):
+            step = int(data.get('step', 1))
+            if step > 1:
+                return 'operator', {**data, 'step': step - 1}
+            return 'operator', {}
+        if data.get('claim'):
+            return 'operator', {'station_id': data['station_id']} if data.get('station_id') else {}
         if data.get('connector_id'):
             return 'operator', {'station_id': data.get('station_id')}
         return ('operator', {}) if data.get('station_id') else ('profile', {})
@@ -58,6 +65,6 @@ def editable_controls(control):
 def form_route(route, data):
     return (route == 'profile' or
             (route == 'auth' and data.get('mode', 'login') != 'login') or
-            (route == 'operator' and bool(data.get('station_id'))) or
+            (route == 'operator' and bool(data.get('station_id') or data.get('claim'))) or
             (route == 'coupons' and bool(data.get('create') or data.get('coupon'))) or
             route == 'charging')

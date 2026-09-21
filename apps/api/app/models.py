@@ -38,7 +38,7 @@ class Profile(Base):
 class Station(Base):
     __tablename__ = "stations"
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), index=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("profiles.id"), index=True)
     name: Mapped[str] = mapped_column(String(100))
     address: Mapped[str] = mapped_column(String(300))
     latitude: Mapped[float] = mapped_column(Numeric(10, 7))
@@ -76,6 +76,18 @@ class Device(Base):
     reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
+    )
+
+
+class DeviceClaim(Base):
+    __tablename__ = "device_claims"
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id"), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    claimed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("profiles.id"))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        CheckConstraint("(claimed_by IS NULL) = (claimed_at IS NULL)", name="claim_audit_complete"),
     )
 
 

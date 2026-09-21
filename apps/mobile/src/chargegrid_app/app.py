@@ -335,7 +335,7 @@ class ChargeGridApp:
 
     async def signed_in(self, destination=None):
         self.profile = await self.api.request('GET','me')
-        destination = destination or ('operator' if self.profile.get('account_type') == 'vendor' and self.profile.get('operator_enabled') else 'home')
+        destination = destination or ('operator' if self.profile.get('account_type') == 'vendor' or self.profile.get('operator_enabled') else 'home')
         await self.go(destination)
 
     async def logout(self):

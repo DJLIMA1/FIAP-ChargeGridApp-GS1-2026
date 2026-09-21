@@ -6,6 +6,7 @@ from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..services.maps import map_widget
 from ..ui import theme
+from ..ui.availability import point_status
 from ..ui.components import badge, button, card, field, money, title
 
 
@@ -55,42 +56,62 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         collapsed_icon_color=theme.GRAY_TEXT,
         icon_color=theme.RED,
     )
-    controls = [title('Encontrar postos','Veja os pontos livres e conectados.'),button('Tenho o código do ponto',app.link('charging'),secondary=True),card(ft.Column([address,reach,button('Buscar',app.action(search)),coordinates],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))]
+    controls = [title('Encontrar postos','Veja a disponibilidade antes de sair.'),card(ft.Column([address,reach,button('Buscar',app.action(search)),coordinates],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)),button('Tenho o código do ponto',app.link('charging'),secondary=True)]
     if stations:
         map_lat, map_lng = (lat,lng) if lat is not None else (float(stations[0]['latitude']),float(stations[0]['longitude']))
         markers = [(float(s['latitude']),float(s['longitude']),'⚡' if any(c.get('available') for c in s['connectors']) else '⛔') for s in stations]
-        controls.append(await map_widget(map_lat,map_lng,markers))
+        map_preview = await map_widget(map_lat,map_lng,markers)
+    else:
+        map_preview = None
     listing = ft.Column(spacing=15)
     controls.append(listing)
     def station_cards(stations):
         items = []
-        for station in stations:
-            details = [ft.Text(station['name'],size=18,weight=ft.FontWeight.BOLD),ft.Text(station['address'])]
+        for station in sorted(stations, key=lambda item: not any(point.get('available') for point in item.get('connectors', []))):
+            available_count = sum(bool(point.get('available')) for point in station['connectors'])
+            details = [ft.Row([ft.Text(station['name'],size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,expand=True),
+                               badge(f'{available_count} livre' if available_count == 1 else f'{available_count} livres',
+                                     bg=theme.GREEN if available_count else theme.SLATE,width=86)],spacing=8),
+                       ft.Text(station['address'],size=13,color=theme.GRAY_TEXT)]
             if not station['connectors']:
-                details.append(ft.Text('Este posto ainda não tem pontos de recarga disponíveis.',color=theme.GRAY_TEXT))
-            for connector in station['connectors']:
+                details.append(ft.Text('Este posto ainda não tem pontos de recarga.',color=theme.GRAY_TEXT))
+            for connector in sorted(station['connectors'], key=lambda item: not item.get('available')):
                 key = app.api.new_key()
                 async def reserve(c=connector,k=key):
                     await app.api.request('POST','reservations',{'connector_id':c['id']},key=k)
                     await app.go('reservations')
-                status = 'Disponível' if connector.get('available') else ('Offline' if not connector.get('online') else 'Ocupado / pendente')
-                details += [ft.Divider(),ft.Text(f"{connector['public_code']} · {connector['connector_type']} · {connector['power_kw']} kW"),ft.Text(f"{money(connector['price_per_kwh'])}/kWh · até {connector['max_duration_minutes']} min"),badge(status,bg=theme.GREEN if connector.get('available') else theme.RED,width=140)]
+                status, status_color = point_status(connector)
+                details += [ft.Divider(color=theme.LIGHT_GRAY),
+                            ft.Row([ft.Text(f"{connector['public_code']} · {connector['connector_type']}",color=theme.TEXT_COLOR,expand=True),
+                                    badge(status,bg=status_color,width=155)],spacing=8),
+                            ft.Text(f"{connector['power_kw']} kW · {money(connector['price_per_kwh'])}/kWh · até {connector['max_duration_minutes']} min",size=13,color=theme.GRAY_TEXT)]
+                if connector.get('availability_status') == 'reconciling' and connector.get('reserved_until'):
+                    details.append(ft.Text('O equipamento está restaurando uma reserva. Aguarde a confirmação.',size=12,color=theme.GRAY_TEXT))
                 if connector.get('available'):
                     details += [button('Reservar ponto',app.action(reserve)),button('Iniciar pelo código',app.link('charging',public_code=connector['public_code'],max_duration=min(30,connector['max_duration_minutes'])),secondary=True)]
+                elif status == 'Offline':
+                    details.append(ft.Text('Equipamento sem comunicação no momento.',size=12,color=theme.GRAY_TEXT))
             items.append(card(details))
         return items
     listing.controls = station_cards(stations)
     empty_state = ft.Text('Nenhum posto encontrado para esta busca.',visible=not stations)
     controls.append(empty_state)
+    if map_preview is not None:
+        controls.append(ft.ExpansionTile(title=ft.Text('Ver no mapa',color=theme.TEXT_COLOR),controls=[map_preview],expanded=False))
+    current_stations = stations
     async def update():
+        nonlocal current_stations
         if station_id:
             fresh = [await app.api.request("GET",f"stations/{station_id}")]
         else:
             fresh = (await app.api.request("GET","stations",params=params))["items"]
+        if fresh == current_stations:
+            return
+        current_stations = fresh
         listing.controls = station_cards(fresh)
         empty_state.visible = not fresh
         app.page.update()
-    app.set_poll(update,30)
+    app.set_poll(update,10)
     if offset:
         controls.append(button('Anterior',app.link('stations',lat=lat,lng=lng,radius=radius,query=query,offset=max(0,offset-20)),secondary=True))
     if offset+20 < total and not station_id:

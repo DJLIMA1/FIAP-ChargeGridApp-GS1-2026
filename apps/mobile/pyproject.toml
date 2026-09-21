@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.2.3"
+version = "0.3.1"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
     "flet==1.0.0",
     "pillow>=11,<13",
     "httpx>=0.28,<1",
+    "chargegrid-scanner==0.1.0",
 ]
 
 [project.scripts]
@@ -21,13 +22,17 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 13
+build_number = 15
+permissions = ["camera"]
+
+[tool.flet.dev_packages]
+chargegrid-scanner = "packages/chargegrid_scanner"
 
 [tool.flet.app]
 # The mobile build uses only assets/app_config.json, generated from the public
 # API URL. Never package local environment files.
 exclude = [
-    ".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", ".flet",
+    ".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", ".flet", "packages",
     "__pycache__", "src/chargegrid_app/__pycache__",
     "src/chargegrid_app/screens/__pycache__", "src/chargegrid_app/services/__pycache__",
     "src/chargegrid_app/ui/__pycache__",

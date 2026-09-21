@@ -17,6 +17,11 @@ class StationInput(Input):
     longitude: Decimal = Field(ge=-180, le=180)
 
 
+class ClaimInput(Input):
+    token: str = Field(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$")
+    station_id: UUID | None = None
+
+
 class StationPatch(Input):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     address: str | None = Field(default=None, min_length=1, max_length=300)

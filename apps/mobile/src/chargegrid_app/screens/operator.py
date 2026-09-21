@@ -3,14 +3,32 @@ import flet as ft
 from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..ui import theme
-from ..ui.components import button, card, date_time, field, money, title
+from ..ui.components import badge, button, card, date_time, field, money, title
+from . import onboarding as onboarding_screen
+from . import ownership
 
 
-async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None):
+async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None,
+                claim=False, onboarding=False, point_id=None, step=1):
     profile = await app.api.request('GET','me')
+    app.profile = profile
+    if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
+        return title('Gestão de postos','Entre com uma conta de vendedor para vincular equipamentos.')
+    if claim:
+        return await ownership.build(app, station_id=station_id)
+    if onboarding:
+        return await onboarding_screen.build(app, station_id=station_id, point_id=point_id, step=step)
     if not profile.get('operator_enabled'):
-        return title('Gestão de postos','Sua conta precisa de aprovação de operador.')
+        return ft.Column([
+            title('Seu primeiro ponto', 'Vincule o equipamento à sua conta de vendedor'),
+            card([ft.Icon(ft.Icons.QR_CODE_SCANNER, size=48, color=theme.RED),
+                  ft.Text('Seu equipamento já vem com um QR de vinculação. Escaneie para se tornar o proprietário e configurar seu posto.'),
+                  ft.Text('Não é necessário aguardar aprovação. O QR é a prova de posse do equipamento.', size=13, color=theme.GRAY_TEXT)]),
+            button('Vincular equipamento', app.link('operator', claim=True)),
+        ], spacing=15)
     if connector_id:
+        if connector_id == 'new':
+            return await ownership.build(app, station_id=station_id)
         connector = connector or app.data.get('connector')
         return await connector_form(app,station_id,connector,device_id)
     if station_id == 'new':
@@ -21,13 +39,39 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     summary = await app.api.request('GET','operator/summary')
     result = await app.api.request('GET','operator/stations',params={'limit':100,'offset':offset})
     stations = result['items']
-    controls = [title('Meus postos','Gestão do operador aprovado'),card([ft.Text(f"{summary['stations']} postos · {summary['total_sessions']} sessões"),ft.Text(f"{float(summary['total_energy_wh'])/1000:.3f} kWh · {money(summary['total_estimated_cost'])} estimados")]),button('Cadastrar posto',app.link('operator',station_id='new')),button('Gerenciar cupons',app.link('coupons',manage=True))]
+    controls = [title('Meus postos','Acompanhe seus pontos, recargas e configurações'),
+                card([ft.Text('VISÃO GERAL',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+                      ft.Text(f"{summary['stations']} postos · {summary['total_sessions']} recargas",size=18,
+                              weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+                      ft.Text(f"{float(summary['total_energy_wh'])/1000:.3f} kWh entregues · {money(summary['total_estimated_cost'])} estimados",
+                              size=12,color=theme.GRAY_TEXT)]),
+                button('Vincular novo equipamento',app.link('operator',claim=True))]
     for station in stations:
-        controls.append(card([ft.Text(station['name'],size=18),ft.Text(station['address']),button('Editar posto / pontos',app.link('operator',station_id=station['id'])),button('Histórico deste posto',app.link('history',station_id=station['id']),secondary=True)]))
+        points = station.get('connectors') or []
+        drafts = [point for point in points if not point.get('active')]
+        online = sum(bool(point.get('online')) for point in points)
+        status = ('Configuração pendente' if drafts or not station.get('active') else
+                  'Online' if online else 'Offline')
+        color = theme.AMBER if drafts or not station.get('active') else theme.GREEN if online else theme.SLATE
+        details = [ft.Row([ft.Text(station['name'],size=19,weight=ft.FontWeight.BOLD,
+                                   color=theme.TEXT_COLOR,expand=True),badge(status,color,width=138)],spacing=8),
+                   ft.Text(station['address'],size=12,color=theme.GRAY_TEXT),
+                   ft.Text(f'{len(points)} pontos · {online} online',size=12,color=theme.GRAY_TEXT)]
+        if drafts:
+            details.append(button('Concluir configuração',app.link('operator',station_id=station['id'],
+                                                                  point_id=drafts[0]['id'],onboarding=True,step=1)))
+        details += [button('Editar estação',app.link('operator',station_id=station['id']),secondary=True),
+                    button('Ver recargas',app.link('history',station_id=station['id']),secondary=True)]
+        controls.append(card(details))
     if offset + 100 < result['total']:
         controls.append(button('Mais postos',app.link('operator',offset=offset+100)))
     if not stations:
-        controls.append(ft.Text('Você ainda não possui postos.'))
+        controls.append(card([ft.Icon(ft.Icons.EV_STATION_OUTLINED,size=35,color=theme.RED),
+                              ft.Text('Seu primeiro ponto começa no QR do equipamento.',
+                                      color=theme.TEXT_COLOR,weight=ft.FontWeight.BOLD),
+                              ft.Text('Vincule-o e siga a configuração guiada para publicar a estação.',
+                                      size=12,color=theme.GRAY_TEXT)]))
+    controls += [button('Gerenciar cupons',app.link('coupons',manage=True),secondary=True)]
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
 
 
@@ -57,7 +101,7 @@ async def station_form(app, station=None):
         await app.go('operator',station_id=result['id'])
     controls = [title('Editar posto' if station else 'Novo posto'),card(ft.Column([name,address,button('Localizar endereço',app.action(locate),secondary=True),latitude,longitude,active],spacing=12)),button('Salvar posto',app.action(save))]
     if station:
-        controls += [button('Adicionar ponto',app.link('operator',station_id=station['id'],connector_id='new'))]
+        controls += [button('Vincular equipamento a este posto',app.link('operator',station_id=station['id'],claim=True))]
         for connector in station['connectors']:
             controls.append(card([ft.Text(f"{connector['public_code']} · {connector['connector_type']}"),ft.Text('Online' if connector.get('online') else 'Offline'),button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],connector=connector))]))
     controls.append(button('Voltar à gestão',app.link('operator'),secondary=True))
@@ -118,7 +162,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         await app.api.request('POST',f'devices/{device.value.strip()}/revoke')
         update_device('','Dispositivo revogado. Provisione novamente para conectar o ESP32.')
         app.notice('Dispositivo revogado; chave anterior recusada.')
-    controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),button('Salvar ponto',app.action(save))]
+    controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),ft.Text('Confira os dados e ative o ponto. O posto também precisa estar ativo para aparecer aos consumidores.',size=12,color=theme.GRAY_TEXT),button('Salvar ponto',app.action(save))]
     if connector:
         provision_button = button('Provisionar dispositivo',app.action(provision))
         provision_button.visible = not linked_device

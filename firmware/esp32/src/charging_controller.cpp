@@ -67,6 +67,12 @@ void tick() {
 bool apply(JsonDocument& response) {
   acknowledgements.to<JsonArray>();
   connectorPublicCode = response["connector"]["public_code"] | "--";
+  JsonObjectConst connector = response["connector"].as<JsonObjectConst>();
+  if (connector["owned"].is<bool>()) {
+    connectorOwnershipKnown = true;
+    if (connector["owned"].as<bool>()) confirmPanelOwnership();
+  }
+  if (connector["active"].is<bool>()) connectorActive = connector["active"].as<bool>();
   JsonObject authorization = response["authorized"].as<JsonObject>();
   reservationDeadline = parseTime(authorization["reservation"]["expires_at"]);
   JsonObject authorizedSession = authorization["session"].as<JsonObject>();
@@ -86,6 +92,7 @@ bool apply(JsonDocument& response) {
     uint32_t incoming = command["version"] | 0;
     if (id == lastCommand) {
       if (command["type"].as<String>() == "START" && state != "charging") ack(id, "failed", "previous_session_requires_reconciliation");
+      else if (command["type"].as<String>() == "RESERVE" && state != "reserved") ack(id, "failed", "reservation_requires_reconciliation");
       else ack(id, "applied");
       continue;
     }
@@ -94,7 +101,9 @@ bool apply(JsonDocument& response) {
     const char* error = nullptr;
     if (type == "START") {
       JsonObject session = response["authorized"]["session"].as<JsonObject>();
-      if (session.isNull() || session["id"].as<String>() != command["session_id"].as<String>()) error = "unauthorized_session";
+      if (connectorOwnershipKnown && !panelOwned) error = "point_unowned";
+      else if (!connectorActive) error = "point_inactive";
+      else if (session.isNull() || session["id"].as<String>() != command["session_id"].as<String>()) error = "unauthorized_session";
       else if (sessionId.length()) error = "previous_session_requires_reconciliation";
       else {
         sessionId = command["session_id"].as<String>();
@@ -109,7 +118,9 @@ bool apply(JsonDocument& response) {
       }
     } else if (type == "RESERVE") {
       JsonObject reservation = response["authorized"]["reservation"].as<JsonObject>();
-      if (reservation.isNull() || reservation["id"].as<String>() != command["reservation_id"].as<String>() || sessionId.length()) error = "unauthorized_reservation";
+      if (connectorOwnershipKnown && !panelOwned) error = "point_unowned";
+      else if (!connectorActive) error = "point_inactive";
+      else if (reservation.isNull() || reservation["id"].as<String>() != command["reservation_id"].as<String>() || sessionId.length()) error = "unauthorized_reservation";
       else { state = "reserved"; reservationDeadline = parseTime(reservation["expires_at"]); }
     } else if (type == "STOP") {
       if (sessionId.length() && sessionId != command["session_id"].as<String>()) error = "session_mismatch";

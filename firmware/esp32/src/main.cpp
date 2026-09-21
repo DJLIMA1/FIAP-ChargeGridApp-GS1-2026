@@ -10,6 +10,8 @@
 #ifdef CHARGEGRID_PANEL_ENABLED
 #include "panel_service_config.h"
 #include "panel_hardware.h"
+#include "panel_network.h"
+#include "panel_claim.h"
 #else
 #if __has_include("chargegrid_config.h")
 #include "chargegrid_config.h"
@@ -27,6 +29,8 @@ SimulatedSensors sensors;
 Reading reading{20, 0, 0, false};
 String bootId, sessionId, lastCommand, state = "idle", endReason;
 String connectorPublicCode = "--";
+String panelClaimToken;
+bool panelOwned = false, connectorOwnershipKnown = false, connectorActive = true;
 uint32_t version = 0, sequence = 0;
 unsigned long lastContact, lastTick, started, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
@@ -65,14 +69,23 @@ const char* deviceRootCa() {
 #endif
 }
 
+void confirmPanelOwnership() {
+  panelOwned = true;
+  panelClaimToken = "";
+#ifdef CHARGEGRID_PANEL_ENABLED
+  // Retry persistence/removal on every explicitly owned response if NVS fails.
+  if (!rememberPanelOwnership(configStore)) Serial.println("[setup] Ownership persistence pending; retrying after sync");
+#endif
+}
+
 bool savePanelConnection(const char* ssid, const char* password, const char* deviceKey) {
 #ifdef CHARGEGRID_PANEL_ENABLED
-  if (!ssid || !password || !deviceKey || !ssid[0] || !password[0]) return false;
+  if (!validPanelNetwork(ssid, password) || !deviceKey) return false;
   if (state == "charging" || state == "reserved") return false;
   const bool changesIdentity = deviceKey[0] && panelDeviceKey != deviceKey;
   if (changesIdentity && (state == "charging" || state == "reserved" || sessionId.length())) return false;
   bool saved = configStore.putString("wifi_ssid", ssid) > 0;
-  saved = configStore.putString("wifi_pass", password) > 0 && saved;
+  saved = savePanelPassword(configStore, password) && saved;
   if (deviceKey[0]) saved = configStore.putString("device_key", deviceKey) > 0 && saved;
   if (!saved) return false;
   if (changesIdentity) { version = 0; lastCommand = ""; persist(); }
@@ -115,6 +128,16 @@ void handleSerialMaintenance() {
   }
   String line = input;
   input = ""; inputStarted = 0;
+  if (step == 5) {
+    step = 0;
+    if (!savePanelClaim(configStore, line.c_str(), state == "idle", sessionId.length() > 0, panelOwned)) {
+      line = "";
+      Serial.println("[setup] Claim token rejected: invalid, owned or session pending"); return;
+    }
+    panelClaimToken = line; line = "";
+    Serial.println("[setup] Claim token saved; pairing screen ready");
+    return;
+  }
   if (step == 4) {
     step = 0;
     if (state == "charging" || state == "reserved" || sessionId.length()) {
@@ -133,6 +156,12 @@ void handleSerialMaintenance() {
     return;
   }
   if (step == 0) {
+    if (line == "CG_CLAIM") {
+      if (state != "idle" || sessionId.length() || panelOwned || configStore.getBool("owned", false)) {
+        Serial.println("[setup] Claim provisioning requires an unowned idle point"); return;
+      }
+      step = 5; Serial.println("[setup] Claim token (input hidden):"); return;
+    }
     if (line == "CG_SCREEN") {
       if (state != "idle" || sessionId.length()) {
         Serial.println("[screen] Capture requires an idle point without a session"); return;
@@ -147,7 +176,7 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.2.0\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.1\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);
@@ -171,14 +200,14 @@ void handleSerialMaintenance() {
     if (!line.length() || line.length() > 32) { step = 0; Serial.println("[setup] Invalid SSID"); return; }
     pendingSsid = line; step = 2; Serial.println("[setup] Password (input hidden):"); return;
   }
-  if (!line.length() || line.length() > 64) { step = 0; line = ""; Serial.println("[setup] Invalid password"); return; }
+  if (line.length() > 64) { step = 0; line = ""; Serial.println("[setup] Invalid password"); return; }
   if (state == "charging" || state == "reserved") {
     step = 0; line = "";
     Serial.println("[setup] Network maintenance blocked during an active charging flow");
     return;
   }
   const bool saved = configStore.putString("wifi_ssid", pendingSsid) > 0 &&
-      configStore.putString("wifi_pass", line) > 0;
+      savePanelPassword(configStore, line.c_str());
   if (!saved) { step = 0; line = ""; Serial.println("[setup] NVS write failed"); return; }
   panelWifiSsid = pendingSsid; panelWifiPassword = line; line = "";
   panelNetworkConfigured = true;
@@ -221,8 +250,12 @@ void setup() {
   panelWifiSsid = configStore.getString("wifi_ssid", "");
   panelWifiPassword = configStore.getString("wifi_pass", "");
   panelDeviceKey = configStore.getString("device_key", "");
+  panelOwned = configStore.getBool("owned", false);
+  panelClaimToken = configStore.getString("claim_token", "");
+  if (panelOwned) confirmPanelOwnership();
+  else if (!validPanelClaimToken(panelClaimToken.c_str())) panelClaimToken = "";
   panelIdentityConfigured = panelDeviceKey.length();
-  panelNetworkConfigured = panelWifiSsid.length() && panelWifiPassword.length();
+  panelNetworkConfigured = panelWifiSsid.length() > 0;
   panelIntegrationEnabled = panelIdentityConfigured && panelNetworkConfigured;
   if (panelNetworkConfigured) WiFi.begin(panelWifiSsid.c_str(), panelWifiPassword.c_str());
 #else

@@ -18,7 +18,9 @@ Copie `.env.example` para `.env` na raiz do repositório. Defina `CHARGEGRID_API
 
 ### Estado atual
 
-Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. O MVP integrado 0.2.0 e a migração aditiva `c74ef532ab90` foram validados; consulte [o relatório](validacao-mvp-0.2.0.md). O app está na versão 0.2.3, build 13, com [seletor deslizante e validação animada](validacao-mobile-0.2.3.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
+Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. A versão atual é 0.3.0, build Android 14, com migração `d85af641bc01`: [ownership por QR e reconciliação após reboot](validacao-ownership-0.3.0.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
+
+A revisão de propriedade exige a migração `d85af641bc01` antes do código novo: pontos novos nascem na fábrica, sem dono e inativos, e passam ao vendedor mediante QR de propriedade. A validação local dessa revisão não implica migração ou publicação automática no ambiente remoto.
 
 ### APK Android
 
@@ -112,7 +114,7 @@ CHARGEGRID_IMPORT_TEST_DATABASE_URL=postgresql://usuario:senha@localhost:5432/ch
 
 ## Ferramentas administrativas
 
-Execute a partir da raiz, usando o ambiente Python da API (httpx, psycopg e pytest). Segredos são fornecidos por variáveis de ambiente; nunca publique seus valores nem os inclua em argumentos de comandos.
+Execute a partir da raiz, usando o ambiente Python da API. Instale `pip install -r tools/requirements.txt` para as ferramentas de fábrica (psycopg e geração SVG com qrcode). Segredos são fornecidos por variáveis de ambiente; nunca publique seus valores nem os inclua em argumentos de comandos.
 
 As ferramentas de linha de comando não carregam arquivos `.env` automaticamente. Para usar a configuração local raiz em macOS/Linux, carregue-a no terminal antes do comando:
 
@@ -122,7 +124,8 @@ source .env
 set +a
 ```
 
-- `python tools/seed_demo.py --points 1`: usa `CHARGEGRID_API_URL` (incluindo `/v1`) e `CHARGEGRID_OPERATOR_TOKEN`, obtido pelo login de uma conta confirmada e aprovada como operador. Cria/reutiliza o posto fictício `ChargeGrid Demo FIAP` do próprio operador e pontos de demonstração. Repetições sequenciais reutilizam os recursos. Execute uma instância por vez. Não cria contas, senhas, sessões ou chaves de dispositivo.
+- `python tools/seed_demo.py`: usa `CHARGEGRID_API_URL` (incluindo `/v1`) e `CHARGEGRID_OPERATOR_TOKEN`, obtido pelo login de vendedor que já vinculou equipamento ou operador legado. Cria/reutiliza somente o agrupamento fictício `ChargeGrid Demo FIAP` do próprio vendedor. Não cria pontos: escaneie QRs de fábrica para adicionar equipamentos. Repetições sequenciais reutilizam o posto. Execute uma instância por vez. Não cria contas, senhas, sessões, claims ou chaves de dispositivo.
+- `python tools/provision_point.py`: provisionamento administrativo de fábrica, descrito abaixo. O runtime e a interface do vendedor não criam novos equipamentos arbitrários.
 - `python tools/maintenance.py`: com `DATABASE_URL`, conta telemetria recebida há mais de sete dias e limites de requisição vencidos. `--apply` exclui apenas esses registros em uma transação; falhas revertem a transação. Estado de boots/replay, sessões, comandos e idempotência são preservados. Agende externamente somente depois de revisar a prévia.
 - `python tools/import_legacy.py /caminho/privado/arquivo.json`: lê somente o arquivo escolhido, sem buscar `ev_data.json` automaticamente. A prévia mostra contagens de `users/usuarios`, `stations/estacoes`, `coupons/cupons`, `history/historico` e categorias desconhecidas. Nunca mostra valores pessoais ou credenciais e nunca grava dados.
 
@@ -130,13 +133,23 @@ Para aplicar uma importação, use `--apply --account-map /caminho/privado/mapa.
 
 Validação isolada: `python -m pytest tools/tests/test_admin_tools.py -q`. Os testes unitários usam mocks e dados fictícios; a integração com PostgreSQL é opcional e usa somente o banco descartável configurado, sem ler a base legada real.
 
-### Aprovar uma conta de vendedor
+### Provisionar e vincular um equipamento
 
-O vendedor escolhe o tipo no cadastro e conclui o primeiro acesso para persistir o perfil. Um administrador autorizado deve conferir o UUID exato do perfil, disponível em `GET /v1/me` da própria conta, e disponibilizar `MIGRATION_DATABASE_URL` no ambiente. A ferramenta exige essa variável explicitamente; não carrega `.env` automaticamente. Substitua `UUID_DO_PERFIL` nos comandos:
+O vendedor escolhe seu tipo no cadastro. Cada equipamento novo é criado por um administrador de fábrica, com `MIGRATION_DATABASE_URL` explícita no ambiente e esquema atualizado. O comando abaixo é uma prévia, sem conexão nem escrita; acrescente `--apply` somente para criar o equipamento. Use código público único e diretório novo privado, de preferência fora do repositório:
 
 ```bash
-python tools/approve_operator.py UUID_DO_PERFIL
-python tools/approve_operator.py UUID_DO_PERFIL --apply
+python tools/provision_point.py --public-code CG-NOVO-01 --output /caminho/privado/CG-NOVO-01
+python tools/provision_point.py --public-code CG-NOVO-01 --output /caminho/privado/CG-NOVO-01 --apply
 ```
 
-O primeiro comando mostra a prévia. `--apply` aprova somente aquele perfil de vendedor em uma transação; perfis ausentes ou de consumidor são recusados. Repetir a aprovação de um vendedor já habilitado não altera dados. A saída contém apenas UUID e estado, sem nomes, e-mails ou credenciais. Depois da aprovação, o vendedor entra novamente no app para acessar a gestão de postos. Testes isolados: `python -m pytest tools/tests/test_approve_operator.py -q`.
+O comando cria um posto sem dono/inativo, um ponto inativo, dispositivo e claim independente numa transação. Nome, endereço, latitude, longitude, potência, tarifa, tipo e duração podem ser informados pelas opções de mesmo nome (`--name`, `--address`, `--latitude`, `--longitude`, `--power-kw`, `--price-per-kwh`, `--connector-type`, `--max-duration-minutes`). Os valores padrão exigem revisão antes da ativação.
+
+O diretório novo recebe permissão 700; `provisioning.json` e `ownership-qr.svg` recebem 600. O JSON contém a chave individual do dispositivo, o segredo de propriedade e os IDs. O SVG contém somente `chargegrid://claim?token=<segredo>`. Nenhum segredo é impresso. Arquivos existentes nunca são sobrescritos. Em erro, a ferramenta não confirma sucesso: confira banco e pasta privada antes de repetir, preservando quaisquer artefatos para recuperação. O código público é único, portanto uma repetição acidental não cria dois pontos com a mesma identidade.
+
+Configure a chave de comunicação no dispositivo pelo procedimento seguro do painel, sem colá-la em logs. Entregue o QR de propriedade apenas ao comprador; não o publique como QR de recarga. O vendedor escaneia esse QR no app, a API comprova a posse, vincula o ponto e habilita sua gestão. É possível agrupá-lo em um posto que já pertence ao vendedor. Depois, revise e ative o ponto e o posto. Uma repetição pelo mesmo dono é segura; outra conta não pode tomar o equipamento, e um QR usado não permite transferência. Dados e donos existentes não são apagados nem migrados para uma conta nova.
+
+`tools/approve_operator.py` continua disponível somente como manutenção administrativa excepcional de perfis legados; não faz parte do onboarding normal e não atribui propriedade de equipamentos.
+
+Para QA HTTP com novos pontos fictícios, `tools/qa_live.py --phase provision` requer caminhos privados em `CHARGEGRID_QA_FACTORY_SIMULATOR` e `CHARGEGRID_QA_FACTORY_PANEL`, cada um apontando ao respectivo `provisioning.json` de um banco exclusivo de testes. O comando faz claims na conta de vendedor fornecida e não cria equipamentos pela API. Estado legado já configurado é preservado. Não execute testes de claim com equipamentos pertencentes a terceiros.
+
+Validação: `python -m pytest tools/tests/test_provision_point.py -q`; os testes PostgreSQL de `apps/api/tests/test_ownership.py` cobrem autorização, replay, disputa concorrente e preservação de donos. Reservas válidas sobrevivem a reinicializações do ESP32 até o prazo original, enquanto uma recarga em curso é interrompida com segurança.

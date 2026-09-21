@@ -1,0 +1,15 @@
+name: chargegrid_scanner
+description: Explicit opt-in, one-shot local QR camera control for ChargeGrid.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+  flutter: '>=3.35.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flet: 1.0.0
+  mobile_scanner: 7.4.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

@@ -5,8 +5,8 @@ from .models import ChargingSession, Connector, Device, Reservation
 from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
+    availability,
     device_for,
-    free,
     online,
     owned,
     row,
@@ -23,8 +23,8 @@ def update(obj, data):
 def point_row(db, connector):
     result = row(connector)
     device = device_for(db, connector)
+    result.update(availability(db, connector, device=device))
     result.update(
-        available=free(db, connector, device=device),
         online=online(device),
         physical_state=device.physical_state if device else "unknown",
     )

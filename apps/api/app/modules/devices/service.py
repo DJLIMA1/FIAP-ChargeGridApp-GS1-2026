@@ -4,7 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import select
 
 from ...errors import fail
-from ...models import ChargingSession, Command, Connector, Device, DeviceBoot, Telemetry, now
+from ...models import ChargingSession, Command, Connector, Device, DeviceBoot, Station, Telemetry, now
 from ...service import active_res, active_session, issue, reconcile_expiry, row
 
 
@@ -34,6 +34,9 @@ def sync(db, authenticated_device, data):
         fail("invalid_time", "Horário inválido", 422)
     same_boot = device.boot_id == data.boot_id
     boot = db.get(DeviceBoot, (device.id, data.boot_id))
+    # Server-time expiry also runs for duplicate telemetry, without accepting its
+    # sequence or refreshing last_seen. A replay must not keep authorization alive.
+    reservation, session = reconcile_expiry(db, connector)
     if (same_boot and data.sequence <= device.sequence) or (not same_boot and boot):
         return response(db, connector, device)
     if not boot:
@@ -41,7 +44,6 @@ def sync(db, authenticated_device, data):
         db.add(boot)
     else:
         boot.last_sequence = data.sequence
-    reservation, session = reconcile_expiry(db, connector)
     energy_wh = data.energy_wh.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
     terminal_replay = False
     if data.session_id:
@@ -110,18 +112,26 @@ def sync(db, authenticated_device, data):
                 session.status = "stopping"
                 issue(db, connector, device, "STOP", session=session, parameters={"reason": "start_failed"})
             elif cmd.type == "RESERVE" and reservation:
-                reservation.status = "cancelling"
-                issue(db, connector, device, "RELEASE", reservation=reservation)
+                if reservation.status == "pending_device":
+                    reservation.status = "cancelling"
+                    issue(db, connector, device, "RELEASE", reservation=reservation)
+                else:
+                    # Restoration failing after reboot does not cancel an already
+                    # confirmed booking. Its original deadline remains authoritative.
+                    device.reconciled = False
             continue
         compatible = False
         if (
             cmd.type == "RESERVE"
             and reservation
-            and reservation.status == "pending_device"
+            and reservation.status in ("pending_device", "confirmed")
+            and cmd.reservation_id == reservation.id
+            and not reboot
             and data.physical_state == "reserved"
         ):
-            reservation.status = "confirmed"
-            reservation.expires_at = now() + timedelta(minutes=10)
+            if reservation.status == "pending_device":
+                reservation.status = "confirmed"
+                reservation.expires_at = now() + timedelta(minutes=10)
             compatible = True
         elif (
             cmd.type == "START"
@@ -176,6 +186,7 @@ def sync(db, authenticated_device, data):
             ):
                 cmd.status = "superseded"
             device.reconciled = True
+    restore_reservation(db, connector, device, reservation, session, reboot)
     pending = db.scalar(
         select(Command.id).where(Command.device_id == device.id, Command.status.in_(("pending", "received")))
     )
@@ -222,6 +233,39 @@ def sync(db, authenticated_device, data):
     return response(db, connector, device)
 
 
+def restore_reservation(db, connector, device, reservation, session, reboot):
+    if session or not reservation or reservation.status not in ("pending_device", "confirmed"):
+        return
+    deadline = (
+        reservation.expires_at if reservation.status == "confirmed" else reservation.confirmation_deadline
+    )
+    if not deadline or deadline <= now():
+        return
+    if not reboot and device.physical_state == "reserved" and device.reconciled:
+        return
+    command = db.scalar(
+        select(Command).where(
+            Command.device_id == device.id,
+            Command.reservation_id == reservation.id,
+            Command.type == "RESERVE",
+            Command.version == connector.control_version,
+            Command.status.in_(("pending", "received")),
+            Command.expires_at > now(),
+        )
+    )
+    device.reconciled = False
+    if command and not reboot:
+        return
+    issue(
+        db,
+        connector,
+        device,
+        "RESERVE",
+        reservation=reservation,
+        parameters={"expires_at": (reservation.expires_at or now() + timedelta(minutes=10)).isoformat()},
+    )
+
+
 def finish(session, data, fallback):
     reason = data.end_reason or fallback
     session.status = (
@@ -234,6 +278,7 @@ def finish(session, data, fallback):
 
 
 def response(db, connector, device):
+    station = db.get(Station, connector.station_id)
     reservation = active_res(db, connector.id)
     session = active_session(db, connector.id)
     commands = db.scalars(
@@ -253,6 +298,8 @@ def response(db, connector, device):
             "id": str(connector.id),
             "public_code": connector.public_code,
             "max_duration_minutes": connector.max_duration_minutes,
+            "owned": station.owner_id is not None,
+            "active": bool(connector.active and station.active),
         },
         "authorized": {
             "reservation": (
