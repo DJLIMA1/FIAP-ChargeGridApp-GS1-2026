@@ -1,0 +1,83 @@
+[
+  {
+    "check": "consumer: login, persisted account type, refresh, logout, relogin",
+    "result": "pass"
+  },
+  {
+    "check": "vendor: login, persisted account type, refresh, logout, relogin",
+    "result": "pass"
+  },
+  {
+    "check": "approved vendor: station, connectors and device provisioning",
+    "result": "pass"
+  },
+  {
+    "check": "device handshake makes connector available",
+    "result": "pass"
+  },
+  {
+    "check": "reservation idempotency, real device ACK and cancellation",
+    "result": "pass"
+  },
+  {
+    "check": "reserved start, coupon, telemetry and charging state",
+    "result": "pass"
+  },
+  {
+    "check": "another account cannot read consumer charging session",
+    "result": "pass"
+  },
+  {
+    "check": "stop ACK, final energy, history and monthly summary",
+    "result": "pass"
+  },
+  {
+    "check": "operator history and coupon deactivation",
+    "result": "pass"
+  },
+  {
+    "check": "physical board session via app start/stop and local stop",
+    "result": "pass",
+    "sessions": [
+      {
+        "status": "completed",
+        "energy_wh": "12.084",
+        "cost_estimate": "0.0181",
+        "source": "simulated",
+        "end_reason": "requested",
+        "started_at": "2026-09-21T05:20:36.452342+00:00",
+        "ended_at": "2026-09-21T05:20:42.467760+00:00"
+      },
+      {
+        "status": "completed",
+        "energy_wh": "60.392",
+        "cost_estimate": "0.0906",
+        "source": "simulated",
+        "end_reason": "requested",
+        "started_at": "2026-09-21T05:18:38.607369+00:00",
+        "ended_at": "2026-09-21T05:19:08.803720+00:00"
+      }
+    ]
+  },
+  {
+    "check": "physical ESP32 automatic monetary cutoff",
+    "result": "pass",
+    "max_cost": "0.01",
+    "energy_wh": "6.666",
+    "cost_estimate": "0.0100",
+    "end_reason": "cost_limit",
+    "source": "simulated"
+  },
+  {
+    "check": "home updated summary, active state and availability without navigation",
+    "result": "pass"
+  },
+  {
+    "check": "owned-device metadata rediscovery, no key/hash, consumer denied",
+    "result": "pass"
+  },
+  {
+    "check": "physical panel idle, online and available after tests",
+    "result": "pass"
+  }
+]
