@@ -25,6 +25,3 @@ class Preferences:
             return True
         except OSError:
             return False
-
-    def reset(self):
-        return self.save(DEFAULT_DARK_MODE)

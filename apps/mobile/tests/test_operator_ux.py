@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import flet as ft
 
@@ -76,7 +76,8 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(device.read_only)
         self.assertTrue(device.visible)
         self.assertEqual(device.value,'known-device')
-        app.api.request.assert_awaited_once_with('GET','connectors/connector/device')
+        self.assertEqual(app.api.request.await_args_list[0].args, ('GET','connectors/connector/device'))
+        self.assertEqual(app.api.request.await_args_list[1].args, ('GET','devices/known-device/factory-reset'))
         provision = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Provisionar dispositivo')
         self.assertFalse(provision.visible)
         await click(screen,'Revogar dispositivo')(None)
@@ -101,3 +102,32 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = ApiError('Rede indisponível',503)
         with self.assertRaises(ApiError):
             await operator.connector_form(app,'station',{'id':'connector'})
+
+    async def test_factory_reset_requires_confirmation_and_waits_for_esp(self):
+        app = HandlerApp()
+        app.page.show_dialog = Mock()
+        app.page.pop_dialog = Mock()
+        responses = iter([
+            {'device_id':'known-device','online':True,'last_seen':None},
+            {'status':'not_requested'},
+            {'status':'pending','command_id':'reset-id'},
+            {'status':'applied','command_id':'reset-id'},
+        ])
+        app.api.request.side_effect = lambda *args, **kwargs: next(responses)
+        screen = await operator.connector_form(app,'station',{'id':'connector','active':True})
+        await click(screen,'Restaurar ESP32 de fábrica')(None)
+        dialog = app.page.show_dialog.call_args.args[0]
+        self.assertEqual(dialog.title.value, 'Restaurar ESP32 de fábrica?')
+        self.assertEqual(app.api.request.await_count, 2)
+        dialog.actions[0].on_click(None)
+        self.assertEqual(app.api.request.await_count, 2)
+        await click(screen,'Restaurar ESP32 de fábrica')(None)
+        dialog = app.page.show_dialog.call_args.args[0]
+        await dialog.actions[1].on_click(None)
+        self.assertEqual(app.api.request.await_args.args,
+                         ('POST','devices/known-device/factory-reset'))
+        self.assertIsNotNone(app.poll)
+        self.assertIn('Aguardando a tela', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
+        await app.poll()
+        self.assertIn('Restauração confirmada', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
+        self.assertFalse(next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Restaurar ESP32 de fábrica').visible)

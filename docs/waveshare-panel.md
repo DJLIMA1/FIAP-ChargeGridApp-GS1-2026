@@ -10,7 +10,7 @@ O firmware reflete somente estados recebidos da API. A tela principal apresenta 
 pio run -d firmware/esp32 -e waveshare_panel_ui
 ```
 
-O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/chargegrid-waveshare-7-0.3.4.zip`. Para atualizar uma placa configurada, grave **somente firmware.bin em 0x10000**, com ponto ocioso e nenhuma reserva/sessão pendente. Não use `erase_flash` nem imagem mesclada: preserve NVS, identidade, Wi-Fi e diário de sessão.
+O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/chargegrid-waveshare-7-0.3.5.zip`. Para atualizar uma placa configurada, grave **somente firmware.bin em 0x10000**, com ponto ocioso e nenhuma reserva/sessão pendente. Não use `erase_flash` nem imagem mesclada: preserve NVS, identidade, Wi-Fi e diário de sessão.
 
 ## Configurar pelo touch
 
@@ -79,3 +79,11 @@ A tela principal agora usa a marca vermelha com o símbolo de estação do login
 Antes da gravação física, a API confirmou `CG-PAINEL-02` vinculado, publicado, online e disponível. A versão 0.3.4 foi gravada somente em `0x10000`, com hash verificado; NVS e rede `beleza` foram preservados. O boot registrou novamente `Avoid tearing is enabled, mode: 3` e o status serial mostrou `idle`, Wi-Fi conectado, HTTP 200 e nenhuma sessão. O framebuffer lido da placa exibe a nova tela e não contém o rodapé anterior. A captura do framebuffer não mede cintilação óptica; essa observação exige acompanhar o LCD aceso ao longo do tempo.
 
 O pacote local `builds/chargegrid-waveshare-7-0.3.4.zip` tem SHA-256 `cc447520e93c0d79eb991148b4ee222cb42587f4958fccd8f1ef9ef245910e16` e contém somente binários, instruções e capturas sem segredo de vinculação.
+
+## Restauração de fábrica — 0.3.5
+
+O vendedor abre **Meus postos → Editar posto → Editar ponto / dispositivo → Restaurar ESP32 de fábrica**. O aplicativo pede confirmação e acompanha o comando até o equipamento responder. A API exige firmware 0.3.5 ou superior, equipamento online e ocioso, sem reserva nem recarga. Ao aceitar o pedido, desativa o ponto antigo; ele e seu histórico permanecem associados ao vendedor. Se o comando falhar ou expirar, o aplicativo mostra esse estado e permite tentar novamente.
+
+O ESP32 gera localmente uma nova chave de API e um token privado de vinculação, persistindo-os antes de confirmar somente seus hashes à API. A API cria uma nova identidade de fábrica sem proprietário e revoga a credencial antiga na mesma transação. Depois da confirmação, o ESP32 apaga Wi-Fi, vínculo e diário operacional, reinicia e apresenta um QR novo. Se a resposta da confirmação se perder, o firmware verifica a identidade nova antes de concluir, evitando apagar as credenciais sem uma identidade válida no servidor. O novo QR deve ser escaneado pelo vendedor para configurar outro ponto.
+
+O firmware 0.3.5 compilou e passou em `tools/validate_firmware.py --decode-qr`; a API passou nos testes com PostgreSQL descartável. A placa física não foi atualizada nem restaurada nesta etapa porque não apareceu uma porta serial conectada. O pacote `builds/chargegrid-waveshare-7-0.3.5.zip` tem SHA-256 `385b66419a8f0f814744730d271b7a03f15d8429725985058c8527b94cb26868` e não contém NVS nem segredos.

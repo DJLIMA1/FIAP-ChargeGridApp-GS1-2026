@@ -52,6 +52,15 @@ bool panelIntegrationEnabled = true, panelIdentityConfigured = true, panelNetwor
 int lastSyncHttpStatus = 200;
 bool savePanelConnection(const char*, const char*, const char*) { return false; }
 bool clearPanelConnection() { return false; }
+bool preparePanelFactoryReset(const String& commandId, String& keyHash, String& claimHash) {
+  if (state != "idle" || sessionId.length() || reading.connected || !panelOwned || !hasSynced) return false;
+  assert(commandId.length());
+  keyHash = String(std::string(64, 'a').c_str());
+  claimHash = String(std::string(64, 'b').c_str());
+  return true;
+}
+bool finishPanelFactoryReset(const String&) { return false; }
+bool probePanelFactoryIdentity(const String&) { return false; }
 void confirmPanelOwnership() {
   panelOwned = true; panelClaimToken = "";
   rememberPanelOwnership(claimStorage);
@@ -304,7 +313,31 @@ int main(int argc, char** argv) {
   ownership["connector"].remove("owned");
   apply(ownership); screenshot(argv[1], "panel-legacy-owner-no-qr");
   assert(panelOwned && lv_obj_has_flag(claimCard, LV_OBJ_FLAG_HIDDEN));
+  JsonDocument factoryReset;
+  factoryReset["server_time"] = "2026-09-21T12:00:00Z";
+  factoryReset["control_version"] = version + 1;
+  factoryReset["connector"]["owned"] = true;
+  factoryReset["connector"]["active"] = false;
+  factoryReset["authorized"]["reservation"] = nullptr;
+  factoryReset["authorized"]["session"] = nullptr;
+  auto resetCommand = factoryReset["commands"].to<JsonArray>().add<JsonObject>();
+  resetCommand["id"] = "reset-1"; resetCommand["type"] = "FACTORY_RESET";
+  resetCommand["version"] = version + 1;
+  resetCommand["expires_at"] = "2030-01-01T12:00:00Z";
+  state = "idle"; sessionId = ""; reading.connected = false; hasSynced = true;
+  assert(apply(factoryReset));
+  assert(acknowledgements[0]["status"] == "applied");
+  assert(acknowledgements[0]["new_device_key_hash"].as<String>().length() == 64);
+  assert(acknowledgements[0]["new_claim_token_hash"].as<String>().length() == 64);
+  apply(factoryReset);
+  assert(acknowledgements[0]["status"] == "applied");
+  state = "reserved";
+  resetCommand["id"] = "reset-2"; resetCommand["version"] = version + 1;
+  factoryReset["control_version"] = version + 1;
+  apply(factoryReset);
+  assert(acknowledgements[0]["status"] == "failed");
+  assert(acknowledgements[0]["new_device_key_hash"].isNull());
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, reserved reboot/recovery, countdown, status text and keyboard");
-  puts("PASS: factory claim token validation/storage, QR offline/online, owned deletion, legacy suppression, activation and 12 LVGL frames");
+  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 12 LVGL frames");
 }

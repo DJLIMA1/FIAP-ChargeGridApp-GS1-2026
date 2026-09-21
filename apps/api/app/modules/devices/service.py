@@ -1,10 +1,21 @@
+import secrets
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 
 from ...errors import fail
-from ...models import ChargingSession, Command, Connector, Device, DeviceBoot, Station, Telemetry, now
+from ...models import (
+    ChargingSession,
+    Command,
+    Connector,
+    Device,
+    DeviceBoot,
+    DeviceClaim,
+    Station,
+    Telemetry,
+    now,
+)
 from ...service import active_res, active_session, issue, reconcile_expiry, row
 
 
@@ -26,6 +37,7 @@ def sync(db, authenticated_device, data):
     )
     if device.revoked or device.key_hash != authenticated_key_hash:
         fail("unauthorized", "Chave revogada ou alterada", 401)
+    completed_reset_id = None
     for ack in data.acks:
         command = db.get(Command, ack.command_id)
         if not command or command.device_id != device.id:
@@ -119,6 +131,44 @@ def sync(db, authenticated_device, data):
                     # Restoration failing after reboot does not cancel an already
                     # confirmed booking. Its original deadline remains authoritative.
                     device.reconciled = False
+            continue
+        if cmd.type == "FACTORY_RESET":
+            if (
+                data.physical_state != "idle"
+                or data.connected
+                or data.session_id
+                or active_res(db, connector.id)
+                or active_session(db, connector.id)
+                or not ack.new_device_key_hash
+                or not ack.new_claim_token_hash
+                or ack.new_device_key_hash == device.key_hash
+            ):
+                cmd.status = "failed"
+                cmd.error = "unsafe_or_missing_factory_credentials"
+                continue
+            factory_station = Station(
+                owner_id=None, name="Novo ponto ChargeGrid", address="Configure o endereço",
+                latitude=0, longitude=0, active=False,
+            )
+            db.add(factory_station)
+            db.flush()
+            factory_point = Connector(
+                station_id=factory_station.id,
+                public_code="CG-" + secrets.token_hex(6).upper(),
+                connector_type=connector.connector_type,
+                power_kw=connector.power_kw,
+                price_per_kwh=0,
+                max_duration_minutes=connector.max_duration_minutes,
+                active=False,
+            )
+            db.add(factory_point)
+            db.flush()
+            db.add(Device(connector_id=factory_point.id, key_hash=ack.new_device_key_hash))
+            db.add(DeviceClaim(connector_id=factory_point.id, token_hash=ack.new_claim_token_hash))
+            cmd.status = "applied"
+            device.revoked = True
+            device.reconciled = False
+            completed_reset_id = str(cmd.id)
             continue
         compatible = False
         if (
@@ -230,7 +280,10 @@ def sync(db, authenticated_device, data):
             )
         )
     db.flush()
-    return response(db, connector, device)
+    result = response(db, connector, device)
+    if completed_reset_id:
+        result["factory_reset_confirmed"] = completed_reset_id
+    return result
 
 
 def restore_reservation(db, connector, device, reservation, session, reboot):

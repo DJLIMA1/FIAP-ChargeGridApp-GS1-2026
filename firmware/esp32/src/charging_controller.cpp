@@ -33,11 +33,12 @@ void requestLocalSafeStop() {
     nextSync = millis();
   }
 }
-void ack(const String& id, const char* status, const char* error = nullptr) {
+JsonObject ack(const String& id, const char* status, const char* error = nullptr) {
   JsonObject item = acknowledgements.as<JsonArray>().add<JsonObject>();
   item["command_id"] = id;
   item["status"] = status;
   item["error"] = error;
+  return item;
 }
 void tick() {
   unsigned long now = millis();
@@ -89,16 +90,25 @@ bool apply(JsonDocument& response) {
   time_t serverTime = parseTime(response["server_time"]);
   for (JsonObject command : response["commands"].as<JsonArray>()) {
     String id = command["id"].as<String>();
+    String type = command["type"].as<String>();
     uint32_t incoming = command["version"] | 0;
     if (id == lastCommand) {
-      if (command["type"].as<String>() == "START" && state != "charging") ack(id, "failed", "previous_session_requires_reconciliation");
-      else if (command["type"].as<String>() == "RESERVE" && state != "reserved") ack(id, "failed", "reservation_requires_reconciliation");
+      if (type == "FACTORY_RESET") {
+        String keyHash, claimHash;
+        if (preparePanelFactoryReset(id, keyHash, claimHash)) {
+          JsonObject result = ack(id, "applied");
+          result["new_device_key_hash"] = keyHash;
+          result["new_claim_token_hash"] = claimHash;
+        } else ack(id, "failed", "factory_reset_unavailable");
+      }
+      else if (type == "START" && state != "charging") ack(id, "failed", "previous_session_requires_reconciliation");
+      else if (type == "RESERVE" && state != "reserved") ack(id, "failed", "reservation_requires_reconciliation");
       else ack(id, "applied");
       continue;
     }
     if (incoming <= version || incoming < current || parseTime(command["expires_at"]) <= serverTime) continue;
-    String type = command["type"].as<String>();
     const char* error = nullptr;
+    String resetKeyHash, resetClaimHash;
     if (type == "START") {
       JsonObject session = response["authorized"]["session"].as<JsonObject>();
       if (connectorOwnershipKnown && !panelOwned) error = "point_unowned";
@@ -128,8 +138,17 @@ bool apply(JsonDocument& response) {
     } else if (type == "RELEASE") {
       if (state == "charging") error = "charging_requires_stop";
       else { state = "idle"; reading.connected = false; }
+    } else if (type == "FACTORY_RESET") {
+      if (state != "idle" || sessionId.length() || reading.connected || reading.powerW > 0 ||
+          !response["authorized"]["reservation"].isNull() ||
+          !response["authorized"]["session"].isNull()) error = "factory_reset_requires_idle";
+      else if (!preparePanelFactoryReset(id, resetKeyHash, resetClaimHash)) error = "factory_reset_storage_failed";
     } else error = "unknown_command";
-    ack(id, error ? "failed" : "applied", error);
+    JsonObject result = ack(id, error ? "failed" : "applied", error);
+    if (!error && type == "FACTORY_RESET") {
+      result["new_device_key_hash"] = resetKeyHash;
+      result["new_claim_token_hash"] = resetClaimHash;
+    }
     if (!error) { version = incoming; lastCommand = id; persist(); changed = true; }
   }
   version = max(version, current);

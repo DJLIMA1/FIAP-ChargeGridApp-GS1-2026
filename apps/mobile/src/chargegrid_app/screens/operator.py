@@ -57,11 +57,13 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                               size=12,color=theme.GRAY_TEXT)])]
     for station in stations:
         points = station.get('connectors') or []
-        drafts = [point for point in points if not point.get('active')]
+        drafts = [point for point in points if not point.get('active') and not point.get('retired')]
+        retired = [point for point in points if point.get('retired')]
         online = sum(bool(point.get('online')) for point in points)
-        status = ('Configuração pendente' if drafts or not station.get('active') else
+        status = ('Tela restaurada' if retired and len(retired) == len(points) else
+                  'Configuração pendente' if drafts or not station.get('active') else
                   'Online' if online else 'Offline')
-        color = theme.AMBER if drafts or not station.get('active') else theme.GREEN if online else theme.SLATE
+        color = theme.SLATE if retired and len(retired) == len(points) else theme.AMBER if drafts or not station.get('active') else theme.GREEN if online else theme.SLATE
         details = [ft.Row([ft.Text(station['name'],size=19,weight=ft.FontWeight.BOLD,
                                    color=theme.TEXT_COLOR,expand=True),badge(status,color,width=138)],spacing=8),
                    ft.Text(station['address'],size=12,color=theme.GRAY_TEXT),
@@ -69,6 +71,9 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         if drafts:
             details.append(button('Concluir configuração',app.link('operator',station_id=station['id'],
                                                                   point_id=drafts[0]['id'],onboarding=True,step=1)))
+        if retired:
+            details.append(ft.Text('Tela restaurada? Configure o Wi-Fi no ESP32 e escaneie o novo QR para vincular novamente.',
+                                   size=12,color=theme.GRAY_TEXT))
         details += [button('Editar estação',app.link('operator',station_id=station['id']),secondary=True),
                     button('Ver recargas',app.link('history',station_id=station['id']),secondary=True)]
         controls.append(card(details))
@@ -112,7 +117,7 @@ async def station_form(app, station=None):
     if station:
         controls += [button('Vincular outra tela a este posto',app.link('operator',station_id=station['id'],claim=True))]
         for connector in station['connectors']:
-            controls.append(card([ft.Text(f"{connector['public_code']} · {connector['connector_type']}"),ft.Text('Online' if connector.get('online') else 'Offline'),button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],connector=connector))]))
+            controls.append(card([ft.Text(f"{connector['public_code']} · {connector['connector_type']}"),ft.Text('Tela restaurada' if connector.get('retired') else 'Online' if connector.get('online') else 'Offline'),button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],connector=connector))]))
     controls.append(button('Voltar à gestão',app.link('operator'),secondary=True))
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
 
@@ -120,12 +125,17 @@ async def station_form(app, station=None):
 async def connector_form(app, station_id, connector=None, device_id=None):
     connector = connector or {}
     linked_device = None
+    reset_state = {'status': 'not_requested'}
     if connector:
         try:
             linked_device = await app.api.request('GET',f"connectors/{connector['id']}/device")
         except ApiError as exc:
             if exc.status != 404:
                 raise
+    if linked_device and not linked_device.get('retired'):
+        reset_state = await app.api.request('GET',f"devices/{linked_device['device_id']}/factory-reset")
+    elif linked_device and linked_device.get('retired'):
+        reset_state = {'status': 'applied'}
     public, kind, power = field('Código público',connector.get('public_code','')),field('Tipo de conector',connector.get('connector_type','Type 2')),field('Potência kW',str(connector.get('power_kw','7.4')))
     price, duration = field('Tarifa estimada por kWh',str(connector.get('price_per_kwh','1.00'))),field('Limite máximo min',str(connector.get('max_duration_minutes','60')))
     active = ft.Switch(label='Ponto ativo',value=connector.get('active',True),visible=bool(connector))
@@ -133,7 +143,8 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     device.read_only = True
     device.visible = bool(linked_device)
     device_status = ft.Text(
-        ('Online' if linked_device.get('online') else 'Offline')+' · Último contato: '+date_time(linked_device.get('last_seen'))
+        ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else
+         ('Online' if linked_device.get('online') else 'Offline')+' · Último contato: '+date_time(linked_device.get('last_seen')))
         if linked_device else 'Nenhum dispositivo vinculado. Provisione para conectar o ESP32.',
         size=12,color=theme.GRAY_TEXT,
     )
@@ -143,6 +154,8 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         device_status.value = message
         provision_button.visible = not identifier
         rotate_button.visible = revoke_button.visible = bool(identifier)
+        reset_button.visible = bool(identifier)
+        reset_info.visible = bool(identifier)
         app.page.update()
     async def save():
         if not public.value.strip() or not kind.value.strip():
@@ -171,14 +184,69 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         await app.api.request('POST',f'devices/{device.value.strip()}/revoke')
         update_device('','Dispositivo revogado. Provisione novamente para conectar o ESP32.')
         app.notice('Dispositivo revogado; chave anterior recusada.')
+    reset_messages = {
+        'not_requested': 'Apaga Wi-Fi e vínculo desta tela. O ponto antigo será desativado; histórico e recargas anteriores permanecem.',
+        'pending': 'Aguardando a tela confirmar a restauração. Mantenha o ESP32 ligado e conectado.',
+        'received': 'A tela recebeu o comando. Aguarde a confirmação antes de desligá-la.',
+        'applied': 'Restauração confirmada. Configure o Wi-Fi na tela e escaneie o novo QR para criar outro ponto.',
+        'failed': 'A tela não conseguiu restaurar. Verifique se está livre e tente novamente.',
+        'expired': 'A tela não confirmou a tempo. Confira a conexão e tente novamente.',
+    }
+    reset_info = ft.Text(reset_messages.get(reset_state.get('status'), reset_messages['not_requested']),
+                         size=12, color=theme.GRAY_TEXT)
+    def paint_reset(state):
+        reset_state.clear()
+        reset_state.update(state)
+        status = state.get('status', 'not_requested')
+        reset_info.value = reset_messages.get(status, reset_messages['not_requested'])
+        reset_button.visible = status in ('not_requested', 'failed', 'expired') and not (linked_device or {}).get('retired')
+        if status in ('pending', 'received', 'applied'):
+            active.value = False
+            active.disabled = True
+        if status == 'applied':
+            device_status.value = 'Desvinculado após restauração de fábrica'
+            rotate_button.visible = revoke_button.visible = False
+        app.page.update()
+    async def poll_reset():
+        if reset_state.get('status') not in ('pending', 'received'):
+            return
+        state = await app.api.request('GET', f"devices/{linked_device['device_id']}/factory-reset")
+        paint_reset(state)
+    async def reset_device():
+        if hasattr(app, 'prepare_navigation') and not await app.prepare_navigation():
+            return
+        def cancel(event):
+            app.page.pop_dialog()
+        async def confirm():
+            app.page.pop_dialog()
+            state = await app.api.request('POST', f"devices/{linked_device['device_id']}/factory-reset")
+            paint_reset(state)
+            if state.get('status') in ('pending', 'received'):
+                app.set_poll(poll_reset, 5)
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text('Restaurar ESP32 de fábrica?'),
+            content=ft.Text('O Wi-Fi e o vínculo desta tela serão apagados. O ponto atual sairá de operação, mas seu histórico será preservado. Faça isso somente com a tela online e sem reserva ou recarga. Depois, configure o Wi-Fi e escaneie o novo QR.'),
+            actions=[ft.TextButton('Cancelar', on_click=cancel),
+                     ft.TextButton('Restaurar ESP32', on_click=app.action(confirm),
+                                   style=ft.ButtonStyle(color=theme.RED))],
+        ))
     controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),ft.Text('Confira os dados e ative o ponto. O posto também precisa estar ativo para aparecer aos consumidores.',size=12,color=theme.GRAY_TEXT),button('Salvar ponto',app.action(save))]
     if connector:
         provision_button = button('Provisionar dispositivo',app.action(provision))
         provision_button.visible = not linked_device
         rotate_button = button('Rotacionar chave',app.action(rotate),secondary=True)
         revoke_button = button('Revogar dispositivo',app.action(revoke),secondary=True)
-        rotate_button.visible = revoke_button.visible = bool(linked_device)
-        controls += [card([ft.Text('Dispositivo ESP32',size=18),ft.Text('Configure a chave no equipamento. Ela é exibida somente após provisionar ou renovar.'),device_status,provision_button,device,rotate_button,revoke_button])]
+        rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False)
+        reset_button = button('Restaurar ESP32 de fábrica',app.action(reset_device),secondary=True)
+        reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
+        reset_info.visible = bool(linked_device)
+        if linked_device and (linked_device.get('retired') or reset_state.get('status') in ('pending', 'received', 'applied')):
+            active.value = False
+            active.disabled = True
+        controls += [card([ft.Text('Dispositivo ESP32',size=18),ft.Text('Configure a chave no equipamento. Ela é exibida somente após provisionar ou renovar.'),device_status,provision_button,device,rotate_button,revoke_button,ft.Divider(color=theme.LIGHT_GRAY),reset_info,reset_button])]
+        if reset_state.get('status') in ('pending', 'received'):
+            app.set_poll(poll_reset, 5)
     controls += [button('Voltar ao posto',app.link('operator',station_id=station_id),secondary=True)]
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
 

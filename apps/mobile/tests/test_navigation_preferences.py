@@ -3,15 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import flet as ft
 
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.navigation import parent_route
 from chargegrid_app.preferences import Preferences
-from chargegrid_app.screens import history, home, profile, stations
-from chargegrid_app.ui import theme
+from chargegrid_app.screens import history, home, stations
 from test_behavior import HandlerApp, click, descendants
 
 
@@ -34,53 +33,6 @@ class PreferencesTests(unittest.TestCase):
     def test_mobile_storage_directory_used(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ', {'FLET_APP_STORAGE_DATA':directory}):
             self.assertEqual(Preferences().path, Path(directory) / 'preferences.json')
-
-    def test_reset_restores_persisted_default(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'preferences.json'
-            preferences = Preferences(path)
-            self.assertTrue(preferences.save(False))
-            self.assertTrue(preferences.reset())
-            self.assertTrue(Preferences(path).load())
-
-
-class SettingsResetTests(unittest.IsolatedAsyncioTestCase):
-    async def test_reset_requires_confirmation_and_keeps_account_data(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app = HandlerApp()
-            app.api.request.return_value = {'name': 'Ana', 'account_type': 'consumer'}
-            app.api.session.access_token = 'token'
-            app.preferences = Preferences(Path(directory) / 'preferences.json')
-            self.assertTrue(app.preferences.save(False))
-            app.dark_mode = False
-            app.prepare_navigation = AsyncMock(return_value=True)
-            app.logout = AsyncMock()
-            app.page.show_dialog = Mock()
-            app.page.pop_dialog = Mock()
-            theme.set_dark(False)
-            try:
-                screen = await profile.build(app)
-                await click(screen, 'Restaurar configurações')(None)
-                dialog = app.page.show_dialog.call_args.args[0]
-                self.assertEqual(dialog.title.value, 'Restaurar configurações?')
-                self.assertFalse(app.preferences.load())
-                dialog.actions[0].on_click(None)
-                self.assertFalse(app.preferences.load())
-                app.go.assert_not_awaited()
-
-                await click(screen, 'Restaurar configurações')(None)
-                dialog = app.page.show_dialog.call_args.args[0]
-                await dialog.actions[1].on_click(None)
-                self.assertTrue(app.preferences.load())
-                self.assertTrue(theme.is_dark())
-                self.assertTrue(app.dark_mode)
-                self.assertEqual(app.api.session.access_token, 'token')
-                self.assertEqual(app.api.request.call_count, 1)
-                app.go.assert_awaited_once_with('profile')
-                self.assertEqual(app.notices, ['Configurações restauradas.'])
-            finally:
-                theme.set_dark(True)
-
 
 class NavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_back_cancels_platform_pop_then_navigates_to_parent(self):

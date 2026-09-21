@@ -69,6 +69,8 @@ class Ack(Input):
     command_id: UUID
     status: Literal["received", "applied", "failed"]
     error: str | None = Field(default=None, max_length=200)
+    new_device_key_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    new_claim_token_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class SyncInput(Input):

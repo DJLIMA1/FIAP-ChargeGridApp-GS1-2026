@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, point_row, station_row, update
-from ...models import ChargingSession, Connector, Reservation, Station
+from ...models import ChargingSession, Command, Connector, Device, Reservation, Station
 from ...schemas import (
     ConnectorInput,
     ConnectorPatch,
@@ -106,6 +106,17 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     if not obj:
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, obj.station_id)
+    if data.active is True and db.scalar(
+        select(Command.id)
+        .join(Device, Device.id == Command.device_id)
+        .where(
+            Device.connector_id == obj.id,
+            Command.type == "FACTORY_RESET",
+            Command.status.in_(("pending", "received", "applied")),
+        )
+        .limit(1)
+    ):
+        fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
     if db.scalar(
         select(ChargingSession.id).where(
             ChargingSession.connector_id == obj.id, ChargingSession.status.in_(SESSION_ACTIVE)

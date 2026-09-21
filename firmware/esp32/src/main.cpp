@@ -4,6 +4,8 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha256.h>
 #include <time.h>
 #include "runtime.h"
 #include "panel_ui.h"
@@ -45,7 +47,107 @@ bool panelNetworkConfigured = false;
 int lastSyncHttpStatus = 0;
 #ifdef CHARGEGRID_PANEL_ENABLED
 String panelWifiSsid, panelWifiPassword, panelDeviceKey;
+
+String factorySecret() {
+  uint8_t randomBytes[32];
+  esp_fill_random(randomBytes, sizeof(randomBytes));
+  unsigned char encoded[48]{};
+  size_t length = 0;
+  if (mbedtls_base64_encode(encoded, sizeof(encoded), &length, randomBytes, sizeof(randomBytes))) return "";
+  String result(reinterpret_cast<char*>(encoded));
+  result.replace('+', '-'); result.replace('/', '_');
+  if (result.endsWith("=")) result.remove(result.length() - 1);
+  return result;
+}
+
+String factoryHash(const String& secret) {
+  unsigned char digest[32];
+  if (mbedtls_sha256(reinterpret_cast<const unsigned char*>(secret.c_str()), secret.length(), digest, 0)) return "";
+  char hex[65];
+  for (size_t i = 0; i < sizeof(digest); ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+  hex[64] = '\0';
+  return String(hex);
+}
+
+bool finalizeStoredFactoryReset() {
+  if (!configStore.getBool("reset_done", false)) return false;
+  String newKey = configStore.getString("reset_key", "");
+  String newClaim = configStore.getString("reset_claim", "");
+  if (newKey.length() != 43 || !validPanelClaimToken(newClaim.c_str())) {
+    // A fully written new identity may survive a power loss during cleanup.
+    if (configStore.getString("device_key", "").length() == 43 &&
+        validPanelClaimToken(configStore.getString("claim_token", "").c_str()) &&
+        !configStore.getBool("owned", true) && !configStore.isKey("wifi_ssid")) {
+      configStore.putBool("reset_done", false);
+      delay(120); ESP.restart();
+    }
+    return false;
+  }
+  bool saved = configStore.putString("device_key", newKey) == 43;
+  saved = configStore.putString("claim_token", newClaim) == 43 && saved;
+  saved = configStore.putBool("owned", false) > 0 && saved;
+  saved = (!configStore.isKey("wifi_ssid") || configStore.remove("wifi_ssid")) && saved;
+  saved = (!configStore.isKey("wifi_pass") || configStore.remove("wifi_pass")) && saved;
+  if (!saved || !store.clear()) return false;
+  // The durable completion flag remains until all old credentials and journal
+  // entries are gone, so an interrupted reset is safe to retry after reboot.
+  saved = (!configStore.isKey("reset_cmd") || configStore.remove("reset_cmd"));
+  saved = (!configStore.isKey("reset_key") || configStore.remove("reset_key")) && saved;
+  saved = (!configStore.isKey("reset_claim") || configStore.remove("reset_claim")) && saved;
+  if (!saved || !configStore.putBool("reset_done", false)) return false;
+  WiFi.disconnect(true, true);
+  Serial.println("[setup] Factory reset complete; new private claim QR ready");
+  delay(120); ESP.restart();
+  return true;
+}
 #endif
+
+bool preparePanelFactoryReset(const String& commandId, String& keyHash, String& claimHash) {
+#ifdef CHARGEGRID_PANEL_ENABLED
+  if (state != "idle" || sessionId.length() || reading.connected || reading.powerW > 0 ||
+      WiFi.status() != WL_CONNECTED || !panelOwned || !hasSynced) return false;
+  String key = configStore.getString("reset_key", "");
+  String claim = configStore.getString("reset_claim", "");
+  if (configStore.getString("reset_cmd", "") != commandId || key.length() != 43 ||
+      !validPanelClaimToken(claim.c_str())) {
+    key = factorySecret(); claim = factorySecret();
+    if (key.length() != 43 || !validPanelClaimToken(claim.c_str())) return false;
+    if (configStore.putString("reset_key", key) != 43 ||
+        configStore.putString("reset_claim", claim) != 43 ||
+        configStore.putString("reset_cmd", commandId) != commandId.length()) return false;
+  }
+  keyHash = factoryHash(key); claimHash = factoryHash(claim);
+  return keyHash.length() == 64 && claimHash.length() == 64;
+#else
+  return false;
+#endif
+}
+
+String pendingPanelFactoryCommand() {
+#ifdef CHARGEGRID_PANEL_ENABLED
+  return configStore.getString("reset_cmd", "");
+#else
+  return "";
+#endif
+}
+
+String pendingPanelFactoryKey() {
+#ifdef CHARGEGRID_PANEL_ENABLED
+  return configStore.getString("reset_key", "");
+#else
+  return "";
+#endif
+}
+
+bool finishPanelFactoryReset(const String& commandId) {
+#ifdef CHARGEGRID_PANEL_ENABLED
+  if (!commandId.length() || configStore.getString("reset_cmd", "") != commandId ||
+      !configStore.putBool("reset_done", true)) return false;
+  return finalizeStoredFactoryReset();
+#else
+  return false;
+#endif
+}
 
 const char* deviceApiBaseUrl() {
 #ifdef CHARGEGRID_PANEL_ENABLED
@@ -205,7 +307,7 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.4\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.5\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);
@@ -266,6 +368,7 @@ void setup() {
   store.begin("chargegrid", false);
 #ifdef CHARGEGRID_PANEL_ENABLED
   configStore.begin("cg-config", false);
+  finalizeStoredFactoryReset();
 #endif
   version = store.getUInt("version", 0); lastCommand = store.getString("command", "");
   sessionId = store.getString("session", ""); reading.energyWh = store.getFloat("energy", 0);
@@ -294,6 +397,13 @@ void setup() {
   panelSetup();
 }
 void loop() {
+#ifdef CHARGEGRID_PANEL_ENABLED
+  static unsigned long nextResetRetry = 0;
+  if (configStore.getBool("reset_done", false) && millis() >= nextResetRetry) {
+    nextResetRetry = millis() + 5000;
+    finalizeStoredFactoryReset();
+  }
+#endif
   tick();
   panelTick();
 #ifdef CHARGEGRID_PANEL_ENABLED

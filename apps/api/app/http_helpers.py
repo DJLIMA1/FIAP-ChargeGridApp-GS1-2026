@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from .errors import fail
-from .models import ChargingSession, Connector, Device, Reservation
+from .models import ChargingSession, Command, Connector, Device, Reservation
 from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
@@ -27,6 +27,13 @@ def point_row(db, connector):
     result.update(
         online=online(device),
         physical_state=device.physical_state if device else "unknown",
+        retired=bool(db.scalar(
+            select(Command.id).join(Device, Device.id == Command.device_id).where(
+                Device.connector_id == connector.id,
+                Command.type == "FACTORY_RESET",
+                Command.status == "applied",
+            ).limit(1)
+        )),
     )
     return result
 

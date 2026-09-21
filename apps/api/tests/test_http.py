@@ -9,9 +9,9 @@ from sqlalchemy import event
 from app.database import db_session
 from app.http_helpers import point_row
 from app.main import app
-from app.models import ChargingSession, Connector, Device, Profile, Station, now
+from app.models import ChargingSession, Command, Connector, Device, DeviceClaim, Profile, Station, now
 from app.modules.users.routes import monthly_bounds
-from app.security import current_user
+from app.security import current_user, digest
 
 
 def client_for(factory, user_id):
@@ -361,6 +361,7 @@ def test_owner_can_rediscover_device_without_secrets_after_provisioning(factory,
             "physical_state",
             "connected",
             "reconciled",
+            "retired",
         }
         assert "test-key" not in first.text and "key_hash" not in first.text
         assert first.json()["online"] is True
@@ -406,5 +407,83 @@ def test_device_discovery_missing_or_revoked_is_not_found(factory, seed, revoked
         response = client.get(f"/v1/connectors/{seed['point']}/device")
         assert response.status_code == 404
         assert "device_id" not in response.text and "key_hash" not in response.text
+    finally:
+        clear_overrides()
+
+
+def test_factory_reset_requires_owner_idle_recent_firmware_and_confirmed_ack(factory, seed):
+    with factory.begin() as db:
+        db.get(Device, seed["device"]).firmware_version = "0.3.5"
+    client, selected = client_for(factory, seed["a"])
+    endpoint = f"/v1/devices/{seed['device']}/factory-reset"
+    try:
+        assert client.post(endpoint).status_code == 403
+        selected["id"] = seed["owner"]
+        started = client.post(endpoint)
+        assert started.status_code == 202
+        assert started.json()["status"] == "pending"
+        command_id = started.json()["command_id"]
+        assert client.post(endpoint).json()["command_id"] == command_id
+        assert client.get(endpoint).json()["status"] == "pending"
+        assert client.patch(f"/v1/connectors/{seed['point']}", json={"active": True}).status_code == 409
+        assert client.post(f"/v1/connectors/{seed['point']}/device").status_code == 409
+        with factory() as db:
+            assert not db.get(Connector, seed["point"]).active
+            assert db.get(Command, UUID(command_id)).parameters == {}
+
+        delivered = client.post(
+            "/v1/devices/sync", headers={"Authorization": "Device test-key"},
+            json=sync_payload(1, firmware_version="0.3.5"),
+        )
+        assert delivered.status_code == 200
+        assert [item["type"] for item in delivered.json()["commands"]] == ["FACTORY_RESET"]
+        new_key, new_claim = "new-private-device-key", "new-private-claim-token"
+        confirmed = client.post(
+            "/v1/devices/sync", headers={"Authorization": "Device test-key"},
+            json=sync_payload(2, firmware_version="0.3.5", acks=[{
+                "command_id": command_id, "status": "applied", "error": None,
+                "new_device_key_hash": digest(new_key), "new_claim_token_hash": digest(new_claim),
+            }]),
+        )
+        assert confirmed.status_code == 200
+        assert confirmed.json()["factory_reset_confirmed"] == command_id
+        assert new_key not in confirmed.text and new_claim not in confirmed.text
+        assert client.get(endpoint).json()["status"] == "applied"
+        assert client.post(endpoint).status_code == 409
+        retired = client.get(f"/v1/connectors/{seed['point']}/device")
+        assert retired.status_code == 200 and retired.json()["retired"] is True
+        assert client.post(f"/v1/connectors/{seed['point']}/device").status_code == 409
+        with factory() as db:
+            old = db.get(Device, seed["device"])
+            assert old.revoked
+            assert db.get(Station, seed["station"]).owner_id == seed["owner"]
+            assert not db.get(Connector, seed["point"]).active
+            fresh = db.query(Device).filter_by(key_hash=digest(new_key)).one()
+            claim = db.get(DeviceClaim, fresh.connector_id)
+            new_point = db.get(Connector, fresh.connector_id)
+            assert claim.token_hash == digest(new_claim) and claim.claimed_by is None
+            assert db.get(Station, new_point.station_id).owner_id is None
+            assert not new_point.active
+    finally:
+        clear_overrides()
+
+
+def test_factory_reset_rejects_old_firmware_and_active_reservation(factory, seed):
+    client, _ = client_for(factory, seed["owner"])
+    endpoint = f"/v1/devices/{seed['device']}/factory-reset"
+    try:
+        assert client.post(endpoint).status_code == 409
+        with factory.begin() as db:
+            db.get(Device, seed["device"]).firmware_version = "0.3.5"
+        reservation = client_for(factory, seed["a"])
+        selected = reservation[1]
+        selected["id"] = seed["a"]
+        created = reservation[0].post(
+            "/v1/reservations", headers={"Idempotency-Key": "factory-reset-busy"},
+            json={"connector_id": str(seed["point"])},
+        )
+        assert created.status_code == 202
+        selected["id"] = seed["owner"]
+        assert reservation[0].post(endpoint).status_code == 409
     finally:
         clear_overrides()
