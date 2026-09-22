@@ -1,6 +1,6 @@
 # Projeto Simulado:
 
-Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito APP_Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk.
+Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk.
 
 
 # ChargeGrid
