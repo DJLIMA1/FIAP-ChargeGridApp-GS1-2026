@@ -1,2 +1,0 @@
-# Atalho para executar o aplicativo Flet a partir da raiz do repositório.
--r apps/mobile/requirements.txt
