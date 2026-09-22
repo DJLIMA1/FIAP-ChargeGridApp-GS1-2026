@@ -42,30 +42,32 @@ flet | pillow | asyncio | json | os | hashlib | math | urllib | re | ssl | time
 
 ## Instruções e avisos de uso:
 
-1 - Ao iniciar o aplicativo pela primeira vez será criado um JSON de histórico, faça o cadastro e ficará salvo podendo acessar o aplicativo..
+1 - Ao iniciar o aplicativo pela primeira vez será criado um JSON de histórico, faça o cadastro e ficará salvo podendo acessar o aplicativo.
+
 2 - A tela de login mostra opções de email e senha; caso não tenha login, crie sua conta na opção inferior. Retorne e selecione visualmente em qual formato de negócio deseja conectar hoje (Consumidor ou Vendedor) clicando no botão correspondente antes de logar.
+
 3 - No painel do **Consumidor**, o app se ramifica em abas (Início, Recarga, Histórico, Chat, Conta). A aba Início exibe o mapa de carregadores baseado na sua posição. Caso a localização não resolva instantaneamente, dirija-se à aba "Conta" e adicione seu CEP ou rua no sistema para reancorar o radar ao seu endereço real.
+
 4 - O processo de recarga opera em camadas lógicas: ao entrar na aba, ocorre a busca simulada de Bluetooth; a partir daí selecione o carregador, escolha o modo de tempo ou dinheiro gasto e finalize na interface simulada do Pix. Feito o pagamento, a progressão inicia e a estação ficará indisponível a outros usuários até ser liberada.
+
 5 - O histórico do Consumidor lê transações dinamicamente formatadas em formato de pilha (o uso mais recente no topo).
+
 6 - O chat apresenta um chatbot feito para o aplicativo focado em responder perguntas referentes aos gastos e usos do usuário.
+
 7 - A aba de conta permite ao usuário trocar aspectos como senhas ou informações pessoais e também trocar entre modo claro e escuro do aplicativo, ficando definido mesmo ao deslogar.
+
 8 - No painel do **Vendedor**, o app se ramifica em abas (Início, Estações, Histórico, Descontos, Conta). A aba início mostra a receita gerada pelos carregadore e uma visão rápida para gerenciar cada estação.
+
 9 - a aba de estações permite de maneira rápida adicionar, remover ou configurar cada estação, por meio de botões nos cards. Cada estação pode ser condigurada em: nome, CEP, tempo de máximo de uso por sessão, potência, preço por kWh, status.
+
 10 - O histórico do Vendedor lê transações dinamicamente formatadas em formato de pilha (o uso mais recente no topo), podendo ser lidas em geral ou para cada estação de forma separada.
+
 11 - A aba de descontos permite criar cupons dinâmicos à escolha do vendedor, necessitando, após clicar no botão, de: Código, descrição, qual estação será efetivado, data de validade e status.
+
 12 - A aba de conta permite ao usuário trocar aspectos como senhas ou informações pessoais e dados bancários e também trocar entre modo claro e escuro do aplicativo, ficando definido mesmo ao deslogar.
+
 13 - O aplicativo dispõe de salvamento persistente por conta; se fechar a janela com o JSON presente na pasta raiz, seus pontos de progresso, relatórios, histórico financeiro e estações ativas continuarão integralmente salvos. 
 
-## Como executar:
-
-```bash
-git clone [https://github.com/MatheusSilva-Inf/ChargeGridAPP_FFIVE](https://github.com/MatheusSilva-Inf/ChargeGridAPP_FFIVE)
-cd ChargeGridAPP_FFIVE
-python -m venv .venv
-# Para Windows:
-.venv\Scripts\activate
-# Para Linux / macOS:
-# source .venv/bin/activate
 
 pip install flet pillow
 python main.py
