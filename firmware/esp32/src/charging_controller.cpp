@@ -88,6 +88,11 @@ bool apply(JsonDocument& response) {
   bool changed = false;
   uint32_t current = response["control_version"] | 0;
   time_t serverTime = parseTime(response["server_time"]);
+  time_t presenceExpires = parseTime(connector["presence_expires_at"]);
+  stationPresenceCode = connector["presence_code"].as<String>();
+  presenceCodeReceivedAt = millis();
+  presenceCodeTtlMs = stationPresenceCode.length() && presenceExpires > serverTime
+      ? static_cast<unsigned long>(presenceExpires - serverTime) * 1000UL : 0UL;
   for (JsonObject command : response["commands"].as<JsonArray>()) {
     String id = command["id"].as<String>();
     String type = command["type"].as<String>();

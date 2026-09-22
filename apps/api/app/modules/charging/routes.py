@@ -17,6 +17,7 @@ from ...service import (
     operator,
     owned,
 )
+from ..auth.routes import limit
 from .service import start, stop
 
 router = APIRouter()
@@ -29,6 +30,7 @@ def create_session(
     user=Depends(current_user),
     db=Depends(db_session),
 ):
+    limit(db, f"presence:{user.id}", maximum=10, seconds=300)
     return session_row(db, start(db, user, data, idempotency_key))
 
 

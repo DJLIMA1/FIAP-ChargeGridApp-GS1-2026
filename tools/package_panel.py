@@ -7,20 +7,21 @@ from pathlib import Path
 def main():
     root = Path(__file__).resolve().parents[1]
     build = root / "firmware/esp32/.pio/build/waveshare_panel_ui"
-    output = root / "builds/chargegrid-waveshare-7-0.3.5.zip"
+    output = root / "builds/chargegrid-waveshare-7-0.3.6.zip"
     files = {name: (build / name).read_bytes() for name in
              ("firmware.bin", "bootloader.bin", "partitions.bin")}
     for name in ("panel-idle.png", "panel-charging.png", "panel-maintenance.png"):
         path = root / "tmp/panel-validation" / name
         if path.exists():
             files[name] = path.read_bytes()
-    files["README.md"] = b"""# ChargeGrid panel 0.3.5
+    files["README.md"] = b"""# ChargeGrid panel 0.3.6
 
 Only for Waveshare ESP32-S3-Touch-LCD-7 (not 7B), 800x480,
 ESP32-S3, 16 MB flash, 8 MB OPI PSRAM, DIO/40 MHz.
-Version 0.3.5 adds seller-confirmed factory reset. After the API confirms a
-reset, the panel erases Wi-Fi and old ownership, reboots, and shows a fresh
-private claim QR. The previous point and charging history remain on the server.
+Version 0.3.6 displays the rotating #F station code with a countdown and
+progress bar. The server validates this code when a user starts charging.
+The device key stays private. Seller-confirmed factory reset preserves Wi-Fi,
+replaces the device identity and shows a fresh private ownership QR.
 
 Update an already configured panel (preserves NVS, Wi-Fi, identity and session journal):
 

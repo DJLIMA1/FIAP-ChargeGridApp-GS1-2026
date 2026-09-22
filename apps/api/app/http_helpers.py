@@ -40,6 +40,7 @@ def point_row(db, connector):
 
 def station_row(db, station):
     result = row(station)
+    result.pop("presence_secret", None)
     result["latitude"] = float(station.latitude)
     result["longitude"] = float(station.longitude)
     result["connectors"] = [

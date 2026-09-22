@@ -187,11 +187,29 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
             app.api.request.return_value = None
             screen = await charging.build(app, public_code='CG-ONE')
             fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
+            self.assertEqual(fields[0].prefix, '#F')
+            fields[0].value = "12345"
             fields[1].value, fields[2].value = duration, cost
             app.api.request.reset_mock()
             with self.assertRaises(ApiError):
                 await click(screen, 'Solicitar início')(None)
             app.api.request.assert_not_called()
+
+    async def test_charging_uses_only_five_digits_from_visible_code(self):
+        app = HandlerApp()
+        app.api.request.side_effect = [None, {'id': 'started'}]
+        screen = await charging.build(app)
+        fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
+        self.assertEqual([field.label for field in fields], [
+            'Código temporário do posto', 'Duração máxima (min)',
+            'Limite de custo estimado (opcional)', 'Cupom (opcional)',
+        ])
+        self.assertEqual(fields[0].prefix, '#F')
+        fields[0].value = '12345'
+        await click(screen, 'Solicitar início')(None)
+        body = app.api.request.call_args.args[2]
+        self.assertEqual(body['presence_code'], '#F12345')
+        self.assertNotIn('public_code', body)
 
     async def test_partial_coordinate_search_is_rejected_without_navigation(self):
         app = HandlerApp()

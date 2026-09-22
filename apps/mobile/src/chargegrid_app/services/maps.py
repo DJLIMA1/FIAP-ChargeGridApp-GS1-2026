@@ -7,8 +7,16 @@ import flet as ft
 
 from ..ui import theme
 
-_MARKER_COLOR = {"🚗": (30,144,255), "⚡": (46,125,50), "⛔": (218,41,46)}
 _TILE_SIZE = 256
+_MAP_HEIGHT = 210
+
+
+def _marker_color(glyph, dark):
+    if glyph == "🚗":
+        return (215, 43, 50)
+    if glyph == "⚡":
+        return (52, 199, 89) if dark else (46, 125, 50)
+    return (88, 98, 111)
 
 def _fetch_bytes(url, headers=None, timeout=3):
     request = urllib.request.Request(url, headers=headers or {"User-Agent":"ChargeGridApp/1.0"})
@@ -34,7 +42,7 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb / 2) ** 2
     return 2 * r * math.asin(math.sqrt(min(1, max(0, a))))
 
-def _schematic_map(center_lat, center_lng, markers_data, height=200, zoom=14, center_glyph="🚗"):
+def _schematic_map(center_lat, center_lng, markers_data, height=_MAP_HEIGHT, center_glyph="🚗"):
     """Mini-mapa esquemático (tipo radar) usado como reserva quando o mapa real
     não consegue carregar (ex: sem internet). Não depende de nenhum controle
     nativo de mapa nem de tiles externos — só Container/Stack/Text — então
@@ -56,16 +64,18 @@ def _schematic_map(center_lat, center_lng, markers_data, height=200, zoom=14, ce
             x_px, y_px = x_px * factor, y_px * factor
         return canvas_w / 2 + x_px, canvas_h / 2 + y_px
 
-    def pin(x, y, glyph, size=28, bg=None, border_color=None):
+    def pin(x, y, glyph, size=28):
+        color = theme.RED if glyph == "🚗" else theme.GREEN if glyph == "⚡" else theme.SLATE
+        icon = ft.Icons.MY_LOCATION if glyph == "🚗" else ft.Icons.BOLT if glyph == "⚡" else ft.Icons.REMOVE
         return ft.Container(
-            content=ft.Text(glyph, size=size * 0.55, text_align=ft.TextAlign.CENTER),
+            content=ft.Icon(icon, size=size * 0.58, color="#FFFFFF"),
             width=size, height=size, left=x - size / 2, top=y - size / 2,
-            bgcolor=bg or theme.WHITE, border_radius=size / 2,
-            border=ft.Border.all(width=2, color=border_color or theme.LIGHT_GRAY),
+            bgcolor=color, border_radius=size / 2,
+            border=ft.Border.all(width=2, color="#FFFFFF"),
             alignment=ft.Alignment(0, 0),
         )
 
-    ring_color = theme.LIGHT_GRAY
+    ring_color = "#41494D" if theme.is_dark() else "#D7DADD"
     layers = []
     for fraction in (1.0, 2 / 3, 1 / 3):
         d = max_radius_px * 2 * fraction
@@ -82,16 +92,15 @@ def _schematic_map(center_lat, center_lng, markers_data, height=200, zoom=14, ce
         layers.append(pin(x, y, glyph, size=26))
 
     if center_glyph:
-        # marcador extra sempre por cima, exatamente no centro (ex: "você está aqui")
+        # A referência da busca fica por cima dos postos no centro.
         ux, uy = project(center_lat, center_lng)
-        layers.append(pin(ux, uy, center_glyph, size=32, bg=theme.RED, border_color=theme.RED))
+        layers.append(pin(ux, uy, center_glyph, size=32))
 
     return ft.Container(
         content=ft.Stack(layers, width=canvas_w, height=canvas_h),
         height=canvas_h,
-        bgcolor=theme.BG_COLOR,
-        border=ft.Border.all(width=1, color=theme.LIGHT_GRAY),
-        border_radius=10,
+        bgcolor="#202629" if theme.is_dark() else "#E9ECEE",
+        border_radius=8,
         alignment=ft.Alignment(0, 0),
         padding=0,
     )
@@ -105,7 +114,34 @@ def _lonlat_to_px(lat, lng, zoom):
     y = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n * _TILE_SIZE
     return x, y
 
-def build_map_png(center_lat, center_lng, markers, width=320, height=200, zoom=15):
+def _style_tiles(image, dark):
+    from PIL import Image, ImageEnhance, ImageOps
+
+    if dark:
+        # Keep the streets legible while matching the app's charcoal surfaces.
+        gray = ImageOps.invert(ImageOps.grayscale(image))
+        gray = ImageEnhance.Contrast(gray).enhance(0.8)
+        return ImageOps.colorize(gray, "#1D2326", "#A3AEB2").convert("RGB")
+    muted = ImageEnhance.Color(image).enhance(0.48)
+    return Image.blend(muted, Image.new("RGB", image.size, "#F2F2F3"), 0.18)
+
+
+def _draw_pin(draw, x, y, glyph, dark):
+    color = _marker_color(glyph, dark)
+    radius = 13 if glyph == "🚗" else 12
+    draw.ellipse((x - radius + 1, y - radius + 2, x + radius + 1, y + radius + 2), fill=(30, 35, 39))
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color, outline="white", width=3)
+    if glyph == "⚡":
+        draw.polygon([(x + 1, y - 8), (x - 5, y + 1), (x - 1, y + 1),
+                      (x - 3, y + 8), (x + 6, y - 2), (x + 1, y - 2)], fill="white")
+    elif glyph == "🚗":
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill="white")
+    else:
+        draw.rounded_rectangle((x - 5, y - 2, x + 5, y + 2), radius=2, fill="white")
+
+
+def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT, zoom=15,
+                  center_glyph="🚗", dark=False):
     """Baixa os tiles do OpenStreetMap ao redor de (center_lat, center_lng),
     monta um recorte de width x height já centralizado, desenha os
     marcadores por cima e devolve os bytes de um PNG pronto.
@@ -150,13 +186,15 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=200, zoom=1
     offset_x, offset_y = left - tile_x_min * _TILE_SIZE, top - tile_y_min * _TILE_SIZE
     cropped = canvas.crop((int(offset_x), int(offset_y), int(offset_x) + width, int(offset_y) + height))
 
+    cropped = _style_tiles(cropped, dark)
     draw = ImageDraw.Draw(cropped)
     for lat, lng, glyph in markers:
         px, py = _lonlat_to_px(lat, lng, zoom)
         x, y = px - left, py - top
-        color = _MARKER_COLOR.get(glyph, (218, 41, 46))
-        radius = 10 if glyph == "🚗" else 8
-        draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=color, outline=(255, 255, 255), width=2)
+        if -14 <= x <= width + 14 and -14 <= y <= height + 14:
+            _draw_pin(draw, x, y, glyph, dark)
+    if center_glyph:
+        _draw_pin(draw, width / 2, height / 2, center_glyph, dark)
 
     buf = io.BytesIO()
     cropped.save(buf, format="PNG")
@@ -165,15 +203,41 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=200, zoom=1
 async def map_widget(lat, lng, markers, center_glyph="🚗"):
     import asyncio
     import base64
+    dark = theme.is_dark()
     try:
-        data = await asyncio.wait_for(asyncio.to_thread(build_map_png, lat, lng, markers), timeout=7)
-        return ft.Column([
-            ft.Container(ft.Image(src="data:image/png;base64," + base64.b64encode(data).decode(), height=200, fit="cover"),
-                         border_radius=12, clip_behavior=ft.ClipBehavior.ANTI_ALIAS),
-            ft.Text("© OpenStreetMap contributors", size=10, color=theme.GRAY_TEXT),
-        ], horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        data = await asyncio.wait_for(
+            asyncio.to_thread(build_map_png, lat, lng, markers,
+                              center_glyph=center_glyph, dark=dark), timeout=7)
+        preview = ft.Container(
+            ft.Image(src="data:image/png;base64," + base64.b64encode(data).decode(),
+                     height=_MAP_HEIGHT, fit=ft.BoxFit.COVER),
+            border_radius=8, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
+        attribution = "© OpenStreetMap contributors"
     except (ImportError, OSError, RuntimeError, ValueError, TimeoutError):
-        return ft.Column([
-            _schematic_map(lat,lng,markers,center_glyph=center_glyph),
-            ft.Text("Mapa esquemático: mapa online indisponível",size=10,color=theme.GRAY_TEXT),
-        ], horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        preview = _schematic_map(lat, lng, markers, center_glyph=center_glyph)
+        attribution = "Visão aproximada · mapa online indisponível"
+
+    def legend_item(label, color, icon):
+        return ft.Row([
+            ft.Icon(icon, size=15, color=color),
+            ft.Text(label, size=11, color=theme.GRAY_TEXT),
+        ], spacing=4, tight=True)
+
+    legend = [legend_item("Livre", theme.GREEN, ft.Icons.BOLT),
+              legend_item("Indisponível", theme.SLATE, ft.Icons.REMOVE)]
+    if center_glyph:
+        legend.insert(0, legend_item("Busca", theme.RED, ft.Icons.MY_LOCATION))
+    return ft.Container(
+        ft.Column([
+            ft.Row([
+                ft.Icon(ft.Icons.MAP_OUTLINED, color=theme.RED, size=20),
+                ft.Text("Mapa dos postos", size=17, weight=ft.FontWeight.BOLD,
+                        font_family="BarlowCondensed", color=theme.TEXT_COLOR),
+            ], spacing=8),
+            preview,
+            ft.Row(legend, wrap=True, spacing=12, run_spacing=4),
+            ft.Text(attribution, size=10, color=theme.GRAY_TEXT),
+        ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        bgcolor=theme.WHITE, border_radius=12, padding=12,
+        border=ft.Border.all(1, theme.LIGHT_GRAY),
+    )

@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 
 from app.database import db_session
 from app.main import app
-from app.models import Profile
+from app.models import Profile, Station
+from app.presence_code import current_code
 from app.security import current_user
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -54,6 +55,7 @@ def test_real_simulator_contract_reserve_start_stop(factory, seed, tmp_path):
             headers={"Idempotency-Key": "sim-start"},
             json={
                 "public_code": "CG-01",
+                "presence_code": current_code(_station_for_code(factory, seed))[0],
                 "reservation_id": reservation.json()["id"],
                 "max_duration_minutes": 20,
             },
@@ -77,3 +79,8 @@ def test_real_simulator_contract_reserve_start_stop(factory, seed, tmp_path):
         assert device.state == "idle"
     finally:
         app.dependency_overrides.clear()
+
+
+def _station_for_code(factory, seed):
+    with factory() as db:
+        return db.get(Station, seed["station"])

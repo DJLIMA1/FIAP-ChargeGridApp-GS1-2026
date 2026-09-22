@@ -110,7 +110,7 @@ async def build(app):
     controls.append(listing)
     controls += [
         button('Encontrar um ponto',app.link('stations')),
-        button('Tenho o código do ponto',app.link('charging'),secondary=True),
+        button('Tenho o código #F do posto',app.link('charging'),secondary=True),
         summary_card,
     ]
     async def update():

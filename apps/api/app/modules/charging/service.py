@@ -1,7 +1,8 @@
 from sqlalchemy import select
 
 from ...errors import fail
-from ...models import ChargingSession, Connector, Coupon, Station, now
+from ...models import ChargingSession, Connector, Coupon, Reservation, Station, now
+from ...presence_code import valid_code
 from ...service import (
     SESSION_ACTIVE,
     active_res,
@@ -16,14 +17,39 @@ from ...service import (
 )
 
 
+def _point_for_code(db, user, data):
+    if data.public_code:
+        point = db.scalar(select(Connector).where(Connector.public_code == data.public_code))
+        if not point:
+            fail("not_found", "Ponto não encontrado", 404)
+        return point
+    if data.reservation_id:
+        reservation = db.get(Reservation, data.reservation_id)
+        if not reservation or reservation.user_id != user.id:
+            fail("invalid_reservation", "Reserva inválida")
+        return db.get(Connector, reservation.connector_id)
+    points = db.scalars(
+        select(Connector).join(Station).where(Connector.active.is_(True), Station.active.is_(True))
+    ).all()
+    matching = [point for point in points if valid_code(db.get(Station, point.station_id), data.presence_code)]
+    if not matching:
+        fail("invalid_presence_code", "Código do posto inválido ou expirado", 422)
+    if len(matching) == 1:
+        return matching[0]
+    available = [point for point in matching if free(db, point)]
+    if len(available) == 1:
+        return available[0]
+    fail("ambiguous_presence_code", "Há mais de um ponto com este código. Escolha o ponto na lista antes de iniciar.", 422)
+
+
 def start(db, user, data, key):
-    point = db.scalar(select(Connector).where(Connector.public_code == data.public_code))
-    if not point:
-        fail("not_found", "Código não encontrado", 404)
+    point = _point_for_code(db, user, data)
     connector = lock_point(db, user, point.id)
     old, body_hash = idempotent(db, user, "start", key, data.model_dump(), ChargingSession)
     if old:
         return old
+    if not valid_code(db.get(Station, connector.station_id), data.presence_code):
+        fail("invalid_presence_code", "Código do posto inválido ou expirado", 422)
     ensure_user_free(db, user, data.reservation_id)
     device = device_for(db, connector)
     reservation = active_res(db, connector.id)

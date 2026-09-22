@@ -16,6 +16,7 @@ from ...models import (
     Telemetry,
     now,
 )
+from ...presence_code import current_code
 from ...service import active_res, active_session, issue, reconcile_expiry, row
 
 
@@ -332,6 +333,8 @@ def finish(session, data, fallback):
 
 def response(db, connector, device):
     station = db.get(Station, connector.station_id)
+    response_time = now()
+    presence_code, presence_expires_at = current_code(station, response_time)
     reservation = active_res(db, connector.id)
     session = active_session(db, connector.id)
     commands = db.scalars(
@@ -344,7 +347,7 @@ def response(db, connector, device):
         .order_by(Command.version)
     ).all()
     return {
-        "server_time": now().isoformat(),
+        "server_time": response_time.isoformat(),
         "sync_interval_seconds": 5 if session else 10,
         "control_version": connector.control_version,
         "connector": {
@@ -353,6 +356,8 @@ def response(db, connector, device):
             "max_duration_minutes": connector.max_duration_minutes,
             "owned": station.owner_id is not None,
             "active": bool(connector.active and station.active),
+            "presence_code": presence_code if connector.active and station.active and station.owner_id else None,
+            "presence_expires_at": presence_expires_at.isoformat(),
         },
         "authorized": {
             "reservation": (

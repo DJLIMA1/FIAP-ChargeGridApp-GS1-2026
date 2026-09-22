@@ -39,7 +39,7 @@ void syncDevice() {
   persist(); // Não regredir a energia já enviada após reboot.
   JsonDocument body;
   body["boot_id"] = bootId; body["sequence"] = ++sequence;
-  body["firmware_version"] = "0.3.5";
+  body["firmware_version"] = "0.3.6";
   if (sessionId.length()) body["session_id"] = sessionId; else body["session_id"] = nullptr;
   body["physical_state"] = state; body["connected"] = reading.connected;
   if (sessionId.length()) body["soc_percent"] = reading.socPercent; else body["soc_percent"] = nullptr;

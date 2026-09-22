@@ -56,13 +56,16 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         collapsed_icon_color=theme.GRAY_TEXT,
         icon_color=theme.RED,
     )
-    controls = [title('Encontrar postos','Veja a disponibilidade antes de sair.'),card(ft.Column([address,reach,button('Buscar',app.action(search)),coordinates],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)),button('Tenho o código do ponto',app.link('charging'),secondary=True)]
+    controls = [title('Encontrar postos','Veja a disponibilidade antes de sair.'),card(ft.Column([address,reach,button('Buscar',app.action(search)),coordinates],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)),button('Tenho o código #F do posto',app.link('charging'),secondary=True)]
     if stations:
         map_lat, map_lng = (lat,lng) if lat is not None else (float(stations[0]['latitude']),float(stations[0]['longitude']))
         markers = [(float(s['latitude']),float(s['longitude']),'⚡' if any(c.get('available') for c in s['connectors']) else '⛔') for s in stations]
-        map_preview = await map_widget(map_lat,map_lng,markers)
+        map_preview = await map_widget(map_lat,map_lng,markers,
+                                       center_glyph='🚗' if lat is not None and lng is not None else None)
     else:
         map_preview = None
+    if map_preview is not None:
+        controls.append(map_preview)
     listing = ft.Column(spacing=15)
     controls.append(listing)
     def station_cards(stations):
@@ -82,7 +85,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                     await app.go('reservations')
                 status, status_color = point_status(connector)
                 details += [ft.Divider(color=theme.LIGHT_GRAY),
-                            ft.Row([ft.Text(f"{connector['public_code']} · {connector['connector_type']}",color=theme.TEXT_COLOR,expand=True),
+                            ft.Row([ft.Text(connector['connector_type'],color=theme.TEXT_COLOR,expand=True),
                                     badge(status,bg=status_color,width=155)],spacing=8),
                             ft.Text(f"{connector['power_kw']} kW · {money(connector['price_per_kwh'])}/kWh · até {connector['max_duration_minutes']} min",size=13,color=theme.GRAY_TEXT)]
                 if connector.get('availability_status') == 'reconciling' and connector.get('reserved_until'):
@@ -96,8 +99,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     listing.controls = station_cards(stations)
     empty_state = ft.Text('Nenhum posto encontrado para esta busca.',visible=not stations)
     controls.append(empty_state)
-    if map_preview is not None:
-        controls.append(ft.ExpansionTile(title=ft.Text('Ver no mapa',color=theme.TEXT_COLOR),controls=[map_preview],expanded=False))
     current_stations = stations
     async def update():
         nonlocal current_stations

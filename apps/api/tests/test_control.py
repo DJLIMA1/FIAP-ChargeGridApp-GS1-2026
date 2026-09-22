@@ -7,10 +7,11 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.models import ChargingSession, Command, Connector, Device, Profile, Reservation, now
+from app.models import ChargingSession, Command, Connector, Device, Profile, Reservation, Station, now
 from app.modules.charging.service import start
 from app.modules.devices.service import sync
 from app.modules.reservations.service import reserve
+from app.presence_code import current_code
 from app.schemas import ReserveInput, StartInput, SyncInput
 from app.service import free
 
@@ -66,7 +67,7 @@ def test_reserve_start_race(factory, seed):
                 if kind == "reserve":
                     reserve(db, user, ReserveInput(connector_id=seed["point"]), "r")
                 else:
-                    start(db, user, StartInput(public_code="CG-01"), "s")
+                    start(db, user, StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "s")
             return True
         except HTTPException:
             return False
@@ -85,7 +86,7 @@ def test_idempotency_and_mismatch(factory, seed):
         user = db.get(Profile, seed["a"])
         # Different body with an existing connector is checked before availability.
         with pytest.raises(HTTPException):
-            start(db, user, StartInput(public_code="CG-01"), "different")
+            start(db, user, StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "different")
 
 
 def test_late_ack_does_not_confirm_and_release_reissued(factory, seed):
@@ -118,7 +119,7 @@ def test_late_ack_does_not_confirm_and_release_reissued(factory, seed):
 def test_start_stop_energy_duplicate_reboot(factory, seed):
     do_sync(factory, seed, measurement(1))
     with factory.begin() as db:
-        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01"), "s")
+        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "s")
         sid = session.id
         start_id = db.scalar(select(Command)).id
     charging = measurement(
@@ -179,7 +180,7 @@ def test_device_cannot_ack_other_command(factory, seed):
 
 def test_start_timeout_stop_ack_without_session(factory, seed):
     with factory.begin() as db:
-        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01"), "s")
+        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "s")
         db.scalar(select(Command)).expires_at = now() - timedelta(seconds=1)
         sid = session.id
     result = do_sync(factory, seed, measurement(1))
@@ -203,7 +204,7 @@ def test_offline_blocks_reservation(factory, seed):
 def test_finished_session_is_immutable_but_identical_replay_is_allowed(factory, seed):
     do_sync(factory, seed, measurement(1))
     with factory.begin() as db:
-        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01"), "s")
+        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "s")
         sid = session.id
         command_id = db.scalar(select(Command)).id
     do_sync(
@@ -243,7 +244,7 @@ def test_finished_session_is_immutable_but_identical_replay_is_allowed(factory, 
 def test_reboot_stop_without_repeated_end_reason_is_interrupted(factory, seed):
     do_sync(factory, seed, measurement(1))
     with factory.begin() as db:
-        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01"), "s")
+        session = start(db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "s")
         sid = session.id
         command_id = db.scalar(select(Command)).id
     do_sync(
@@ -309,6 +310,6 @@ def test_start_refreshes_control_version_loaded_before_connector_lock(factory, s
         assert stale_connector.control_version == 0
         with factory.begin() as other_db:
             other_db.get(Connector, seed["point"]).control_version = 2
-        session = start(request_db, request_db.get(Profile, seed["a"]), StartInput(public_code="CG-01"), "s")
+        session = start(request_db, request_db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(request_db.get(Station, seed["station"]))[0]), "s")
         command = request_db.scalar(select(Command).where(Command.session_id == session.id))
         assert command.version == 3

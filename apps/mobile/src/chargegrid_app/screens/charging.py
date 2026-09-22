@@ -56,22 +56,29 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             if session['status'] in ACTIVE else 'Sessão encerrada. Os dados também estão disponíveis no histórico.',
             size=12, color=theme.GRAY_TEXT)]
         return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
-    code, duration, cost, coupon = field('Código público do ponto',public_code),field('Duração máxima (min)', str(max_duration)),field('Limite de custo estimado (opcional)'),field('Cupom (opcional)')
+    presence, duration, cost, coupon = field('Código temporário do posto'),field('Duração máxima (min)', str(max_duration)),field('Limite de custo estimado (opcional)'),field('Cupom (opcional)')
+    presence.prefix = '#F'
+    presence.keyboard_type = ft.KeyboardType.NUMBER
+    presence.input_filter = ft.InputFilter(regex_string=r'[0-9]')
+    presence.max_length = 5
     duration.keyboard_type = ft.KeyboardType.NUMBER
     cost.keyboard_type = ft.KeyboardType.NUMBER
     key = app.api.new_key()
     last_body = None
     async def start():
         nonlocal key,last_body
-        if not code.value.strip():
-            raise ApiError('Informe o código do ponto de recarga.')
+        digits = (presence.value or '').strip()
+        if len(digits) != 5 or not digits.isascii() or not digits.isdigit():
+            raise ApiError('Digite os cinco números que aparecem após #F na tela do posto.')
         try:
             minutes = int(duration.value)
         except ValueError as exc:
             raise ApiError('Informe a duração em minutos inteiros.') from exc
         if not 1 <= minutes <= 1440:
             raise ApiError('Escolha uma duração de 1 a 1440 minutos, dentro do limite do ponto.')
-        body = {'public_code':code.value.strip(),'max_duration_minutes':int(duration.value)}
+        body = {'presence_code':'#F' + digits,'max_duration_minutes':minutes}
+        if public_code:
+            body['public_code'] = public_code
         if reservation_id:
             body['reservation_id'] = reservation_id
         if cost.value.strip():
@@ -89,4 +96,4 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         last_body = body.copy()
         result = await app.api.request('POST','charging-sessions',body,key=key)
         await app.go('charging',session_id=result['id'])
-    return ft.Column([title('Iniciar recarga','Leia o código impresso no ponto.'),card(ft.Column([code,duration,cost,coupon],spacing=12)),ft.Text('Conecte a bancada antes de iniciar. O equipamento confirma a operação. Confira o código no próprio ponto.'),button('Solicitar início',app.action(start)),ft.Text('Valores demonstrativos. Nenhuma cobrança real.',size=12)],spacing=15,scroll=ft.ScrollMode.AUTO)
+    return ft.Column([title('Iniciar recarga','Digite os cinco números exibidos após #F na tela do posto.'),card(ft.Column([presence,duration,cost,coupon],spacing=12)),ft.Text('O código #F muda a cada 5 minutos. Se expirar, use o novo código exibido na tela.'),button('Solicitar início',app.action(start)),ft.Text('Valores demonstrativos. Nenhuma cobrança real.',size=12)],spacing=15,scroll=ft.ScrollMode.AUTO)

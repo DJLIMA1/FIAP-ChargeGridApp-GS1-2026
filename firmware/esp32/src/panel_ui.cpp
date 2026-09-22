@@ -37,14 +37,15 @@ lv_obj_t *statusLabel, *codeLabel, *connectionLabel, *eyebrowLabel;
 lv_obj_t *energyLabel, *costLabel, *timeLabel, *sessionTimeLabel;
 lv_obj_t *instructionLabel, *stopButton, *heroNoteLabel;
 lv_obj_t *codeCaptionLabel, *codeHintLabel;
+lv_obj_t *codeTimerLabel, *codeProgressBar;
 lv_obj_t *stepsCard, *reservationCard, *sessionCard, *messageCard;
 lv_obj_t *messageTitle, *messageDetail;
-lv_obj_t *configScreen, *configKeyboard, *ssidInput, *passwordInput, *keyInput, *configStatus;
+lv_obj_t *configScreen, *configKeyboard, *ssidInput, *passwordInput, *configStatus;
 lv_obj_t *claimCard, *claimQr, *claimNetworkButton;
 char lastClaimQr[80]{};
 unsigned long logoPressedAt = 0, clearArmedAt = 0;
 volatile bool configSaveRequested = false, configClearRequested = false;
-char requestedSsid[33]{}, requestedPassword[65]{}, requestedKey[193]{};
+char requestedSsid[33]{}, requestedPassword[65]{};
 unsigned long lastRefresh = 0;
 bool ready = false;
 volatile bool localStopRequested = false;
@@ -54,6 +55,8 @@ struct PanelSnapshot {
   char eyebrow[48], status[64], code[64], connection[48], energy[24];
   char cost[24], remaining[32], instruction[128];
   char heroNote[64], codeCaption[32], codeHint[64];
+  char codeTimer[40];
+  uint8_t codeProgress;
   char messageTitle[64], messageDetail[128];
   char claimUrl[80];
   PanelMode mode;
@@ -90,20 +93,17 @@ void inputFocused(lv_event_t* event) {
 }
 void closeConfig(lv_event_t*) {
   lv_textarea_set_text(passwordInput, "");
-  lv_textarea_set_text(keyInput, "");
   clearArmedAt = 0;
   lv_obj_add_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
 }
 void openConfig(lv_event_t*) {
   lv_textarea_set_text(passwordInput, "");
-  lv_textarea_set_text(keyInput, "");
-  lv_label_set_text(configStatus, "Senha vazia: rede aberta. Chave vazia: manter a atual.");
+  lv_label_set_text(configStatus, "Senha vazia: rede aberta. Identidade do dispositivo preservada.");
   lv_obj_clear_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
 }
 void saveConfig(lv_event_t*) {
   const char* ssid = lv_textarea_get_text(ssidInput);
   const char* password = lv_textarea_get_text(passwordInput);
-  const char* key = lv_textarea_get_text(keyInput);
   if (!validPanelNetwork(ssid, password)) {
     lv_label_set_text(configStatus, "Informe o SSID. Para rede aberta, deixe a senha vazia.");
     return;
@@ -111,7 +111,6 @@ void saveConfig(lv_event_t*) {
   taskENTER_CRITICAL(&snapshotMux);
   snprintf(requestedSsid, sizeof(requestedSsid), "%s", ssid);
   snprintf(requestedPassword, sizeof(requestedPassword), "%s", password);
-  snprintf(requestedKey, sizeof(requestedKey), "%s", key);
   configSaveRequested = true;
   taskEXIT_CRITICAL(&snapshotMux);
   lv_label_set_text(configStatus, "Salvando e reiniciando para conectar...");
@@ -184,6 +183,12 @@ void refresh() {
   setTextIfChanged(codeLabel, current.code);
   setTextIfChanged(codeCaptionLabel, current.codeCaption);
   setTextIfChanged(codeHintLabel, current.codeHint);
+  setTextIfChanged(codeTimerLabel, current.codeTimer);
+  static uint8_t lastCodeProgress = 255;
+  if (lastCodeProgress != current.codeProgress) {
+    lv_bar_set_value(codeProgressBar, current.codeProgress, LV_ANIM_OFF);
+    lastCodeProgress = current.codeProgress;
+  }
   setTextIfChanged(connectionLabel, current.connection);
   if (!painted || current.online != lastOnline)
     lv_obj_set_style_text_color(connectionLabel, current.online ? COLOR_GREEN : COLOR_AMBER, 0);
@@ -290,13 +295,21 @@ void panelSetup() {
   lv_obj_set_style_bg_color(codeCard, COLOR_RED, 0);
   lv_obj_set_style_bg_grad_color(codeCard, COLOR_RED_DARK, 0);
   lv_obj_set_style_bg_grad_dir(codeCard, LV_GRAD_DIR_VER, 0);
-  codeCaptionLabel = label(codeCard, "CÓDIGO DO PONTO", &chargegrid_montserrat_14, COLOR_TEXT);
+  codeCaptionLabel = label(codeCard, "CÓDIGO TEMPORÁRIO", &chargegrid_montserrat_14, COLOR_TEXT);
   lv_obj_set_pos(codeCaptionLabel, 0, 10);
   codeLabel = label(codeCard, "--", &chargegrid_montserrat_20, lv_color_white());
   lv_obj_set_pos(codeLabel, 0, 58); lv_obj_set_width(codeLabel, 192);
   lv_label_set_long_mode(codeLabel, LV_LABEL_LONG_DOT);
   codeHintLabel = label(codeCard, "Use no app ChargeGrid", &chargegrid_montserrat_14, COLOR_TEXT);
-  lv_obj_set_pos(codeHintLabel, 0, 133);
+  lv_obj_set_pos(codeHintLabel, 0, 112);
+  codeTimerLabel = label(codeCard, "Aguardando código", &chargegrid_montserrat_14, COLOR_TEXT);
+  lv_obj_set_pos(codeTimerLabel, 0, 137);
+  codeProgressBar = lv_bar_create(codeCard);
+  lv_obj_set_pos(codeProgressBar, 0, 163);
+  lv_obj_set_size(codeProgressBar, 192, 8);
+  lv_bar_set_range(codeProgressBar, 0, 100);
+  lv_obj_set_style_bg_color(codeProgressBar, COLOR_RED_DARK, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(codeProgressBar, COLOR_TEXT, LV_PART_INDICATOR);
 
   stepsCard = card(screen, 24, 350, 752, 94);
   const char* stepTitles[] = {"Abra o app", "Use o código", "Comece a recarga"};
@@ -397,9 +410,9 @@ void panelSetup() {
   lv_obj_clear_flag(configScreen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t* configTitle = label(configScreen, "Configurar este ponto", &chargegrid_montserrat_24, COLOR_TEXT);
   lv_obj_set_pos(configTitle, 16, 8);
-  const char* fieldNames[] = {"Wi-Fi (SSID)", "Senha (rede aberta: vazia)", "Chave do dispositivo"};
-  lv_obj_t** fields[] = {&ssidInput, &passwordInput, &keyInput};
-  for (int i = 0; i < 3; ++i) {
+  const char* fieldNames[] = {"Wi-Fi (SSID)", "Senha (rede aberta: vazia)"};
+  lv_obj_t** fields[] = {&ssidInput, &passwordInput};
+  for (int i = 0; i < 2; ++i) {
     lv_obj_t* fieldName = label(configScreen, fieldNames[i], &chargegrid_montserrat_14, COLOR_MUTED);
     lv_obj_set_pos(fieldName, 16, 58 + i * 58);
     lv_obj_set_width(fieldName, 144);
@@ -416,9 +429,8 @@ void panelSetup() {
     lv_obj_add_event_cb(*fields[i], inputFocused, LV_EVENT_FOCUSED, nullptr);
   }
   lv_textarea_set_password_mode(passwordInput, true);
-  lv_textarea_set_password_mode(keyInput, true);
-  lv_textarea_set_max_length(ssidInput, 32); lv_textarea_set_max_length(passwordInput, 64); lv_textarea_set_max_length(keyInput, 192);
-  configStatus = label(configScreen, "Senha vazia: rede aberta. Chave vazia: manter a atual.", &chargegrid_montserrat_14, COLOR_MUTED);
+  lv_textarea_set_max_length(ssidInput, 32); lv_textarea_set_max_length(passwordInput, 64);
+  configStatus = label(configScreen, "Senha vazia: rede aberta. Identidade do dispositivo preservada.", &chargegrid_montserrat_14, COLOR_MUTED);
   lv_obj_set_pos(configStatus, 8, 228); lv_obj_set_width(configStatus, 590);
   lv_label_set_long_mode(configStatus, LV_LABEL_LONG_DOT);
   struct ButtonDef { const char* text; lv_event_cb_t cb; lv_color_t color; } buttons[] = {
@@ -457,14 +469,13 @@ void panelTick() {
     requestLocalSafeStop();
   }
   if (configSaveRequested) {
-    char ssid[sizeof(requestedSsid)], password[sizeof(requestedPassword)], key[sizeof(requestedKey)];
+    char ssid[sizeof(requestedSsid)], password[sizeof(requestedPassword)];
     taskENTER_CRITICAL(&snapshotMux);
     snprintf(ssid, sizeof(ssid), "%s", requestedSsid);
     snprintf(password, sizeof(password), "%s", requestedPassword);
-    snprintf(key, sizeof(key), "%s", requestedKey);
     configSaveRequested = false;
     taskEXIT_CRITICAL(&snapshotMux);
-    if (!savePanelConnection(ssid, password, key)) {
+    if (!savePanelConnection(ssid, password, "")) {
       showConfigError("Não foi possível salvar. Encerre a sessão ou revise os campos.");
     }
   }
@@ -507,10 +518,29 @@ void panelTick() {
       next.mode == PanelMode::Reserved ? "RESERVA ATIVA" :
       next.mode == PanelMode::Ready ? "PONTO DISPONÍVEL" : "PONTO CHARGEGRID");
   snprintf(next.status, sizeof(next.status), "%s", statusTitle());
-  snprintf(next.code, sizeof(next.code), "%s", connectorPublicCode.c_str());
-  snprintf(next.codeCaption, sizeof(next.codeCaption), "CÓDIGO DO PONTO");
-  snprintf(next.codeHint, sizeof(next.codeHint), "%s", next.mode == PanelMode::Message ?
-      (state == "stopped" ? "Resumo no aplicativo" : "Indisponível agora") : "Use no app ChargeGrid");
+  const unsigned long codeElapsed = millis() - presenceCodeReceivedAt;
+  const unsigned long codeRemaining = codeElapsed < presenceCodeTtlMs ? presenceCodeTtlMs - codeElapsed : 0UL;
+  const bool rotatingCodeKnown = stationPresenceCode.length() == 7 &&
+      stationPresenceCode[0] == '#' && stationPresenceCode[1] == 'F';
+  const bool codeVisible = apiOnline && connectorActive && panelOwned &&
+      rotatingCodeKnown && codeRemaining > 0;
+  const bool legacyCodeVisible = apiOnline && connectorActive && panelOwned &&
+      !rotatingCodeKnown && connectorPublicCode != "--";
+  snprintf(next.code, sizeof(next.code), "%s", codeVisible ? stationPresenceCode.c_str() :
+      legacyCodeVisible ? connectorPublicCode.c_str() : "--");
+  snprintf(next.codeCaption, sizeof(next.codeCaption), "%s", legacyCodeVisible ?
+      "CÓDIGO DO PONTO" : "CÓDIGO DO POSTO");
+  snprintf(next.codeHint, sizeof(next.codeHint), "%s", codeVisible || legacyCodeVisible ?
+      "Use no app ChargeGrid" : rotatingCodeKnown && apiOnline ?
+      "Atualizando código" : "Indisponível agora");
+  if (codeVisible)
+    snprintf(next.codeTimer, sizeof(next.codeTimer), "Troca em %02lu:%02lu",
+        codeRemaining / 60000UL, (codeRemaining / 1000UL) % 60UL);
+  else
+    snprintf(next.codeTimer, sizeof(next.codeTimer), "%s", legacyCodeVisible ?
+        "Código #F em breve" : rotatingCodeKnown && apiOnline ?
+        "Novo código em instantes" : "Aguardando código");
+  next.codeProgress = codeVisible ? static_cast<uint8_t>(min(100UL, (codeRemaining * 100UL) / 300000UL)) : 0;
   snprintf(next.heroNote, sizeof(next.heroNote), "%s", next.mode == PanelMode::Charging ?
       "Acompanhe tudo pelo aplicativo." : next.mode == PanelMode::Reserved ?
       "Sua reserva está protegida." : next.mode == PanelMode::Ready ?

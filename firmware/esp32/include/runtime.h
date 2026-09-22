@@ -8,6 +8,8 @@ extern SimulatedSensors sensors;
 extern Reading reading;
 extern String bootId, sessionId, lastCommand, state, endReason;
 extern String connectorPublicCode;
+extern String stationPresenceCode;
+extern unsigned long presenceCodeReceivedAt, presenceCodeTtlMs;
 extern String panelClaimToken;
 extern bool panelOwned, connectorOwnershipKnown, connectorActive;
 extern uint32_t version, sequence;

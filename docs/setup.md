@@ -18,7 +18,7 @@ Copie `.env.example` para `.env` na raiz do repositório. Defina `CHARGEGRID_API
 
 ### Estado atual
 
-Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel, na região `gru1` próxima ao banco. A versão atual do aplicativo é 0.3.5, build Android 19, com a marca do login aplicada também ao ícone e à abertura. O vendedor pode restaurar o ESP32 em **Meus postos → Editar ponto / dispositivo**; o QR renovado inicia uma nova vinculação e o histórico anterior fica preservado. A migração `d85af641bc01` implementa [ownership por QR e reconciliação após reboot](validacao-ownership-0.3.0.md). O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
+Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1`, servida pelo adaptador `api/index.py` na Vercel. A versão atual do aplicativo é 0.3.7, build Android 21; o início da recarga mostra apenas o código temporário, com `#F` fixo e cinco números digitados pelo usuário. O vendedor pode restaurar o ESP32 em **Meus postos → Editar ponto / dispositivo**; o QR renovado inicia uma nova vinculação e o histórico anterior fica preservado. A migração `6f312d950c41` cria o segredo privado por posto para o código rotativo. O SMTP externo ainda está pendente: a entrega geral de e-mails exige configuração própria neste ambiente.
 
 A revisão de propriedade exige a migração `d85af641bc01` antes do código novo: pontos novos nascem na fábrica, sem dono e inativos, e passam ao vendedor mediante QR de propriedade. A validação local dessa revisão não implica migração ou publicação automática no ambiente remoto.
 
@@ -35,6 +35,10 @@ cd apps/mobile
 O primeiro comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/mobile/assets/app_config.json`, que contém apenas essa URL pública. O Flet 1.0.0 prepara automaticamente o Flutter 3.44.8, o JDK 17 e o Android SDK usados pelo build na primeira execução. O APK gerado fica em `apps/mobile/build/apk/chargegrid.apk`. Instale esse arquivo novamente no aparelho depois de cada build; o APK já instalado conserva os metadados da versão com que foi compilado. O build usa a identidade visual aprovada em `apps/mobile/assets/icon.png` e `apps/mobile/assets/splash_android.png`.
 
 O APK 0.3.5 (build 19) foi gerado a partir de checkout limpo da revisão `b87eb6c` em `builds/chargegrid-0.3.5.apk` (SHA-256 `492fa0db671baba0d67e3212f2c995d3a61346c506b4359839079c93abbd47c0`). Ele usa a URL de prévia existente da API; alterações locais não relacionadas em `stations.py` e `maps.py` não foram incluídas.
+
+O APK 0.3.6 (build 20) está em `builds/chargegrid-0.3.6.apk` (SHA-256 `acf1048920f793a316cc9a92893379f1007b652ec3b7f7d5a7e10ae87b73e7a4`). Ele usa o mesmo endereço público da API e inclui o campo de validação do código `#F`.
+
+O APK 0.3.7 (build 21) está em `builds/chargegrid-0.3.7.apk` (SHA-256 `2ead67549d4365ef41fd277d6633ac4e11c9508c0228cd9c080fbbe94546bcc4`). A tela de início mostra `#F` fixo e recebe apenas os cinco números; o usuário não precisa informar o identificador interno do ponto. Esta versão requer a atualização correspondente da API para permitir o início direto somente pelo código temporário.
 
 ## API e PostgreSQL
 

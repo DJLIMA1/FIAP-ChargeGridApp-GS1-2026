@@ -58,7 +58,8 @@ class ReserveInput(Input):
 
 
 class StartInput(Input):
-    public_code: str = Field(min_length=1, max_length=50)
+    public_code: str | None = Field(default=None, min_length=1, max_length=50)
+    presence_code: str = Field(min_length=7, max_length=7, pattern=r"^#[Ff][0-9]{5}$")
     reservation_id: UUID | None = None
     coupon_code: str | None = Field(default=None, max_length=50)
     max_duration_minutes: int = Field(default=30, ge=1, le=1440)

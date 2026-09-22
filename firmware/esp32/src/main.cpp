@@ -31,6 +31,8 @@ SimulatedSensors sensors;
 Reading reading{20, 0, 0, false};
 String bootId, sessionId, lastCommand, state = "idle", endReason;
 String connectorPublicCode = "--";
+String stationPresenceCode;
+unsigned long presenceCodeReceivedAt = 0, presenceCodeTtlMs = 0;
 String panelClaimToken;
 bool panelOwned = false, connectorOwnershipKnown = false, connectorActive = true;
 uint32_t version = 0, sequence = 0;
@@ -77,7 +79,7 @@ bool finalizeStoredFactoryReset() {
     // A fully written new identity may survive a power loss during cleanup.
     if (configStore.getString("device_key", "").length() == 43 &&
         validPanelClaimToken(configStore.getString("claim_token", "").c_str()) &&
-        !configStore.getBool("owned", true) && !configStore.isKey("wifi_ssid")) {
+        !configStore.getBool("owned", true)) {
       configStore.putBool("reset_done", false);
       delay(120); ESP.restart();
     }
@@ -86,8 +88,9 @@ bool finalizeStoredFactoryReset() {
   bool saved = configStore.putString("device_key", newKey) == 43;
   saved = configStore.putString("claim_token", newClaim) == 43 && saved;
   saved = configStore.putBool("owned", false) > 0 && saved;
-  saved = (!configStore.isKey("wifi_ssid") || configStore.remove("wifi_ssid")) && saved;
-  saved = (!configStore.isKey("wifi_pass") || configStore.remove("wifi_pass")) && saved;
+  // The screen can be handed to a new vendor without requiring physical
+  // access just to reconnect it. Factory reset revokes ownership and all
+  // ChargeGrid state, while deliberately preserving its configured network.
   if (!saved || !store.clear()) return false;
   // The durable completion flag remains until all old credentials and journal
   // entries are gone, so an interrupted reset is safe to retry after reboot.
@@ -95,8 +98,7 @@ bool finalizeStoredFactoryReset() {
   saved = (!configStore.isKey("reset_key") || configStore.remove("reset_key")) && saved;
   saved = (!configStore.isKey("reset_claim") || configStore.remove("reset_claim")) && saved;
   if (!saved || !configStore.putBool("reset_done", false)) return false;
-  WiFi.disconnect(true, true);
-  Serial.println("[setup] Factory reset complete; new private claim QR ready");
+  Serial.println("[setup] Factory reset complete; Wi-Fi preserved; new private claim QR ready");
   delay(120); ESP.restart();
   return true;
 }
@@ -307,7 +309,7 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.5\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.6\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);

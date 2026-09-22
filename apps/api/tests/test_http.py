@@ -13,6 +13,7 @@ from app.http_helpers import point_row
 from app.main import app
 from app.models import ChargingSession, Command, Connector, Device, DeviceClaim, Profile, Station, now
 from app.modules.users.routes import monthly_bounds
+from app.presence_code import current_code
 from app.security import current_user, digest
 
 
@@ -121,9 +122,28 @@ def sync_payload(sequence, **changes):
     return data
 
 
+def test_http_start_with_only_temporary_code(factory, seed):
+    client, _ = client_for(factory, seed["a"])
+    try:
+        code = current_code(_station_for_code(factory, seed))[0]
+        response = client.post(
+            "/v1/charging-sessions",
+            headers={"Idempotency-Key": "temporary-code-only"},
+            json={"presence_code": code},
+        )
+        assert response.status_code == 202
+        assert response.json()["connector_id"] == str(seed["point"])
+    finally:
+        clear_overrides()
+
+
 def test_http_reserve_charge_stop_history(factory, seed):
     client, _ = client_for(factory, seed["a"])
     try:
+        station_response = client.get(f"/v1/stations/{seed['station']}")
+        assert station_response.status_code == 200
+        assert "presence_secret" not in station_response.json()
+        assert "presence_code" not in station_response.json()
         response = client.post(
             "/v1/reservations",
             headers={"Idempotency-Key": "reserve-http"},
@@ -147,12 +167,28 @@ def test_http_reserve_charge_stop_history(factory, seed):
         )
         assert confirmed.status_code == 200
         assert confirmed.json()["authorized"]["reservation"]["status"] == "confirmed"
+        current = confirmed.json()["connector"]["presence_code"]
+        assert current.startswith("#F")
+        outdated = client.post(
+            "/v1/charging-sessions",
+            headers={"Idempotency-Key": "old-app-http"},
+            json={"public_code": "CG-01", "reservation_id": reservation_id},
+        )
+        assert outdated.status_code == 422
+        assert "Atualize o app" in outdated.json()["error"]["message"]
+        wrong = "#F00000" if current != "#F00000" else "#F00001"
+        rejected = client.post(
+            "/v1/charging-sessions",
+            headers={"Idempotency-Key": "wrong-presence-http"},
+            json={"public_code": "CG-01", "presence_code": wrong, "reservation_id": reservation_id},
+        )
+        assert rejected.status_code == 422
 
         started = client.post(
             "/v1/charging-sessions",
             headers={"Idempotency-Key": "start-http"},
             json={
-                "public_code": "CG-01",
+                "presence_code": current_code(_station_for_code(factory, seed))[0],
                 "reservation_id": reservation_id,
                 "max_duration_minutes": 20,
             },
@@ -515,3 +551,8 @@ def test_factory_reset_refuses_before_deactivation_when_runtime_cannot_insert_cl
             assert db.query(Command).filter_by(type="FACTORY_RESET").count() == 0
     finally:
         clear_overrides()
+
+
+def _station_for_code(factory, seed):
+    with factory() as db:
+        return db.get(Station, seed["station"])

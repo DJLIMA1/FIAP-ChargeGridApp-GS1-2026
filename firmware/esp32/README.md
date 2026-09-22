@@ -8,9 +8,11 @@ pio run -d firmware/esp32 -e waveshare_panel_ui
 
 O target usa Arduino 3.1.1, LVGL 8.4, flash DIO/40 MHz, 16 MB e PSRAM OPI. `waveshare_panel_demo` é um alias compatível e gera a mesma imagem unificada.
 
-No primeiro boot, o painel mostra **Configure este ponto**, sem dados fictícios. Segure o logo ChargeGrid por aproximadamente 5 segundos para abrir a manutenção, digite SSID 2,4 GHz, senha e chave individual e toque em **Salvar e conectar**. Senha/chave ficam mascaradas e não entram no log. **Limpar rede** preserva a identidade. Trocar a identidade é recusado durante sessão pendente.
+No primeiro boot, o painel mostra **Configure este ponto**, sem dados fictícios. Segure o logo ChargeGrid por aproximadamente 5 segundos para abrir a manutenção, digite SSID 2,4 GHz e senha e toque em **Salvar e conectar**. A senha fica mascarada e não entra no log. A chave individual é provisionada separadamente via USB (`CG_KEY`); não aparece na tela. **Limpar rede** preserva a identidade. Trocar a identidade é recusado durante sessão pendente.
 
 O Wi-Fi associa mesmo sem uma chave de dispositivo. A sincronização com a API continua bloqueada até que rede e chave estejam configuradas.
+
+Quando a API envia `presence_code`, o painel mostra o código `#F` do posto, a contagem regressiva e a barra de validade. Com uma API anterior, o código público do ponto continua visível até a atualização do servidor.
 
 A API é fixa em `https://chargegrid-api-preview-djlima1s-projects.vercel.app`, validada com GTS Root R1. O protocolo continua em `POST /v1/devices/sync`, com START somente por comando do servidor e parada local `end_reason=requested`.
 
@@ -30,4 +32,4 @@ Diagnóstico serial a 115200: `CG_STATUS` mostra estado, rede, HTTP e energia se
 
 O helper precisa de `pyserial` (já incluído no ambiente PlatformIO). No macOS, alguns drivers CH340 reiniciam a placa ao abrir a porta: abra **antes** do fluxo de recarga e mantenha `--action live --seconds 7200` durante a validação. Esse modo aceita `status`, `stop`, `screen` e `quit` pelo stdin, sem reabrir a porta. Abrir/fechar ferramentas seriais no meio de uma recarga pode interrompê-la; um reboot nunca retoma automaticamente uma sessão.
 
-Veja [docs/waveshare-panel.md](../../docs/waveshare-panel.md) para o fluxo completo e [builds/chargegrid-waveshare-7.zip](../../builds/chargegrid-waveshare-7.zip) para os componentes, imagem inicial e hashes. Em atualizações, grave os componentes por offsets para preservar o NVS; a imagem mesclada em `0x0` é indicada somente para instalação inicial.
+Veja [docs/waveshare-panel.md](../../docs/waveshare-panel.md) para o fluxo completo e [builds/chargegrid-waveshare-7-0.3.6.zip](../../builds/chargegrid-waveshare-7-0.3.6.zip) para o firmware, componentes de recuperação e hashes. Em atualizações, grave somente `firmware.bin` em `0x10000` para preservar o NVS.

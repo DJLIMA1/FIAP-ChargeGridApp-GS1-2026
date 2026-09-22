@@ -39,6 +39,8 @@ SimulatedSensors sensors;
 Reading reading{20, 0, 0, false};
 String bootId, sessionId, lastCommand, state = "idle", endReason;
 String connectorPublicCode = "CG-01";
+String stationPresenceCode = "#F12345";
+unsigned long presenceCodeReceivedAt = 1000, presenceCodeTtlMs = 300000;
 String panelClaimToken;
 bool panelOwned = false, connectorOwnershipKnown = false, connectorActive = true;
 uint32_t version = 0, sequence = 0;
@@ -217,14 +219,32 @@ int main(int argc, char** argv) {
   sessionId = ""; state = "idle"; lastContact = testMillis;
   panelOwned = true; connectorOwnershipKnown = true; connectorActive = true;
   connectorPublicCode = "CG-01";
+  stationPresenceCode = "#F12345";
+  presenceCodeReceivedAt = testMillis;
+  presenceCodeTtlMs = 300000;
   screenshot(argv[1], "panel-idle");
   assert(std::string(lv_label_get_text(statusLabel)) == "Pronto para você");
-  assert(std::string(lv_label_get_text(codeLabel)) == "CG-01");
+  assert(std::string(lv_label_get_text(codeLabel)) == "#F12345");
+  assert(std::string(lv_label_get_text(codeTimerLabel)) == "Troca em 05:00");
+  assert(lv_bar_get_value(codeProgressBar) == 100);
   assert(!lv_obj_has_flag(stepsCard, LV_OBJ_FLAG_HIDDEN));
   assert(lv_obj_has_flag(sessionCard, LV_OBJ_FLAG_HIDDEN));
   flushCount = 0;
   panelTick(); refresh(); lv_refr_now(nullptr);
   assert(flushCount == 0); // An unchanged snapshot must not redraw the RGB panel.
+  connectorPublicCode = "CG-4C754B2F6E";
+  presenceCodeTtlMs = 0; // The code expired just before the next sync.
+  panelTick(); refresh();
+  assert(std::string(lv_label_get_text(codeLabel)) == "--");
+  assert(std::string(lv_label_get_text(codeTimerLabel)) == "Novo código em instantes");
+  assert(lv_bar_get_value(codeProgressBar) == 0);
+  connectorPublicCode = "CG-01";
+  stationPresenceCode = "null"; // Older API omitted the field.
+  panelTick(); refresh();
+  assert(std::string(lv_label_get_text(codeLabel)) == "CG-01");
+  assert(std::string(lv_label_get_text(codeTimerLabel)) == "Código #F em breve");
+  stationPresenceCode = "#F12345";
+  presenceCodeTtlMs = 300000;
   state = "reserved"; reservationDeadline = time(nullptr) + 30;
   screenshot(argv[1], "panel-reserved");
   assert(flushCount > 0); // A real state transition still reaches the display.
@@ -254,10 +274,9 @@ int main(int argc, char** argv) {
   screenshot(argv[1], "panel-maintenance");
   lv_textarea_set_text(ssidInput, "open-network");
   lv_textarea_set_text(passwordInput, "");
-  lv_textarea_set_text(keyInput, "");
   saveConfig(nullptr);
   assert(configSaveRequested && std::string(requestedSsid) == "open-network");
-  assert(requestedPassword[0] == '\0' && requestedKey[0] == '\0');
+  assert(requestedPassword[0] == '\0');
   configSaveRequested = false;
   lv_textarea_set_text(ssidInput, "");
   saveConfig(nullptr);

@@ -59,8 +59,17 @@ async def validation_error(request: Request, error: RequestValidationError):
         {"field": ".".join(str(part) for part in item["loc"] if part != "body"), "message": item["msg"]}
         for item in error.errors()
     ]
+    message = "Dados inválidos"
+    if request.url.path == "/v1/charging-sessions" and request.method == "POST":
+        presence_errors = [item for item in error.errors() if "presence_code" in item["loc"]]
+        if presence_errors:
+            message = (
+                "Atualize o app e informe o código temporário #F exibido no posto."
+                if any(item["type"] == "missing" for item in presence_errors)
+                else "O código temporário deve ter #F e cinco números. Confira a tela do posto."
+            )
     return JSONResponse(
-        {"error": {"code": "validation_error", "message": "Dados inválidos", "fields": fields}},
+        {"error": {"code": "validation_error", "message": message, "fields": fields}},
         status_code=422,
     )
 

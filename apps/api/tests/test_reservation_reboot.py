@@ -11,6 +11,7 @@ from app.modules.charging.service import start
 from app.modules.devices.service import sync
 from app.modules.reservations.routes import cancel
 from app.modules.reservations.service import reserve
+from app.presence_code import current_code
 from app.schemas import ReserveInput, StartInput, SyncInput
 from app.service import free
 
@@ -63,7 +64,7 @@ def test_reboot_restores_confirmed_reservation_without_renewal_and_can_start(fac
         assert point["available"] is False
         assert db.get(Reservation, rid).status == "confirmed"
         with pytest.raises(HTTPException):
-            start(db, db.get(Profile, seed["b"]), StartInput(public_code="CG-01"), "blocked-other")
+            start(db, db.get(Profile, seed["b"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]), "blocked-other")
     repeated = report(factory, seed, reading(1, boot="boot-b"))
     assert repeated["commands"][0]["id"] == restore["id"]
     restored = report(
@@ -79,7 +80,7 @@ def test_reboot_restores_confirmed_reservation_without_renewal_and_can_start(fac
         assert point_row(db, db.get(Connector, seed["point"]))["availability_status"] == "reserved"
         assert db.get(Command, original_command).status == "applied"
         session = start(
-            db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", reservation_id=rid), "start"
+            db, db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0], reservation_id=rid), "start"
         )
         assert session.status == "starting"
         assert db.get(Reservation, rid).status == "consumed"

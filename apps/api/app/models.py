@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from datetime import UTC, datetime
 
@@ -44,6 +45,7 @@ class Station(Base):
     latitude: Mapped[float] = mapped_column(Numeric(10, 7))
     longitude: Mapped[float] = mapped_column(Numeric(10, 7))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    presence_secret: Mapped[str] = mapped_column(String(64), default=lambda: secrets.token_hex(32))
     __table_args__ = (CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),)
 
 
