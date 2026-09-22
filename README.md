@@ -3,9 +3,15 @@
 Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk.
 
 
-# ChargeGrid
+## O que é o projeto:
 
-O ChargeGrid é o MVP acadêmico da equipe FFIVE para localizar eletropostos, reservar um ponto e acompanhar uma recarga confirmada por dispositivo. O aplicativo Flet conversa com uma API FastAPI; a API é a única camada que acessa PostgreSQL e valida permissões.
+O ChargeGrid busca ser uma solução comercial para facilitar a realização de transações e gestão de eletropostos para o mercado varejista. O aplicativo se foca em ser rápido, intuitivo e informativo, permitindo que a mesma conta seja acessada através de perfis de "Consumidor" ou "Vendedor". Ele facilita a realização de recargas de forma dinâmica e fácil de entender, além de proporcionar as informações do histórico de maneira organizada e ágil para ambas as partes.
+
+## Objetivo do ChargeGrid
+
+O ChargeGrid deseja facilitar a vida dos donos de eletropostos com a ajuda de meios para verificar, ajustar suas tarifas e gerir suas estações de maneira personalizada, mantendo a alta usabilidade como nosso maior foco. Com este aplicativo, potencializamos a sustentabilidade ambiental, já que uma rede de eletropostos eficiente incentiva a transição para carros elétricos, reduzindo emissões de CO2 e a dependência de combustíveis fósseis. O ecossistema também foi projetado pensando na facilidade de integração em redes inteligentes e na adoção fluida de sistemas modernos de precificação.
+
+# Avisos
 
 Consulte [a instalação](docs/setup.md), [a arquitetura](docs/architecture.md), [o contrato HTTP](docs/api.md), [o protocolo do ESP32](docs/esp32-protocol.md) e [o roteiro de demonstração](docs/demo.md).
 
@@ -21,17 +27,16 @@ tools/           simulador de dispositivo e seus testes
 docs/            decisões, operação e apresentação
 ```
 
-## Estado do MVP
+## Estado do A
 
 O aplicativo 0.3.5 usa o tipo de conta somente no cadastro; entrar exige apenas e-mail e senha. Claro/escuro funcionam também na autenticação e na página inicial. Campos e botões foram padronizados, com navegação compacta e orientação retrato no aplicativo móvel. Há transições suaves, seletor deslizante sem efeito de onda, validação animada dos campos de autenticação, respeito à redução de movimento, proteção de formulários e controles de voltar sem interromper operações em andamento. O ícone e a abertura reutilizam a marca da tela de login. Em **Meus postos → Editar ponto / dispositivo**, o vendedor pode restaurar o ESP32 de fábrica após confirmação; não é uma restauração das preferências do celular.
 
-O painel Waveshare conectado foi usado para validar reserva, recarga e parada como `CG-PAINEL-01` no posto fictício `ChargeGrid • Bancada QA`. Na versão 0.3.2, ele foi migrado para o novo ponto de fábrica `CG-PAINEL-02` e exibiu o QR de primeira vinculação. O ponto já foi vinculado e publicado por um vendedor; o anterior está inativo, com histórico preservado. Segure o logo por 5 segundos para configurar o Wi-Fi quando não houver operação ativa. Senha e chave permanecem mascaradas e não são mostradas depois de salvas em NVS.
 
-No novo fluxo de propriedade, cada equipamento nasce na fábrica com chave própria e QR secreto de vínculo. O vendedor escaneia esse QR e se torna dono do ponto, sem aprovação manual. Um assistente de três etapas salva nome/localização, configura conector/tarifa e só publica após a revisão; rascunhos podem ser retomados em **Meus postos**. Proprietários legados são preservados. O código público usado para iniciar recarga é separado do segredo de propriedade. Consulte [o provisionamento de fábrica](docs/setup.md#provisionar-e-vincular-um-equipamento).
+No fluxo de propriedade, cada equipamento possui chave própria e QR secreto de vínculo. O vendedor escaneia esse QR e se torna dono do ponto, sem aprovação manual. Um assistente de três etapas salva nome/localização, configura conector/tarifa e só publica após a revisão; rascunhos podem ser retomados em **Meus postos**. Proprietários legados são preservados. O código público usado para iniciar recarga é separado do segredo de propriedade. Consulte [o provisionamento de fábrica](docs/setup.md#provisionar-e-vincular-um-equipamento).
 
-O controle de reserva e recarga é real pela API, mas SoC e energia vêm de `SimulatedSensors`; não representam medição de veículo. Uma reserva válida sobrevive ao reboot do ESP32, sem reiniciar seu prazo; o app diferencia reservado, offline e sincronizando de uma recarga em andamento. O firmware 0.3.5 apresenta uma interface voltada ao usuário final, com o mesmo símbolo de marca do login e buffers sincronizados com VSYNC para reduzir piscadas. A restauração só é aceita com equipamento ocioso, online e sem reserva/recarga; ela apaga Wi-Fi e vínculo antigos no ESP, gera um QR novo e preserva o histórico no servidor. Durante a recarga, o dispositivo sincroniza a cada 5 segundos; o app consulta `GET /me/summary` para o resumo mensal estimado.
+O controle de reserva e recarga é real pela API, mas SoC e energia vêm de `SimulatedSensors`; não representam medição de veículo. Uma reserva válida sobrevive ao reboot do ESP32, sem reiniciar seu prazo; o app diferencia reservado, offline e sincronizando de uma recarga em andamento. O firmware apresenta uma interface voltada ao usuário final, com o mesmo símbolo de marca do login e buffers sincronizados com VSYNC para reduzir piscadas. A restauração só é aceita com equipamento ocioso, online e sem reserva/recarga; ela apaga Wi-Fi e vínculo antigos no ESP, gera um QR novo e preserva o histórico no servidor. Durante a recarga, o dispositivo sincroniza a cada 5 segundos; o app consulta `GET /me/summary` para o resumo mensal estimado.
 
-Cadastros novos iniciam sessão sem confirmação de e-mail neste MVP. A recuperação por e-mail continua pendente de SMTP próprio.
+Cadastros novos iniciam sessão sem confirmação de e-mail. A recuperação por e-mail continua pendente de SMTP próprio.
 
 Veja as evidências do MVP integrado em [docs/validacao-mvp-0.2.0.md](docs/validacao-mvp-0.2.0.md), do fluxo de propriedade em [docs/validacao-ownership-0.3.0.md](docs/validacao-ownership-0.3.0.md), da [validação 0.3.2](docs/validacao-0.3.2.md) e do [painel físico](docs/waveshare-panel.md). APKs e pacotes de firmware são artefatos locais em `builds/`, não arquivos versionados; os guias descrevem como gerá-los.
 
