@@ -1,1 +1,0 @@
-"""Aplicativo Flet do ChargeGrid."""
