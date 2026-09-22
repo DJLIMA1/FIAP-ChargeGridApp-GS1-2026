@@ -1,4 +1,0 @@
-# Factory/admin CLIs. Runtime API does not need the QR renderer.
-psycopg[binary]>=3.2,<4
-qrcode>=8,<9
-pyserial==3.5
