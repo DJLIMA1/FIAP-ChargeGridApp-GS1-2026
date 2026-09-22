@@ -1,6 +1,6 @@
 # Projeto Simulado:
 
-Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk.
+Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk. A parte simulada é a base do projeto, sendo atualmente colocada em Branch como forma de preservar seu conteúdo e testar novas ideias e conceitos, seu ReadME é feito especificamente para ela e contém outras categorias e entendimentos do projeto não nesse ReadME
 
 
 ## O que é o projeto:
