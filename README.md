@@ -1,65 +1,155 @@
-# Projeto Simulado:
+<div align="center">
 
-Para acessar o projeto Simulado vá na Branch de simulado, onde haverá uma pasta escrito Simulado, lá estará toda a documentação do aplicativo que pode ser executado localmente permitindo alteração locais em JSON, juntamente com seus arquivos. Nesse arquivo está a fundação da aplicação física, necessitando do hardware e da conexão real com servidores e apk. A parte simulada é a base do projeto, sendo atualmente colocada em Branch como forma de preservar seu conteúdo e testar novas ideias e conceitos, seu ReadME é feito especificamente para ela e contém outras categorias e entendimentos do projeto não nesse ReadME
+<img src="apps/mobile/assets/brand_mark.svg" alt="Símbolo ChargeGrid" width="76">
 
+# ChargeGrid
 
-## O que é o projeto:
+**Encontre um ponto. Reserve. Acompanhe a recarga.**
 
-O ChargeGrid busca ser uma solução comercial para facilitar a realização de transações e gestão de eletropostos para o mercado varejista. O aplicativo se foca em ser rápido, intuitivo e informativo, permitindo que a mesma conta seja acessada através de perfis de "Consumidor" ou "Vendedor". Ele facilita a realização de recargas de forma dinâmica e fácil de entender, além de proporcionar as informações do histórico de maneira organizada e ágil para ambas as partes.
+Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, API e painel ESP32 para demonstrar a gestão de eletropostos.
 
-## Objetivo do ChargeGrid
+`Flet` · `FastAPI` · `PostgreSQL` · `ESP32-S3` · `LVGL`
 
-O ChargeGrid deseja facilitar a vida dos donos de eletropostos com a ajuda de meios para verificar, ajustar suas tarifas e gerir suas estações de maneira personalizada, mantendo a alta usabilidade como nosso maior foco. Com este aplicativo, potencializamos a sustentabilidade ambiental, já que uma rede de eletropostos eficiente incentiva a transição para carros elétricos, reduzindo emissões de CO2 e a dependência de combustíveis fósseis. O ecossistema também foi projetado pensando na facilidade de integração em redes inteligentes e na adoção fluida de sistemas modernos de precificação.
+[Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
 
-# Avisos
+</div>
 
-Consulte [a instalação](docs/setup.md), [a arquitetura](docs/architecture.md), [o contrato HTTP](docs/api.md), [o protocolo do ESP32](docs/esp32-protocol.md) e [o roteiro de demonstração](docs/demo.md).
+> **Escopo da bancada:** reservas, comandos e histórico passam pelo sistema integrado. Potência, energia e SoC são gerados por `SimulatedSensors`. O protótipo não mede um veículo, não aciona um carregador e não processa pagamentos.
 
-Use um único `.env` na raiz do monorepo: copie `.env.example` e preencha as variáveis locais. O arquivo real permanece ignorado pelo Git.
+## Visão do projeto e versões
 
-## Estrutura
+O ChargeGrid foi pensado para facilitar ao consumidor a busca e o acompanhamento de recargas e ao vendedor a gestão de postos e tarifas. A mesma conta pode acessar funções de consumo e, após vincular um equipamento próprio, funções de operação. A proposta busca apoiar a expansão da infraestrutura para veículos elétricos; a integração com recarga elétrica real ainda está fora do escopo deste protótipo.
 
-```text
-apps/api/        API FastAPI, migrações e testes de regras
-apps/mobile/     aplicativo Flet
-firmware/esp32/  firmware de bancada para ESP32
-tools/           simulador de dispositivo e seus testes
-docs/            decisões, operação e apresentação
+Este `main` documenta a fundação integrada com app, API e painel físico. A branch **`simulado`** mantém a versão anterior executável localmente, com dados em JSON e README próprio, para preservar essa base e experimentar outras ideias. Consulte essa branch para as instruções específicas da versão simulada.
+
+## O que foi construído
+
+| Componente | Função | Código |
+| --- | --- | --- |
+| Aplicativo | Cadastro/login, busca de postos, reserva, recarga, histórico e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
+| API | Autenticação, autorização, regras de reserva/recarga e comandos para dispositivos | [`apps/api/`](apps/api/) |
+| Banco | Perfis, postos, pontos, reservas, sessões, dispositivos, comandos e telemetria | [`apps/api/migrations/`](apps/api/migrations/) |
+| Painel ESP32 | Interface touch, sincronização HTTPS, confirmação de comandos e parada local | [`firmware/esp32/`](firmware/esp32/) |
+| Simulador e ferramentas | Dispositivo simulado, provisionamento, QA e manutenção | [`tools/`](tools/) |
+
+O vendedor vincula o equipamento por um **QR privado de propriedade**, configura localização, conector e tarifa e publica o ponto. O consumidor usa um **código público diferente** para iniciar a recarga. O sistema só considera uma ação aplicada depois da confirmação do dispositivo.
+
+## Protótipo visual
+
+<table>
+  <tr>
+    <th>Prévia da interface do aplicativo</th>
+    <th>Framebuffer capturado do painel físico</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/app-home-previa.png" alt="Prévia da tela inicial do aplicativo ChargeGrid com dados fictícios" width="260"></td>
+    <td align="center"><img src="docs/images/painel-esp32-framebuffer.png" alt="Framebuffer do ESP32 físico mostrando ponto disponível" width="400"></td>
+  </tr>
+</table>
+
+A imagem do app é uma **prévia com dados fictícios**. A imagem do painel foi lida do framebuffer da placa conectada; não é fotografia do LCD e não contém QR ou credenciais privadas. Mais detalhes em [painel Waveshare](docs/waveshare-panel.md).
+
+## Arquitetura e fluxo
+
+```mermaid
+flowchart LR
+    App[App Flet] -->|HTTPS + JWT| API[API FastAPI]
+    ESP[ESP32 ou simulador] <-->|HTTPS + chave individual + ACK| API
+    API -->|validação JWT| Auth[Supabase Auth]
+    API <-->|transações SQL| DB[(PostgreSQL)]
 ```
 
-## Estado do A
+```mermaid
+flowchart LR
+    A[Consumidor escolhe o ponto] --> B[API valida e registra reserva]
+    B --> C[ESP32 recebe RESERVE e confirma]
+    C --> D[App solicita início]
+    D --> E[API autoriza START]
+    E --> F[ESP32 confirma e envia telemetria simulada]
+    F --> G[Parada pelo app, limite ou painel]
+    G --> H[API reconcilia sessão e histórico]
+```
 
-O aplicativo 0.3.5 usa o tipo de conta somente no cadastro; entrar exige apenas e-mail e senha. Claro/escuro funcionam também na autenticação e na página inicial. Campos e botões foram padronizados, com navegação compacta e orientação retrato no aplicativo móvel. Há transições suaves, seletor deslizante sem efeito de onda, validação animada dos campos de autenticação, respeito à redução de movimento, proteção de formulários e controles de voltar sem interromper operações em andamento. O ícone e a abertura reutilizam a marca da tela de login. Em **Meus postos → Editar ponto / dispositivo**, o vendedor pode restaurar o ESP32 de fábrica após confirmação; não é uma restauração das preferências do celular.
+A API é a única camada que acessa o banco e aplica as permissões. O ESP32 sincroniza a cada **5 s durante a recarga** e **10 s fora dela**. Se ficar **45 s sem comunicação**, a bancada encerra a sessão localmente; após reinício, uma sessão nunca recomeça sem nova autorização. [Diagramas detalhados, circuito funcional e decisões técnicas →](docs/integracao-componentes.md)
 
+## Resultados observados
 
-No fluxo de propriedade, cada equipamento possui chave própria e QR secreto de vínculo. O vendedor escaneia esse QR e se torna dono do ponto, sem aprovação manual. Um assistente de três etapas salva nome/localização, configura conector/tarifa e só publica após a revisão; rascunhos podem ser retomados em **Meus postos**. Proprietários legados são preservados. O código público usado para iniciar recarga é separado do segredo de propriedade. Consulte [o provisionamento de fábrica](docs/setup.md#provisionar-e-vincular-um-equipamento).
+Os ensaios de integração registrados em 21/09/2026 cobriram autenticação, reserva, ACK do dispositivo, início, telemetria, parada, histórico, isolamento entre contas e limite automático de custo. Os três exemplos abaixo foram executados na **placa física**, com medições **simuladas**:
 
-O controle de reserva e recarga é real pela API, mas SoC e energia vêm de `SimulatedSensors`; não representam medição de veículo. Uma reserva válida sobrevive ao reboot do ESP32, sem reiniciar seu prazo; o app diferencia reservado, offline e sincronizando de uma recarga em andamento. O firmware apresenta uma interface voltada ao usuário final, com o mesmo símbolo de marca do login e buffers sincronizados com VSYNC para reduzir piscadas. A restauração só é aceita com equipamento ocioso, online e sem reserva/recarga; ela apaga Wi-Fi e vínculo antigos no ESP, gera um QR novo e preserva o histórico no servidor. Durante a recarga, o dispositivo sincroniza a cada 5 segundos; o app consulta `GET /me/summary` para o resumo mensal estimado.
+| Ensaio | Energia simulada | Custo estimado | Resultado |
+| --- | ---: | ---: | --- |
+| Parada solicitada pelo app | 60,392 Wh | R$ 0,0906 | `completed` |
+| Parada local no dispositivo | 12,084 Wh | R$ 0,0181 | `completed` |
+| Teto de R$ 0,01 | 6,666 Wh | R$ 0,0100 | `cost_limit` |
 
-Cadastros novos iniciam sessão sem confirmação de e-mail. A recuperação por e-mail continua pendente de SMTP próprio.
+Os valores mostram o funcionamento do **modelo de controle**, não energia entregue a um carro. Evidências: [validação integrada](docs/validacao-mvp-0.2.0.md), [resultados estruturados](docs/qa-live-results.json), [primeira vinculação física](docs/validacao-0.3.2.md) e [histórico do painel](docs/waveshare-panel.md). O fluxo de restauração pelo app ainda não foi repetido fisicamente após a correção da permissão SQL, conforme o histórico do painel.
 
-Veja as evidências do MVP integrado em [docs/validacao-mvp-0.2.0.md](docs/validacao-mvp-0.2.0.md), do fluxo de propriedade em [docs/validacao-ownership-0.3.0.md](docs/validacao-ownership-0.3.0.md), da [validação 0.3.2](docs/validacao-0.3.2.md) e do [painel físico](docs/waveshare-panel.md). APKs e pacotes de firmware são artefatos locais em `builds/`, não arquivos versionados; os guias descrevem como gerá-los.
+## Como executar
 
-## Execução local rápida
+Requisitos: **Python 3.12** para o app, **Python 3.11** para a API e **PlatformIO** para o firmware. Copie [`.env.example`](.env.example) para `.env` na raiz e preencha os valores locais. O `.env` está ignorado pelo Git.
 
-O requisito da raiz instala as dependências do aplicativo. Para API, firmware e variáveis de ambiente, siga o guia completo em [docs/setup.md](docs/setup.md).
+**Aplicativo**, na raiz do repositório:
 
 ```bash
 python3 -m venv .venv
-# macOS/Linux: source .venv/bin/activate
-# Windows: python -m venv .venv; .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 python src/main.py
 ```
 
+**API**, em outro terminal e com o banco configurado:
+
+```bash
+cd apps/api
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+Antes de executar a API com o papel de banco restrito, aplique também a concessão descrita em [instalação e configuração](docs/setup.md#api-e-postgresql). Para compilar a interface da placa:
+
+```bash
+pio run -d firmware/esp32 -e waveshare_panel_ui
+```
+
+Para demonstrar sem a placa, use o [simulador de dispositivo](docs/demo.md) com uma identidade provisionada. O [guia completo](docs/setup.md) explica banco, Auth, provisionamento por QR, APK e implantação; o [roteiro de apresentação](docs/demo.md) percorre a operação de ponta a ponta.
+
+## Justificativa técnica e ligação com a disciplina
+
+| Conteúdo aplicado | Onde aparece |
+| --- | --- |
+| Sistemas embarcados e IoT | ESP32-S3, touch, Wi-Fi, estados locais e watchdog |
+| Redes e protocolos | HTTPS/JSON, sincronização periódica, comandos versionados e ACK |
+| Banco de dados | Modelos relacionais, migrações e transações para reservas concorrentes |
+| Segurança | JWT, propriedade do equipamento, chaves separadas e TLS |
+| Engenharia de software | App, API e firmware em camadas, testes e contratos documentados |
+
+As escolhas, consequências e o **diagrama do circuito funcional da bancada** estão em [integração dos componentes](docs/integracao-componentes.md). Como o LCD e o touch são integrados à placa comercial e não há circuito externo de potência, o diagrama descreve essas conexões sem inventar pinagem, relé ou sensores que não existem no protótipo.
+
+## Documentação e código
+
+| Tema | Link |
+| --- | --- |
+| Integração, fluxogramas, circuito e resultados | [Integração dos componentes](docs/integracao-componentes.md) |
+| Arquitetura e segurança | [Arquitetura](docs/architecture.md) |
+| Endpoints HTTP | [Contrato da API](docs/api.md) |
+| Comandos e telemetria | [Protocolo ESP32](docs/esp32-protocol.md) |
+| Instalação e provisionamento | [Guia de configuração](docs/setup.md) |
+| Firmware e painel | [README do firmware](firmware/esp32/README.md) · [Validação do painel](docs/waveshare-panel.md) |
+| Demonstração | [Roteiro](docs/demo.md) |
+
 ## Limites do MVP
 
-Pagamentos são demonstrativos. A bancada do ESP32 e o simulador Python usam medições identificadas como `simulated`; não controlam energia, veículo ou carregador real. Chaves de dispositivos, senhas, certificados ou chaves privadas e arquivos `.env` não devem ser enviados ao Git. Uma CA pública necessária para validação TLS pode ser versionada, como `apps/api/certs/supabase-prod-ca-2021.crt`.
+O painel não controla energia nem mede um veículo; os custos são estimativas. O pagamento é demonstrativo. Confirmação de e-mail está desativada neste ambiente e a recuperação depende de SMTP próprio. APKs, firmware compilado, chaves de dispositivo, QR privado e `.env` ficam fora do repositório; os guias ensinam a gerar os artefatos. Dados e imagens publicados aqui não expõem credenciais de provisionamento.
 
 ## Equipe FFIVE
 
-- Augusto de Souza Ávila — RM: 570839
-- Davi Simoncelo — RM: 571738
-- João Pedro Sousa — RM: 573962
-- Matheus Evangelista Silva — RM: 568593
-- Murilo Lima de Carvalho — RM: 570156
+| Integrante | RM |
+| --- | ---: |
+| Augusto de Souza Ávila | 570839 |
+| Davi Simoncelo | 571738 |
+| João Pedro Sousa | 573962 |
+| Matheus Evangelista Silva | 568593 |
+| Murilo Lima de Carvalho | 570156 |
