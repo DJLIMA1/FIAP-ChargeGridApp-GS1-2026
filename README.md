@@ -68,4 +68,7 @@ flet | pillow | asyncio | json | os | hashlib | math | urllib | re | ssl | time
 
 13 - O aplicativo dispõe de salvamento persistente por conta; se fechar a janela com o JSON presente na pasta raiz, seus pontos de progresso, relatórios, histórico financeiro e estações ativas continuarão integralmente salvos. 
 
+# Vídeo Técnico:
+
+https://youtu.be/NDLEdLEj1QY
 
