@@ -20,7 +20,7 @@ Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, API e painel E
 
 O ChargeGrid foi pensado para facilitar ao consumidor a busca e o acompanhamento de recargas e ao vendedor a gestão de postos e tarifas. A mesma conta pode acessar funções de consumo e, após vincular um equipamento próprio, funções de operação. A proposta busca apoiar a expansão da infraestrutura para veículos elétricos; a integração com recarga elétrica real ainda está fora do escopo deste protótipo.
 
-Este `main` documenta a fundação integrada com app, API e painel físico. A branch **`simulado`** mantém a versão anterior executável localmente, com dados em JSON e README próprio, para preservar essa base e experimentar outras ideias. Consulte essa branch para as instruções específicas da versão simulada.
+Este `main` documenta a fundação integrada com app, API e painel físico. A branch **[`Simulado`](https://github.com/DJLIMA1/FIAP-ChargeGridApp-GS1-2026/tree/Simulado)** mantém a versão anterior executável localmente, com dados em JSON e README próprio, para preservar essa base e experimentar outras ideias. Consulte essa branch para as instruções específicas da versão simulada.
 
 ## O que foi construído
 
@@ -47,7 +47,7 @@ O vendedor vincula o equipamento por um **QR privado de propriedade**, configura
   </tr>
 </table>
 
-A imagem do app é uma **prévia com dados fictícios**. A imagem do painel foi lida do framebuffer da placa conectada; não é fotografia do LCD e não contém QR ou credenciais privadas. Mais detalhes em [painel Waveshare](docs/waveshare-panel.md).
+A imagem do app é uma **prévia com dados fictícios**. A imagem do painel foi lida do framebuffer da placa conectada na versão 0.3.4; não é fotografia do LCD e não contém QR ou credenciais privadas. Mais detalhes em [painel Waveshare](docs/waveshare-panel.md).
 
 ## Arquitetura e fluxo
 
@@ -91,7 +91,7 @@ Requisitos: **Python 3.12** para o app, **Python 3.11** para a API e **PlatformI
 **Aplicativo**, na raiz do repositório:
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python src/main.py
