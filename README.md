@@ -140,9 +140,18 @@ As escolhas, consequências e o **diagrama do circuito funcional da bancada** es
 | Firmware e painel | [README do firmware](firmware/esp32/README.md) · [Validação do painel](docs/waveshare-panel.md) |
 | Demonstração | [Roteiro](docs/demo.md) |
 
-## Limites do MVP
+## Limites do APP
 
 O painel não controla energia nem mede um veículo; os custos são estimativas. O pagamento é demonstrativo. Confirmação de e-mail está desativada neste ambiente e a recuperação depende de SMTP próprio. APKs, firmware compilado, chaves de dispositivo, QR privado e `.env` ficam fora do repositório; os guias ensinam a gerar os artefatos. Dados e imagens publicados aqui não expõem credenciais de provisionamento.
+
+## Vídeo da demonstração física:
+
+https://youtu.be/mkwz-fn6H5c
+
+# Vídeo Técnico da demonstração simulada:
+
+https://youtu.be/NDLEdLEj1QY
+
 
 ## Equipe FFIVE
 
