@@ -76,3 +76,7 @@ flet | pillow | asyncio | json | os | hashlib | math | urllib | re | ssl | time
 
 https://youtu.be/NDLEdLEj1QY
 
+# Vídeo da Aplicação física:
+
+https://youtu.be/mkwz-fn6H5c
+
