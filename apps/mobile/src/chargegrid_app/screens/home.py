@@ -1,25 +1,64 @@
 import asyncio
+from copy import deepcopy
+from math import isfinite
 
 import flet as ft
 
+from ..services.maps import station_map_widget
 from ..ui import theme
 from ..ui.availability import point_status
-from ..ui.components import badge, button, card, money
+from ..ui.components import button, card, date_time, money
+from .charging import DEMO_LABELS as DEMO_CHARGING_LABELS
 from .charging import LABELS as CHARGING_LABELS
 from .charging import SOURCE
+from .reservations import DEMO_LABELS as DEMO_RESERVATION_LABELS
 from .reservations import LABELS as RESERVATION_LABELS
+
+
+def _enabled_points(station):
+    if station.get('active') is False:
+        return []
+    return [point for point in station.get('connectors') or []
+            if point.get('active') is not False and not point.get('retired')
+            and point.get('availability_status') != 'disabled']
+
+
+def _available_points(station):
+    # Older APIs omit availability_status/active; explicit negative signals
+    # always win over an inconsistent or stale available flag.
+    return [point for point in _enabled_points(station)
+            if point.get('available') is True and point.get('online') is True
+            and point.get('availability_status') in (None, 'available')]
+
+
+def _station_price(station):
+    prices = []
+    for point in _available_points(station):
+        try:
+            price = float(point.get('price_per_kwh'))
+        except (TypeError, ValueError):
+            continue
+        if isfinite(price) and price >= 0:
+            prices.append(price)
+    return min(prices) if prices else None
 
 
 def _station_status(station):
     connectors = station.get('connectors') or []
+    if station.get('active') is False:
+        return 'Desativado', theme.SLATE
     if not connectors:
         return 'Sem pontos', theme.GRAY_TEXT
-    if any(point.get('available') for point in connectors):
+    if _available_points(station):
         return 'Disponível', theme.GREEN
-    if connectors and all(not point.get('online') for point in connectors):
-        return 'Offline', theme.RED
-    online_points = [point for point in connectors if point.get('online')]
-    labels = [point_status(point) for point in online_points]
+    enabled = _enabled_points(station)
+    if not enabled:
+        return 'Desativado', theme.SLATE
+    online_points = [point for point in enabled if point.get('online') is True]
+    if not online_points:
+        return 'Offline', theme.SLATE
+    labels = [point_status(point) for point in online_points
+              if point_status(point)[0] != 'Disponível']
     for label in ('Em recarga', 'Reservado', 'Sincronizando', 'Falha'):
         if any(status[0] == label for status in labels):
             return next(status for status in labels if status[0] == label)
@@ -27,91 +66,126 @@ def _station_status(station):
 
 
 async def build(app):
+    demo = getattr(app.api,'is_demo',False) is True
     async def snapshot():
-        return await asyncio.gather(
+        return deepcopy(await asyncio.gather(
             app.api.request('GET','reservations/current'),
             app.api.request('GET','charging-sessions/current'),
-            app.api.request('GET','stations',params={'limit':5,'offset':0}),
+            app.api.request('GET','stations',params={'limit':3,'offset':0}),
             app.api.request('GET','me/summary'),
-        )
+        ))
 
     previous = await snapshot()
     reservation, session, stations_result, month_summary = previous
     stations = stations_result['items']
-    name = (app.profile.get('name') or 'motorista').strip().split()[0]
+    name = ((app.profile.get('name') or '').strip().split() or ['motorista'])[0]
 
     identity = [
-        ft.Text(f'Olá, {name}',size=19,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensed'),
-        ft.Text('Encontre seu próximo ponto de recarga.',size=13,color=theme.GRAY_TEXT),
+        ft.Text(f'Olá, {name}',size=22,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),
+        ft.Text('Bem-vindo ao ChargeGrid.',size=14,color=theme.GRAY_TEXT),
     ]
     greeting = ft.Row([
         ft.Container(ft.Icon(ft.Icons.PERSON_OUTLINE,color=theme.GRAY_TEXT,size=27),width=52,height=52,bgcolor=theme.LIGHT_GRAY,border_radius=26,alignment=ft.Alignment(0,0)),
         ft.Column(identity,spacing=2,expand=True),
     ],spacing=12)
 
-    estimated_cost = ft.Text(money(month_summary.get('estimated_cost')),size=28,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedSemiBold')
+    estimated_cost = ft.Text(money(month_summary.get('estimated_cost')),size=32,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')
     def summary_text(summary):
-        return f"{summary.get('sessions_count',0)} recargas concluídas · {float(summary.get('energy_wh') or 0)/1000:.3f} kWh"
+        count = summary.get('sessions_count',0)
+        energy = f"{float(summary.get('energy_wh') or 0)/1000:.3f}".replace('.',',')
+        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy} kWh"
     summary_detail = ft.Text(summary_text(month_summary),size=12,color=theme.GRAY_TEXT)
     summary_card = card([
             ft.Text('GASTO ESTIMADO NESTE MÊS',size=11,color=theme.TEXT_COLOR),
             estimated_cost,
             summary_detail,
         ])
-    controls = [greeting]
-    if app.profile.get('account_type') == 'vendor':
-        controls.append(card([
-            ft.Text('Sua conta de vendedor',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-            ft.Text('Gerencie seus postos e acompanhe as recargas.' if app.profile.get('operator_enabled') else 'Ligue a tela e escaneie o QR exibido no ESP32 para configurar seu primeiro ponto.',size=13,color=theme.GRAY_TEXT),
-            button('Gerenciar postos' if app.profile.get('operator_enabled') else 'Configurar minha primeira tela',app.link('operator'),secondary=True),
-        ]))
-
     def describe_state(reservation, session):
         if session:
-            source = SOURCE.get(session.get('source'),'origem não informada')
-            battery = '' if session.get('soc_percent') is None else f" · Bateria {float(session['soc_percent']):.0f}%"
-            state_text = f"{CHARGING_LABELS.get(session['status'],session['status'])}{battery} · {source}"
+            source = 'Simulação local' if demo else SOURCE.get(session.get('source'),'origem não informada')
+            battery_label = 'Bateria simulada' if demo else 'Bateria'
+            battery = '' if session.get('soc_percent') is None else f" · {battery_label} {float(session['soc_percent']):.0f}%"
+            labels = DEMO_CHARGING_LABELS if demo else CHARGING_LABELS
+            state_text = f"{labels.get(session['status'],session['status'])}{battery} · {source}"
             if not session.get('online', True):
                 state_text += ' · Equipamento offline, últimos dados recebidos'
-            return state_text, app.link('charging',session_id=session['id'])
+            if session.get('station_name'):
+                state_text = session['station_name'] + ' · ' + state_text
+            return state_text, 'Acompanhar recarga', app.link('charging',session_id=session['id'])
         if reservation:
-            return RESERVATION_LABELS.get(reservation['status'],reservation['status']), app.link('reservations')
-        return 'Nenhuma reserva ou recarga ativa. Escolha um posto para começar.', app.link('stations')
+            labels = DEMO_RESERVATION_LABELS if demo else RESERVATION_LABELS
+            state_text = labels.get(reservation['status'],reservation['status'])
+            if reservation.get('station_name'):
+                state_text = reservation['station_name'] + ' · ' + state_text
+            if reservation['status'] == 'confirmed':
+                if reservation.get('expires_at'):
+                    state_text += ' · Chegue até ' + date_time(reservation['expires_at'])
+                connector = reservation.get('connector') or {}
+                return state_text, 'Cheguei: informar código', app.link(
+                    'charging',reservation_id=reservation['id'],point_context=reservation,
+                    max_duration=min(30,connector.get('max_duration_minutes') or 30))
+            label = 'Acompanhar liberação' if reservation['status'] == 'cancelling' else 'Acompanhar reserva'
+            return state_text, label, app.link('reservations')
+        return 'Nenhuma reserva ou recarga ativa. Escolha um posto para começar.', 'Recarregar agora', app.link('stations')
 
-    state_text, state_action = describe_state(reservation, session)
+    state_text, action_label, state_action = describe_state(reservation, session)
     active_state = ft.Text(state_text,size=13,color=theme.TEXT_COLOR,expand=True)
     flow_label = ft.Text('SUA RECARGA' if session else 'SUA RESERVA' if reservation else 'PRÓXIMO PASSO',
                          size=11,weight=ft.FontWeight.BOLD,color=theme.RED)
     flow_icon = ft.Icon(ft.Icons.EV_STATION_OUTLINED if session else ft.Icons.SCHEDULE_OUTLINED if reservation else ft.Icons.EXPLORE_OUTLINED,
                         color=theme.RED,size=25)
+    active_button = button(action_label,state_action)
     active_card = card([flow_label,ft.Row([
         ft.Container(flow_icon,width=34,height=34,bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
         active_state,
-    ],spacing=10)],on_click=state_action,ink=True,border=ft.Border.all(1,theme.LIGHT_GRAY))
-    controls.append(active_card)
+    ],spacing=10),active_button],on_click=state_action,ink=True,
+        visible=bool(session or reservation),border=ft.Border.all(1,theme.LIGHT_GRAY))
+    start_actions = ft.Column([
+        button('Recarregar agora',app.link('stations')),
+    ],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,visible=not bool(session or reservation))
+    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-40)
 
-    def station_rows(items):
-        rows = [ft.Text('Explore os postos',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=17,font_family='BarlowCondensed')]
-        for station in items:
-            status, color = _station_status(station)
-            prices = [float(point['price_per_kwh']) for point in station.get('connectors',[]) if point.get('price_per_kwh') is not None]
-            detail = station['address']
-            if prices:
-                detail += f" · a partir de {money(min(prices))}/kWh"
-            rows.append(ft.Container(ft.Row([
-                ft.Column([ft.Text(station['name'],weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),ft.Text(detail,size=12,color=theme.GRAY_TEXT)],spacing=3,expand=True),
-                badge(status,bg=color,width=104),
-            ],alignment=ft.MainAxisAlignment.SPACE_BETWEEN),padding=ft.Padding(top=14,bottom=14),border=ft.Border(bottom=ft.BorderSide(1,theme.LIGHT_GRAY)),on_click=app.link('stations',station_id=station['id']),ink=True))
-        if not items:
-            rows.append(ft.Text('Nenhum posto disponível no momento.',size=13,color=theme.GRAY_TEXT))
-        return rows
+    def guide_context(reservation, session):
+        if session:
+            return ('Acompanhe o estado da recarga e encerre pelo app quando precisar.',
+                    'charging','Como acompanho e encerro minha recarga com segurança?')
+        if reservation:
+            if reservation['status'] == 'confirmed':
+                return ('Ao chegar, confirme o código #F para iniciar a recarga.',
+                        'reservations','Tenho uma reserva confirmada. Como inicio a recarga ao chegar?')
+            if reservation['status'] == 'cancelling':
+                return ('Aguarde a confirmação de liberação antes de escolher outro ponto.',
+                        'reservations','Por que minha reserva está aguardando liberação?')
+            return ('Aguarde a confirmação do ponto antes de se deslocar.',
+                    'reservations','Minha reserva ainda aguarda confirmação. O que devo fazer?')
+        return ('Escolha um ponto disponível; no local, use o código #F para iniciar.',
+                'getting_started','Como escolho um ponto e inicio uma recarga?')
 
-    listing = ft.Column(station_rows(stations),spacing=0)
-    controls.append(listing)
-    controls += [
-        button('Encontrar um ponto',app.link('stations')),
-        button('Tenho o código #F do posto',app.link('charging'),secondary=True),
-        summary_card,
+    guide_copy, guide_topic, guide_question = guide_context(reservation,session)
+    guide_text = ft.Text(guide_copy,size=13,color=theme.TEXT_COLOR)
+    guide_card = card(ft.Row([
+        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE,color=theme.GRAY_TEXT,size=24),
+        ft.Column([ft.Text('Guia de recarga',size=12,color=theme.GRAY_TEXT),guide_text],spacing=3,expand=True),
+        ft.Icon(ft.Icons.CHEVRON_RIGHT,color=theme.GRAY_TEXT,size=20),
+    ],spacing=12),on_click=app.link('chat',topic=guide_topic,question=guide_question),ink=True,padding=12)
+
+    async def make_map(items):
+        records = [{**station,'free_points':len(_available_points(station)),
+                    'status':_station_status(station)[0],'price':_station_price(station)} for station in items[:3]]
+        return await station_map_widget(records,lambda station_id:app.link('stations',station_id=station_id),offline=demo,width=map_width)
+
+    map_preview = ft.Container(await make_map(stations))
+    map_heading = ft.Text('Estações no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
+    map_section = ft.Column([map_heading,map_preview,start_actions],spacing=16,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    async def resize_map_section(event):
+        nonlocal map_width
+        if event.width <= 0 or abs(event.width-map_width) < .5:
+            return
+        map_width = event.width
+    map_section.on_size_change = resize_map_section
+    controls = [
+        greeting,active_card,summary_card,guide_card,map_section,
     ]
     async def update():
         nonlocal previous
@@ -120,16 +194,21 @@ async def build(app):
             return
         current_reservation, current_session, current_stations, current_summary = fresh
         if fresh[:2] != previous[:2]:
-            active_state.value, active_card.on_click = describe_state(current_reservation, current_session)
+            active_state.value, active_button.content.value, action = describe_state(current_reservation, current_session)
+            active_card.on_click = active_button.on_click = action
+            active_card.visible = bool(current_session or current_reservation)
+            start_actions.visible = not active_card.visible
             flow_label.value = 'SUA RECARGA' if current_session else 'SUA RESERVA' if current_reservation else 'PRÓXIMO PASSO'
-            flow_icon.name = ft.Icons.EV_STATION_OUTLINED if current_session else ft.Icons.SCHEDULE_OUTLINED if current_reservation else ft.Icons.EXPLORE_OUTLINED
+            flow_icon.icon = ft.Icons.EV_STATION_OUTLINED if current_session else ft.Icons.SCHEDULE_OUTLINED if current_reservation else ft.Icons.EXPLORE_OUTLINED
+            guide_text.value, topic, question = guide_context(current_reservation,current_session)
+            guide_card.on_click = app.link('chat',topic=topic,question=question)
         if current_summary != previous[3]:
             estimated_cost.value = money(current_summary.get('estimated_cost'))
             summary_detail.value = summary_text(current_summary)
         if current_stations['items'] != previous[2]['items']:
-            listing.controls = station_rows(current_stations['items'])
+            map_preview.content = await make_map(current_stations['items'])
         previous = fresh
         app.page.update()
 
     app.set_poll(update, 10)
-    return ft.ListView(controls,spacing=16,expand=True)
+    return ft.ListView(controls,spacing=10,expand=True)

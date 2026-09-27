@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from tools import provision_point as module
+from tools.tests.test_admin_tools import require_test_database_url
 
 
 class Connection:
@@ -39,6 +40,27 @@ def test_factory_creates_only_new_inactive_equipment_and_stores_hashes():
     assert claim[1][-1] == hashlib.sha256(artifact["claim_token"].encode()).hexdigest()
     assert artifact["claim_token"] not in str(connection.queries)
     assert artifact["device_key"] not in str(connection.queries)
+
+
+@pytest.mark.skipif(
+    not os.getenv("CHARGEGRID_IMPORT_TEST_DATABASE_URL"),
+    reason="banco descartável de provisionamento não configurado",
+)
+def test_factory_provisioning_works_on_migrated_schema_without_exporting_presence_seed():
+    import psycopg
+
+    database = os.environ["CHARGEGRID_IMPORT_TEST_DATABASE_URL"]
+    require_test_database_url(database)
+    with psycopg.connect(database) as connection, connection.transaction(force_rollback=True):
+        artifact = module.provision(connection, public_code="FACTORY-PRESENCE-TEST")
+        row = connection.execute(
+            "SELECT presence_secret, owner_id, active FROM stations WHERE id = %s",
+            (artifact["station_id"],),
+        ).fetchone()
+        assert len(bytes.fromhex(row[0])) == 32
+        assert row[1:] == (None, False)
+        assert row[0] not in str(artifact)
+        assert "presence_secret" not in artifact
 
 
 @pytest.mark.parametrize(

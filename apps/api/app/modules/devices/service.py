@@ -58,6 +58,10 @@ def sync(db, authenticated_device, data):
     else:
         boot.last_sequence = data.sequence
     energy_wh = data.energy_wh.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    soc_percent = (
+        data.soc_percent.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if data.soc_percent is not None else None
+    )
     terminal_replay = False
     if data.session_id:
         reported = db.get(ChargingSession, data.session_id)
@@ -71,33 +75,13 @@ def sync(db, authenticated_device, data):
             terminal_replay = True
             if (
                 energy_wh != reported.energy_wh
-                or data.soc_percent != reported.soc_percent
+                or soc_percent != reported.soc_percent
                 or data.source != reported.source
                 or data.physical_state not in ("idle", "stopped", "fault")
             ):
                 fail("session_finished", "Resultado final da sessão é imutável")
     elif data.physical_state == "charging" or data.energy_wh or data.soc_percent is not None:
         fail("session_required", "Medição de recarga exige session_id", 422)
-    expired = db.scalar(
-        select(Command)
-        .where(
-            Command.device_id == device.id,
-            Command.status.in_(("pending", "received")),
-            Command.expires_at <= now(),
-        )
-        .order_by(Command.version.desc())
-        .limit(1)
-    )
-    if expired and expired.type in ("STOP", "RELEASE"):
-        issue(
-            db,
-            connector,
-            device,
-            expired.type,
-            reservation=reservation if expired.type == "RELEASE" else None,
-            session=session if expired.type == "STOP" else None,
-            parameters=expired.parameters,
-        )
     reboot = device.boot_id is not None and not same_boot
     old_state = device.physical_state
     device.boot_id = data.boot_id
@@ -214,7 +198,7 @@ def sync(db, authenticated_device, data):
     if data.session_id and not terminal_replay:
         reported = db.get(ChargingSession, data.session_id)
         reported.energy_wh = energy_wh
-        reported.soc_percent = data.soc_percent
+        reported.soc_percent = soc_percent
         reported.source = data.source
         reported.last_measurement_at = now()
         reported.cost_estimate = (
@@ -237,9 +221,14 @@ def sync(db, authenticated_device, data):
             ):
                 cmd.status = "superseded"
             device.reconciled = True
+    recover_safety_command(db, connector, device, reservation, session)
     restore_reservation(db, connector, device, reservation, session, reboot)
     pending = db.scalar(
-        select(Command.id).where(Command.device_id == device.id, Command.status.in_(("pending", "received")))
+        select(Command.id).where(
+            Command.device_id == device.id,
+            Command.status.in_(("pending", "received")),
+            Command.expires_at > now(),
+        )
     )
     if (
         not active_res(db, connector.id)
@@ -285,6 +274,34 @@ def sync(db, authenticated_device, data):
     if completed_reset_id:
         result["factory_reset_confirmed"] = completed_reset_id
     return result
+
+
+def recover_safety_command(db, connector, device, reservation, session):
+    """A failed/expired safety command is not proof that its operation ended.
+
+    Retry only the current version and its still-active resource. An old failed
+    STOP/RELEASE must never supersede a newer START or a different reservation.
+    """
+    command = db.scalar(
+        select(Command).where(
+            Command.device_id == device.id,
+            Command.version == connector.control_version,
+            Command.type.in_(("STOP", "RELEASE")),
+            Command.status.in_(("pending", "received", "failed")),
+        )
+    )
+    if not command or (command.status != "failed" and command.expires_at > now()):
+        return
+    if command.type == "STOP":
+        if not session or session.status != "stopping" or command.session_id != session.id:
+            return
+        reservation = None
+    else:
+        if not reservation or reservation.status != "cancelling" or command.reservation_id != reservation.id:
+            return
+        session = None
+    issue(db, connector, device, command.type, reservation=reservation, session=session,
+          parameters=command.parameters)
 
 
 def restore_reservation(db, connector, device, reservation, session, reboot):

@@ -12,6 +12,10 @@ imediatamente, sem precisar reimportar nada.
 from contextvars import ContextVar
 
 LIGHT = {
+    "NAV_BG": "#FFFFFF",
+    "INPUT_BG": "#FFFFFF",
+    "INPUT_TEXT": "#1D1F20",
+    "INPUT_BORDER": "#6B6B6B",
     "BG_COLOR": "#F2F2F3",
     "RED": "#D72B32",
     "ERROR": "#B91C24",
@@ -26,6 +30,10 @@ LIGHT = {
 }
 
 DARK = {
+    "NAV_BG": "#191919",
+    "INPUT_BG": "#FFFFFF",
+    "INPUT_TEXT": "#1D1F20",
+    "INPUT_BORDER": "#6B6B6B",
     "BG_COLOR": "#131313",
     "RED": "#D72B32",
     "ERROR": "#FF858A",

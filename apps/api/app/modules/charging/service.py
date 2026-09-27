@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from ...errors import fail
-from ...models import ChargingSession, Connector, Coupon, Reservation, Station, now
+from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, now
 from ...presence_code import valid_code
 from ...service import (
     SESSION_ACTIVE,
@@ -28,12 +28,19 @@ def _point_for_code(db, user, data):
         if not reservation or reservation.user_id != user.id:
             fail("invalid_reservation", "Reserva inválida")
         return db.get(Connector, reservation.connector_id)
-    points = db.scalars(
-        select(Connector).join(Station).where(Connector.active.is_(True), Station.active.is_(True))
+    points = db.execute(
+        select(Connector, Station).join(Station).where(
+            Connector.active.is_(True), Station.active.is_(True), Station.owner_id.is_not(None)
+        )
     ).all()
-    matching = [point for point in points if valid_code(db.get(Station, point.station_id), data.presence_code)]
+    checked_at = now()
+    matching = [point for point, station in points if valid_code(station, data.presence_code, checked_at)]
     if not matching:
         fail("invalid_presence_code", "Código do posto inválido ou expirado", 422)
+    # Availability cannot disambiguate locations: that could start a different
+    # station from the one whose physical display the user is reading.
+    if len({point.station_id for point in matching}) > 1:
+        fail("ambiguous_presence_code", "Há mais de um posto com este código. Escolha o ponto na lista antes de iniciar.", 422)
     if len(matching) == 1:
         return matching[0]
     available = [point for point in matching if free(db, point)]
@@ -43,11 +50,16 @@ def _point_for_code(db, user, data):
 
 
 def start(db, user, data, key):
-    point = _point_for_code(db, user, data)
-    connector = lock_point(db, user, point.id)
+    # Serialize this user's requests before looking up a rotating code. A retry
+    # must recover the accepted session even after expiry or availability changes.
+    db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
     old, body_hash = idempotent(db, user, "start", key, data.model_dump(), ChargingSession)
     if old:
+        lock_point(db, user, old.connector_id)
+        db.refresh(old)
         return old
+    point = _point_for_code(db, user, data)
+    connector = lock_point(db, user, point.id)
     if not valid_code(db.get(Station, connector.station_id), data.presence_code):
         fail("invalid_presence_code", "Código do posto inválido ou expirado", 422)
     ensure_user_free(db, user, data.reservation_id)

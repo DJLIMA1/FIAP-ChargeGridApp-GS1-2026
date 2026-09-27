@@ -22,6 +22,8 @@ Há um único `.env` na raiz do monorepo. A URL da API para o mobile é `https:/
 
 A revisão de propriedade exige a migração `d85af641bc01` antes do código novo: pontos novos nascem na fábrica, sem dono e inativos, e passam ao vendedor mediante QR de propriedade. A validação local dessa revisão não implica migração ou publicação automática no ambiente remoto.
 
+A revisão de bugs de 25/09/2026 recupera essa base após o uso temporário da 0.3.5. A migração adicional `81a24d97be63` gera `presence_secret` também nos INSERTs diretos do provisionamento de fábrica e da importação legada, preservando os segredos existentes. Aplique `alembic upgrade head` antes de usar essas ferramentas. Repetições de início com a mesma chave e corpo recuperam a sessão aceita mesmo depois que o `#F` expira; códigos iguais em postos diferentes exigem seleção explícita do ponto. A lista e o mapa agora atualizam a disponibilidade juntos.
+
 ### APK Android
 
 O nome exibido pelo Android e o identificador do pacote ficam em `apps/mobile/pyproject.toml`. Para gerar um APK com o nome **ChargeGrid**, use o ambiente virtual criado na raiz:
@@ -76,6 +78,8 @@ Desligue a Data API no painel do Supabase. A migração remove permissões de `a
 ## Vercel
 
 Crie o projeto a partir deste repositório e escolha `apps/api` como **Root Directory**. Cadastre na Vercel somente `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `CORS_ORIGINS`. Não cadastre `MIGRATION_DATABASE_URL`, senha administrativa, service role ou segredo SMTP no runtime. Execute `alembic upgrade head` localmente ou em um job administrativo efêmero com `MIGRATION_DATABASE_URL`, antes de apontar a implantação para um banco novo; remova essa credencial do ambiente ao terminar. Confirme em produção que `/docs` abre e que o emissor do JWT corresponde a `SUPABASE_URL`.
+
+O APK e o painel usam o alias `chargegrid-api-preview-djlima1s-projects.vercel.app`. Atualizar ou reverter apenas `chargegrid-api-ruddy.vercel.app` não muda necessariamente esse destino. Confira `vercel alias ls` e aponte o alias usado pelos clientes para o deployment validado antes de considerar a troca de versão concluída. O fluxo `#F` exige app 0.3.6 ou superior e painel 0.3.6 ou superior; mantenha os três componentes compatíveis. Os APKs já existentes em `builds/` não recebem alterações feitas posteriormente no código-fonte.
 
 ## ESP32 e simulador
 

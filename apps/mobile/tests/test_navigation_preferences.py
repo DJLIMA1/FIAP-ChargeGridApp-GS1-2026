@@ -63,9 +63,10 @@ class NavigationTests(unittest.IsolatedAsyncioTestCase):
         screen = await stations.build(app)
         empty = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.value == 'Nenhum posto encontrado para esta busca.')
         self.assertTrue(empty.visible)
-        await app.poll()
+        with patch('chargegrid_app.screens.stations.station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
+            await app.poll()
         self.assertFalse(empty.visible)
-        self.assertIn('Este posto ainda não tem pontos de recarga.', [item.value for item in descendants(screen) if isinstance(item,ft.Text)])
+        self.assertIn('Sem pontos cadastrados', [item.value for item in descendants(screen) if isinstance(item,ft.Text)])
         await app.poll()
         self.assertTrue(empty.visible)
         self.assertEqual(home._station_status(station)[0], 'Sem pontos')

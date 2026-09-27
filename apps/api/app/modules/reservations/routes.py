@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from ...database import db_session
 from ...errors import fail
+from ...http_helpers import reservation_row
 from ...models import Reservation
 from ...schemas import (
     ReserveInput,
@@ -15,7 +16,6 @@ from ...service import (
     device_for,
     issue,
     lock_point,
-    row,
 )
 from .service import reserve
 
@@ -29,7 +29,7 @@ def create_reservation(
     user=Depends(current_user),
     db=Depends(db_session),
 ):
-    return row(reserve(db, user, data, idempotency_key))
+    return reservation_row(db, reserve(db, user, data, idempotency_key))
 
 
 @router.get("/reservations/current")
@@ -39,7 +39,11 @@ def current_reservation(user=Depends(current_user), db=Depends(db_session)):
     )
     if obj:
         lock_point(db, user, obj.connector_id)
-    return row(obj)
+        db.flush()
+        db.refresh(obj)
+        if obj.status not in RES_ACTIVE:
+            return None
+    return reservation_row(db, obj)
 
 
 @router.post("/reservations/{reservation_id}/cancel", status_code=202)
@@ -52,4 +56,4 @@ def cancel(reservation_id: UUID, user=Depends(current_user), db=Depends(db_sessi
     if obj.status in ("pending_device", "confirmed"):
         obj.status = "cancelling"
         issue(db, connector, device_for(db, connector), "RELEASE", reservation=obj)
-    return row(obj)
+    return reservation_row(db, obj)

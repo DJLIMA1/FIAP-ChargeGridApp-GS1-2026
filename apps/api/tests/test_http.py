@@ -11,7 +11,18 @@ from sqlalchemy.sql.elements import TextClause
 from app.database import db_session
 from app.http_helpers import point_row
 from app.main import app
-from app.models import ChargingSession, Command, Connector, Device, DeviceClaim, Profile, Station, now
+from app.models import (
+    ChargingSession,
+    Command,
+    Connector,
+    Coupon,
+    Device,
+    DeviceClaim,
+    Profile,
+    Reservation,
+    Station,
+    now,
+)
 from app.modules.users.routes import monthly_bounds
 from app.presence_code import current_code
 from app.security import current_user, digest
@@ -556,3 +567,215 @@ def test_factory_reset_refuses_before_deactivation_when_runtime_cannot_insert_cl
 def _station_for_code(factory, seed):
     with factory() as db:
         return db.get(Station, seed["station"])
+
+
+def assert_public_context(body, seed):
+    assert body["station_id"] == str(seed["station"])
+    assert body["station_name"] == "Demo"
+    assert body["station_address"] == "Bancada"
+    assert body["connector"] == {
+        "id": str(seed["point"]), "public_code": "CG-01", "connector_type": "bench",
+        "power_kw": "1.000", "price_per_kwh": "2.0000", "max_duration_minutes": 60,
+    }
+    assert not {"owner_id", "presence_secret", "device", "key_hash", "token_hash"}.intersection(body)
+
+
+def test_reservation_and_session_endpoints_include_safe_point_context(factory, seed):
+    client, selected = client_for(factory, seed["a"])
+    device_headers = {"Authorization": "Device test-key"}
+    try:
+        reserved = client.post("/v1/reservations", headers={"Idempotency-Key": "context-reserve"},
+                               json={"connector_id": str(seed["point"])})
+        assert reserved.status_code == 202
+        assert_public_context(reserved.json(), seed)
+        assert_public_context(client.get("/v1/reservations/current").json(), seed)
+        cancel = client.post(f"/v1/reservations/{reserved.json()['id']}/cancel")
+        assert cancel.status_code == 202
+        assert_public_context(cancel.json(), seed)
+        command = client.post("/v1/devices/sync", headers=device_headers, json=sync_payload(1)).json()["commands"][0]
+        assert command["type"] == "RELEASE"
+        client.post("/v1/devices/sync", headers=device_headers, json=sync_payload(2,
+                    acks=[{"command_id": command["id"], "status": "applied"}]))
+        assert client.get("/v1/reservations/current").json() is None
+
+        started = client.post("/v1/charging-sessions", headers={"Idempotency-Key": "context-start"},
+                              json={"public_code": "CG-01", "presence_code": current_code(_station_for_code(factory, seed))[0]})
+        assert started.status_code == 202
+        sid = started.json()["id"]
+        assert_public_context(started.json(), seed)
+        for path in ("/v1/charging-sessions/current", f"/v1/charging-sessions/{sid}"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert_public_context(response.json(), seed)
+        stopped = client.post(f"/v1/charging-sessions/{sid}/stop", headers={"Idempotency-Key": "context-stop"})
+        assert stopped.status_code == 202
+        assert_public_context(stopped.json(), seed)
+        assert_public_context(client.get("/v1/me/charging-sessions").json()["items"][0], seed)
+        selected["id"] = seed["owner"]
+        for path in (f"/v1/stations/{seed['station']}/charging-sessions", "/v1/operator/charging-sessions"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert_public_context(response.json()["items"][0], seed)
+    finally:
+        clear_overrides()
+
+
+@pytest.mark.parametrize("resource_kind", ["reservation", "session"])
+def test_current_resource_context_preserves_expiry_reconciliation(factory, seed, resource_kind):
+    client, _ = client_for(factory, seed["a"])
+    try:
+        if resource_kind == "reservation":
+            created = client.post("/v1/reservations", headers={"Idempotency-Key": "expire-context"},
+                                  json={"connector_id": str(seed["point"])})
+            with factory.begin() as db:
+                db.get(Reservation, UUID(created.json()["id"])).confirmation_deadline = now() - timedelta(seconds=1)
+            path, expected_status, expected_command = "/v1/reservations/current", "cancelling", "RELEASE"
+        else:
+            created = client.post("/v1/charging-sessions", headers={"Idempotency-Key": "expire-context"},
+                json={"presence_code": current_code(_station_for_code(factory, seed))[0]})
+            with factory.begin() as db:
+                db.query(Command).filter_by(session_id=UUID(created.json()["id"]), type="START").one().expires_at = (
+                    now() - timedelta(seconds=1)
+                )
+            path, expected_status, expected_command = "/v1/charging-sessions/current", "stopping", "STOP"
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.json()["status"] == expected_status
+        assert_public_context(response.json(), seed)
+        with factory() as db:
+            assert db.query(Command).filter_by(type=expected_command, status="pending").count() == 1
+    finally:
+        clear_overrides()
+
+
+@pytest.mark.parametrize("status", ["pending", "received"])
+def test_expired_factory_reset_allows_reactivation_and_ignores_late_ack(factory, seed, status):
+    with factory.begin() as db:
+        db.get(Device, seed["device"]).firmware_version = "0.3.6"
+    client, _ = client_for(factory, seed["owner"])
+    endpoint = f"/v1/devices/{seed['device']}/factory-reset"
+    try:
+        requested = client.post(endpoint)
+        assert requested.status_code == 202
+        command_id = requested.json()["command_id"]
+        with factory.begin() as db:
+            command = db.get(Command, UUID(command_id))
+            command.status = status
+            command.expires_at = now() - timedelta(seconds=1)
+        assert client.get(endpoint).json()["status"] == "expired"
+        activated = client.patch(f"/v1/connectors/{seed['point']}", json={"active": True})
+        assert activated.status_code == 200 and activated.json()["active"] is True
+        late = client.post("/v1/devices/sync", headers={"Authorization": "Device test-key"},
+                          json=sync_payload(1, acks=[{
+                              "command_id": command_id, "status": "applied",
+                              "new_device_key_hash": digest("never-applied-key"),
+                              "new_claim_token_hash": digest("never-applied-claim"),
+                          }]))
+        assert late.status_code == 200 and "factory_reset_confirmed" not in late.json()
+        available = client.get(f"/v1/stations/{seed['station']}").json()["connectors"][0]
+        assert available["available"] is True and available["availability_status"] == "available"
+        with factory() as db:
+            assert not db.get(Device, seed["device"]).revoked
+            assert db.query(DeviceClaim).count() == 0
+        # Recovery may also replace an explicitly revoked device; the expired
+        # reset must not permanently mark this point retired.
+        assert client.post(f"/v1/devices/{seed['device']}/revoke").status_code == 200
+        assert client.post(f"/v1/connectors/{seed['point']}/device").status_code == 201
+    finally:
+        clear_overrides()
+
+
+@pytest.mark.parametrize("resource_kind", ["reservation", "session"])
+def test_factory_reset_status_is_read_only_during_active_operation(factory, seed, resource_kind):
+    with factory.begin() as db:
+        db.get(Profile, seed["b"]).operator_enabled = True
+    client, selected = client_for(factory, seed["a"])
+    endpoint = f"/v1/devices/{seed['device']}/factory-reset"
+    try:
+        if resource_kind == "reservation":
+            response = client.post("/v1/reservations", headers={"Idempotency-Key": "busy-status"},
+                                   json={"connector_id": str(seed["point"])})
+        else:
+            response = client.post("/v1/charging-sessions", headers={"Idempotency-Key": "busy-status"},
+                json={"presence_code": current_code(_station_for_code(factory, seed))[0]})
+        assert response.status_code == 202
+        assert client.get(endpoint).status_code == 403
+        selected["id"] = seed["b"]
+        assert client.get(endpoint).status_code == 404
+        selected["id"] = seed["owner"]
+        status = client.get(endpoint)
+        assert status.status_code == 200 and status.json() == {"status": "not_requested"}
+        for mutation in (endpoint, f"/v1/devices/{seed['device']}/rotate-key", f"/v1/devices/{seed['device']}/revoke"):
+            denied = client.post(mutation)
+            assert denied.status_code == 409 and denied.json()["error"]["code"] == "point_busy"
+        with factory() as db:
+            assert db.query(Command).count() == 1
+            assert not db.get(Device, seed["device"]).revoked
+    finally:
+        clear_overrides()
+
+
+def test_operator_history_is_paginated_and_isolated_to_owned_stations(factory, seed):
+    with factory.begin() as db:
+        other_owner = db.get(Profile, seed["b"])
+        other_owner.operator_enabled = True
+        other_station = Station(owner_id=other_owner.id, name="Other", address="Other road", latitude=1, longitude=1)
+        db.add(other_station)
+        db.flush()
+        other_point = Connector(station_id=other_station.id, public_code="OTHER", connector_type="bench",
+                                power_kw=1, price_per_kwh=2)
+        db.add(other_point)
+        db.flush()
+        expected = []
+        for index, point_id in enumerate((seed["point"], seed["point"], other_point.id)):
+            record = ChargingSession(user_id=seed["a"], connector_id=point_id, status="completed",
+                                     max_duration_minutes=30, price_per_kwh=2,
+                                     created_at=now() + timedelta(seconds=index))
+            db.add(record)
+            db.flush()
+            if point_id == seed["point"]:
+                expected.insert(0, str(record.id))
+    client, selected = client_for(factory, seed["a"])
+    try:
+        assert client.get("/v1/operator/charging-sessions").status_code == 403
+        selected["id"] = seed["owner"]
+        first = client.get("/v1/operator/charging-sessions", params={"limit": 1, "offset": 0})
+        second = client.get("/v1/operator/charging-sessions", params={"limit": 1, "offset": 1})
+        assert first.status_code == second.status_code == 200
+        assert first.json()["total"] == second.json()["total"] == 2
+        assert [first.json()["items"][0]["id"], second.json()["items"][0]["id"]] == expected
+        assert_public_context(first.json()["items"][0], seed)
+        selected["id"] = seed["b"]
+        other = client.get("/v1/operator/charging-sessions").json()
+        assert other["total"] == 1 and other["items"][0]["station_name"] == "Other"
+        assert other["items"][0]["id"] not in expected
+    finally:
+        clear_overrides()
+
+
+def test_expired_coupon_can_be_edited_or_disabled_but_needs_future_date_to_reactivate(factory, seed):
+    expires = now() - timedelta(days=1)
+    with factory.begin() as db:
+        coupon = Coupon(operator_id=seed["owner"], code="EDIT-EXPIRED", description="Old", discount_percent=10,
+                        valid_until=expires, active=True)
+        db.add(coupon)
+        db.flush()
+        coupon_id = coupon.id
+    client, _ = client_for(factory, seed["owner"])
+    endpoint = f"/v1/coupons/{coupon_id}"
+    try:
+        edited = client.patch(endpoint, json={"description": "Updated", "discount_percent": 15})
+        assert edited.status_code == 200
+        assert datetime.fromisoformat(edited.json()["valid_until"]) == expires
+        assert client.patch(endpoint, json={"active": False}).status_code == 200
+        assert client.patch(endpoint, json={"active": True}).status_code == 422
+        assert client.patch(endpoint, json={"valid_until": expires.isoformat()}).status_code == 422
+        future = now() + timedelta(days=1)
+        enabled = client.patch(endpoint, json={"valid_until": future.isoformat(), "active": True})
+        assert enabled.status_code == 200 and enabled.json()["active"] is True
+        assert datetime.fromisoformat(enabled.json()["valid_until"]) == future
+        rejected = client.post("/v1/coupons", json={"code": "ALREADY-EXPIRED", "description": "Expired",
+            "discount_percent": 10, "valid_until": expires.isoformat()})
+        assert rejected.status_code == 422
+    finally:
+        clear_overrides()

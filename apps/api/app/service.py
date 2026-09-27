@@ -54,6 +54,17 @@ def device_for(db, connector):
     return db.scalar(select(Device).where(Device.connector_id == connector.id, Device.revoked.is_(False)))
 
 
+def reset_blocks_point(db, connector_id):
+    return bool(db.scalar(
+        select(Command.id).join(Device, Device.id == Command.device_id).where(
+            Device.connector_id == connector_id,
+            Command.type == "FACTORY_RESET",
+            (Command.status == "applied")
+            | (Command.status.in_(("pending", "received")) & (Command.expires_at > now())),
+        ).limit(1)
+    ))
+
+
 def online(device):
     return bool(device and device.last_seen and device.last_seen > now() - timedelta(seconds=45))
 

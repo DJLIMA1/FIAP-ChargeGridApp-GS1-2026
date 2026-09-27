@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from .errors import fail
-from .models import ChargingSession, Command, Connector, Device, Reservation
+from .models import ChargingSession, Command, Connector, Device, Reservation, Station
 from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
@@ -50,10 +50,31 @@ def station_row(db, station):
     return result
 
 
+def point_context(db, connector):
+    station = db.get(Station, connector.station_id)
+    public_fields = ("id", "public_code", "connector_type", "power_kw", "price_per_kwh", "max_duration_minutes")
+    serialized = row(connector)
+    return {
+        "station_id": str(station.id),
+        "station_name": station.name,
+        "station_address": station.address,
+        "connector": {key: serialized[key] for key in public_fields},
+    }
+
+
+def reservation_row(db, reservation):
+    result = row(reservation)
+    if result:
+        result.update(point_context(db, db.get(Connector, reservation.connector_id)))
+    return result
+
+
 def session_row(db, session):
     result = row(session)
     if result:
-        result["online"] = online(device_for(db, db.get(Connector, session.connector_id)))
+        connector = db.get(Connector, session.connector_id)
+        result.update(point_context(db, connector))
+        result["online"] = online(device_for(db, connector))
     return result
 
 
@@ -63,12 +84,15 @@ def page(db, query, limit, offset, renderer=row):
     return {"items": [renderer(x) for x in items], "total": total, "limit": limit, "offset": offset}
 
 
-def own_device(db, user, device_id):
+def own_device(db, user, device_id, *, require_idle=True):
     obj = db.get(Device, device_id)
     if not obj:
         fail("not_found", "Dispositivo não encontrado", 404)
-    point = db.scalar(select(Connector).where(Connector.id == obj.connector_id).with_for_update())
+    query = select(Connector).where(Connector.id == obj.connector_id)
+    point = db.scalar(query.with_for_update() if require_idle else query)
     owned(db, user, point.station_id)
+    if not require_idle:
+        return obj
     db.refresh(obj)
     if db.scalar(
         select(ChargingSession.id).where(

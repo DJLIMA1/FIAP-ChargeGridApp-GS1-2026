@@ -16,6 +16,8 @@ Resposta:
 
 Sync durante carga 5s, demais 10s. Comunicação ausente 45s determina parada local, guardar energia final até reconectar. API nunca interpreta offline/timeout como prova de parada. Não executar START novamente depois de reboot. Relatar session_id anterior e stopped para reconciliação. Energia acumulada Wh da sessão, não negativa/não decrescente; SoC 0–100 ou null. Fonte simulated,measured,estimated. Duração local e limite monetário independem da interface. Parada espontânea comunica end_reason (duration_limit,cost_limit,disconnected,communication_lost,fault). Comandos vencidos provocam reconciliação, não confirmação inventada.
 
+Energia é normalizada a três casas decimais e SoC a duas, com arredondamento decimal half-up antes de persistir ou comparar um replay. Repetir a medição final nessa precisão é permitido; mudar o resultado final continua recusado. STOP/RELEASE com ACK `failed` ou prazo vencido são reemitidos com nova versão enquanto a mesma sessão/reserva ainda aguarda reconciliação. Falhas de versões antigas não substituem comandos mais recentes, e o ponto só volta a ficar disponível após confirmação física compatível.
+
 ## Reserva e ownership — 0.3.0
 
 Uma reserva confirmada sobrevive ao reboot até o prazo original expirar ou o consumidor cancelar. Após reboot ou divergência física, a API emite um novo `RESERVE` com versão maior. O ACK de restauração não renova `expires_at`. Durante a restauração o ponto não fica disponível; cancelamento e expiração prevalecem sobre comandos antigos. A ausência de rede nunca é prova de ponto livre.

@@ -43,6 +43,10 @@ def current_session(user=Depends(current_user), db=Depends(db_session)):
     )
     if obj:
         lock_point(db, user, obj.connector_id)
+        db.flush()
+        db.refresh(obj)
+        if obj.status not in SESSION_ACTIVE:
+            return None
     return session_row(db, obj)
 
 
@@ -112,3 +116,21 @@ def summary(user=Depends(current_user), db=Depends(db_session)):
         "total_energy_wh": str(sum(x.energy_wh for x in sessions)),
         "total_estimated_cost": str(sum(x.cost_estimate for x in sessions)),
     }
+
+
+@router.get("/operator/charging-sessions")
+def operator_history(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user=Depends(current_user),
+    db=Depends(db_session),
+):
+    operator(user)
+    query = (
+        select(ChargingSession)
+        .join(Connector)
+        .join(Station)
+        .where(Station.owner_id == user.id)
+        .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
+    )
+    return page(db, query, limit, offset, lambda obj: session_row(db, obj))

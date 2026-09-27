@@ -5,7 +5,15 @@ from pathlib import Path
 import flet as ft
 
 from .api_client import ApiClient, ApiError
-from .navigation import SCREENS, TABS, editable_controls, form_route, parent_route
+from .navigation import (
+    SCREENS,
+    active_tab,
+    can_manage,
+    editable_controls,
+    form_route,
+    parent_route,
+    tab_entries,
+)
 from .preferences import Preferences
 from .ui import motion, theme
 from .ui.components import button, title
@@ -20,6 +28,12 @@ class ChargeGridApp:
         self.dark_mode = self.preferences.load()
         theme.set_dark(self.dark_mode)
         self.route, self.profile, self.data = 'auth', {}, {}
+        self.browsing_mode = 'consumer'
+        self.charging_draft = None
+        self.chat_messages = []
+        self.chat_draft = ''
+        self._chat_account_id = None
+        self.building_generation = None
         self.tasks, self.poll_task = set(), None
         self.generation = 0
         self.closed = False
@@ -46,6 +60,7 @@ class ChargeGridApp:
             'BarlowMedium': '/Barlow-Medium.ttf',
             'BarlowSemiBold': '/Barlow-SemiBold.ttf',
             'BarlowCondensed': '/BarlowCondensed-Bold.ttf',
+            'BarlowCondensedBold': '/BarlowCondensed-Bold.ttf',
             'BarlowCondensedSemiBold': '/BarlowCondensed-SemiBold.ttf',
         }
         page.window.width, page.window.height = 400, 800
@@ -68,7 +83,7 @@ class ChargeGridApp:
         return handler
 
     async def native_back(self, event):
-        destination = parent_route(self.route, self.data)
+        destination = parent_route(self.route, self.data, getattr(self, 'browsing_mode', 'consumer'))
         if not await self.prepare_navigation():
             await event.control.confirm_pop(False)
             return
@@ -77,7 +92,7 @@ class ChargeGridApp:
             await self.go(destination[0], **destination[1])
 
     async def back(self, event=None):
-        destination = parent_route(self.route, self.data)
+        destination = parent_route(self.route, self.data, getattr(self, 'browsing_mode', 'consumer'))
         if destination and await self.prepare_navigation():
             await self.go(destination[0], **destination[1])
 
@@ -107,7 +122,7 @@ class ChargeGridApp:
     def sync_back(self):
         if getattr(self.page, 'views', None):
             view = self.page.views[0]
-            view.can_pop = parent_route(self.route, self.data) is None and not self.active_actions
+            view.can_pop = parent_route(self.route, self.data, self.browsing_mode) is None and not self.active_actions
             view.on_confirm_pop = self.native_back
 
     async def prepare_navigation(self):
@@ -233,8 +248,13 @@ class ChargeGridApp:
             route, data = 'home', {}
         if route != 'auth' and not self.api.session.access_token:
             route, data = 'auth', {}
+        if route == 'auth' and not self.api.session.access_token:
+            self.profile = {}
+            self.reset_account_ui()
+            self.reset_account_operations()
         self.generation += 1
         generation = self.generation
+        self.building_generation = generation
         self.route, self.data = route, data
         self.sync_back()
         self.poll_callback = None
@@ -255,6 +275,8 @@ class ChargeGridApp:
             body = ft.Column([title('Não foi possível carregar', str(exc)), button('Tentar novamente', self.action(lambda: self.go(route, **data)))])
         finally:
             self.tasks.discard(task)
+            if self.building_generation == generation:
+                self.building_generation = None
         if generation != self.generation or self.closed:
             return
         if self.loading_task:
@@ -272,30 +294,46 @@ class ChargeGridApp:
         authenticated = bool(self.api.session.access_token) and route != 'auth'
         nav = []
         if authenticated:
-            entries = TABS
-            icons = {'home':ft.Icons.HOME_OUTLINED,'stations':ft.Icons.EV_STATION_OUTLINED,'history':ft.Icons.HISTORY,'profile':ft.Icons.PERSON_OUTLINE,'help':ft.Icons.HELP_OUTLINE}
+            entries = tab_entries(self.browsing_mode)
+            icons = {'home':'nav-home.svg','stations':'nav-stations-active.svg','operator':'nav-stations-active.svg',
+                     'coupons':'nav-coupons.svg','history':'nav-history.svg','profile':'nav-profile.svg'}
             items = []
-            for name, label in entries:
-                active = name == route or (name == 'stations' and route in ('stations','reservations','charging'))
+            for name, label, parameters in entries:
+                active = name == active_tab(route, data, self.browsing_mode)
+                symbol = {
+                    'home': ft.Icons.HOME if active else ft.Icons.HOME_OUTLINED,
+                    'stations': ft.Icons.BOLT if active else ft.Icons.BOLT_OUTLINED,
+                    'profile': ft.Icons.PERSON if active else ft.Icons.PERSON_OUTLINED,
+                    'chat': ft.Icons.CHAT_BUBBLE if active else ft.Icons.CHAT_BUBBLE_OUTLINE,
+                }.get(name)
                 items.append(ft.Container(ft.Column([
-                    ft.Container(ft.Icon(icons[name],size=22,color=theme.RED if active else theme.GRAY_TEXT),
-                                 bgcolor=theme.LIGHT_GRAY if active else None, border_radius=12,
-                                 padding=ft.Padding(left=14,right=14,top=3,bottom=3), animate=motion.animation()),
-                    ft.Text(label,size=10,color=theme.RED if active else theme.GRAY_TEXT),
-                ],horizontal_alignment=ft.CrossAxisAlignment.CENTER,alignment=ft.MainAxisAlignment.CENTER,spacing=2,tight=True),padding=8,on_click=self.link(name),ink=True,expand=True))
-            nav = [ft.Container(ft.Row(items,spacing=0),height=64,bgcolor=theme.WHITE,border=ft.Border(top=ft.BorderSide(1,theme.LIGHT_GRAY)))]
+                    (ft.Icon(symbol,size=24,color=theme.RED if active else theme.GRAY_TEXT) if symbol else
+                     ft.Image(src='/figma/'+icons[name],width=22,height=22,fit=ft.BoxFit.CONTAIN,
+                              color=theme.RED if active else theme.GRAY_TEXT,exclude_from_semantics=True)
+                     ),
+                    ft.Text(label,size=11,font_family='BarlowCondensedSemiBold',color=theme.RED if active else theme.GRAY_TEXT),
+                ],horizontal_alignment=ft.CrossAxisAlignment.CENTER,alignment=ft.MainAxisAlignment.CENTER,spacing=4,tight=True),padding=8,on_click=self.link(name, **parameters),ink=True,expand=True))
+            nav = [ft.Container(ft.Row(items,spacing=0),height=64,bgcolor=theme.NAV_BG)]
 
         if authenticated:
             back_button = [ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=theme.TEXT_COLOR,
-                                        tooltip='Voltar', on_click=self.back)] if parent_route(route, data) else []
+                                        tooltip='Voltar', on_click=self.back)] if parent_route(route, data, self.browsing_mode) else []
             header = ft.Container(
                 ft.Row([
-                    ft.Row([*back_button,ft.Image(src='/icon.png',width=24,height=24),ft.Text('ChargeGrid',size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensed')],spacing=5),
-                    ft.TextButton('Sair',on_click=self.action(self.logout),style=ft.ButtonStyle(color=theme.TEXT_COLOR)),
+                    ft.Row([*back_button,ft.Container(
+                        ft.Image(src='/figma/wordmark-dark.svg',width=101,height=21,
+                                 fit=ft.BoxFit.CONTAIN,semantics_label='ChargeGrid'),
+                        bgcolor='#131313',padding=4,border_radius=4,
+                    )],spacing=5),
+                    ft.TextButton('Sair',on_click=self.action(self.logout),
+                                  style=ft.ButtonStyle(color=theme.TEXT_COLOR,padding=8)),
                 ],alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 height=52,padding=ft.Padding(left=20,right=12,top=4,bottom=4),bgcolor=theme.BG_COLOR,
             )
-            content = ft.SafeArea(ft.Column([header,ft.Container(body,padding=ft.Padding(left=20,right=20,top=16,bottom=16),expand=True),*nav],expand=True,spacing=0),expand=True)
+            demo_notice = [ft.Container(ft.Text('DEMONSTRAÇÃO · dados e equipamentos simulados',size=11,
+                                                color=theme.TEXT_COLOR,text_align=ft.TextAlign.CENTER),
+                                       padding=ft.Padding(left=12,right=12,top=7,bottom=7),bgcolor=theme.LIGHT_GRAY)] if getattr(self.api,'is_demo',False) else []
+            content = ft.SafeArea(ft.Column([header,*demo_notice,ft.Container(body,padding=ft.Padding(left=20,right=20,top=22,bottom=22),expand=True),*nav],expand=True,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),expand=True)
         else:
             content = ft.SafeArea(
                 ft.Container(
@@ -311,10 +349,17 @@ class ChargeGridApp:
         self.scene.content = ft.Container(content, expand=True)
         self.page.update()
         if self.poll_callback:
-            self.poll_task = asyncio.create_task(self.poll(self.poll_callback,self.poll_interval,generation))
+            self.start_poll()
 
     def set_poll(self, callback, interval):
         self.poll_callback, self.poll_interval = callback,interval
+        if self.building_generation is None and not self.closed:
+            self.start_poll()
+
+    def start_poll(self):
+        if self.poll_task and self.poll_task is not asyncio.current_task():
+            self.poll_task.cancel()
+        self.poll_task = asyncio.create_task(self.poll(self.poll_callback, self.poll_interval, self.generation))
 
     async def poll(self, callback, interval, generation):
         failed = False
@@ -334,9 +379,54 @@ class ChargeGridApp:
                 failed = True
 
     async def signed_in(self, destination=None):
+        self.reset_account_ui()
+        self.reset_account_operations()
         self.profile = await self.api.request('GET','me')
-        destination = destination or ('operator' if self.profile.get('account_type') == 'vendor' or self.profile.get('operator_enabled') else 'home')
+        self.browsing_mode = 'vendor' if can_manage(self.profile) and not getattr(self.api,'is_demo',False) else 'consumer'
+        destination = destination or ('operator' if self.browsing_mode == 'vendor' else 'home')
         await self.go(destination)
+
+    async def login(self, email, password):
+        from .demo import DEMO_EMAIL, DemoApi
+        if email.strip().casefold() == DEMO_EMAIL:
+            demo = DemoApi()
+            await demo.login(email, password)
+            await self.api.close()
+            self.api = demo
+        else:
+            if getattr(self.api, 'is_demo', False):
+                await self.api.close()
+                self.api = ApiClient()
+            await self.api.login(email, password)
+        self.reset_account_ui()
+        self.reset_account_operations()
+
+    def reset_account_operations(self):
+        """Never reuse a previous account's operation keys or historical IDs."""
+        self.api.operation_keys.clear()
+        self.api.charging_operation_sessions.clear()
+        self.api.last_session_id = None
+        self.api.last_reservation_id = None
+
+    def reset_account_ui(self):
+        """Discard account-scoped conversation and unfinished forms at auth boundaries."""
+        self.charging_draft = None
+        self.chat_messages = []
+        self.chat_draft = ''
+        self._chat_account_id = None
+        self._chat_pending = None
+
+    async def enter_demo(self):
+        from .demo import DEMO_EMAIL, DEMO_PASSWORD
+        await self.login(DEMO_EMAIL, DEMO_PASSWORD)
+        await self.signed_in()
+
+    async def switch_mode(self, mode):
+        if mode not in ('vendor', 'consumer') or (mode == 'vendor' and not can_manage(self.profile)):
+            return
+        if await self.prepare_navigation():
+            self.browsing_mode = mode
+            await self.go('operator' if mode == 'vendor' else 'home')
 
     async def logout(self):
         if not await self.prepare_navigation():
@@ -346,16 +436,19 @@ class ChargeGridApp:
             await self.api.request('POST','auth/logout')
         finally:
             self.api.session.clear()
-            self.api.operation_keys.clear()
-            self.api.charging_operation_sessions.clear()
-            self.api.last_session_id = None
-            self.api.last_reservation_id = None
+            self.reset_account_operations()
+            if getattr(self.api, 'is_demo', False):
+                await self.api.close()
+                self.api = ApiClient()
+                self.dark_mode = self.preferences.load()
             self.profile = {}
+            self.reset_account_ui()
             await self.go('auth')
 
     async def disconnect(self, e):
         self.closed = True
         self.cancel_screen()
+        self.reset_account_ui()
         await self.api.close()
 
     async def connect(self, e):
@@ -365,7 +458,10 @@ class ChargeGridApp:
         # fechado no disconnect. Uma reconexão começa com cliente e login
         # novos, evitando reaproveitar transporte ou autenticação inválidos.
         self.api = ApiClient()
+        self.reset_account_ui()
         self.profile = {}
+        self.dark_mode = self.preferences.load()
+        self.browsing_mode = 'consumer'
         self.closed = False
         self.form_baseline = []
         await self.go('auth')

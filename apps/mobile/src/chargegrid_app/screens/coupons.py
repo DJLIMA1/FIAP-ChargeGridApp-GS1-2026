@@ -17,12 +17,22 @@ async def owned_stations(app):
             return stations
 
 
-async def build(app, manage=False, coupon=None, create=False, station_id=None):
+async def build(app, manage=False, coupon=None, create=False, station_id=None, offset=0):
     if (manage or create or coupon) and not app.profile.get('operator_enabled'):
-        return title('Cupons','Gestão disponível somente para operador aprovado.')
+        return ft.Column([
+            title('Cupons','Vincule sua primeira tela para criar cupons.'),
+            ft.Text('Depois de configurar seu posto, você poderá oferecer descontos para seus clientes.',
+                    size=13,color=theme.GRAY_TEXT),
+            button('Configurar meu primeiro ponto',app.link('operator')),
+        ],spacing=15)
     if create or coupon:
         return form(app,coupon,await owned_stations(app))
-    result = await app.api.request('GET','coupons',params=({'mine':'true'} if manage else {}) | ({'station_id':station_id} if station_id else {}))
+    params = {'limit':50,'offset':offset}
+    if manage:
+        params['mine'] = 'true'
+    if station_id:
+        params['station_id'] = station_id
+    result = await app.api.request('GET','coupons',params=params)
     station_names = {}
     if manage:
         station_names = {station['id']: station['name'] for station in await owned_stations(app)}
@@ -44,11 +54,21 @@ async def build(app, manage=False, coupon=None, create=False, station_id=None):
         scope = station_names.get(item['station_id'],'Posto indisponível') if item.get('station_id') else 'Todos os postos deste operador'
         details = [ft.Text(item['code'],size=20,weight=ft.FontWeight.BOLD),ft.Text(item['description']),ft.Text(f"{item['discount_percent']}% · validade {date_time(item['valid_until'])}"),ft.Text('Válido em: '+scope)]
         if manage:
-            details.append(ft.Text('Ativo' if item.get('active',True) else 'Inativo',color=theme.GREEN if item.get('active',True) else theme.GRAY_TEXT))
+            expired = datetime.fromisoformat(item['valid_until'].replace('Z','+00:00')) <= datetime.now(timezone.utc)
+            status = 'Inativo' if not item.get('active',True) else 'Expirado' if expired else 'Ativo'
+            details.append(ft.Text(status,color=theme.GREEN if status == 'Ativo' else theme.GRAY_TEXT))
             details.append(button('Editar',app.link('coupons',manage=True,coupon=item),secondary=True))
         controls.append(card(details))
     if not result['items']:
         controls.append(ft.Text('Nenhum cupom disponível.'))
+    destination = {'manage':manage}
+    if station_id:
+        destination['station_id'] = station_id
+    total = result.get('total',len(result['items']))
+    if offset + len(result['items']) < total and result['items']:
+        controls.append(button('Mais cupons',app.link('coupons',offset=offset+50,**destination)))
+    if offset:
+        controls.append(button('Cupons anteriores',app.link('coupons',offset=max(0,offset-50),**destination),secondary=True))
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
 
 
@@ -61,6 +81,7 @@ def form(app,coupon=None,stations=None):
                           options=[ft.DropdownOption(key='__all__',text='Todos os meus postos')]+[ft.DropdownOption(key=entry['id'],text=entry['name']) for entry in stations],
                           color=theme.TEXT_COLOR,bgcolor=theme.WHITE,text_size=14,expand=True)
     expiry = field('Validade (dia/mês/ano hora:minuto)',initial_expiry.strftime('%d/%m/%Y %H:%M'))
+    original_expiry_text = expiry.value
     active = ft.Switch(label='Ativo',value=item.get('active',True),visible=bool(coupon))
     async def save():
         try:
@@ -73,18 +94,35 @@ def form(app,coupon=None,stations=None):
             valid_until = datetime.strptime(expiry.value.strip(),'%d/%m/%Y %H:%M').astimezone()
         except ValueError as exc:
             raise ApiError('Use dia/mês/ano hora:minuto na validade, por exemplo 30/12/2026 18:00.') from exc
-        if valid_until <= datetime.now().astimezone():
+        expiry_changed = expiry.value.strip() != original_expiry_text
+        reactivating = bool(coupon and active.value and not item.get('active',True))
+        # Preserve the original timestamp when only editing text or disabling.
+        # Formatting it to minutes must not silently change seconds or timezone.
+        if coupon and not expiry_changed:
+            valid_until = initial_expiry
+        if (not coupon or expiry_changed or reactivating) and valid_until <= datetime.now().astimezone():
             raise ApiError('Escolha uma validade futura para o cupom.')
         if not coupon and not code.value.strip():
             raise ApiError('Informe o código do cupom.')
-        body = {'description':description.value.strip(),'discount_percent':percent,'valid_until':valid_until.astimezone(timezone.utc).isoformat()}
+        if len(description.value.strip()) > 200 or (not coupon and len(code.value.strip()) > 50):
+            raise ApiError('Use até 50 caracteres no código e 200 na descrição.')
+        body = {'description':description.value.strip(),'discount_percent':percent}
+        if not coupon or expiry_changed:
+            body['valid_until'] = valid_until.astimezone(timezone.utc).isoformat()
         if coupon:
-            body['active'] = active.value
+            if active.value != item.get('active',True):
+                body['active'] = active.value
         else:
             body['code'] = code.value.strip()
             if station.value and station.value != '__all__':
                 body['station_id'] = station.value
         await app.api.request('PATCH' if coupon else 'POST',f"coupons/{item['id']}" if coupon else 'coupons',body)
+        if hasattr(app,'mark_saved'):
+            app.mark_saved()
         await app.go('coupons',manage=True)
     scope = next((entry['name'] for entry in stations if entry['id'] == item.get('station_id')), 'Posto indisponível') if item.get('station_id') else 'Todos os meus postos'
-    return ft.Column([title('Editar cupom' if coupon else 'Novo cupom'),card(ft.Column(([code,ft.Row([station])] if not coupon else [ft.Text('Válido em: '+scope)])+[description,discount,expiry,active],spacing=12)),button('Salvar cupom',app.action(save)),button('Voltar',app.link('coupons',manage=True),secondary=True)],spacing=15,scroll=ft.ScrollMode.AUTO)
+    return ft.Column([title('Editar cupom' if coupon else 'Novo cupom'),
+                      card(ft.Column(([code,ft.Row([station])] if not coupon else
+                                      [ft.Text(item['code'],size=20,weight=ft.FontWeight.BOLD),ft.Text('Válido em: '+scope)])+
+                                     [description,discount,expiry,ft.Text('Horário local do seu dispositivo.',size=12,color=theme.GRAY_TEXT),active],spacing=12)),
+                      button('Salvar cupom',app.action(save)),button('Voltar',app.link('coupons',manage=True),secondary=True)],spacing=15,scroll=ft.ScrollMode.AUTO)

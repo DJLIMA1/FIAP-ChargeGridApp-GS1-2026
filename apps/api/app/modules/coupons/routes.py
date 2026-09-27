@@ -52,6 +52,8 @@ def create_coupon(data: CouponInput, user=Depends(current_user), db=Depends(db_s
     operator(user)
     if data.valid_until.tzinfo is None:
         fail("invalid_time", "Informe fuso horário", 422)
+    if data.valid_until <= now():
+        fail("invalid_time", "A validade do cupom deve estar no futuro", 422)
     if data.station_id:
         owned(db, user, data.station_id)
     obj = Coupon(operator_id=user.id, **data.model_dump())
@@ -68,5 +70,9 @@ def patch_coupon(coupon_id: UUID, data: CouponPatch, user=Depends(current_user),
         fail("not_found", "Cupom não encontrado", 404)
     if data.valid_until and data.valid_until.tzinfo is None:
         fail("invalid_time", "Informe fuso horário", 422)
+    if data.valid_until is not None and data.valid_until <= now():
+        fail("invalid_time", "A validade do cupom deve estar no futuro", 422)
+    if data.active is True and not obj.active and (data.valid_until or obj.valid_until) <= now():
+        fail("invalid_time", "Atualize a validade antes de reativar o cupom", 422)
     update(obj, data)
     return row(obj)

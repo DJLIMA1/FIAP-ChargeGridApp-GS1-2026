@@ -61,17 +61,21 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_claim_sends_secret_only_on_confirmation_and_clears_after_success(self):
         app = HandlerApp()
-        app.api.request.return_value = {'station_id': 'station', 'connector_id': 'connector'}
+        app.api.request.side_effect = [
+            {'id': 'station', 'name': 'Posto Central', 'address': 'Rua Central, 100'},
+            {'station_id': 'station', 'connector_id': 'connector'},
+        ]
         screen = await ownership.build(app, station_id='station')
         credential = next(item for item in descendants(screen) if isinstance(item, ft.TextField))
         self.assertTrue(credential.password)
         credential.value = URI
-        app.api.request.assert_not_called()
+        app.api.request.assert_awaited_once_with('GET', 'stations/station')
         await click(screen, 'Vincular ponto à minha conta')(None)
-        app.api.request.assert_awaited_once_with('POST', 'ownership/claim', {'token': TOKEN, 'station_id': 'station'})
+        self.assertEqual(app.api.request.await_count, 2)
+        app.api.request.assert_awaited_with('POST', 'ownership/claim', {'token': TOKEN, 'station_id': 'station'})
         self.assertEqual(credential.value, '')
         app.go.assert_awaited_once_with('operator', station_id='station', point_id='connector',
-                                        onboarding=True, step=1)
+                                        onboarding=True, step=2, existing_station=True)
         self.assertTrue(app.profile['operator_enabled'])
 
     async def test_failed_claim_keeps_token_for_safe_idempotent_retry(self):

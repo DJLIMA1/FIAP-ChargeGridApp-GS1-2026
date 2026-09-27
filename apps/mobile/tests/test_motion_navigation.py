@@ -18,7 +18,9 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.page = SimpleNamespace(width=390, window=SimpleNamespace(), views=[SimpleNamespace()],
                                     add=Mock(), update=Mock(), show_dialog=Mock(), pop_dialog=Mock())
-        self.client = SimpleNamespace(session=Session(), request=AsyncMock(), close=AsyncMock())
+        self.client = SimpleNamespace(session=Session(), request=AsyncMock(), close=AsyncMock(),
+                                      operation_keys={},charging_operation_sessions={},
+                                      last_session_id=None,last_reservation_id=None)
         with patch('chargegrid_app.app.ApiClient', return_value=self.client), patch('chargegrid_app.app.Preferences') as preferences:
             preferences.return_value.load.return_value = True
             self.app = ChargeGridApp(self.page)
@@ -133,7 +135,7 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_fast_route_uses_switcher_without_loading_flash(self):
         with patch.dict('chargegrid_app.app.SCREENS', {'profile': AsyncMock(return_value=ft.Column([self.field]))}):
             old = self.app.scene.content
-            await self.app.go('profile')
+            await self.app.go('profile', mode='edit')
         self.assertIsInstance(self.app.scene, ft.AnimatedSwitcher)
         self.assertTrue(old.disabled)
         self.assertFalse(self.app.scene.content.disabled)
@@ -141,6 +143,24 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.app.loading_task)
         self.field.value = 'Editado'
         self.assertTrue(self.app.dirty_form())
+
+    async def test_expired_session_discards_account_ids_before_showing_login(self):
+        self.client.operation_keys['charging-sessions'] = 'old-key'
+        self.client.charging_operation_sessions['old-key'] = 'old-session'
+        self.client.last_session_id = 'old-session'
+        self.client.last_reservation_id = 'old-reservation'
+        self.app.chat_messages = [{'content':'private'}]
+        self.app.charging_draft = {'owner':'old'}
+        self.client.session.clear()
+        with patch.dict('chargegrid_app.app.SCREENS',{'auth':AsyncMock(return_value=ft.Column())}):
+            await self.app.go('charging')
+        self.assertEqual(self.app.route,'auth')
+        self.assertEqual(self.client.operation_keys,{})
+        self.assertEqual(self.client.charging_operation_sessions,{})
+        self.assertIsNone(self.client.last_session_id)
+        self.assertIsNone(self.client.last_reservation_id)
+        self.assertEqual(self.app.chat_messages,[])
+        self.assertIsNone(self.app.charging_draft)
 
     async def test_slow_route_exposes_loading_until_response(self):
         entered, release = asyncio.Event(), asyncio.Event()
@@ -167,13 +187,13 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
             entered.set()
             await asyncio.Event().wait()
 
-        with patch.dict('chargegrid_app.app.SCREENS', {'home': slow, 'help': AsyncMock(return_value=ft.Column())}):
+        with patch.dict('chargegrid_app.app.SCREENS', {'home': slow, 'chat': AsyncMock(return_value=ft.Column())}):
             previous = asyncio.create_task(self.app.go('home'))
             await entered.wait()
-            await self.app.go('help')
+            await self.app.go('chat')
             with self.assertRaises(asyncio.CancelledError):
                 await previous
-        self.assertEqual(self.app.route, 'help')
+        self.assertEqual(self.app.route, 'chat')
         self.assertFalse(self.app.loading.visible)
 
     async def test_reduced_motion_disables_transition_hover_and_press(self):

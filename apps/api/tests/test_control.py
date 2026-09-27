@@ -1,6 +1,7 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from decimal import Decimal
 from threading import Barrier
 
 import pytest
@@ -8,8 +9,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.models import ChargingSession, Command, Connector, Device, Profile, Reservation, Station, now
-from app.modules.charging.service import start
+from app.modules.charging.service import start, stop
 from app.modules.devices.service import sync
+from app.modules.reservations.routes import cancel
 from app.modules.reservations.service import reserve
 from app.presence_code import current_code
 from app.schemas import ReserveInput, StartInput, SyncInput
@@ -313,3 +315,116 @@ def test_start_refreshes_control_version_loaded_before_connector_lock(factory, s
         session = start(request_db, request_db.get(Profile, seed["a"]), StartInput(public_code="CG-01", presence_code=current_code(request_db.get(Station, seed["station"]))[0]), "s")
         command = request_db.scalar(select(Command).where(Command.session_id == session.id))
         assert command.version == 3
+
+
+@pytest.mark.parametrize("soc", ["20.0166667", "20.015", "0", None])
+def test_terminal_soc_replay_uses_database_precision(factory, seed, soc):
+    do_sync(factory, seed, measurement(1))
+    with factory.begin() as db:
+        session = start(
+            db, db.get(Profile, seed["a"]),
+            StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]),
+            "soc-roundtrip",
+        )
+        sid = session.id
+        command_id = db.scalar(select(Command).where(Command.session_id == sid)).id
+    do_sync(factory, seed, measurement(
+        2, physical_state="charging", connected=True, session_id=sid, energy_wh=10,
+        soc_percent=soc, acks=[{"command_id": command_id, "status": "applied"}],
+    ))
+    do_sync(factory, seed, measurement(3, session_id=sid, physical_state="stopped", energy_wh=10,
+                                     soc_percent=soc))
+    # A lost response leaves the ESP holding the same final sample. A fresh
+    # transaction must accept it after PostgreSQL has rounded Numeric(5,2).
+    replay = do_sync(factory, seed, measurement(4, session_id=sid, physical_state="stopped",
+                                              energy_wh=10, soc_percent=soc))
+    assert replay["authorized"]["session"] is None
+    assert replay["commands"] == []
+    with factory() as db:
+        final = db.get(ChargingSession, sid)
+        assert final.status == "completed"
+        assert final.soc_percent == (Decimal(soc).quantize(Decimal("0.01")) if soc is not None else None)
+    with pytest.raises(HTTPException) as error:
+        do_sync(factory, seed, measurement(5, session_id=sid, physical_state="stopped", energy_wh=10,
+                                          soc_percent="21.00"))
+    assert error.value.detail["code"] == "session_finished"
+
+
+@pytest.mark.parametrize("kind", ["STOP", "RELEASE"])
+@pytest.mark.parametrize("failure", ["failed", "expired"])
+def test_safety_command_recovers_with_new_version_and_preserved_resource(factory, seed, kind, failure):
+    do_sync(factory, seed, measurement(1))
+    with factory.begin() as db:
+        user = db.get(Profile, seed["a"])
+        if kind == "STOP":
+            resource = start(
+                db, user, StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]),
+                "safety-start",
+            )
+        else:
+            resource = reserve(db, user, ReserveInput(connector_id=seed["point"]), "safety-reserve")
+        resource_id = resource.id
+        original_id = db.scalar(select(Command)).id
+    running = {"physical_state": "charging", "connected": True, "session_id": resource_id,
+               "energy_wh": 10, "soc_percent": 20} if kind == "STOP" else {"physical_state": "reserved"}
+    do_sync(factory, seed, measurement(2, **running, acks=[{"command_id": original_id, "status": "applied"}]))
+    with factory.begin() as db:
+        user = db.get(Profile, seed["a"])
+        if kind == "STOP":
+            stop(db, user, resource_id, "stop-safety")
+        else:
+            cancel(resource_id, user=user, db=db)
+        command = db.scalar(select(Command).where(Command.type == kind))
+        command.parameters = {"reason": "requested_stop" if kind == "STOP" else "expired"}
+        command_id, version = command.id, command.version
+        if failure == "expired":
+            command.expires_at = now() - timedelta(seconds=1)
+    failed_ack = [{"command_id": command_id, "status": "failed", "error": "temporary_failure"}]
+    recovered = do_sync(factory, seed, measurement(3, **running,
+                                                  acks=failed_ack if failure == "failed" else []))
+    assert len(recovered["commands"]) == 1
+    retry = recovered["commands"][0]
+    assert retry["type"] == kind and retry["id"] != str(command_id)
+    assert retry["version"] == version + 1
+    assert retry["session_id" if kind == "STOP" else "reservation_id"] == str(resource_id)
+    assert retry["parameters"] == {"reason": "requested_stop" if kind == "STOP" else "expired"}
+    with factory() as db:
+        assert not free(db, db.get(Connector, seed["point"]))
+        assert not db.get(Device, seed["device"]).reconciled
+        assert db.get(ChargingSession if kind == "STOP" else Reservation, resource_id).status == (
+            "stopping" if kind == "STOP" else "cancelling"
+        )
+    # Repeated ACKs for the old failure cannot supersede the fresh command.
+    repeated = do_sync(factory, seed, measurement(4, **running, acks=failed_ack))
+    assert [item["id"] for item in repeated["commands"]] == [retry["id"]]
+    stopped = {"session_id": resource_id, "energy_wh": 10, "soc_percent": 20,
+               "physical_state": "stopped"} if kind == "STOP" else {}
+    completed = do_sync(factory, seed, measurement(5, **stopped,
+        acks=[{"command_id": retry["id"], "status": "applied"}]))
+    assert completed["commands"] == []
+    with factory() as db:
+        assert free(db, db.get(Connector, seed["point"]))
+        assert db.get(ChargingSession if kind == "STOP" else Reservation, resource_id).status == (
+            "completed" if kind == "STOP" else "expired"
+        )
+    assert do_sync(factory, seed, measurement(6, **stopped))["commands"] == []
+
+
+def test_failed_stop_with_final_physical_measurement_does_not_restart_command(factory, seed):
+    do_sync(factory, seed, measurement(1))
+    with factory.begin() as db:
+        session = start(
+            db, db.get(Profile, seed["a"]),
+            StartInput(public_code="CG-01", presence_code=current_code(db.get(Station, seed["station"]))[0]),
+            "stop-final",
+        )
+        sid = session.id
+        command_id = db.scalar(select(Command)).id
+    do_sync(factory, seed, measurement(2, session_id=sid, energy_wh=10, physical_state="charging",
+        connected=True, acks=[{"command_id": command_id, "status": "applied"}]))
+    with factory.begin() as db:
+        stop(db, db.get(Profile, seed["a"]), sid, "stop")
+        command_id = db.scalar(select(Command).where(Command.type == "STOP")).id
+    result = do_sync(factory, seed, measurement(3, session_id=sid, energy_wh=12,
+        physical_state="stopped", acks=[{"command_id": command_id, "status": "failed"}]))
+    assert result["authorized"]["session"] is None and result["commands"] == []

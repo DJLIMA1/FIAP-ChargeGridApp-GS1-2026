@@ -21,6 +21,7 @@ from ...service import (
     online,
     operator,
     owned,
+    reset_blocks_point,
 )
 from ..auth.routes import limit
 from ..devices.service import sync
@@ -66,13 +67,7 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
     if not point:
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, point.station_id)
-    if db.scalar(
-        select(Command.id).join(Device, Device.id == Command.device_id).where(
-            Device.connector_id == point.id,
-            Command.type == "FACTORY_RESET",
-            Command.status.in_(("pending", "received", "applied")),
-        ).limit(1)
-    ):
+    if reset_blocks_point(db, point.id):
         fail("point_retired", "Escaneie o novo QR do ESP32 para criar outro ponto", 409)
     if device_for(db, point):
         fail("device_exists", "Ponto já tem dispositivo; revogue ou rotacione")
@@ -134,7 +129,7 @@ def _supports_factory_reset(version):
 
 @router.get("/devices/{device_id}/factory-reset")
 def factory_reset_status(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
-    obj = own_device(db, user, device_id)
+    obj = own_device(db, user, device_id, require_idle=False)
     return _reset_status(_reset_command(db, obj.id))
 
 

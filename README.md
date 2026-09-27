@@ -26,7 +26,7 @@ Este `main` documenta a fundação integrada com app, API e painel físico. A br
 
 | Componente | Função | Código |
 | --- | --- | --- |
-| Aplicativo | Cadastro/login, busca de postos, reserva, recarga, histórico e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
+| Aplicativo | Cadastro/login, busca de postos, reserva, recarga em etapas, histórico, chat de orientações e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
 | API | Autenticação, autorização, regras de reserva/recarga e comandos para dispositivos | [`apps/api/`](apps/api/) |
 | Banco | Perfis, postos, pontos, reservas, sessões, dispositivos, comandos e telemetria | [`apps/api/migrations/`](apps/api/migrations/) |
 | Painel ESP32 | Interface touch, sincronização HTTPS, confirmação de comandos e parada local | [`firmware/esp32/`](firmware/esp32/) |
@@ -114,7 +114,7 @@ Antes de executar a API com o papel de banco restrito, aplique também a concess
 pio run -d firmware/esp32 -e waveshare_panel_ui
 ```
 
-Para demonstrar sem a placa, use o [simulador de dispositivo](docs/demo.md) com uma identidade provisionada. O [guia completo](docs/setup.md) explica banco, Auth, provisionamento por QR, APK e implantação; o [roteiro de apresentação](docs/demo.md) percorre a operação de ponta a ponta.
+Para experimentar os fluxos localmente, selecione **Entrar na conta demo** na tela inicial (`demo@chargegrid.example`, senha pública `demo1234`). Os dados e equipamentos dessa conta são simulados e reiniciados ao sair. Para demonstrar a integração com a API sem placa, use o [simulador de dispositivo](docs/demo.md#demonstração-integrada-com-api-e-dispositivo) com uma identidade provisionada. O [guia completo](docs/setup.md) explica banco, Auth, provisionamento por QR, APK e implantação; o [roteiro de apresentação](docs/demo.md) percorre os dois modos de demonstração.
 
 ## Justificativa técnica e ligação com a disciplina
 
@@ -142,7 +142,7 @@ As escolhas, consequências e o **diagrama do circuito funcional da bancada** es
 
 ## Limites do MVP
 
-O painel não controla energia nem mede um veículo; os custos são estimativas. O pagamento é demonstrativo. Confirmação de e-mail está desativada neste ambiente e a recuperação depende de SMTP próprio. APKs, firmware compilado, chaves de dispositivo, QR privado e `.env` ficam fora do repositório; os guias ensinam a gerar os artefatos. Dados e imagens publicados aqui não expõem credenciais de provisionamento.
+O painel não controla energia nem mede um veículo; os custos são estimativas. Não há processamento de pagamento. O chat oferece orientações locais e consultas à conta, não atendimento humano nem IA externa. Confirmação de e-mail está desativada neste ambiente e a recuperação depende de SMTP próprio. APKs, firmware compilado, chaves de dispositivo, QR privado e `.env` ficam fora do repositório; os guias ensinam a gerar os artefatos. Dados e imagens publicados aqui não expõem credenciais de provisionamento.
 
 ## Equipe FFIVE
 

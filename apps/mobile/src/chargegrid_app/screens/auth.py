@@ -187,6 +187,10 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         if submitting:
             return
         address = email.value.strip()
+        from ..demo import DEMO_EMAIL
+        if mode != 'login' and address.casefold() == DEMO_EMAIL:
+            show_feedback('A conta demo já está pronta. Volte para entrar com a senha demo1234; ela não recebe e-mails.', theme.GRAY_TEXT)
+            return
         full_name = name.value.strip()
         password_value = password.value or ''
         validation_message = None
@@ -229,7 +233,8 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         try:
             if mode == 'login':
                 try:
-                    await app.api.login(address, password_value)
+                    login = getattr(app, 'login', None) or app.api.login
+                    await login(address, password_value)
                 except ApiError as exc:
                     if exc.code != 'email_not_confirmed':
                         raise
@@ -281,6 +286,10 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
 
     async def resend():
         address = email.value.strip()
+        from ..demo import DEMO_EMAIL
+        if address.casefold() == DEMO_EMAIL:
+            show_feedback('A conta demo já está pronta e não precisa confirmar e-mail.', theme.GRAY_TEXT)
+            return
         if '@' not in address or '.' not in address.rpartition('@')[2]:
             show_feedback('Informe um e-mail válido.')
             return
@@ -304,6 +313,10 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
             submit_button,
             feedback,
             auth_button('Criar conta', app.link('auth', mode='register'), secondary=True),
+            ft.Divider(color=theme.LIGHT_GRAY),
+            auth_button('Entrar na conta demo', app.action(lambda: app.enter_demo()), secondary=True),
+            ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas simulados.',
+                    size=12,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
         ]
         spacing = 20
     elif mode == 'register':

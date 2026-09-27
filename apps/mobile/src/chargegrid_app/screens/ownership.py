@@ -7,6 +7,8 @@ from ..ui.components import button, card, field, title
 
 
 async def build(app, station_id=None):
+    is_demo = bool(getattr(app.api,'is_demo',False))
+    station = await app.api.request('GET',f'stations/{station_id}') if station_id else None
     credential = field('Código privado do QR')
     credential.password = True
     credential.autocorrect = False
@@ -17,6 +19,7 @@ async def build(app, station_id=None):
     preview = ft.Container(visible=False)
     scanner = None
     claimed = False
+    demo_token = None
 
     def stop_camera():
         nonlocal scanner
@@ -85,15 +88,55 @@ async def build(app, station_id=None):
         app.profile = {**app.profile, 'operator_enabled': True}
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
-        app.notice('Ponto vinculado. Vamos configurar sua estação antes de publicá-la.')
+        app.notice('Ponto vinculado ao posto. Agora confira o conector e a tarifa.' if station_id else
+                   'Ponto vinculado. Vamos configurar seu novo posto antes de publicá-lo.')
         await app.go('operator', station_id=result['station_id'], point_id=result['connector_id'],
-                     onboarding=True, step=1)
+                     onboarding=True, step=2 if station_id else 1,
+                     **({'existing_station':True} if station_id else {}))
 
     camera_button = button('Abrir câmera para ler o QR', app.action(scan))
     cancel_camera = button('Fechar câmera', app.action(cancel_scan), secondary=True)
     cancel_camera.visible = False
+    if is_demo:
+        from ..demo import DEMO_CLAIM_TOKEN
+
+        async def add_demo_equipment():
+            nonlocal demo_token
+            if demo_token is None:
+                demo_token = app.api.new_claim_token() if hasattr(app.api,'new_claim_token') else DEMO_CLAIM_TOKEN
+            credential.value = demo_token
+            await claim()
+
+        return ft.Column([
+            title('Adicionar equipamento simulado','Configure um ponto fictício nesta conta de demonstração.'),
+            card([
+                ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
+                        size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+                ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local simulado',
+                        size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+                ft.Text(station.get('address','') if station else
+                        'Depois de adicionar o equipamento, você define nome, endereço e tarifa de exemplo.',
+                        size=13,color=theme.GRAY_TEXT),
+                ft.Text('O posto reúne os pontos no mesmo endereço. Este equipamento é inteiramente fictício: '
+                        'nenhuma câmera, QR físico ou ESP32 é necessário.',size=13,color=theme.GRAY_TEXT),
+            ]),
+            button('Adicionar equipamento simulado',app.action(add_demo_equipment)),
+            ft.Text('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma recarga simulada.',
+                    size=12,color=theme.GRAY_TEXT),
+            button('Voltar',app.link('operator',**({'station_id':station_id} if station_id else {})),secondary=True),
+        ],spacing=15,scroll=ft.ScrollMode.AUTO)
     return ft.Column([
         title('Vincular tela', 'Seu ponto, na sua conta'),
+        card([
+            ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
+                    size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local de recarga',
+                    size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+            ft.Text(station.get('address','') if station else
+                    'Depois do QR, você informa nome e endereço deste local.',size=13,color=theme.GRAY_TEXT),
+            ft.Text('O posto reúne os equipamentos no mesmo endereço. Cada tela vinculada corresponde a um ponto.',
+                    size=12,color=theme.GRAY_TEXT),
+        ]),
         card([
             ft.Icon(ft.Icons.QR_CODE_SCANNER, size=42, color=theme.RED),
             ft.Text('Aponte a câmera para o QR exibido no visor do ESP32.',
@@ -104,7 +147,7 @@ async def build(app, station_id=None):
         button('Vincular ponto à minha conta', app.action(claim)),
         ft.Text('O QR aparece no visor somente enquanto o ponto não tem dono. '
                 'Se a tela mostra “Disponível”, ela já está vinculada; abra Meus postos para editá-la. '
-                'O código de recarga continua separado do QR de propriedade.',
+                'O código temporário #F serve para recarregar, não para vincular a propriedade.',
                 size=12, color=theme.GRAY_TEXT),
         button('Voltar', app.link('operator', **({'station_id': station_id} if station_id else {})), secondary=True),
     ], spacing=15, scroll=ft.ScrollMode.AUTO)

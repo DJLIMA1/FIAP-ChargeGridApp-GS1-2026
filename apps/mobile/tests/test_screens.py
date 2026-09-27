@@ -345,7 +345,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(control.controls[5].value,'Se a conta ainda precisar de confirmação, uma nova mensagem será enviada.')
 
     async def test_charging_form_does_not_poll(self):
-        app=FakeApp([None])
+        app=FakeApp([None,None])
         screen=await charging.build(app)
         self.assertIsNone(app.poll)
         self.assertIsInstance(screen,ft.Column)
@@ -364,7 +364,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
     async def test_station_form_remains_while_listing_polls(self):
         response={'items':[],'total':0,'limit':20,'offset':0}
         app=FakeApp([response])
-        with patch('chargegrid_app.screens.stations.map_widget',new=AsyncMock()):
+        with patch('chargegrid_app.screens.stations.station_map_widget',new=AsyncMock()):
             screen=await stations.build(app)
         self.assertIsInstance(screen,ft.Column)
         self.assertEqual(app.poll[1],10)
@@ -381,9 +381,15 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
             content=getattr(item,'content',None)
             if content and not isinstance(content,str): yield from descendants(content)
             for child in getattr(item,'controls',[]) or []: yield from descendants(child)
-        coordinate_search=next(item for item in descendants(screen) if isinstance(item,ft.ExpansionTile))
-        self.assertEqual(coordinate_search.title.value,'Busca por coordenadas')
-        self.assertFalse(coordinate_search.expanded)
+        search_mode=next(item for item in descendants(screen) if isinstance(item,ft.Dropdown))
+        self.assertEqual(search_mode.label,'Buscar por')
+        self.assertEqual(search_mode.value,'address')
+        latitude=next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label=='Latitude')
+        coordinates=next(item for item in descendants(screen) if isinstance(item,ft.Row) and latitude in item.controls)
+        self.assertFalse(coordinates.visible)
+        search_mode.value='coordinates'
+        await search_mode.on_select(None)
+        self.assertTrue(coordinates.visible)
 
 
 if __name__ == '__main__':

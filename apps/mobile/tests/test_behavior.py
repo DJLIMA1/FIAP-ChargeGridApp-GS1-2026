@@ -89,8 +89,8 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Nenhuma reserva ou recarga ativa',texts)
         self.assertNotIn('Aguardando equipamento iniciar',texts)
         self.assertIn('R$ 1,25',texts)
-        self.assertIn('1 recargas concluídas · 1.250 kWh',texts)
-        self.assertIn('Offline',texts)
+        self.assertIn('1 recarga concluída · 1,250 kWh',texts)
+        self.assertIn('não têm coordenadas válidas para o mapa',texts)
         self.assertTrue(all(before is after for before,after in zip(original_controls,screen.controls)))
         app.go.assert_not_called()
         app.page.update.assert_called_once_with()
@@ -147,7 +147,8 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
     async def test_signed_in_vendor_can_onboard_without_manual_approval(self):
         for approved, expected in [(False, 'operator'), (True, 'operator')]:
             app = SimpleNamespace(api=SimpleNamespace(request=AsyncMock(return_value={
-                'account_type': 'vendor', 'operator_enabled': approved})), go=AsyncMock())
+                'account_type': 'vendor', 'operator_enabled': approved})), go=AsyncMock(),
+                reset_account_ui=Mock(),reset_account_operations=Mock())
             await ChargeGridApp.signed_in(app)
             app.go.assert_awaited_once_with(expected)
 
@@ -178,8 +179,11 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app.api.last_session_id = 'old-completed'
         app.api.request.return_value = None
         screen = await charging.build(app, public_code='CG-NEW')
-        self.assertEqual(app.api.request.await_count, 1)
-        self.assertTrue(click(screen, 'Solicitar início'))
+        self.assertEqual([call.args[1] for call in app.api.request.call_args_list],
+                         ['charging-sessions/current','reservations/current'])
+        self.assertTrue(click(screen, 'Continuar'))
+        self.assertFalse(any(getattr(getattr(item,'content',None),'value',None) == 'Solicitar início'
+                             for item in descendants(screen)))
 
     async def test_invalid_charging_limits_do_not_call_api(self):
         for duration, cost in [('0', ''), ('1.5', ''), ('30', '-1'), ('30', 'NaN')]:
@@ -189,23 +193,32 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
             fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
             self.assertEqual(fields[0].prefix, '#F')
             fields[0].value = "12345"
-            fields[1].value, fields[2].value = duration, cost
+            await click(screen, 'Continuar')(None)
+            screen = await charging.build(app, **app.go.call_args.kwargs)
+            fields = {item.label:item for item in descendants(screen) if isinstance(item,ft.TextField)}
+            fields['Duração máxima (min)'].value = duration
+            fields['Limite de custo estimado (R$)'].value = cost
+            if cost:
+                await click(screen, 'Por valor')(None)
             app.api.request.reset_mock()
             with self.assertRaises(ApiError):
-                await click(screen, 'Solicitar início')(None)
+                await click(screen, 'Continuar')(None)
             app.api.request.assert_not_called()
 
     async def test_charging_uses_only_five_digits_from_visible_code(self):
         app = HandlerApp()
-        app.api.request.side_effect = [None, {'id': 'started'}]
+        async def request(method,path,*args,**kwargs):
+            return {'id':'started'} if method == 'POST' else None
+        app.api.request.side_effect = request
         screen = await charging.build(app)
         fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
-        self.assertEqual([field.label for field in fields], [
-            'Código temporário do posto', 'Duração máxima (min)',
-            'Limite de custo estimado (opcional)', 'Cupom (opcional)',
-        ])
+        self.assertEqual([field.label for field in fields], ['Código temporário do posto'])
         self.assertEqual(fields[0].prefix, '#F')
         fields[0].value = '12345'
+        await click(screen, 'Continuar')(None)
+        screen = await charging.build(app, **app.go.call_args.kwargs)
+        await click(screen, 'Continuar')(None)
+        screen = await charging.build(app, **app.go.call_args.kwargs)
         await click(screen, 'Solicitar início')(None)
         body = app.api.request.call_args.args[2]
         self.assertEqual(body['presence_code'], '#F12345')
@@ -215,6 +228,9 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'items': [], 'total': 0}
         screen = await stations.build(app)
+        search_mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown))
+        search_mode.value = 'coordinates'
+        await search_mode.on_select(None)
         fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
         latitude = next(field for field in fields if field.label == 'Latitude')
         latitude.value = '-23.5'

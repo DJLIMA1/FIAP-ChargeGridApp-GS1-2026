@@ -1,7 +1,59 @@
-import flet as ft
+import unicodedata
 
-from ..ui.components import card, title
+TOPICS = {
+    'Iniciar uma recarga': (
+        'Escolha um posto, toque em Ver pontos e selecione o ponto disponível. Se já estiver no local, toque em “Já estou aqui: iniciar”. '
+        'Na etapa Confirmar ponto, leia no próprio equipamento os cinco números atuais após #F e informe-os no app. Não guarde o código para usar depois. '
+        'Continue para Definir limites, confira a etapa Revisar recarga e toque em Solicitar início. '
+        'O código fixo identifica o ponto; o #F confirma presença e muda a cada 5 minutos. '
+        'O início só é confirmado quando o equipamento responde. Não há descoberta Bluetooth.'
+    ),
+    'Reservar para chegar depois': (
+        'Selecione um ponto disponível e faça a reserva. Aguarde a confirmação do equipamento. '
+        'Após confirmar, você tem 10 minutos para chegar; veja o prazo em Minha reserva. '
+        'No local, abra a reserva e informe o #F do visor. Cancelar também depende de confirmação.'
+    ),
+    'Tempo, valor e cupons': (
+        'Por tempo define a duração máxima. Por valor define um teto de custo estimado, sempre com '
+        'um limite de duração de segurança. A recarga pode terminar antes ao atingir um dos limites. '
+        'Cupons válidos reduzem a estimativa nos postos indicados. Não há Pix, cobrança real ou saldo no app.'
+    ),
+    'Parar ou resolver uma falha': (
+        'Abra Minha recarga e toque em Solicitar parada. Aguarde a confirmação do equipamento; '
+        'pedido enviado não significa parada física confirmada. Offline mostra os últimos dados recebidos. '
+        'Confira a rede do celular e do ESP32. Fechar o app, sair da conta ou trocar de modo não encerra '
+        'a sessão física. Não conecte este protótipo a redes de alta potência ou baterias de veículo.'
+    ),
+    'Criar posto e vincular ponto': (
+        'No modo vendedor, abra Postos e escaneie o QR de vinculação do ESP32 sem dono. '
+        'Posto é o endereço; ponto é o equipamento instalado nele. Escolha um novo posto ou um existente, '
+        'defina a tarifa e os limites, revise e publique. O QR de vinculação é privado: não o compartilhe. '
+        'Restaurar remove o vínculo e gera um novo QR, preservando o Wi-Fi no firmware atual.'
+    ),
+    'Conta, senha e histórico': (
+        'Em Conta você pode editar seus dados, alterar a senha e escolher o tema. Contas de vendedor '
+        'podem alternar para consumidor sem outro cadastro. Histórico mostra suas recargas no modo '
+        'consumidor e as dos seus postos no modo vendedor. Bateria e energia vêm do equipamento, '
+        'identificadas como simuladas, medidas ou estimadas; o app não inventa progresso.'
+    ),
+}
 
 
-async def build(app):
-    return ft.Column([title('Ajuda ChargeGrid','Informações da demonstração'),card([ft.Text('Como reservar?',size=18),ft.Text('Escolha um ponto disponível. A reserva aparece pendente até o equipamento confirmar. Após isso, você tem 10 minutos para chegar.')]),card([ft.Text('Como iniciar e parar?',size=18),ft.Text('Informe o código público do ponto e conecte a bancada. Início e parada dependem de confirmação física. Não usamos descoberta Bluetooth.')]),card([ft.Text('Bateria e energia',size=18),ft.Text('SoC vem do equipamento: pode ser simulado, estimado, medido ou indisponível. O app não calcula progresso pelo tempo. Dados offline permanecem identificados como antigos.')]),card([ft.Text('Valores e segurança',size=18),ft.Text('Custo é apenas estimado; não existe Pix, cobrança ou conta bancária nesta versão. Não conecte o protótipo a redes de alta potência ou bateria de veículo.')]),card([ft.Text('Problemas de conexão',size=18),ft.Text('Confira a URL HTTPS da API, a rede e os certificados. Sem ACK, a ação fica pendente. Fechar o app não encerra a sessão. Não há equipe de suporte/chatbot ao vivo nesta demonstração.')])],spacing=15,scroll=ft.ScrollMode.AUTO)
+def answer(question):
+    """Local, deterministic guidance: no messages sent or fabricated support tickets."""
+    normalized = ''.join(c for c in unicodedata.normalize('NFKD', question.casefold())
+                         if not unicodedata.combining(c))
+    rules = [
+        (('senha', 'conta', 'historico', 'perfil', 'tema'), 'Conta, senha e histórico'),
+        (('offline', 'parar', 'parada', 'falha', 'erro', 'rede', 'conexao'), 'Parar ou resolver uma falha'),
+        (('vendedor', 'criar', 'vincul', 'restaur', 'qr', 'cadastro'), 'Criar posto e vincular ponto'),
+        (('reserva', 'chegar depois'), 'Reservar para chegar depois'),
+        (('valor', 'tempo', 'limite', 'custo', 'cupom', 'cupons', 'pix', 'pagamento', 'dinheiro', 'preco'), 'Tempo, valor e cupons'),
+        (('#f', 'codigo', 'iniciar', 'recarga', 'carregar'), 'Iniciar uma recarga'),
+    ]
+    for words, topic in rules:
+        if any(word in normalized for word in words):
+            return topic, TOPICS[topic]
+    return ('Escolha um assunto abaixo',
+            'Esta ajuda local responde dúvidas sobre os fluxos do ChargeGrid. Não é uma IA nem atendimento '
+            'humano e não abre chamados. Não envie senhas, códigos privados ou dados bancários.')

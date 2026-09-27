@@ -1,8 +1,8 @@
 from .screens import (
     auth,
     charging,
+    chat,
     coupons,
-    help,
     history,
     home,
     operator,
@@ -11,11 +11,30 @@ from .screens import (
     stations,
 )
 
-SCREENS = {module.__name__.split('.')[-1]: module.build for module in (auth,home,stations,reservations,charging,history,profile,operator,coupons,help)}
-TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('help','Ajuda'),('profile','Conta')]
+SCREENS = {module.__name__.split('.')[-1]: module.build for module in (auth,home,stations,reservations,charging,history,profile,operator,coupons,chat)}
+TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
 
 
-def parent_route(route, data):
+def can_manage(profile):
+    return bool(profile.get('operator_enabled') or profile.get('account_type') == 'vendor')
+
+
+def tab_entries(mode):
+    if mode == 'vendor':
+        return [('operator', 'Postos', {}), ('history', 'Histórico', {'manage': True}),
+                ('coupons', 'Cupons', {'manage': True}), ('chat', 'Chat', {}), ('profile', 'Conta', {})]
+    return [(route, label, {}) for route, label in TABS]
+
+
+def active_tab(route, data, mode):
+    if route in ('stations', 'reservations', 'charging'):
+        return 'stations' if mode != 'vendor' else None
+    if route == 'profile' or (route == 'coupons' and not data.get('manage')):
+        return 'profile'
+    return route
+
+
+def parent_route(route, data, mode='consumer'):
     """Logical parent for native Back, without replaying mutations or old forms."""
     if route == 'auth':
         return ('auth', {}) if data.get('mode', 'login') != 'login' else None
@@ -31,7 +50,9 @@ def parent_route(route, data):
             return 'operator', {'station_id': data['station_id']} if data.get('station_id') else {}
         if data.get('connector_id'):
             return 'operator', {'station_id': data.get('station_id')}
-        return ('operator', {}) if data.get('station_id') else ('profile', {})
+        return ('operator', {}) if data.get('station_id') else (None if mode == 'vendor' else ('profile', {}))
+    if route == 'profile' and data.get('mode') in ('password', 'edit'):
+        return 'profile', {}
     if route == 'coupons':
         if data.get('create') or data.get('coupon'):
             return 'coupons', {'manage': True}
@@ -40,11 +61,18 @@ def parent_route(route, data):
         return ('operator', {}) if data.get('manage') else ('profile', {})
     if route == 'history' and data.get('station_id'):
         return 'operator', {'station_id': data['station_id']}
+    if route == 'charging' and data.get('pending_start'):
+        station_id = (data.get('point_context') or {}).get('station_id')
+        return 'stations', {'station_id':station_id} if station_id else {}
+    if route == 'charging' and not data.get('session_id') and int(data.get('step') or 1) > 1:
+        return 'charging', {**data, 'step': int(data['step']) - 1}
     if route == 'charging' and data.get('reservation_id'):
         return 'reservations', {}
+    if route == 'charging' and (data.get('point_context') or {}).get('station_id'):
+        return 'stations', {'station_id': data['point_context']['station_id']}
     if route in ('charging', 'reservations') or (route == 'stations' and data.get('station_id')):
         return 'stations', {}
-    return 'home', {}
+    return ('operator' if mode == 'vendor' else 'home'), {}
 
 
 def editable_controls(control):
@@ -63,8 +91,7 @@ def editable_controls(control):
 
 
 def form_route(route, data):
-    return (route == 'profile' or
+    return ((route == 'profile' and data.get('mode') in ('edit', 'password')) or
             (route == 'auth' and data.get('mode', 'login') != 'login') or
             (route == 'operator' and bool(data.get('station_id') or data.get('claim'))) or
-            (route == 'coupons' and bool(data.get('create') or data.get('coupon'))) or
-            route == 'charging')
+            (route == 'coupons' and bool(data.get('create') or data.get('coupon'))))
