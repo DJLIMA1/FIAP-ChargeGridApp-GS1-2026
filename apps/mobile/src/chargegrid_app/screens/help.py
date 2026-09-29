@@ -25,15 +25,15 @@ TOPICS = {
         'a sessão física. Não conecte este protótipo a redes de alta potência ou baterias de veículo.'
     ),
     'Criar posto e vincular ponto': (
-        'No modo vendedor, abra Postos e escaneie o QR de vinculação do ESP32 sem dono. '
+        'No modo operador, abra Postos e escaneie o QR de vinculação do ESP32 sem dono. '
         'Posto é o endereço; ponto é o equipamento instalado nele. Escolha um novo posto ou um existente, '
         'defina a tarifa e os limites, revise e publique. O QR de vinculação é privado: não o compartilhe. '
         'Restaurar remove o vínculo e gera um novo QR, preservando o Wi-Fi no firmware atual.'
     ),
     'Conta, senha e histórico': (
-        'Em Conta você pode editar seus dados, alterar a senha e escolher o tema. Contas de vendedor '
-        'podem alternar para consumidor sem outro cadastro. Histórico mostra suas recargas no modo '
-        'consumidor e as dos seus postos no modo vendedor. Bateria e energia vêm do equipamento, '
+        'Em Conta você pode editar seus dados, alterar a senha e escolher o tema. Contas de operador '
+        'podem alternar para motorista sem outro cadastro. Histórico mostra suas recargas no modo '
+        'motorista e as dos seus postos no modo operador. Bateria e energia vêm do equipamento, '
         'identificadas como simuladas, medidas ou estimadas; o app não inventa progresso.'
     ),
 }
@@ -46,10 +46,10 @@ def answer(question):
     rules = [
         (('senha', 'conta', 'historico', 'perfil', 'tema'), 'Conta, senha e histórico'),
         (('offline', 'parar', 'parada', 'falha', 'erro', 'rede', 'conexao'), 'Parar ou resolver uma falha'),
-        (('vendedor', 'criar', 'vincul', 'restaur', 'qr', 'cadastro'), 'Criar posto e vincular ponto'),
+        (('operador', 'vendedor', 'criar', 'vincul', 'restaur', 'qr', 'cadastro'), 'Criar posto e vincular ponto'),
         (('reserva', 'chegar depois'), 'Reservar para chegar depois'),
         (('valor', 'tempo', 'limite', 'custo', 'cupom', 'cupons', 'pix', 'pagamento', 'dinheiro', 'preco'), 'Tempo, valor e cupons'),
-        (('#f', 'codigo', 'iniciar', 'recarga', 'carregar'), 'Iniciar uma recarga'),
+        (('#f', 'codigo', 'iniciar', 'recarga', 'carregar', 'motorista', 'consumidor'), 'Iniciar uma recarga'),
     ]
     for words, topic in rules:
         if any(word in normalized for word in words):

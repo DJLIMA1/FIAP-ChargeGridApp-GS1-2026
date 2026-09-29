@@ -117,8 +117,8 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
         return ft.Column(controls,spacing=14,scroll=ft.ScrollMode.AUTO)
 
     if step == 1:
-        name = field('Nome da estação', station.get('name', ''))
-        name.hint_text = 'Ex.: Estação Centro'
+        name = field('Nome do posto', station.get('name', ''))
+        name.hint_text = 'Ex.: Posto Centro'
         address = field('Endereço completo', station.get('address', ''))
         address.hint_text = 'Rua, número, bairro, cidade e estado'
         latitude = field('Latitude', str(station.get('latitude', '')))
@@ -144,7 +144,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
 
         async def save_location():
             body = {
-                'name': _required(name, 'nome da estação', 100),
+                'name': _required(name, 'nome do posto', 100),
                 'address': _required(address, 'endereço', 300),
                 'latitude': _number(latitude, 'Latitude', -90, 90),
                 'longitude': _number(longitude, 'Longitude', -180, 180),
@@ -196,7 +196,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
             card([ft.Text('Ponto ' + point['public_code'], weight=ft.FontWeight.BOLD,
                           color=theme.TEXT_COLOR),
                   ft.Text('O código público identifica este ponto simulado. Para testar a recarga, '
-                          f'use {DEMO_PRESENCE_CODE} no modo consumidor.' if is_demo else
+                          f'use {DEMO_PRESENCE_CODE} no modo motorista.' if is_demo else
                           'O código público identifica este ponto. Para iniciar a recarga, o cliente também '
                           'informa o código temporário #F exibido na tela.',
                           size=12, color=theme.GRAY_TEXT), kind, power, price, duration]),
@@ -209,7 +209,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
         connection = ('Online simulado' if point.get('online') else 'Offline simulado') if is_demo else (
             'Online agora' if point.get('online') else 'Offline agora')
         controls += [
-            card([ft.Text('Estação', size=16, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
+            card([ft.Text('Posto', size=16, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
                   _summary_line('Nome', station['name']),
                   _summary_line('Local', station['address']),
                   _summary_line('Coordenadas', f"{station['latitude']}, {station['longitude']}")]),
@@ -238,7 +238,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
                 await app.api.request('PATCH', f'stations/{station_id}', {'active': True})
             app.notice('Ponto configurado. O posto continua desativado; reative-o na gestão quando estiver pronto.'
                        if existing_station and not station.get('active') else
-                       f'Ponto simulado publicado! Teste uma recarga no modo consumidor com {DEMO_PRESENCE_CODE}.' if is_demo else
+                       f'Ponto simulado publicado! Teste uma recarga no modo motorista com {DEMO_PRESENCE_CODE}.' if is_demo else
                        'Ponto publicado! Ele estará disponível para recarga quando estiver online e livre.')
             await app.go('operator')
 

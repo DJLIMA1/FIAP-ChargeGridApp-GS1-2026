@@ -169,7 +169,7 @@ class DemoSellerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(route['step'],1)
 
             location_screen = await onboarding.build(app,station_id,point_id,step=1)
-            fields(location_screen)['Nome da estação'].value = 'Posto de teste local'
+            fields(location_screen)['Nome do posto'].value = 'Posto de teste local'
             fields(location_screen)['Endereço completo'].value = 'Rua Fictícia, 42, Cidade Simulada'
             await click(location_screen,'Usar localização de exemplo')(None)
             await click(location_screen,'Salvar e continuar')(None)

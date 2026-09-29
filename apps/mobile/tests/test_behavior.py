@@ -106,7 +106,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
         for control, value in zip(fields, ['Vendor Name', 'vendor@example.com', ' senha1234 ']):
             control.value = value
-        await click(screen, 'Sou vendedor')(None)
+        await click(screen, 'Sou operador')(None)
         self.assertEqual(fields[0].value, 'Vendor Name')
         self.assertEqual(fields[2].value, ' senha1234 ')
         await click(screen, 'Criar conta')(None)
@@ -228,7 +228,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'items': [], 'total': 0}
         screen = await stations.build(app)
-        search_mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown))
+        search_mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
         search_mode.value = 'coordinates'
         await search_mode.on_select(None)
         fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
@@ -279,10 +279,10 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         theme.set_dark(False)
         screen = await auth.build(app, mode='register')
         theme.set_dark(True)
-        await click(screen, 'Sou vendedor')(None)
+        await click(screen, 'Sou operador')(None)
         consumer = next(item for item in descendants(screen)
                         if getattr(item, 'data', None) == 'consumer')
-        self.assertIsNone(consumer.bgcolor)
+        self.assertEqual(consumer.style.bgcolor, theme.LIGHT['WHITE'])
         self.assertEqual(consumer.content.color, theme.LIGHT['TEXT_COLOR'])
 
     async def test_numeric_password_is_submitted_for_provider_policy_validation(self):

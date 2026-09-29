@@ -252,39 +252,36 @@ class AuthMotionTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         motion.set_reduced(False)
 
-    async def test_indicator_slides_both_directions_without_rebuilding_fields(self):
+    async def test_account_selection_preserves_fields_and_accessible_state(self):
         app = HandlerApp()
         screen = await auth.build(app, mode='register')
         fields = [c for c in descendants(screen) if isinstance(c, ft.TextField)]
         fields[0].value = 'Nome preservado'
-        indicator = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'account-indicator')
-        self.assertEqual(indicator.offset.x, 0)
-        self.assertEqual(indicator.animate_offset.duration, 280)
-        options = [c for c in descendants(screen) if isinstance(c, ft.Container) and c.data in ('consumer', 'vendor')]
+        options = [c for c in descendants(screen) if isinstance(c, ft.TextButton)
+                   and c.data in ('consumer', 'vendor')]
         self.assertEqual(len(options), 2)
-        self.assertTrue(all(not option.ink for option in options))
-        await click(screen, 'Sou vendedor')(None)
-        self.assertEqual(indicator.offset.x, 1)
+        self.assertTrue(all(option.height is None for option in options))
+        await click(screen, 'Sou operador')(None)
         selected = [c.content.data for c in descendants(screen) if isinstance(c, ft.Semantics) and c.selected]
         self.assertEqual(selected, ['vendor'])
-        await click(screen, 'Sou consumidor')(None)
-        self.assertEqual(indicator.offset.x, 0)
+        await click(screen, 'Sou motorista')(None)
+        selected = [c.content.data for c in descendants(screen) if isinstance(c, ft.Semantics) and c.selected]
+        self.assertEqual(selected, ['consumer'])
         self.assertEqual(fields[0].value, 'Nome preservado')
 
-    async def test_indicator_does_not_change_account_type_during_submission(self):
+    async def test_account_type_does_not_change_during_submission(self):
         app = HandlerApp()
         selection = {'value': 'consumer'}
         screen = auth.account_selector(app, selection)
         app.active_actions.add(object())
-        await click(screen, 'Sou vendedor')(None)
+        await click(screen, 'Sou operador')(None)
         self.assertEqual(selection['value'], 'consumer')
 
-    async def test_reduced_motion_uses_instant_indicator(self):
+    async def test_reduced_motion_uses_instant_selection(self):
         motion.set_reduced(True)
         screen = auth.account_selector(HandlerApp(), {'value': 'vendor'})
-        indicator = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'account-indicator')
-        self.assertEqual(indicator.offset.x, 1)
-        self.assertEqual(indicator.animate_offset.duration, 0)
+        options = [c for c in descendants(screen) if isinstance(c, ft.TextButton)]
+        self.assertTrue(all(option.style.animation_duration == 0 for option in options))
 
     async def test_invalid_email_marks_only_email_and_clears_on_edit(self):
         app = HandlerApp()
@@ -302,7 +299,7 @@ class AuthMotionTests(unittest.IsolatedAsyncioTestCase):
         fields[1].value = 'teste@example.com'
         await fields[1].on_change(None)
         self.assertFalse(errors[0].visible)
-        self.assertEqual(fields[1].border_color, auth.theme.LIGHT_GRAY)
+        self.assertEqual(fields[1].border_color, auth.theme.INPUT_BORDER)
 
     async def test_weak_password_from_server_marks_password_not_email(self):
         app = HandlerApp()

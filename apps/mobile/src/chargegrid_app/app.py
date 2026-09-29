@@ -1,10 +1,12 @@
 import asyncio
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 import flet as ft
 
 from .api_client import ApiClient, ApiError
+from .config import demo_enabled
 from .navigation import (
     SCREENS,
     active_tab,
@@ -16,7 +18,7 @@ from .navigation import (
 )
 from .preferences import Preferences
 from .ui import motion, theme
-from .ui.components import button, title
+from .ui.components import brand, button, title
 
 ASSETS_DIR = str(Path(__file__).resolve().parents[2] / 'assets')
 
@@ -30,6 +32,7 @@ class ChargeGridApp:
         self.route, self.profile, self.data = 'auth', {}, {}
         self.browsing_mode = 'consumer'
         self.charging_draft = None
+        self.planning_intent = None
         self.chat_messages = []
         self.chat_draft = ''
         self._chat_account_id = None
@@ -44,6 +47,16 @@ class ChargeGridApp:
         self.loading_task = None
         self.poll_callback = None
         self.poll_interval = None
+        self.last_refresh_at = None
+        self.refresh_failed = False
+        self.refresh_in_progress = False
+        self.refresh_task = None
+        self.freshness_text = ft.Text(size=11, color=theme.GRAY_TEXT, expand=True)
+        self.freshness_retry = ft.TextButton('Atualizar', on_click=self.retry_refresh,
+                                            style=ft.ButtonStyle(color=theme.TEXT_COLOR))
+        self.freshness = ft.Semantics(content=ft.Container(
+            ft.Row([self.freshness_text, self.freshness_retry], spacing=8),
+            padding=ft.Padding.symmetric(horizontal=20, vertical=2)), visible=False)
         self.root = ft.Container(expand=True, alignment=ft.Alignment(0,0))
         self.scene = motion.switcher(ft.Column([
             ft.Icon(ft.Icons.EV_STATION, size=40, color=theme.RED),
@@ -239,7 +252,7 @@ class ChargeGridApp:
 
     async def go(self, route, **data):
         # A polling status change must not cancel an in-flight start/stop/save.
-        if asyncio.current_task() is self.poll_task and (self.active_actions or self.prompting):
+        if asyncio.current_task() in (self.poll_task, self.refresh_task) and (self.active_actions or self.prompting):
             return
         self.cancel_screen()
         theme.set_dark(self.dark_mode)
@@ -259,6 +272,11 @@ class ChargeGridApp:
         self.sync_back()
         self.poll_callback = None
         self.poll_interval = None
+        self.last_refresh_at = None
+        self.refresh_failed = False
+        self.freshness.visible = False
+        self.refresh_in_progress = False
+        self.freshness_retry.disabled = False
         self.scene.content.disabled = True
         self.form_baseline = []
         self.loading.visible = False
@@ -306,34 +324,38 @@ class ChargeGridApp:
                     'profile': ft.Icons.PERSON if active else ft.Icons.PERSON_OUTLINED,
                     'chat': ft.Icons.CHAT_BUBBLE if active else ft.Icons.CHAT_BUBBLE_OUTLINE,
                 }.get(name)
-                items.append(ft.Container(ft.Column([
-                    (ft.Icon(symbol,size=24,color=theme.RED if active else theme.GRAY_TEXT) if symbol else
+                tab = ft.TextButton(content=ft.Column([
+                    (ft.Icon(symbol,size=24,color=theme.ACCENT if active else theme.GRAY_TEXT) if symbol else
                      ft.Image(src='/figma/'+icons[name],width=22,height=22,fit=ft.BoxFit.CONTAIN,
-                              color=theme.RED if active else theme.GRAY_TEXT,exclude_from_semantics=True)
+                              color=theme.ACCENT if active else theme.GRAY_TEXT,exclude_from_semantics=True)
                      ),
-                    ft.Text(label,size=11,font_family='BarlowCondensedSemiBold',color=theme.RED if active else theme.GRAY_TEXT),
-                ],horizontal_alignment=ft.CrossAxisAlignment.CENTER,alignment=ft.MainAxisAlignment.CENTER,spacing=4,tight=True),padding=8,on_click=self.link(name, **parameters),ink=True,expand=True))
-            nav = [ft.Container(ft.Row(items,spacing=0),height=64,bgcolor=theme.NAV_BG)]
+                    ft.Text(label,size=11,font_family='BarlowCondensedSemiBold',color=theme.ACCENT if active else theme.GRAY_TEXT,
+                            text_align=ft.TextAlign.CENTER),
+                ],horizontal_alignment=ft.CrossAxisAlignment.CENTER,alignment=ft.MainAxisAlignment.CENTER,spacing=4,tight=True),
+                    on_click=self.link(name, **parameters), tooltip=label,
+                    style=ft.ButtonStyle(padding=8, shape=ft.RoundedRectangleBorder(radius=8),
+                                         overlay_color=theme.LIGHT_GRAY,
+                                         side={ft.ControlState.FOCUSED:ft.BorderSide(2,theme.FOCUS)}))
+                items.append(ft.Semantics(content=tab, selected=active, expand=True))
+            nav = [ft.Container(ft.Row(items,spacing=0),padding=ft.Padding.symmetric(vertical=4),bgcolor=theme.NAV_BG)]
 
         if authenticated:
             back_button = [ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=theme.TEXT_COLOR,
                                         tooltip='Voltar', on_click=self.back)] if parent_route(route, data, self.browsing_mode) else []
+            wordmark = brand(compact=True)
+            wordmark.expand = True
             header = ft.Container(
                 ft.Row([
-                    ft.Row([*back_button,ft.Container(
-                        ft.Image(src='/figma/wordmark-dark.svg',width=101,height=21,
-                                 fit=ft.BoxFit.CONTAIN,semantics_label='ChargeGrid'),
-                        bgcolor='#131313',padding=4,border_radius=4,
-                    )],spacing=5),
+                    ft.Row([*back_button,wordmark],spacing=5,expand=True),
                     ft.TextButton('Sair',on_click=self.action(self.logout),
                                   style=ft.ButtonStyle(color=theme.TEXT_COLOR,padding=8)),
                 ],alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                height=52,padding=ft.Padding(left=20,right=12,top=4,bottom=4),bgcolor=theme.BG_COLOR,
+                padding=ft.Padding(left=20,right=12,top=8,bottom=8),bgcolor=theme.BG_COLOR,
             )
             demo_notice = [ft.Container(ft.Text('DEMONSTRAÇÃO · dados e equipamentos simulados',size=11,
                                                 color=theme.TEXT_COLOR,text_align=ft.TextAlign.CENTER),
                                        padding=ft.Padding(left=12,right=12,top=7,bottom=7),bgcolor=theme.LIGHT_GRAY)] if getattr(self.api,'is_demo',False) else []
-            content = ft.SafeArea(ft.Column([header,*demo_notice,ft.Container(body,padding=ft.Padding(left=20,right=20,top=22,bottom=22),expand=True),*nav],expand=True,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),expand=True)
+            content = ft.SafeArea(ft.Column([header,*demo_notice,self.freshness,ft.Container(body,padding=ft.Padding(left=20,right=20,top=22,bottom=22),expand=True),*nav],expand=True,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),expand=True)
         else:
             content = ft.SafeArea(
                 ft.Container(
@@ -347,6 +369,8 @@ class ChargeGridApp:
         max_width = 520 if not authenticated else 600
         self.root.content.width = min(self.page.width or 400,max_width)
         self.scene.content = ft.Container(content, expand=True)
+        if self.poll_callback:
+            self.mark_refresh(True)
         self.page.update()
         if self.poll_callback:
             self.start_poll()
@@ -361,22 +385,84 @@ class ChargeGridApp:
             self.poll_task.cancel()
         self.poll_task = asyncio.create_task(self.poll(self.poll_callback, self.poll_interval, self.generation))
 
+    def mark_refresh(self, success):
+        """Receipt time of a service query is never a device measurement time."""
+        if success:
+            self.last_refresh_at = datetime.now().astimezone()
+        self.refresh_failed = not success
+        stamp = self.last_refresh_at.strftime('%H:%M:%S') if self.last_refresh_at else 'não disponível'
+        self.freshness_text.value = (
+            f'Consulta atualizada às {stamp}' if success else
+            f'Não conseguimos atualizar — exibindo o último estado conhecido. Última consulta: {stamp}.')
+        self.freshness_text.color = theme.GRAY_TEXT if success else theme.ERROR
+        self.freshness_retry.content = ft.Text('Atualizar' if success else 'Tentar novamente')
+        self.freshness_retry.style.color = theme.TEXT_COLOR
+        # Announce failure/recovery, without reading every routine polling tick.
+        self.freshness.live_region = not success
+        # Routine successful polls should not occupy permanent screen space.
+        self.freshness.visible = not success
+
+    async def retry_refresh(self, event=None):
+        if not self.poll_callback or self.refresh_in_progress or self.active_actions or self.prompting:
+            return
+        generation, callback = self.generation, self.poll_callback
+        task = asyncio.current_task()
+        self.tasks.add(task)
+        self.refresh_in_progress = True
+        self.refresh_task = task
+        self.freshness_retry.disabled = True
+        self.page.update()
+        try:
+            await callback()
+            if generation == self.generation and not self.closed:
+                recovered = self.refresh_failed
+                self.mark_refresh(True)
+                self.freshness.live_region = recovered
+        except ApiError as exc:
+            if generation == self.generation and not self.closed:
+                if exc.status == 401 and not self.api.session.access_token:
+                    await self.go('auth')
+                else:
+                    self.mark_refresh(False)
+        finally:
+            self.tasks.discard(task)
+            if self.refresh_task is task:
+                self.refresh_task = None
+            if generation == self.generation:
+                self.refresh_in_progress = False
+                self.freshness_retry.disabled = False
+            if generation == self.generation and not self.closed:
+                self.page.update()
+
     async def poll(self, callback, interval, generation):
         failed = False
         while self.generation == generation and not self.closed:
             await asyncio.sleep(interval)
-            if self.active_actions or self.prompting:
+            if self.active_actions or self.prompting or getattr(self, 'refresh_in_progress', False):
                 continue
+            self.refresh_in_progress = True
             try:
                 await callback()
+                if generation == self.generation and hasattr(self, 'mark_refresh'):
+                    self.mark_refresh(True)
+                    self.freshness.live_region = failed
+                    self.page.update()
                 failed = False
             except ApiError as exc:
+                if generation != self.generation or self.closed:
+                    return
                 if exc.status == 401 and not self.api.session.access_token:
                     await self.go('auth')
                     return
                 if not failed:
                     self.notice(str(exc))
+                if hasattr(self, 'mark_refresh'):
+                    self.mark_refresh(False)
+                    self.page.update()
                 failed = True
+            finally:
+                if generation == self.generation:
+                    self.refresh_in_progress = False
 
     async def signed_in(self, destination=None):
         self.reset_account_ui()
@@ -389,6 +475,8 @@ class ChargeGridApp:
     async def login(self, email, password):
         from .demo import DEMO_EMAIL, DemoApi
         if email.strip().casefold() == DEMO_EMAIL:
+            if not demo_enabled():
+                raise ApiError('Use uma conta válida para entrar.')
             demo = DemoApi()
             await demo.login(email, password)
             await self.api.close()
@@ -411,12 +499,15 @@ class ChargeGridApp:
     def reset_account_ui(self):
         """Discard account-scoped conversation and unfinished forms at auth boundaries."""
         self.charging_draft = None
+        self.planning_intent = None
         self.chat_messages = []
         self.chat_draft = ''
         self._chat_account_id = None
         self._chat_pending = None
 
     async def enter_demo(self):
+        if not demo_enabled():
+            raise ApiError('Demonstração indisponível neste aplicativo.')
         from .demo import DEMO_EMAIL, DEMO_PASSWORD
         await self.login(DEMO_EMAIL, DEMO_PASSWORD)
         await self.signed_in()

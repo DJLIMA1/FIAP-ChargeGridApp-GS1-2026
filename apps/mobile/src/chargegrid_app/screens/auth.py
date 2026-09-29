@@ -3,8 +3,16 @@ import re
 import flet as ft
 
 from ..api_client import ApiError
+from ..config import demo_enabled
 from ..ui import motion, theme
-from ..ui.components import flat_button, labeled_field, text_link, title
+from ..ui.components import (
+    BRAND_PROMISE,
+    brand,
+    flat_button,
+    labeled_field,
+    text_link,
+    title,
+)
 
 
 def auth_button(text, action, *, secondary=False):
@@ -19,7 +27,7 @@ def auth_button(text, action, *, secondary=False):
 
 
 def back_link(app):
-    return ft.Container(
+    return ft.TextButton(
         ft.Row(
             [
                 ft.Icon(ft.Icons.CHEVRON_LEFT, size=22, color=theme.TEXT_COLOR),
@@ -34,44 +42,14 @@ def back_link(app):
             tight=True,
         ),
         on_click=app.link('auth'),
-        ink=True,
-        alignment=ft.Alignment(-1, 0),
-    )
-
-
-def brand():
-    return ft.Row(
-        [
-            ft.Container(
-                ft.Image(src='/icon.png', width=44, height=44, fit=ft.BoxFit.COVER),
-                width=44,
-                height=44,
-                border_radius=10,
-                clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                alignment=ft.Alignment(0, 0),
-            ),
-            ft.Text(
-                'ChargeGrid',
-                size=32,
-                weight=ft.FontWeight.BOLD,
-                color=theme.TEXT_COLOR,
-                font_family='BarlowSemiBold',
-            ),
-        ],
-        spacing=8,
-        tight=True,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        style=ft.ButtonStyle(alignment=ft.Alignment(-1, 0), padding=12,
+                             side={ft.ControlState.FOCUSED: ft.BorderSide(2, theme.FOCUS)}),
     )
 
 
 def account_selector(app, selection):
     options = []
     semantics = []
-    indicator = ft.Container(
-        bgcolor=theme.RED, height=44, expand=True, border_radius=7,
-        offset=ft.Offset(1 if selection['value'] == 'vendor' else 0, 0),
-        animate_offset=motion.animation(280), data='account-indicator',
-    )
 
     def choose(value):
         async def changed(event):
@@ -79,50 +57,25 @@ def account_selector(app, selection):
                 return
             theme.set_dark(getattr(app, 'dark_mode', theme.is_dark()))
             selection['value'] = value
-            indicator.offset = ft.Offset(1 if value == 'vendor' else 0, 0)
             for option, accessible in zip(options, semantics):
                 active = option.data == value
                 option.content.color = '#FFFFFF' if active else theme.TEXT_COLOR
                 option.content.weight = ft.FontWeight.BOLD if active else ft.FontWeight.NORMAL
+                option.style.bgcolor = theme.RED if active else theme.WHITE
                 accessible.selected = active
             app.page.update()
         return changed
 
-    def option(label, value):
+    for label, value in [('Sou motorista', 'consumer'), ('Sou operador', 'vendor')]:
         active = selection['value'] == value
-        control = ft.Container(
-            ft.Text(
-                label,
-                size=14,
-                color='#FFFFFF' if active else theme.TEXT_COLOR,
-                weight=ft.FontWeight.BOLD if active else ft.FontWeight.NORMAL,
-                text_align=ft.TextAlign.CENTER,
-            ),
-            height=44,
-            expand=True,
-            alignment=ft.Alignment(0, 0),
-            on_click=choose(value),
-            data=value,
-            ink=False,
-        )
+        control = flat_button(label, theme.RED if active else theme.WHITE,
+                              '#FFFFFF' if active else theme.TEXT_COLOR,
+                              on_click=choose(value), bold=active)
+        control.data = value
         options.append(control)
         accessible = ft.Semantics(content=control, selected=active, expand=True)
         semantics.append(accessible)
-        return accessible
-
-    return ft.Container(
-        ft.Stack([
-            ft.Container(ft.Row([indicator, ft.Container(expand=True)], spacing=0),
-                         left=0, right=0, top=0, bottom=0),
-            ft.Container(ft.Row([option('Sou consumidor', 'consumer'), option('Sou vendedor', 'vendor')], spacing=0),
-                         left=0, right=0, top=0, bottom=0),
-        ]),
-        height=46,
-        bgcolor=theme.WHITE,
-        border=ft.Border.all(1, theme.LIGHT_GRAY),
-        border_radius=8,
-        clip_behavior=ft.ClipBehavior.HARD_EDGE,
-    )
+    return ft.Row(semantics, spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
 
 
 async def build(app, mode='login', email_value='', account_type='consumer'):
@@ -138,7 +91,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
     email.keyboard_type = ft.KeyboardType.EMAIL
     email.autocorrect = False
     password.autocorrect = False
-    feedback = ft.Text('', size=13, color=theme.RED, visible=False)
+    feedback = ft.Text('', size=13, color=theme.ERROR, visible=False)
     submit_button = None
     submitting = False
     errors = {}
@@ -155,7 +108,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
                 theme.set_dark(getattr(app, 'dark_mode', theme.is_dark()))
                 if message.visible:
                     message.visible = False
-                    field.border_color = theme.LIGHT_GRAY
+                    field.border_color = theme.INPUT_BORDER
                     field.focused_border_color = None
                     app.page.update()
             return changed
@@ -176,7 +129,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         await motion.shake(control, app.page.update, reduced=getattr(app, 'reduced_motion', False),
                            is_current=lambda: not getattr(app, 'closed', False) and generation == getattr(app, 'generation', 0))
 
-    def show_feedback(message, color=theme.RED):
+    def show_feedback(message, color=theme.ERROR):
         feedback.value = message
         feedback.color = color
         feedback.visible = True
@@ -188,7 +141,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
             return
         address = email.value.strip()
         from ..demo import DEMO_EMAIL
-        if mode != 'login' and address.casefold() == DEMO_EMAIL:
+        if demo_enabled() and mode != 'login' and address.casefold() == DEMO_EMAIL:
             show_feedback('A conta demo já está pronta. Volte para entrar com a senha demo1234; ela não recebe e-mails.', theme.GRAY_TEXT)
             return
         full_name = name.value.strip()
@@ -287,7 +240,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
     async def resend():
         address = email.value.strip()
         from ..demo import DEMO_EMAIL
-        if address.casefold() == DEMO_EMAIL:
+        if demo_enabled() and address.casefold() == DEMO_EMAIL:
             show_feedback('A conta demo já está pronta e não precisa confirmar e-mail.', theme.GRAY_TEXT)
             return
         if '@' not in address or '.' not in address.rpartition('@')[2]:
@@ -306,18 +259,21 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         submit_button = auth_button('Entrar', app.action(submit))
         password.on_submit = app.action(submit)
         controls = [
-            brand(),
+            ft.Column([brand(), ft.Text(BRAND_PROMISE, size=14, color=theme.GRAY_TEXT)], spacing=8),
             email_field,
             password_field,
             text_link('Esqueci minha senha', app.link('auth', mode='forgot', email_value=email_value)),
             submit_button,
             feedback,
             auth_button('Criar conta', app.link('auth', mode='register'), secondary=True),
-            ft.Divider(color=theme.LIGHT_GRAY),
-            auth_button('Entrar na conta demo', app.action(lambda: app.enter_demo()), secondary=True),
-            ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas simulados.',
-                    size=12,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
         ]
+        if demo_enabled():
+            controls.extend([
+                ft.Divider(color=theme.LIGHT_GRAY),
+                auth_button('Entrar na conta demo', app.action(lambda: app.enter_demo()), secondary=True),
+                ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas simulados.',
+                        size=12,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
+            ])
         spacing = 20
     elif mode == 'register':
         submit_button = auth_button('Criar conta', app.action(submit))
@@ -326,7 +282,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
             back_link(app),
             title('Criar conta', 'Escolha como você vai usar o ChargeGrid.'),
             account_selector(app, selection),
-            ft.Text('Vendedores vinculam seus equipamentos pelo QR fornecido com o ponto.', size=12, color=theme.GRAY_TEXT),
+            ft.Text('Operadores vinculam seus equipamentos pelo QR fornecido com o ponto.', size=12, color=theme.GRAY_TEXT),
             name_field,
             email_field,
             password_field,

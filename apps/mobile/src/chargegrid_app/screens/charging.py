@@ -1,10 +1,11 @@
 from copy import deepcopy
 from datetime import datetime
-from decimal import Decimal, DecimalException, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
 from ..api_client import ApiError
+from ..services.planning import estimate_text, intent_limits
 from ..ui import theme
 from ..ui.components import (
     button,
@@ -15,7 +16,8 @@ from ..ui.components import (
     money,
     title,
 )
-from ..ui.point_summary import point_summary
+from ..ui.point_summary import journey_summary, point_summary
+from ..ui.point_summary import point_context as context_from_station
 
 LABELS = {'starting':'Aguardando equipamento iniciar','charging':'Recarga confirmada','stopping':'Parada pendente no equipamento','completed':'Recarga concluída','failed':'Falha confirmada','interrupted':'Recarga interrompida'}
 DEMO_LABELS = {'starting':'Aguardando início simulado','charging':'Recarga simulada em andamento','stopping':'Finalizando recarga simulada','completed':'Recarga simulada concluída','failed':'Falha simulada','interrupted':'Recarga simulada interrompida'}
@@ -62,7 +64,7 @@ def session_card(session, *, demo=False):
         controls.append(ft.Text('Baseado nos horários recebidos, não no nível da bateria.',size=12,color=theme.GRAY_TEXT))
     controls += [ft.Text('Dados simulados nesta conta' if demo else SOURCE.get(session.get('source'),'Origem não informada'),size=12,color=theme.GRAY_TEXT),
                  ft.Divider(color=theme.LIGHT_GRAY),
-                 ft.Text(f"Energia: {float(session.get('energy_wh') or 0)/1000:.3f} kWh",size=17,color=theme.TEXT_COLOR),
+                 ft.Text(f"Energia: {float(session.get('energy_wh') or 0)/1000:.3f} kWh".replace('.', ','),size=17,color=theme.TEXT_COLOR),
                  ft.Text('Custo estimado: '+money(session.get('cost_estimate')),size=17,color=theme.TEXT_COLOR),
                  ft.Text('Última medida: '+date_time(session.get('last_measurement_at')),size=12,color=theme.GRAY_TEXT)]
     if session['status'] in ACTIVE and not session.get('online'):
@@ -94,7 +96,8 @@ def _metadata(app, data):
 def _route(draft, step):
     return {'public_code':draft['public_code'],'reservation_id':draft['reservation_id'],
             'point_context':draft['point_context'],'max_duration':draft['initial_duration'],'step':step,
-            'pending_start':bool(draft['uncertain'])}
+            'pending_start':bool(draft['uncertain']),
+            **({'station_search':deepcopy(draft['station_search'])} if draft.get('station_search') else {})}
 
 
 def _code(draft):
@@ -148,23 +151,14 @@ def _estimate(draft):
     connector = draft['point_context'].get('connector') or {}
     try:
         limits = _limits(draft)
-        price,power = Decimal(str(connector.get('price_per_kwh'))),Decimal(str(connector.get('power_kw')))
-        if not price.is_finite() or not power.is_finite() or not 0 <= price <= 10000 or not 0 < power <= 1000:
-            raise InvalidOperation
-        energy = power*limits['max_duration_minutes']/60
-        if draft['mode'] == 'value':
-            if price <= 0:
-                raise InvalidOperation
-            energy = min(energy,Decimal(limits['max_cost'])/price)
-            return f'Estimativa de até {float(energy):.2f} kWh antes de cupons, considerando a tarifa e o tempo máximo. O consumo real varia.'
-        return f'Na potência nominal: cerca de {float(energy):.2f} kWh e {money(energy*price)} antes de cupons. O consumo real varia.'
-    except (ApiError,DecimalException,TypeError,ValueError):
+        return estimate_text(connector, limits['max_duration_minutes'], limits.get('max_cost'))
+    except (ApiError,TypeError,ValueError):
         return 'A estimativa depende da tarifa, potência e limites do ponto. Nenhuma cobrança real.'
 
 
 def _header(step):
     return ft.Column([
-        ft.Text(f'INICIAR RECARGA · ETAPA {step} DE 3',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+        ft.Text(f'INICIAR RECARGA · ETAPA {step} DE 3',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
         ft.Row([ft.Container(height=5,expand=True,bgcolor=theme.RED if index<=step else theme.LIGHT_GRAY,border_radius=3)
                 for index in range(1,4)],spacing=5),
         title(('Confirmar ponto','Definir limites','Revisar recarga')[step-1]),
@@ -193,7 +187,7 @@ def _review(draft):
                         bgcolor=theme.INPUT_BG,border_radius=4,padding=18)
 
 
-async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False):
+async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False, planning_intent=None, station_search=None):
     demo = getattr(app.api,'is_demo',False) is True
     draft = getattr(app,'charging_draft',None)
     if draft and draft.get('owner') != _owner(app):
@@ -223,13 +217,15 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await app.api.request('POST',f"charging-sessions/{session['id']}/stop",key=key)
             await app.go('charging',session_id=session['id'])
         state = ft.Container(session_card(session,demo=demo))
-        controls = [title('Minha recarga'),state,point_summary(session)]
+        journey = ft.Container(journey_summary(session, demo=demo))
+        controls = [title('Minha recarga'),state,journey,point_summary(session)]
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
             if current['status'] != session['status']:
                 await app.go('charging',session_id=session['id'])
                 return
             state.content = session_card(current,demo=demo)
+            journey.content = journey_summary(current, demo=demo)
             app.page.update()
         if session['status'] in ACTIVE:
             app.set_poll(update,5)
@@ -242,7 +238,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 await app.go('charging')
             controls.append(button('Iniciar outra recarga',app.action(again)))
         if session['status'] in ('starting','charging'):
-            controls.append(button('Solicitar parada',app.action(stop)))
+            controls.insert(2,button('Solicitar parada',app.action(stop)))
         controls.append(ft.Text(
             'Atualiza a cada 5 s. A evolução é simulada nesta conta; nenhum equipamento real recebe comandos.'
             if demo and session['status'] in ACTIVE else
@@ -308,6 +304,19 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                  'safety_minutes':str(point_limit if connector.get('max_duration_minutes') else initial_duration),
                  'mode':'time','max_cost':'','coupon_code':'','step':1,'furthest':1,
                  'key':app.api.new_key(),'last_body':None,'pending_body':None,'uncertain':False}
+        saved_intent = getattr(app, 'planning_intent', None) or {}
+        draft['station_search'] = deepcopy(station_search or (
+            saved_intent.get('station_search') if connector.get('id') == saved_intent.get('connector_id') else {}) or {})
+        intention = planning_intent
+        if not intention and connector.get('id') == saved_intent.get('connector_id'):
+            intention = saved_intent.get('intent')
+        if intention:
+            limits = intent_limits(connector, intention)
+            draft['duration_minutes'] = draft['safety_minutes'] = str(limits['minutes'])
+            if limits.get('max_cost'):
+                draft.update(mode='value', max_cost=limits['max_cost'])
+        if connector.get('id') == saved_intent.get('connector_id'):
+            app.planning_intent = None
     elif not uncertain:
         draft.update(public_code=public_code,reservation_id=reservation_id,point_context=deepcopy(context))
     app.charging_draft = draft
@@ -402,7 +411,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             value_mode = draft['mode']=='value'
             time_panel.visible,value_panel.visible = not value_mode,value_mode
             for control,selected in ((time_button,not value_mode),(value_button,value_mode)):
-                control.bgcolor = theme.RED if selected else theme.LIGHT_GRAY
+                control.style.bgcolor = theme.RED if selected else theme.LIGHT_GRAY
                 control.content.color = '#FFFFFF' if selected else theme.TEXT_COLOR
             safety_summary.value = f"Limite de segurança: {draft['safety_minutes']} min"
             coupon_summary.value = 'Código informado · validação no início' if draft['coupon_code'].strip() else 'Opcional · adicionar código'
@@ -498,6 +507,26 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                         raise ApiError('Sua reserva não está confirmada ou expirou. Confira Minha reserva antes de iniciar.')
                 elif current_reservation:
                     raise ApiError('Há uma reserva ativa. Abra Minha reserva antes de solicitar o início.')
+                station_id = draft['point_context'].get('station_id')
+                if station_id:
+                    station = await app.api.request('GET', f'stations/{station_id}')
+                    old_point = draft['point_context'].get('connector') or {}
+                    current_point = next((point for point in station.get('connectors', [])
+                                          if (old_point.get('id') and point.get('id') == old_point['id']) or
+                                          (not old_point.get('id') and point.get('public_code') == draft['public_code'])), None)
+                    if current_point is None:
+                        raise ApiError('O ponto selecionado não está mais disponível. Volte à lista para escolher outro.')
+                    terms = ('price_per_kwh', 'power_kw', 'max_duration_minutes')
+                    changed_terms = any(Decimal(str(old_point.get(key))) != Decimal(str(current_point.get(key)))
+                                        for key in terms if old_point.get(key) is not None and current_point.get(key) is not None)
+                    draft['point_context'] = context_from_station(station, current_point)
+                    if changed_terms:
+                        draft['furthest'] = 2
+                        await navigate(2)
+                        app.notice('As condições do ponto mudaram. Confira a nova tarifa, potência e limite antes de revisar novamente.')
+                        return
+                    if station.get('active') is False or current_point.get('active') is False or current_point.get('retired'):
+                        raise ApiError('Este ponto foi desativado. Volte à lista para escolher outro.')
                 body = _body(draft)
                 if draft['last_body'] is not None and body != draft['last_body']:
                     draft['key'] = app.api.new_key()

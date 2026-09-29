@@ -154,7 +154,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Localização', [item.value for item in descendants(routed) if isinstance(item, ft.Text)])
         screen = await onboarding.build(app, 'station', 'point', step=1)
         fields = {item.label: item for item in descendants(screen) if isinstance(item, ft.TextField)}
-        fields['Nome da estação'].value = 'Estação Centro'
+        fields['Nome do posto'].value = 'Estação Centro'
         fields['Endereço completo'].value = 'Rua das Flores, 50, São Paulo'
         fields['Latitude'].value = 'abc'
         fields['Longitude'].value = '-46,63'

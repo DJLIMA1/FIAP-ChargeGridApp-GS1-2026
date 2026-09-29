@@ -14,7 +14,8 @@ def labeled_field(label, value="", hint="", password=False, on_change=None, on_b
                 hint_style=ft.TextStyle(color='#62666B'),
                 password=password,
                 can_reveal_password=password,
-                height=50,
+                # Intrinsic height follows system text scaling.
+                height=None,
                 filled=True,
                 fill_color=theme.INPUT_BG,
                 color=theme.INPUT_TEXT,
@@ -22,7 +23,7 @@ def labeled_field(label, value="", hint="", password=False, on_change=None, on_b
                 prefix_style=ft.TextStyle(color=theme.INPUT_TEXT),
                 suffix_style=ft.TextStyle(color=theme.INPUT_TEXT),
                 border_color=theme.INPUT_BORDER,
-                border_radius=4,
+                border_radius=8,
                 text_size=15,
                 content_padding=ft.Padding(left=15,right=15,top=10,bottom=10),
                 on_change=on_change,
@@ -41,7 +42,7 @@ def card(content, height=None, padding=16, **kwargs):
     return ft.Container(
         content=inner,
         bgcolor=theme.WHITE,
-        border_radius=4,
+        border_radius=12,
         padding=padding,
         height=height,
         **kwargs,
@@ -75,8 +76,12 @@ def disclosure_field(label, summary, controls, *, expanded=False, on_toggle=None
     return section,summary_text
 
 def flat_button(text, bg, fg='#FFFFFF', on_click=None, bold=True, height=48, radius=4, expand=None, border=None):
-    """Botão "chapado" sem sombra."""
-    return ft.Container(
+    """Keyboard-accessible Material action that grows with wrapped/scaled text.
+
+    ``height`` remains the requested baseline size; vertical padding provides
+    that target without imposing a clipping box on larger accessibility text.
+    """
+    return ft.TextButton(
         content=ft.Text(
             text,
             color=fg,
@@ -85,32 +90,55 @@ def flat_button(text, bg, fg='#FFFFFF', on_click=None, bold=True, height=48, rad
             weight=ft.FontWeight.BOLD if bold else ft.FontWeight.NORMAL,
             text_align=ft.TextAlign.CENTER,
         ),
-        bgcolor=bg,
-        height=height,
-        border_radius=radius,
-        alignment=ft.Alignment(0, 0),
+        style=ft.ButtonStyle(
+            bgcolor=bg,
+            color=fg,
+            padding=ft.Padding(left=14, right=14, top=max(12, (height or 48) / 2 - 10),
+                               bottom=max(12, (height or 48) / 2 - 10)),
+            shape=ft.RoundedRectangleBorder(radius=radius),
+            side={ft.ControlState.FOCUSED: ft.BorderSide(2, theme.FOCUS),
+                  ft.ControlState.DEFAULT: border.top if border else ft.BorderSide(0, bg)},
+            overlay_color=ft.Colors.with_opacity(0.12, fg),
+            animation_duration=motion.duration(160),
+        ),
         on_click=on_click,
-        ink=True,
         expand=expand,
-        border=border,
-        padding=ft.Padding( left=10,right=10),
-        animate=motion.animation(),
-        animate_opacity=motion.animation(140),
-        animate_scale=motion.animation(160),
-        scale=1,
-        on_hover=motion.hover,
     )
 
+
 def badge(text, bg=None, width=90):
-    """Etiqueta pequena arredondada (ex: 'Disponível', 'Pago')."""
+    """Status always has a readable label, including bright dark-theme fills."""
+    background = bg or theme.RED
     return ft.Container(
-        content=ft.Text(text, size=11, color='#FFFFFF', text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.BOLD),
-        bgcolor=bg or theme.RED,
+        content=ft.Text(text, size=12, color=theme.on_color(background),
+                        text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.BOLD),
+        bgcolor=background,
         border_radius=6,
         width=width,
-        height=24,
+        padding=ft.Padding(left=6, right=6, top=5, bottom=5),
         alignment=ft.Alignment(0, 0),
     )
+
+
+BRAND_PROMISE = 'Recarga com confirmação, do app ao ponto.'
+
+
+def brand(*, compact=False):
+    """One wordmark for authentication and the application shell."""
+    size = 32 if compact else 44
+    return ft.Row([
+        ft.Container(
+            ft.Image(src='/icon.png', width=size, height=size, fit=ft.BoxFit.COVER,
+                     exclude_from_semantics=True),
+            width=size, height=size, border_radius=10,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            alignment=ft.Alignment(0, 0),
+        ),
+        ft.Text('ChargeGrid', size=26 if compact else 32,
+                weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR,
+                font_family='BarlowSemiBold', expand=True),
+    ], spacing=8, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
 
 def pill(text, bg=None, fg=None):
     """Chip/pilula cinza usada em tags de estação/cupom."""
@@ -147,11 +175,13 @@ def button(text, action, secondary=False):
 
 
 def text_link(text, action):
-    return ft.Container(
-        ft.Text(text,size=13,color=theme.TEXT_COLOR,style=ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE)),
+    return ft.TextButton(
+        content=ft.Text(text,size=14,color=theme.TEXT_COLOR,
+                        style=ft.TextStyle(decoration=ft.TextDecoration.UNDERLINE)),
         on_click=action,
-        alignment=ft.Alignment(-1,0),
-        ink=True,
+        style=ft.ButtonStyle(alignment=ft.Alignment(-1,0),
+                             padding=ft.Padding(left=0, right=8, top=14, bottom=14),
+                             side={ft.ControlState.FOCUSED: ft.BorderSide(2, theme.FOCUS)}),
     )
 
 

@@ -166,7 +166,7 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(isinstance(c, ft.Container) and c.on_size_change for c in descendants(screen)))
         self.assertIsNone(self.app._chat_pending)
 
-    async def test_real_navigation_from_summary_via_home_guide_adds_context_question(self):
+    async def test_chat_remains_available_from_home_navigation_without_guide(self):
         page = SimpleNamespace(width=360, window=SimpleNamespace(), views=[SimpleNamespace()],
                                add=Mock(), update=Mock(), show_dialog=Mock(), pop_dialog=Mock())
         demo = DemoApi()
@@ -181,15 +181,13 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             await click(app.scene.content, 'Resumo da última recarga')(None)
             self.assertEqual(len(app.chat_messages), 3)
             await app.link('home')(None)
-            guide = next(c for c in descendants(app.scene.content)
-                         if isinstance(c, ft.Container) and c.on_click and isinstance(c.content, ft.Row)
-                         and any(isinstance(t, ft.Text) and t.value == 'Guia de recarga' for t in descendants(c)))
-            await guide.on_click(None)
+            self.assertNotIn('Guia de recarga',texts(app.scene.content))
+            await app.link('chat')(None)
             self.assertEqual(app.route, 'chat')
-            self.assertEqual(app.data['topic'], 'getting_started')
-            question = app.data['question']
             self.assertEqual(len(app.chat_messages), 3)
-            await click(app.scene.content, 'Perguntar: ' + question)(None)
+            question = 'Como escolho um ponto e inicio uma recarga?'
+            composer(app.scene.content).value = question
+            await composer(app.scene.content).on_submit(None)
             self.assertEqual([m['content'] for m in app.chat_messages if m['role'] == 'user'],
                              ['Resumo da última recarga', question])
             self.assertIn('Você: ' + question, [c.semantics_label for c in message_texts(app.scene.content)])
@@ -322,7 +320,7 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         await click(screen, 'Resumo da última recarga')(None)
         self.app.api.request.assert_awaited_once_with('GET', 'me/charging-sessions', params={'limit': 1, 'offset': 0})
         response = self.app.chat_messages[-1]['content']
-        for expected in ('Sua última recarga como consumidor', 'Posto Leste', 'CG-REAL', '1.250 kWh', 'R$ 3,12', 'Tarifa da sessão: R$ 2,50/kWh', 'medida pelo equipamento'):
+        for expected in ('Sua última recarga como motorista', 'Posto Leste', 'CG-REAL', '1.250 kWh', 'R$ 3,12', 'Tarifa da sessão: R$ 2,50/kWh', 'medida pelo equipamento'):
             self.assertIn(expected, response)
         self.assertNotIn('R$ 9,00', response)
         self.assertNotIn('Pago', response)
@@ -343,7 +341,7 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         composer(screen).value = 'Minha última recarga como consumidor'
         await composer(screen).on_submit(None)
         self.app.api.request.assert_awaited_with('GET', 'me/charging-sessions', params={'limit': 1, 'offset': 0})
-        self.assertIn('como consumidor', self.app.chat_messages[-1]['content'])
+        self.assertIn('como motorista', self.app.chat_messages[-1]['content'])
 
     async def test_unapproved_vendor_history_has_no_privilege_bypass(self):
         self.app.browsing_mode = 'vendor'

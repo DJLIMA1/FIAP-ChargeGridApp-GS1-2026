@@ -34,7 +34,7 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
             screen = await stations.build(app, station_id=STATION['id'])
         render.assert_not_awaited()
         self.assertNotIn('Ver mapa dos postos',texts(screen))
-        self.assertNotIn('Estações no mapa',texts(screen))
+        self.assertNotIn('Postos no mapa',texts(screen))
         values = [item.value for item in descendants(screen) if isinstance(item, ft.Text)]
         self.assertEqual(values.count(STATION['name']), 1)
         self.assertEqual(values.count(STATION['address']), 1)

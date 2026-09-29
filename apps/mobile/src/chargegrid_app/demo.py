@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .api_client import ApiError
+from .services.discovery import discover
 from .session import Session
 
 DEMO_EMAIL = 'demo@chargegrid.example'
@@ -415,6 +416,8 @@ class DemoApi:
             stations = [s for s in self._stations.values() if s['owner_id'] == _USER] if path.startswith('operator/') else [s for s in self._stations.values() if s['active']]
             if (params.get('lat') is None) != (params.get('lng') is None):
                 _fail('Informe latitude e longitude juntas.', 'coordinates_required')
+            lat = lng = None
+            radius = float(_number(params.get('radius_km', 50), 'raio', 0, 500, positive=True))
             if params.get('lat') is not None:
                 lat = float(_number(params['lat'], 'latitude', -90, 90))
                 lng = float(_number(params['lng'], 'longitude', -180, 180))
@@ -424,7 +427,29 @@ class DemoApi:
                     cosine = math.sin(first) * math.sin(second) + math.cos(first) * math.cos(second) * math.cos(math.radians(station['longitude'] - lng))
                     return 6371 * math.acos(max(-1, min(1, cosine)))
                 stations = [s for s in stations if distance(s) <= radius]
-            return self._page([self._station_row(s) for s in stations], params)
+            records = [self._station_row(s) for s in stations]
+            if path == 'stations':
+                order = params.get('sort', 'default')
+                if order not in ('default', 'price', 'distance'):
+                    _fail('Escolha uma ordenação válida.')
+                if order == 'distance' and lat is None:
+                    _fail('Informe lat e lng para ordenar por proximidade.', 'coordinates_required')
+                connector = params.get('connector_type')
+                if connector is not None:
+                    connector = _text(connector, 'conector', 50)
+                maximum = params.get('max_price_per_kwh')
+                if maximum is not None:
+                    maximum = _number(maximum, 'tarifa máxima', 0, 10000)
+                available = params.get('available_only', False)
+                if isinstance(available, str):
+                    if available.lower() not in ('true', 'false', '1', '0', 'yes', 'no', 'on', 'off'):
+                        _fail('Informe disponibilidade válida.')
+                    available = available.lower() in ('true', '1', 'yes', 'on')
+                if not isinstance(available, bool) and available not in (0, 1):
+                    _fail('Informe disponibilidade válida.')
+                records = discover(records, connector_type=connector, available_only=available,
+                                   max_price_per_kwh=maximum, sort=order, lat=lat, lng=lng)
+            return self._page(records, params)
         if method == 'POST' and path == 'stations':
             changes = self._station_fields(body, creating=True)
             return self._station_row(self._make_station(changes))

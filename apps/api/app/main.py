@@ -1,11 +1,17 @@
-from fastapi import FastAPI, HTTPException, Request
+import os
+from secrets import compare_digest
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from .auth_page import AUTH_PAGE
 from .config import settings
+from .database import db_session
+from .models import Connector, Profile, Station
 from .modules.auth.routes import router as auth_router
 from .modules.charging.routes import router as charging_router
 from .modules.coupons.routes import router as coupons_router
@@ -38,6 +44,16 @@ for router in (
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/internal/keepalive", include_in_schema=False)
+def keepalive(authorization: str | None = Header(default=None), db=Depends(db_session)):
+    secret = os.getenv("CRON_SECRET")
+    if not secret or not authorization or not compare_digest(authorization, f"Bearer {secret}"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    for model in (Station, Connector, Profile):
+        db.execute(select(model.id).limit(1)).first()
+    return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/auth/confirmed", response_class=HTMLResponse)

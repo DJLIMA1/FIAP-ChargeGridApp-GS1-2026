@@ -1,11 +1,14 @@
 import math
 from copy import deepcopy
+from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
 from ..api_client import ApiError
+from ..services.discovery import discover
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import station_map_widget
+from ..services.planning import estimate_text, intent_limits
 from ..services.search_location import SearchLocation
 from ..ui import theme
 from ..ui.availability import point_status, station_map_record
@@ -24,17 +27,66 @@ def _number(value):
     return f'{float(value):g}'.replace('.', ',')
 
 
-async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, offset=0):
+async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, offset=0,
+                connector_type=None, available_only=False, max_price_per_kwh=None, sort='default', planning_intent=None):
+    intention = deepcopy(planning_intent) if planning_intent else {}
+    route_state = dict(lat=lat,lng=lng,radius=radius,query=query,connector_type=connector_type,
+                       available_only=available_only,max_price_per_kwh=max_price_per_kwh,sort=sort,planning_intent=intention)
+    defaults = dict(lat=None,lng=None,radius=5,query='',connector_type=None,available_only=False,
+                    max_price_per_kwh=None,sort='default',planning_intent={})
+    route_state = {key:value for key,value in route_state.items() if value != defaults[key]}
     demo = getattr(app.api,'is_demo',False) is True
     if station_id:
         stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
         total = 1
     else:
-        params = {'limit':20,'offset':offset}
+        params = {'limit':20,'offset':offset,'sort':sort,'available_only':available_only}
+        if connector_type:
+            params['connector_type'] = connector_type
+        if max_price_per_kwh is not None:
+            params['max_price_per_kwh'] = max_price_per_kwh
         if lat is not None and lng is not None:
             params.update(lat=lat,lng=lng,radius_km=radius)
         result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
+    connector_filter = ft.Dropdown(label='Conector',value=connector_type or '',
+        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),('type2','Tipo 2'),('ccs2','CCS2'),('chademo','CHAdeMO'),('bench','Bancada')]],
+        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
+    available_filter = ft.Checkbox(label='Somente pontos disponíveis',value=available_only)
+    price_filter = field('Tarifa máxima (R$/kWh)',str(max_price_per_kwh) if max_price_per_kwh is not None else '')
+    price_filter.keyboard_type = ft.KeyboardType.NUMBER
+    order_filter = ft.Dropdown(label='Ordenar por',value=sort,
+        options=[ft.DropdownOption(key=k,text=v) for k,v in [('default','Padrão'),('price','Menor tarifa'),('distance','Mais perto da busca')]],
+        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
+    plan_mode = ft.Dropdown(label='Minha intenção',value=intention.get('mode','none'),
+        options=[ft.DropdownOption(key=k,text=v) for k,v in [('none','Só comparar pontos'),('time','Tenho alguns minutos'),('value','Até um valor em reais')]],
+        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
+    plan_value = field('Minutos ou valor em R$',str(intention.get('minutes',intention.get('max_cost',''))))
+    plan_value.keyboard_type = ft.KeyboardType.NUMBER
+
+    def filter_values():
+        maximum = None
+        try:
+            if price_filter.value.strip():
+                maximum = Decimal(price_filter.value.strip().replace(',','.'))
+                if not maximum.is_finite() or not 0 <= maximum <= 10000:
+                    raise InvalidOperation
+        except (InvalidOperation,ValueError):
+            raise ApiError('Informe uma tarifa máxima de zero a R$ 10.000 por kWh.')
+        intent = {}
+        if plan_mode.value != 'none':
+            try:
+                amount = Decimal(plan_value.value.strip().replace(',','.'))
+                ceiling = 1440 if plan_mode.value == 'time' else 100000
+                if not amount.is_finite() or not 0 < amount <= ceiling or (plan_mode.value == 'time' and amount != amount.to_integral_value()):
+                    raise InvalidOperation
+                intent = {'mode':'time','minutes':int(amount)} if plan_mode.value == 'time' else {'mode':'value','max_cost':format(amount,'f')}
+            except (InvalidOperation,ValueError):
+                raise ApiError('Informe minutos inteiros de 1 a 1.440 ou um valor maior que zero e de até R$ 100.000.')
+        return dict(connector_type=connector_filter.value or None,available_only=bool(available_filter.value),
+                    max_price_per_kwh=format(maximum,'f') if maximum is not None else None,
+                    sort=order_filter.value,planning_intent=intent)
+
     address = field('Endereço para buscar',query)
     address.max_length = 300
     latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',str(radius))
@@ -77,7 +129,11 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         return {'lat':search_lat,'lng':search_lng,'radius':search_radius,'query':search_query}
 
     async def search():
-        await app.go('stations',**await search_values())
+        location = await search_values()
+        filters = filter_values()
+        if filters['sort'] == 'distance' and location['lat'] is None:
+            raise ApiError('Informe um endereço ou coordenadas para ordenar por proximidade.')
+        await app.go('stations',**location,**{key:value for key,value in filters.items() if value != defaults[key]})
 
     latitude.expand = True
     longitude.expand = True
@@ -110,7 +166,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if saved:
             label = saved['query'] or f"{saved['lat']:.4f}, {saved['lng']:.4f}"
             saved_box.controls = [ft.Text('Busca salva nesta conta: '+label,size=12,color=theme.GRAY_TEXT),
-                                  button('Usar busca salva',app.link('stations',**saved),secondary=True),
+                                  button('Usar busca salva',app.link('stations',**{**route_state,**saved}),secondary=True),
                                   button('Remover busca salva',app.action(remove_saved),secondary=True)]
 
     async def save_search():
@@ -153,11 +209,31 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             icon_color=theme.RED,
             collapsed_icon_color=theme.GRAY_TEXT,
         )
-        controls = [title('Encontrar postos','Escolha um posto. Depois, veja os pontos disponíveis para iniciar no local ou reservar.'),search_section]
+        filters_section = ft.ExpansionTile(
+            title=ft.Text('Comparar por conector, preço e tempo',size=15,color=theme.TEXT_COLOR),
+            expanded=False,
+            maintain_state=True,
+            controls=[card(ft.Column([ft.Semantics(label='Conector',content=connector_filter),available_filter,price_filter,ft.Semantics(label='Ordenar por',content=order_filter),
+                ft.Semantics(label='Minha intenção',content=plan_mode),plan_value,ft.Text('Estimativas pela potência nominal, antes de cupons. O ponto pode entregar menos potência. Nenhuma cobrança real.',size=12,color=theme.GRAY_TEXT),
+                button('Aplicar comparação',app.action(search))],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))])
+        summary = []
+        if connector_type:
+            summary.append(connector_type)
+        if available_only:
+            summary.append('disponíveis')
+        if max_price_per_kwh is not None:
+            summary.append(f'até {money(max_price_per_kwh)}/kWh')
+        if sort != 'default':
+            summary.append('menor tarifa' if sort == 'price' else 'proximidade da busca')
+        if intention:
+            summary.append(f"tenho {intention['minutes']} min" if intention['mode'] == 'time' else f"até {money(intention['max_cost'])}")
+        controls = [title('Encontrar postos','Compare tarifa, conector e potência. A confirmação vem do ponto.'),filters_section,search_section]
+        if summary:
+            controls.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
     map_preview = ft.Container(visible=False)
     map_signature = None
     map_section = ft.Column(
-        controls=[ft.Text('Estações no mapa',size=20,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),map_preview],
+        controls=[ft.Text('Postos no mapa',size=20,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),map_preview],
         visible=False,
         spacing=16,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
@@ -174,13 +250,22 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         # or send the user back through another map disclosure.
         if station_id:
             return
-        records = [station_map_record(station,_available) for station in items]
+        records = []
+        for station in items:
+            metadata = station.get('discovery') or {}
+            matching = metadata.get('matching_connector_ids')
+            shown = {**station,'connectors':[p for p in station['connectors'] if matching is None or p['id'] in matching]}
+            record = station_map_record(shown,_available)
+            if metadata.get('point'):
+                record['price'] = float(metadata['point']['price_per_kwh'])
+                record['status'] = point_status(metadata['point'])[0]
+            records.append(record)
         signature = [{key:record.get(key) for key in ('id','name','latitude','longitude','free_points','status','price')}
                      for record in records]
         if signature == map_signature:
             return
         if items:
-            map_preview.content = await station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id),
+            map_preview.content = await station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
                                                           offline=demo,width=map_width,
                                                           reference=(lat,lng) if lat is not None and lng is not None else None)
         else:
@@ -198,8 +283,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     controls.append(listing)
     def station_cards(stations):
         items = []
-        for station in sorted(stations, key=lambda item: not any(_available(item,point) for point in item.get('connectors', []))):
-            available_count = sum(_available(station,point) for point in station['connectors'])
+        for station in stations:
+            metadata = station.get('discovery') or {}
+            available_count = metadata.get('available_points',sum(_available(station,point) for point in station['connectors']))
             if not station_id:
                 label = f'{available_count} ponto livre' if available_count == 1 else f'{available_count} pontos livres'
                 if station.get('active') is False:
@@ -210,15 +296,36 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                            ft.Text(station['address'],size=13,color=theme.GRAY_TEXT),
                            ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED,size=18,color=theme.GREEN if available_count else theme.GRAY_TEXT),
                                    ft.Text(label,size=13,color=theme.TEXT_COLOR,expand=True)],spacing=8),
-                           button('Ver pontos',app.link('stations',station_id=station['id']))]
+                           ]
+                chosen = metadata.get('point')
+                if chosen is None:
+                    eligible = discover([station])[0]['discovery']
+                    chosen = eligible['point']
+                if chosen:
+                    state,state_color = point_status(chosen)
+                    details += [ft.Text(f"{money(chosen['price_per_kwh'])}/kWh · {_number(chosen['power_kw'])} kW nominais",size=16,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+                                ft.Text(f"{chosen['connector_type']} · {chosen['public_code']} · {state}",size=13,color=theme.TEXT_COLOR)]
+                    if sort == 'price':
+                        details.append(ft.Text('Menor tarifa do posto entre os pontos que atendem aos filtros.',size=12,color=theme.GRAY_TEXT))
+                    if intention:
+                        details.append(ft.Text(estimate_text(chosen,**intent_limits(chosen,intention)),size=12,color=theme.GRAY_TEXT))
+                if metadata.get('distance_km') is not None:
+                    details.append(ft.Text(f"{_number(round(metadata['distance_km'],1))} km em linha reta da busca",size=12,color=theme.GRAY_TEXT))
+                details.append(button('Ver pontos',app.link('stations',station_id=station['id'],**route_state)))
                 items.append(card(ft.Column(details,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
                 continue
-            if not station['connectors']:
-                items.append(card(ft.Text('Este posto ainda não tem pontos de recarga.',color=theme.GRAY_TEXT)))
-            for connector in sorted(station['connectors'], key=lambda item: not _available(station,item)):
+            matching_points = station['connectors']
+            if connector_type or available_only or max_price_per_kwh is not None:
+                matches = discover([station],connector_type=connector_type,available_only=available_only,max_price_per_kwh=max_price_per_kwh)
+                ids = matches[0]['discovery']['matching_connector_ids'] if matches else []
+                matching_points = [p for p in matching_points if p['id'] in ids]
+            if not matching_points:
+                items.append(card(ft.Text('Nenhum ponto atende à comparação neste momento.',color=theme.GRAY_TEXT)))
+            for connector in sorted(matching_points, key=lambda item: not _available(station,item)):
                 key = app.api.new_key()
                 async def reserve(c=connector,k=key):
                     await app.api.request('POST','reservations',{'connector_id':c['id']},key=k)
+                    app.planning_intent = {'connector_id':c['id'],'intent':deepcopy(intention),'station_search':deepcopy(route_state)} if intention or route_state else None
                     await app.go('reservations')
                 status, status_color = point_status(connector)
                 if station.get('active') is False or connector.get('active') is False or connector.get('retired'):
@@ -231,11 +338,18 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                            ft.Row([badge(status,bg=status_color,width=110)]),
                            ft.Text(f"{_number(connector['power_kw'])} kW · {money(connector['price_per_kwh'])}/kWh",size=14,color=theme.TEXT_COLOR),
                            ft.Text(f"Tempo máximo: {connector['max_duration_minutes']} min",size=12,color=theme.GRAY_TEXT)]
+                if intention:
+                    limits = intent_limits(connector,intention)
+                    details.append(ft.Text(estimate_text(connector,**limits),size=12,color=theme.GRAY_TEXT))
+                    if intention.get('mode') == 'time' and limits['minutes'] < intention['minutes']:
+                        details.append(ft.Text(f"Estimativa limitada a {limits['minutes']} min, máximo deste ponto.",size=12,color=theme.GRAY_TEXT))
+                    if intention.get('mode') == 'value' and 'max_cost' not in limits:
+                        details.append(ft.Text('Tarifa gratuita: o plano usa um limite de tempo de 30 min, ajustado ao ponto.',size=12,color=theme.GRAY_TEXT))
                 if connector.get('availability_status') == 'reconciling' and connector.get('reserved_until'):
                     details.append(ft.Text('O equipamento está restaurando uma reserva. Aguarde a confirmação.',size=12,color=theme.GRAY_TEXT))
                 if _available(station,connector):
                     details += [ft.Divider(color=theme.LIGHT_GRAY),
-                                button('Já estou aqui: iniciar',app.link('charging',public_code=connector['public_code'],max_duration=min(30,connector['max_duration_minutes']),point_context=point_context(station,connector))),
+                                button('Já estou aqui: iniciar',app.link('charging',public_code=connector['public_code'],max_duration=min(30,connector['max_duration_minutes']),point_context=point_context(station,connector),**({'planning_intent':intention} if intention else {}),**({'station_search':deepcopy(route_state)} if route_state else {}))),
                                 button('Reservar para chegar',app.action(reserve),secondary=True),
                                 ft.Text('A reserva precisa ser confirmada pelo equipamento antes de você se deslocar.',size=12,color=theme.GRAY_TEXT)]
                 elif status == 'Offline':
@@ -257,9 +371,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if station_id:
             return
         if offset:
-            pagination.controls.append(button('Anterior',app.link('stations',lat=lat,lng=lng,radius=radius,query=query,offset=max(0,offset-20)),secondary=True))
+            pagination.controls.append(button('Anterior',app.link('stations',**route_state,offset=max(0,offset-20)),secondary=True))
         if offset+20 < total:
-            pagination.controls.append(button('Mais postos',app.link('stations',lat=lat,lng=lng,radius=radius,query=query,offset=offset+20)))
+            pagination.controls.append(button('Mais postos',app.link('stations',**route_state,offset=offset+20)))
 
     current_stations = stations
     refresh_pagination()

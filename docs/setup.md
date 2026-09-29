@@ -81,6 +81,14 @@ Crie o projeto a partir deste repositório e escolha `apps/api` como **Root Dire
 
 O APK e o painel usam o alias `chargegrid-api-preview-djlima1s-projects.vercel.app`. Atualizar ou reverter apenas `chargegrid-api-ruddy.vercel.app` não muda necessariamente esse destino. Confira `vercel alias ls` e aponte o alias usado pelos clientes para o deployment validado antes de considerar a troca de versão concluída. O fluxo `#F` exige app 0.3.6 ou superior e painel 0.3.6 ou superior; mantenha os três componentes compatíveis. Os APKs já existentes em `builds/` não recebem alterações feitas posteriormente no código-fonte.
 
+### Atividade do projeto Supabase Free
+
+O [Supabase considera um projeto Free inativo](https://supabase.com/docs/guides/platform/free-project-pausing) quando há poucas consultas de usuário ao banco ao longo de sete dias. A Vercel executa `GET /internal/keepalive` uma vez por dia, às 12:00 UTC (com possível atraso dentro da hora no plano Hobby). A rota exige `Authorization: Bearer <CRON_SECRET>` e faz três leituras limitadas no PostgreSQL, sem alterar dados. `GET /health` não consulta o banco e não substitui essa rotina.
+
+Antes de publicar em produção, configure `CRON_SECRET` nas variáveis de ambiente **Production** do projeto `chargegrid-api` na Vercel com um valor aleatório de pelo menos 16 caracteres e faça um novo deployment de produção. A Vercel envia o segredo automaticamente no cabeçalho da chamada agendada. Confira a execução em **Settings → Cron Jobs** e os logs da função; HTTP 200 indica que as consultas chegaram ao banco. HTTP 401 indica segredo ausente ou incorreto; erro 5xx indica falha da API ou do banco. A rotina só é registrada em deployments de produção, não em previews. Consulte a [documentação de Cron Jobs da Vercel](https://vercel.com/docs/cron-jobs) e a [configuração do segredo](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
+
+Essa atividade segue a orientação atual do Supabase, mas não é uma garantia contratual contra pausas no Free. Para eliminar a pausa automática, é necessário o plano Pro. Se o projeto já estiver pausado, retome-o pelo painel do Supabase antes de verificar a rotina.
+
 ## ESP32 e simulador
 
 Em `firmware/esp32`, copie `include/config.example.h` para `include/chargegrid_config.h`. Informe Wi-Fi, URL HTTPS da API sem `/v1`, a chave individual do dispositivo e o certificado raiz PEM da cadeia do servidor. Esse arquivo é ignorado pelo Git.

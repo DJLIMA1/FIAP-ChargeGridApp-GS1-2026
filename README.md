@@ -4,7 +4,7 @@
 
 # ChargeGrid
 
-**Encontre um ponto. Reserve. Acompanhe a recarga.**
+**Recarga com confirmação, do app ao ponto.**
 
 Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, API e painel ESP32 para demonstrar a gestão de eletropostos.
 
@@ -34,6 +34,8 @@ Este `main` documenta a fundação integrada com app, API e painel físico. A br
 
 O vendedor vincula o equipamento por um **QR privado de propriedade**, configura localização, conector e tarifa e publica o ponto. O consumidor usa um **código público diferente** para iniciar a recarga. O sistema só considera uma ação aplicada depois da confirmação do dispositivo.
 
+Na experiência atual, o motorista compara pontos por conector, disponibilidade, tarifa e proximidade da busca. Pode planejar por tempo ou orçamento antes de reservar e levar esses limites à revisão da recarga. O app destaca pedidos pendentes, confirmações recebidas e falhas de atualização; alterações de tarifa ou limites exigem nova revisão antes de um novo início. [Detalhes e validação da experiência →](docs/validacao-experiencia-gs.md)
+
 ## Protótipo visual
 
 <table>
@@ -42,12 +44,12 @@ O vendedor vincula o equipamento por um **QR privado de propriedade**, configura
     <th>Framebuffer capturado do painel físico</th>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/app-home-previa.png" alt="Prévia da tela inicial do aplicativo ChargeGrid com dados fictícios" width="260"></td>
+    <td align="center"><img src="docs/images/app-home-gs-dark.png" alt="Tela inicial ChargeGrid verificada em 360 por 800 pixels, na conta demo" width="260"></td>
     <td align="center"><img src="docs/images/painel-esp32-framebuffer.png" alt="Framebuffer do ESP32 físico mostrando ponto disponível" width="400"></td>
   </tr>
 </table>
 
-A imagem do app é uma **prévia com dados fictícios**. A imagem do painel foi lida do framebuffer da placa conectada na versão 0.3.4; não é fotografia do LCD e não contém QR ou credenciais privadas. Mais detalhes em [painel Waveshare](docs/waveshare-panel.md).
+A imagem do app foi capturada na **conta demo da prévia web local**, em 29/09/2026, com dados fictícios e viewport de 360 × 800. Também há uma [captura no tema claro](docs/images/app-home-gs-light.png). A imagem do painel foi lida do framebuffer da placa conectada na versão 0.3.4; não é fotografia do LCD e não contém QR ou credenciais privadas. Mais detalhes em [painel Waveshare](docs/waveshare-panel.md).
 
 ## Arquitetura e fluxo
 
@@ -114,7 +116,7 @@ Antes de executar a API com o papel de banco restrito, aplique também a concess
 pio run -d firmware/esp32 -e waveshare_panel_ui
 ```
 
-Para experimentar os fluxos localmente, selecione **Entrar na conta demo** na tela inicial (`demo@chargegrid.example`, senha pública `demo1234`). Os dados e equipamentos dessa conta são simulados e reiniciados ao sair. Para demonstrar a integração com a API sem placa, use o [simulador de dispositivo](docs/demo.md#demonstração-integrada-com-api-e-dispositivo) com uma identidade provisionada. O [guia completo](docs/setup.md) explica banco, Auth, provisionamento por QR, APK e implantação; o [roteiro de apresentação](docs/demo.md) percorre os dois modos de demonstração.
+Para experimentar os fluxos na **prévia local de desenvolvimento**, selecione **Entrar na conta demo** (`demo@chargegrid.example`, senha pública `demo1234`). A demo exige `CHARGEGRID_ENABLE_DEMO=1`; o script `tools/preview_mobile_flows.py` define essa opção para a prévia. Ela fica desligada por padrão no aplicativo, inclusive no APK de produção. Os dados e equipamentos dessa conta são simulados e reiniciados ao sair. Para demonstrar a integração com a API sem placa, use o [simulador de dispositivo](docs/demo.md#demonstração-integrada-com-api-e-dispositivo) com uma identidade provisionada. O [guia completo](docs/setup.md) explica banco, Auth, provisionamento por QR, APK e implantação; o [roteiro de apresentação](docs/demo.md) percorre os dois modos de demonstração.
 
 ## Justificativa técnica e ligação com a disciplina
 

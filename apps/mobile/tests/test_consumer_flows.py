@@ -39,6 +39,8 @@ def charging_app(active_reservation=None):
     async def request(method,path,*args,**kwargs):
         if method == 'POST':
             return {'id':'session-one'}
+        if path == 'stations/station-one':
+            return STATION
         return {'charging-sessions/current':None,'reservations/current':active_reservation}[path]
 
     app.api.request.side_effect = request
@@ -130,7 +132,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
             await click(screen,'Continuar')(None)
         inputs['Limite de custo estimado (R$)'].value = '1,50'
         await inputs['Limite de custo estimado (R$)'].on_change(None)
-        self.assertIn('0.75 kWh',texts(screen))
+        self.assertIn('0,75 kWh',texts(screen))
         screen = await next_charging_step(app,screen)
         self.assertIn('nenhuma cobrança real',texts(screen).lower())
         await click(screen,'Solicitar início')(None)
@@ -240,9 +242,9 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
             search_section = sections['Buscar perto de um endereço']
             self.assertFalse(search_section.expanded)
             self.assertTrue(search_section.maintain_state)
-            self.assertEqual(list(sections),['Buscar perto de um endereço'])
+            self.assertEqual(list(sections),['Comparar por conector, preço e tempo','Buscar perto de um endereço'])
             map_section = next(item for item in screen.controls
-                               if isinstance(item,ft.Column) and 'Estações no mapa' in texts(item))
+                               if isinstance(item,ft.Column) and 'Postos no mapa' in texts(item))
             self.assertTrue(map_section.visible)
             self.assertIn('Map',texts(map_section))
             listing = next(item for item in screen.controls
@@ -274,7 +276,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         inputs = fields(screen)
         inputs['Endereço para buscar'].value = 'Endereço que falhou'
         inputs['Latitude'].value,inputs['Longitude'].value = '-23.5','-46.6'
-        mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown))
+        mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
         mode.value = 'coordinates'
         await mode.on_select(None)
         with patch.object(stations,'geocode_address',new=AsyncMock()) as geocode:

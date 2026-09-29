@@ -147,11 +147,11 @@ def _local_answer(question, demo):
                 'Você pode continuar navegando; sair da conta encerra esta demonstração e apaga seus dados locais. '
                 'Nenhum equipamento real está conectado.'),
             'Criar posto e vincular ponto': (
-                'No modo vendedor, abra Postos e escolha Adicionar equipamento simulado. Não é necessário '
+                'No modo operador, abra Postos e escolha Adicionar equipamento simulado. Não é necessário '
                 'QR real nem câmera. Posto é o endereço; ponto é o equipamento. Informe a localização e a tarifa, '
                 'revise e publique. Você também pode adicionar outro ponto a um posto existente. Tudo fica nesta conta.'),
             'Conta, senha e histórico': (
-                'A conta de demonstração permite alternar entre consumidor e vendedor. Dados editados, cupons '
+                'A conta de demonstração permite alternar entre motorista e operador. Dados editados, cupons '
                 'e histórico ficam somente nesta sessão. As credenciais públicas permanecem iguais. '
                 'Ao sair e entrar novamente, a demonstração recomeça.'),
         }
@@ -172,23 +172,23 @@ async def answer(app, question):
         'resumo' in normalized and any(word in normalized for word in ('recarga', 'sessao', 'historico'))
     )
     if last:
-        seller_intent = any(word in normalized for word in ('meus postos', 'dos postos', 'clientes', 'vendedor'))
-        personal_intent = any(word in normalized for word in ('minha ultima', 'pessoal', 'como consumidor'))
+        seller_intent = any(word in normalized for word in ('meus postos', 'dos postos', 'clientes', 'operador', 'vendedor'))
+        personal_intent = any(word in normalized for word in ('minha ultima', 'pessoal', 'como motorista', 'como consumidor'))
         seller = seller_intent or (getattr(app, 'browsing_mode', 'consumer') == 'vendor' and not personal_intent)
         if seller and not profile.get('operator_enabled'):
             return {'content': 'O histórico dos seus postos fica disponível após vincular seu primeiro equipamento. '
-                               'Para suas recargas pessoais, peça “minha última recarga como consumidor”.',
+                               'Para suas recargas pessoais, peça “minha última recarga como motorista”.',
                     'actions': [_action('Configurar meu primeiro ponto', 'operator')]}
         path = 'operator/charging-sessions' if seller else 'me/charging-sessions'
         result = await app.api.request('GET', path, params={'limit': 1, 'offset': 0})
         if not isinstance(result, dict) or not isinstance(result.get('items'), list):
             raise ApiError('Resposta inválida ao consultar histórico.')
         items = result.get('items') or []
-        scope = 'dos seus postos' if seller else 'das suas recargas como consumidor'
+        scope = 'dos seus postos' if seller else 'das suas recargas como motorista'
         if not items:
             return {'content': f'Ainda não há registros no histórico {scope}.',
                     'actions': [_action('Ver histórico dos postos' if seller else 'Ver meu histórico', 'history', **({'manage': True} if seller else {}))]}
-        heading = 'Última recarga dos seus postos' if seller else 'Sua última recarga como consumidor'
+        heading = 'Última recarga dos seus postos' if seller else 'Sua última recarga como motorista'
         if not isinstance(items[0], dict) or not items[0].get('id'):
             raise ApiError('Resposta inválida ao consultar histórico.')
         action = _action('Ver histórico dos postos', 'history', manage=True) if seller else _action('Ver detalhes da recarga', 'charging', session_id=items[0]['id'])

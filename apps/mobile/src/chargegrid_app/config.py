@@ -7,6 +7,14 @@ ROOT_ENV_FILE = Path(__file__).resolve().parents[4] / '.env'
 PACKAGED_CONFIG_FILE = Path(__file__).resolve().parents[2] / 'assets' / 'app_config.json'
 
 
+def demo_enabled():
+    """The isolated demo requires an explicit development-only opt-in.
+
+    Packaged builds do not receive this environment setting; absence fails closed.
+    """
+    return os.getenv('CHARGEGRID_ENABLE_DEMO') == '1'
+
+
 def load_development_environment():
     try:
         for line in ROOT_ENV_FILE.read_text().splitlines():

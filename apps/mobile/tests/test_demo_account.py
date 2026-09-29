@@ -1,4 +1,5 @@
 """Verify the boundary between public local demo and authenticated API accounts."""
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -7,6 +8,7 @@ import flet as ft
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import ChargeGridApp
+from chargegrid_app.config import demo_enabled
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import auth, profile
 from chargegrid_app.session import Session
@@ -15,6 +17,9 @@ from test_behavior import HandlerApp, click, descendants
 
 class DemoAccountTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        development = patch.dict(os.environ, {'CHARGEGRID_ENABLE_DEMO': '1'})
+        development.start()
+        self.addCleanup(development.stop)
         self.real = SimpleNamespace(session=Session(), close=AsyncMock(), login=AsyncMock(),
                                     request=AsyncMock(), operation_keys={},
                                     charging_operation_sessions={}, last_session_id=None,
@@ -93,6 +98,23 @@ class DemoAccountTests(unittest.IsolatedAsyncioTestCase):
         await click(screen, 'Entrar na conta demo')(None)
         app.enter_demo.assert_awaited_once_with()
         app.api.request.assert_not_called()
+
+    async def test_production_hides_demo_and_rejects_direct_login(self):
+        with patch.dict(os.environ, {'CHARGEGRID_ENABLE_DEMO': '0'}):
+            self.assertFalse(demo_enabled())
+            app = HandlerApp()
+            screen = await auth.build(app)
+            copy = ' '.join(str(c.value) for c in descendants(screen) if isinstance(c, ft.Text))
+            self.assertNotIn('Entrar na conta demo', copy)
+            self.assertNotIn(DEMO_EMAIL, copy)
+            self.assertNotIn(DEMO_PASSWORD, copy)
+            with self.assertRaises(ApiError):
+                await self.app.login(DEMO_EMAIL, DEMO_PASSWORD)
+            with self.assertRaises(ApiError):
+                await self.app.enter_demo()
+            self.assertIs(self.app.api, self.real)
+            self.real.login.assert_not_called()
+            self.real.request.assert_not_called()
 
     async def test_demo_credentials_use_app_login_boundary(self):
         app = HandlerApp()

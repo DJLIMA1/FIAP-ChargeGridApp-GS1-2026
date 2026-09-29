@@ -256,7 +256,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('E-mail',labels)
         self.assertIn('Senha',labels)
 
-    async def test_auth_layout_uses_full_width_fields_and_reference_heights(self):
+    async def test_auth_layout_uses_full_width_fields_and_intrinsic_accessible_heights(self):
         control=await auth.build(FakeApp([]),mode='login')
         fields=[]
         buttons=[]
@@ -270,8 +270,9 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
             if content and not isinstance(content,str): visit(content)
             for child in getattr(item,'controls',[]) or []: visit(child)
         visit(control)
-        self.assertEqual([field.height for field in fields],[50,50])
-        self.assertEqual([item.height for item in buttons],[48,48])
+        self.assertTrue(all(field.height is None for field in fields))
+        self.assertTrue(all(isinstance(item, ft.TextButton) and item.height is None for item in buttons))
+        self.assertTrue(all(item.style.padding.top >= 14 for item in buttons))
         self.assertTrue(all(field_group.horizontal_alignment==ft.CrossAxisAlignment.STRETCH for field_group in (control.controls[1],control.controls[2])))
         self.assertNotIn('Sou consumidor',labels)
         self.assertNotIn('Sou vendedor',labels)
@@ -381,7 +382,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
             content=getattr(item,'content',None)
             if content and not isinstance(content,str): yield from descendants(content)
             for child in getattr(item,'controls',[]) or []: yield from descendants(child)
-        search_mode=next(item for item in descendants(screen) if isinstance(item,ft.Dropdown))
+        search_mode=next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
         self.assertEqual(search_mode.label,'Buscar por')
         self.assertEqual(search_mode.value,'address')
         latitude=next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label=='Latitude')

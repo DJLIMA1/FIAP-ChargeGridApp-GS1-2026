@@ -7,7 +7,7 @@ import flet as ft
 from ..services.maps import station_map_widget
 from ..ui import theme
 from ..ui.availability import point_status
-from ..ui.components import button, card, date_time, money
+from ..ui.components import BRAND_PROMISE, button, card, date_time, money
 from .charging import DEMO_LABELS as DEMO_CHARGING_LABELS
 from .charging import LABELS as CHARGING_LABELS
 from .charging import SOURCE
@@ -82,7 +82,7 @@ async def build(app):
 
     identity = [
         ft.Text(f'Olá, {name}',size=22,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),
-        ft.Text('Bem-vindo ao ChargeGrid.',size=14,color=theme.GRAY_TEXT),
+        ft.Text(BRAND_PROMISE,size=13,color=theme.GRAY_TEXT),
     ]
     greeting = ft.Row([
         ft.Container(ft.Icon(ft.Icons.PERSON_OUTLINE,color=theme.GRAY_TEXT,size=27),width=52,height=52,bgcolor=theme.LIGHT_GRAY,border_radius=26,alignment=ft.Alignment(0,0)),
@@ -130,44 +130,17 @@ async def build(app):
 
     state_text, action_label, state_action = describe_state(reservation, session)
     active_state = ft.Text(state_text,size=13,color=theme.TEXT_COLOR,expand=True)
-    flow_label = ft.Text('SUA RECARGA' if session else 'SUA RESERVA' if reservation else 'PRÓXIMO PASSO',
-                         size=11,weight=ft.FontWeight.BOLD,color=theme.RED)
+    flow_label = ft.Text('SUA RECARGA' if session else 'SUA RESERVA' if reservation else 'ENCONTRE SEU PONTO',
+                         size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT)
     flow_icon = ft.Icon(ft.Icons.EV_STATION_OUTLINED if session else ft.Icons.SCHEDULE_OUTLINED if reservation else ft.Icons.EXPLORE_OUTLINED,
-                        color=theme.RED,size=25)
+                        color=theme.ACCENT,size=25)
     active_button = button(action_label,state_action)
     active_card = card([flow_label,ft.Row([
         ft.Container(flow_icon,width=34,height=34,bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
         active_state,
     ],spacing=10),active_button],on_click=state_action,ink=True,
-        visible=bool(session or reservation),border=ft.Border.all(1,theme.LIGHT_GRAY))
-    start_actions = ft.Column([
-        button('Recarregar agora',app.link('stations')),
-    ],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,visible=not bool(session or reservation))
+        border=ft.Border.all(1,theme.LIGHT_GRAY))
     map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-40)
-
-    def guide_context(reservation, session):
-        if session:
-            return ('Acompanhe o estado da recarga e encerre pelo app quando precisar.',
-                    'charging','Como acompanho e encerro minha recarga com segurança?')
-        if reservation:
-            if reservation['status'] == 'confirmed':
-                return ('Ao chegar, confirme o código #F para iniciar a recarga.',
-                        'reservations','Tenho uma reserva confirmada. Como inicio a recarga ao chegar?')
-            if reservation['status'] == 'cancelling':
-                return ('Aguarde a confirmação de liberação antes de escolher outro ponto.',
-                        'reservations','Por que minha reserva está aguardando liberação?')
-            return ('Aguarde a confirmação do ponto antes de se deslocar.',
-                    'reservations','Minha reserva ainda aguarda confirmação. O que devo fazer?')
-        return ('Escolha um ponto disponível; no local, use o código #F para iniciar.',
-                'getting_started','Como escolho um ponto e inicio uma recarga?')
-
-    guide_copy, guide_topic, guide_question = guide_context(reservation,session)
-    guide_text = ft.Text(guide_copy,size=13,color=theme.TEXT_COLOR)
-    guide_card = card(ft.Row([
-        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE,color=theme.GRAY_TEXT,size=24),
-        ft.Column([ft.Text('Guia de recarga',size=12,color=theme.GRAY_TEXT),guide_text],spacing=3,expand=True),
-        ft.Icon(ft.Icons.CHEVRON_RIGHT,color=theme.GRAY_TEXT,size=20),
-    ],spacing=12),on_click=app.link('chat',topic=guide_topic,question=guide_question),ink=True,padding=12)
 
     async def make_map(items):
         records = [{**station,'free_points':len(_available_points(station)),
@@ -175,8 +148,8 @@ async def build(app):
         return await station_map_widget(records,lambda station_id:app.link('stations',station_id=station_id),offline=demo,width=map_width)
 
     map_preview = ft.Container(await make_map(stations))
-    map_heading = ft.Text('Estações no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
-    map_section = ft.Column([map_heading,map_preview,start_actions],spacing=16,
+    map_heading = ft.Text('Postos no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
+    map_section = ft.Column([map_heading,map_preview],spacing=16,
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     async def resize_map_section(event):
         nonlocal map_width
@@ -185,7 +158,7 @@ async def build(app):
         map_width = event.width
     map_section.on_size_change = resize_map_section
     controls = [
-        greeting,active_card,summary_card,guide_card,map_section,
+        greeting,active_card,map_section,summary_card,
     ]
     async def update():
         nonlocal previous
@@ -196,12 +169,8 @@ async def build(app):
         if fresh[:2] != previous[:2]:
             active_state.value, active_button.content.value, action = describe_state(current_reservation, current_session)
             active_card.on_click = active_button.on_click = action
-            active_card.visible = bool(current_session or current_reservation)
-            start_actions.visible = not active_card.visible
-            flow_label.value = 'SUA RECARGA' if current_session else 'SUA RESERVA' if current_reservation else 'PRÓXIMO PASSO'
+            flow_label.value = 'SUA RECARGA' if current_session else 'SUA RESERVA' if current_reservation else 'ENCONTRE SEU PONTO'
             flow_icon.icon = ft.Icons.EV_STATION_OUTLINED if current_session else ft.Icons.SCHEDULE_OUTLINED if current_reservation else ft.Icons.EXPLORE_OUTLINED
-            guide_text.value, topic, question = guide_context(current_reservation,current_session)
-            guide_card.on_click = app.link('chat',topic=topic,question=question)
         if current_summary != previous[3]:
             estimated_cost.value = money(current_summary.get('estimated_cost'))
             summary_detail.value = summary_text(current_summary)

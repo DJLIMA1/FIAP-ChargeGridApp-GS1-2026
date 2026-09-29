@@ -44,6 +44,8 @@ class WizardApp(HandlerApp):
         self.outcomes = []
         self.posts = []
         self.sessions = {}
+        self.station = {'id': 'station', 'name': 'Posto Central', 'address': 'Rua Um',
+                        'connectors': [deepcopy(CONTEXT['connector'])]}
         self.sequence = 0
         self.api.request = AsyncMock(side_effect=self.request)
         self.api.new_key = self.new_key
@@ -59,6 +61,8 @@ class WizardApp(HandlerApp):
                 return deepcopy(self.current)
             if path == 'reservations/current':
                 return deepcopy(self.reservation)
+            if path.startswith('stations/'):
+                return deepcopy(self.station)
             return deepcopy(self.sessions[path.split('/')[-1]])
         self.posts.append((deepcopy(body),kwargs.get('key')))
         outcome = self.outcomes.pop(0) if self.outcomes else {'id':'new-session'}
@@ -218,7 +222,7 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         fields(second)['Tempo máximo de segurança (min)'].value = '8'
         await fields(second)['Limite de custo estimado (R$)'].on_change(None)
         third = await next_screen(app,second)
-        self.assertIn('0.75 kWh',texts(third))
+        self.assertIn('0,75 kWh',texts(third))
         await click(third,'Solicitar início')(None)
         self.assertEqual(app.posts[0][0]['max_cost'],'1.50')
         self.assertEqual(app.posts[0][0]['max_duration_minutes'],8)

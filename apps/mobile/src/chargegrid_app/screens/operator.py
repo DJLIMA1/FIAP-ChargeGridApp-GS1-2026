@@ -16,7 +16,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     profile = await app.api.request('GET','me')
     app.profile = profile
     if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
-        return title('Gestão de postos','Entre com uma conta de vendedor para vincular equipamentos.')
+        return title('Gestão de postos','Entre com uma conta de operador para vincular equipamentos.')
     if claim:
         return await ownership.build(app, station_id=station_id)
     if onboarding:
@@ -25,12 +25,12 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if not profile.get('operator_enabled'):
         return ft.Column([
             title('Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira tela',
-                  'Experimente a gestão de postos com dados fictícios.' if is_demo else 'Vincule o ESP32 à sua conta de vendedor'),
+                  'Experimente a gestão de postos com dados fictícios.' if is_demo else 'Vincule o ESP32 à sua conta de operador'),
             card([ft.Icon(ft.Icons.QR_CODE_SCANNER, size=48, color=theme.RED),
                   ft.Text('Adicione um equipamento simulado para criar seu posto. Todo o processo acontece nesta demonstração.' if is_demo else
                           'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
                           color=theme.TEXT_COLOR),
-                  ft.Text('Depois informe nome, endereço e tarifa. O ponto só aparece aos consumidores quando você publicar.',
+                  ft.Text('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.',
                           size=13, color=theme.GRAY_TEXT),
                   ft.Text('Posto é o local com endereço. Cada ponto é um equipamento de recarga nesse local.',
                           size=13, color=theme.GRAY_TEXT)]),
@@ -57,7 +57,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                 '2. Configure nome, endereço de exemplo e tarifa.\n'
                 '3. Revise, publique e teste a recarga simulada.' if is_demo else
                 '1. Ligue a tela e configure o Wi-Fi, se necessário.\n'
-                '2. Escaneie o QR com sua conta de vendedor.\n'
+                '2. Escaneie o QR com sua conta de operador.\n'
                 '3. Defina nome, local e tarifa; revise e publique.',size=12,color=theme.GRAY_TEXT),
         ft.Text('Posto é o endereço; ponto é o equipamento. O botão no topo cria um novo posto. '
                 'Para outro ponto no mesmo endereço, use “Vincular” no posto abaixo.',size=12,color=theme.GRAY_TEXT),
@@ -79,7 +79,10 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                     font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,expand=True),
             help_button,
         ],spacing=8),
-        ft.Text(f"{float(summary['total_energy_wh'])/1000:.3f} kWh entregues · {money(summary['total_estimated_cost'])} estimados",
+        ft.Text(f"{float(summary['total_energy_wh'])/1000:.3f} kWh registrados · {money(summary['total_estimated_cost'])} estimados",
+                size=12,color=theme.GRAY_TEXT),
+        ft.Text('Energia simulada nesta conta.' if is_demo else
+                'O total pode incluir energia simulada, medida ou estimada. Consulte a origem em cada sessão.',
                 size=12,color=theme.GRAY_TEXT),
         instructions,
     ]
@@ -130,7 +133,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                               ft.Text('Seu primeiro ponto começa adicionando um equipamento simulado.' if is_demo else
                                       'Seu primeiro ponto começa no QR do equipamento.',
                                       color=theme.TEXT_COLOR,weight=ft.FontWeight.BOLD),
-                              ft.Text('Vincule-o e siga a configuração guiada para publicar a estação.',
+                              ft.Text('Vincule-o e siga a configuração guiada para publicar o posto.',
                                       size=12,color=theme.GRAY_TEXT)]))
     controls += [button('Gerenciar cupons',app.link('coupons',manage=True),secondary=True)]
     return ft.Column(controls,spacing=16,scroll=ft.ScrollMode.AUTO)
@@ -330,12 +333,12 @@ async def connector_form(app, station_id, connector=None, device_id=None):
                      ft.TextButton('Simular restauração' if is_demo else 'Restaurar ESP32', on_click=app.action(confirm),
                                    style=ft.ButtonStyle(color=theme.RED))],
         ))
-    controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),ft.Text('Confira os dados e ative o ponto. O posto também precisa estar ativo para aparecer aos consumidores.',size=12,color=theme.GRAY_TEXT),button('Salvar ponto',app.action(save))]
+    controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),ft.Text('Confira os dados e ative o ponto. O posto também precisa estar ativo para aparecer aos motoristas.',size=12,color=theme.GRAY_TEXT),button('Salvar ponto',app.action(save))]
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         controls.insert(1,card([
             ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
-            ft.Text(f'Use {DEMO_PRESENCE_CODE} para testar a recarga no modo consumidor. Nenhum dispositivo físico será acionado.',size=13,color=theme.GRAY_TEXT),
+            ft.Text(f'Use {DEMO_PRESENCE_CODE} para testar a recarga no modo motorista. Nenhum dispositivo físico será acionado.',size=13,color=theme.GRAY_TEXT),
         ]))
     if connector:
         provision_button = button('Simular provisionamento' if is_demo else 'Provisionar dispositivo',app.action(provision))

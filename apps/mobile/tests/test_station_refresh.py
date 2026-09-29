@@ -72,7 +72,7 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
                 app = HandlerApp()
                 app.api.request.return_value = {'items': [], 'total': 0}
                 screen = await stations.build(app)
-                search_mode = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
+                search_mode = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown) and c.label == 'Buscar por')
                 search_mode.value = 'coordinates'
                 await search_mode.on_select(None)
                 fields = {c.label: c for c in descendants(screen) if isinstance(c, ft.TextField)}

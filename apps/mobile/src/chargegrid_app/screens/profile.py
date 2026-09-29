@@ -15,7 +15,7 @@ async def build(app, mode=None):
         return edit_form(app, profile)
 
     email = (app.api.session.user or {}).get('email') or 'Não informado'
-    account_label = 'Conta de demonstração' if demo else 'Conta de vendedor' if profile.get('account_type') == 'vendor' else 'Conta de consumidor'
+    account_label = 'Conta de demonstração' if demo else 'Conta de operador' if profile.get('account_type') == 'vendor' else 'Conta de motorista'
 
     def info(label, value):
         return ft.Column([
@@ -40,8 +40,8 @@ async def build(app, mode=None):
     if profile.get('operator_enabled') or profile.get('account_type') == 'vendor':
         vendor = getattr(app,'browsing_mode','consumer') == 'vendor'
         access = [card([
-            ft.Text('Você está no modo vendedor' if vendor else 'Você está no modo consumidor',size=14,color=theme.TEXT_COLOR),
-            button('Usar como consumidor' if vendor else 'Usar como vendedor',
+            ft.Text('Você está no modo operador' if vendor else 'Você está no modo motorista',size=14,color=theme.TEXT_COLOR),
+            button('Usar como motorista' if vendor else 'Usar como operador',
                    app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor')),secondary=True),
             ft.Text('A troca de modo mantém sua reserva ou recarga.',size=12,color=theme.GRAY_TEXT),
         ])]

@@ -28,7 +28,7 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
         app.logout = AsyncMock()
         app.switch_mode = AsyncMock()
         screen = await profile.build(app)
-        await click(screen, 'Usar como vendedor')(None)
+        await click(screen, 'Usar como operador')(None)
         app.switch_mode.assert_awaited_once_with('vendor')
 
     async def test_fields_have_space_for_validation_messages(self):

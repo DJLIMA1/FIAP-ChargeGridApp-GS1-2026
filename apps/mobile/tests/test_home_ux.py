@@ -75,17 +75,18 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         render.start()
         self.addCleanup(render.stop)
 
-    async def test_idle_home_places_guide_then_map_then_primary_action(self):
+    async def test_idle_home_places_primary_action_before_map_and_summary(self):
         app = HomeApp()
         screen = await home.build(app)
         visible = text_values(screen, visible_only=True)
         self.assertIn('Olá, Marina', visible)
-        self.assertLess(visible.index('GASTO ESTIMADO NESTE MÊS'), visible.index('Recarregar agora'))
-        self.assertLess(visible.index('GASTO ESTIMADO NESTE MÊS'),visible.index('Guia de recarga'))
-        self.assertLess(visible.index('Guia de recarga'),visible.index('Estações no mapa'))
-        self.assertLess(visible.index('Estações no mapa'),visible.index('Recarregar agora'))
+        self.assertLess(visible.index('Recarregar agora'), visible.index('GASTO ESTIMADO NESTE MÊS'))
+        self.assertLess(visible.index('Recarregar agora'), visible.index('Postos no mapa'))
+        self.assertLess(visible.index('Postos no mapa'), visible.index('GASTO ESTIMADO NESTE MÊS'))
+        self.assertNotIn('Guia de recarga',visible)
         self.assertIn('R$ 12,50', visible)
-        self.assertNotIn('PRÓXIMO PASSO', visible)
+        self.assertIn('ENCONTRE SEU PONTO', visible)
+        self.assertEqual(visible.count('Recarregar agora'), 1)
         self.assertFalse(any('informar código #F' in str(value) for value in visible))
         await click(screen, 'Recarregar agora')(None)
         app.go.assert_awaited_once_with('stations')
@@ -160,23 +161,16 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.page.update.call_count, 4)
         self.assertEqual(app.interval, 10)
 
-    async def test_guide_passes_explicit_safe_question_and_updates_context_on_poll(self):
+    async def test_home_omits_guide_for_idle_reservation_and_charging(self):
         app = HomeApp()
         screen = await home.build(app)
-        guide = next(item for item in screen.controls if 'Guia de recarga' in text_values(item))
-        await guide.on_click(None)
-        app.go.assert_awaited_with('chat', topic='getting_started',
-                                  question='Como escolho um ponto e inicio uma recarga?')
+        self.assertNotIn('Guia de recarga',text_values(screen))
         app.state['reservations/current'] = {'id':'private-reservation-id', 'status':'confirmed'}
         await app.poll()
-        await guide.on_click(None)
-        app.go.assert_awaited_with('chat', topic='reservations',
-                                  question='Tenho uma reserva confirmada. Como inicio a recarga ao chegar?')
+        self.assertNotIn('Guia de recarga',text_values(screen))
         app.state['charging-sessions/current'] = {'id':'private-session-id', 'status':'charging'}
         await app.poll()
-        await guide.on_click(None)
-        app.go.assert_awaited_with('chat', topic='charging',
-                                  question='Como acompanho e encerro minha recarga com segurança?')
+        self.assertNotIn('Guia de recarga',text_values(screen))
 
     async def test_only_available_enabled_online_points_contribute_to_displayed_price(self):
         app = HomeApp()
@@ -217,15 +211,18 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         app = HomeApp()
         app.page.width = 600
         screen = await home.build(app)
-        section = screen.controls[-1]
-        action = section.controls[-1].controls[0]
+        section = screen.controls[2]
+        action = next(item for item in descendants(screen) if isinstance(item, ft.TextButton)
+                      and isinstance(item.content, ft.Text) and item.content.value == 'Recarregar agora')
         self.assertEqual(section.spacing,16)
-        self.assertEqual(action.height,48)
+        self.assertIsNone(action.height)
+        self.assertGreaterEqual(action.style.padding.top,14)
         self.assertEqual(action.content.size,16)
-        self.assertEqual(action.bgcolor,home.theme.RED)
+        self.assertEqual(action.style.bgcolor,home.theme.RED)
         with patch.object(section,'update'):
             await section.on_size_change(SimpleNamespace(width=320))
-        self.assertEqual(action.height,48)
+        self.assertIsNone(action.height)
+        self.assertGreaterEqual(action.style.padding.top,14)
         self.assertEqual(action.content.size,16)
         self.assertEqual(section.spacing,16)
 
@@ -240,7 +237,7 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         visible = text_values(screen, visible_only=True)
         self.assertIn('© OpenStreetMap', visible)
         self.assertIn('Recarregar agora', visible)
-        self.assertNotIn('Sua conta de vendedor', visible)
+        self.assertNotIn('Sua conta de operador', visible)
         self.assertFalse(any('ESP32' in str(text) for text in visible))
 
     async def test_snapshot_failure_does_not_partially_change_display(self):

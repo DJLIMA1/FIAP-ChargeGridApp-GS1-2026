@@ -18,6 +18,8 @@ LIGHT = {
     "INPUT_BORDER": "#6B6B6B",
     "BG_COLOR": "#F2F2F3",
     "RED": "#D72B32",
+    "ACCENT": "#B91C24",
+    "FOCUS": "#205EA8",
     "ERROR": "#B91C24",
     "WHITE": "#FFFFFF",        # Cartões e superfícies
     "TEXT_COLOR": "#1D1F20",
@@ -36,6 +38,8 @@ DARK = {
     "INPUT_BORDER": "#6B6B6B",
     "BG_COLOR": "#131313",
     "RED": "#D72B32",
+    "ACCENT": "#FF858A",
+    "FOCUS": "#9DC8FF",
     "ERROR": "#FF858A",
     "WHITE": "#1F1F1F",
     "TEXT_COLOR": "#FFFFFF",
@@ -73,3 +77,15 @@ def __getattr__(name):
     if name in palette:
         return palette[name]
     raise AttributeError(f"module 'theme' has no attribute {name!r}")
+
+
+def on_color(background):
+    """Choose the higher-contrast neutral foreground for a solid hex fill."""
+    try:
+        channels = [int(background.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        luminance = sum(weight * (channel / 12.92 if channel <= .04045
+                                 else ((channel + .055) / 1.055) ** 2.4)
+                        for weight, channel in zip((.2126, .7152, .0722), channels))
+    except (ValueError, AttributeError):
+        return '#FFFFFF'
+    return '#000000' if luminance > .179 else '#FFFFFF'

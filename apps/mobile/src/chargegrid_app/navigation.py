@@ -63,14 +63,16 @@ def parent_route(route, data, mode='consumer'):
         return 'operator', {'station_id': data['station_id']}
     if route == 'charging' and data.get('pending_start'):
         station_id = (data.get('point_context') or {}).get('station_id')
-        return 'stations', {'station_id':station_id} if station_id else {}
+        return 'stations', {**(data.get('station_search') or {}),'station_id':station_id} if station_id else {}
     if route == 'charging' and not data.get('session_id') and int(data.get('step') or 1) > 1:
         return 'charging', {**data, 'step': int(data['step']) - 1}
     if route == 'charging' and data.get('reservation_id'):
         return 'reservations', {}
     if route == 'charging' and (data.get('point_context') or {}).get('station_id'):
-        return 'stations', {'station_id': data['point_context']['station_id']}
-    if route in ('charging', 'reservations') or (route == 'stations' and data.get('station_id')):
+        return 'stations', {**(data.get('station_search') or {}),'station_id': data['point_context']['station_id']}
+    if route == 'stations' and data.get('station_id'):
+        return 'stations', {key:value for key,value in data.items() if key != 'station_id'}
+    if route in ('charging', 'reservations'):
         return 'stations', {}
     return ('operator' if mode == 'vendor' else 'home'), {}
 

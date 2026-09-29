@@ -11,5 +11,6 @@ import flet as ft
 from chargegrid_app.app import ASSETS_DIR, main
 
 if __name__ == '__main__':
+    os.environ['CHARGEGRID_ENABLE_DEMO'] = '1'
     os.environ['FLET_FORCE_WEB_SERVER'] = '1'
     ft.run(main, view=None, host='127.0.0.1', port=8855, assets_dir=ASSETS_DIR)
