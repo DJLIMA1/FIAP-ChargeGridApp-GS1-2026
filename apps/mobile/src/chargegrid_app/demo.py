@@ -79,6 +79,12 @@ def _fields(body, allowed):
 class DemoApi:
     is_demo = True
 
+    @property
+    def ai_enabled(self):
+        """Chat with real AI only in the local preview when the AI key is in the environment."""
+        from .services import demo_ai_bridge
+        return demo_ai_bridge.chat_available()
+
     def __init__(self, clock=None, start_at=None):
         self.session = Session()
         self._clock = clock or time.monotonic
@@ -229,6 +235,9 @@ class DemoApi:
                 _fail('A senha deve ter pelo menos oito caracteres.')
             return {'message': 'Simulação concluída. As credenciais públicas da demonstração não mudam.'}
         self._advance()
+        if path.startswith('ai/'):
+            from .services import demo_ai_bridge
+            return await demo_ai_bridge.handle(self, method, path, data)
         signature = (method, path, json.dumps(body, sort_keys=True, separators=(',', ':')))
         if key:
             key = self.operation_keys.setdefault(signature, key)

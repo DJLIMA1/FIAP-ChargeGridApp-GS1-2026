@@ -5,6 +5,7 @@ import flet as ft
 from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..ui import theme
+from ..ui.ai_features import ai_supported, owner_insights_control
 from ..ui.components import badge, button, card, date_time, field, money, title
 from . import onboarding as onboarding_screen
 from . import ownership
@@ -86,6 +87,8 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                 size=12,color=theme.GRAY_TEXT),
         instructions,
     ]
+    if ai_supported(app):
+        controls.append(owner_insights_control(app))
     for station in stations:
         points = station.get('connectors') or []
         disabled = [point for point in points if not point.get('active') and not point.get('retired')]

@@ -90,7 +90,7 @@ class Script:
     def __init__(self, *responses):
         self.responses, self.seen = list(responses), []
 
-    async def __call__(self, messages, tools, timeout=None, tool_choice="auto"):
+    async def __call__(self, messages, tools, timeout=None, tool_choice="auto", max_tokens=None):
         self.seen.append({"messages": [dict(m) for m in messages], "tools": tools, "tool_choice": tool_choice})
         item = self.responses.pop(0)
         if isinstance(item, Exception):
@@ -129,7 +129,7 @@ def test_places_and_rules_search():
     assert mine["filters"]["connector_type"] == "ccs2" and mine["filters"]["available_only"] is True
     assert mine["unsupported"]
     located = parse_search_rules("tipo 2 mais barato perto de mim", origin={"lat": -23.5, "lng": -46.6})
-    assert located["filters"]["sort"] == "price" and located["filters"]["near"]["label"] == "Sua localização"
+    assert located["filters"]["sort"] == "price" and located["filters"]["near"]["label"] == "você"
 
 
 def test_filters_from_tool_resolves_place_or_text():
@@ -359,3 +359,31 @@ def test_driver_slot_registers_when_planner_exists(monkeypatch):
     assert run(toolbox.execute("plan_driver_shift", {"shift_start": "07:00", "current_soc_percent": 50})) == {
         "summary": "Recarregue às 14h"}
     assert received == {"request": {"shift_start": "07:00", "current_soc_percent": 50}, "stations": 3}
+
+
+def test_features_use_llm_or_rules_without_silent_model_switch():
+    from chargegrid_core.ai import natural_search, owner_insights, session_insight
+
+    found, meta = run(natural_search("ccs2 perto de Moema"))
+    assert meta == {"model": "chargegrid-regras", "usage": {}, "status": "rules"}
+    assert found["params"]["connector_type"] == "ccs2" and found["model"] == "chargegrid-regras"
+    tool = Script(response(calls=[("apply_station_filters", {"near_place": "Pinheiros", "available_only": True})]))
+    found, meta = run(natural_search("livre em pinheiros", llm=tool))
+    assert meta["status"] == "ok" and found["filters"]["near"]["label"] == "Pinheiros"
+    assert tool.seen[0]["tool_choice"]["function"]["name"] == "apply_station_filters"
+    found, meta = run(natural_search("tipo 2", llm=Script(LLMUnavailable())))
+    assert meta["status"] == "fallback" and found["filters"]["connector_type"] == "type2"
+
+    session = {"id": "s", "status": "completed", "energy_wh": "5000", "cost_estimate": "10", "price_per_kwh": "2"}
+    result, meta = run(session_insight(session, [session], now=NOW))
+    assert meta["status"] == "rules" and result["generated_at"].startswith("2026-10-13")
+    writer = Script(response('{"summary": "Boa recarga.", "tips": ["Use cupom."]}'))
+    result, meta = run(session_insight(session, [], now=NOW, llm=writer))
+    assert result["summary"] == "Boa recarga." and result["model"] == "fake/model" and meta["status"] == "ok"
+    result, meta = run(session_insight(session, [], now=NOW, llm=Script(response("sem json"))))
+    assert meta["status"] == "fallback" and result["model"] == "chargegrid-regras"
+
+    result, meta = run(owner_insights(STATIONS[:2], owner_sessions(), now=NOW, llm=Script(LLMUnavailable())))
+    assert set(result) == {"summary", "recommendations", "generated_at", "model"} and meta["status"] == "fallback"
+    empty, meta = run(owner_insights([], [], now=NOW, llm=Script()))
+    assert meta["status"] == "rules" and empty["recommendations"][0]["title"] == "Vincule seu primeiro ponto"

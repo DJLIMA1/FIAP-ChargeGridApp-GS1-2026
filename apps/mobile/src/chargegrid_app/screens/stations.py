@@ -11,6 +11,7 @@ from ..services.maps import station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..services.search_location import SearchLocation
 from ..ui import theme
+from ..ui.ai_features import ai_search_card, ai_supported
 from ..ui.availability import point_status, station_map_record
 from ..ui.components import badge, button, card, field, money, title
 from ..ui.point_summary import point_context
@@ -248,6 +249,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if intention:
             summary.append(f"tenho {intention['minutes']} min" if intention['mode'] == 'time' else f"até {money(intention['max_cost'])}")
         controls = [title('Encontrar postos','Compare tarifa, conector e potência. A confirmação vem do ponto.'),filters_section,search_section]
+        if ai_supported(app):
+            controls.insert(1,ai_search_card(app,lat=lat,lng=lng))
         if summary:
             controls.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
     map_preview = ft.Container(visible=False)

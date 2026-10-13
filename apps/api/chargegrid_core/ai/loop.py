@@ -1,7 +1,7 @@
 """Laço de tool-calling agnóstico de transporte.
 
-``complete(messages, tools, timeout=segundos, tool_choice="auto"|"none")`` é injetada (OpenRouter via httpx
-na API ou na prévia demo; fakes nos testes) e devolve o formato normalizado de
+``complete(messages, tools, timeout=segundos, tool_choice="auto"|"none"|{...}, max_tokens=None)``
+é injetada (OpenRouter via httpx na API ou na prévia demo; fakes nos testes) e devolve o formato normalizado de
 ``completion.parse_completion``. O laço limita rodadas, chamadas por rodada,
 tempo total e tamanho do histórico.
 """

@@ -13,7 +13,6 @@ from ..auth.routes import limit
 USER_WINDOW = (20, 600)
 USER_DAILY = (200, 86400)
 GLOBAL_DAILY = (5000, 86400)
-RULES_MODEL = "chargegrid-regras"
 
 
 def enforce_limits(db, user):

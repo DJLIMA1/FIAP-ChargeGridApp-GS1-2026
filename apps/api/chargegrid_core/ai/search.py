@@ -13,10 +13,16 @@ import re
 
 from .places import resolve_place
 from .schema import ToolArgumentError, validate
-from .stations import AMENITIES, CONNECTOR_LABELS, amenity_from_text, normalize_connector
+from .stations import (
+    AMENITIES,
+    CONNECTOR_LABELS,
+    amenity_from_text,
+    normalize_connector,
+)
 from .text import clean, normalized
 
 MAX_QUERY_LENGTH = 300
+AMENITY_LABELS = {"cafe": "café", "conveniencia": "conveniência"}
 FAST_CHARGE_KW = 40.0
 
 FILTER_SCHEMA = {
@@ -54,7 +60,7 @@ def _finish(filters: dict, unsupported: list[str], origin: dict | None, *, place
             filters.setdefault("text", clean(place_text, 80))
     if use_my_location:
         if origin:
-            filters["near"] = {"label": "Sua localização", "lat": origin["lat"], "lng": origin["lng"]}
+            filters["near"] = {"label": "você", "lat": origin["lat"], "lng": origin["lng"]}
         else:
             unsupported.append("Localização atual indisponível; ative a localização ou cite um bairro.")
     if filters.get("near"):
@@ -155,7 +161,7 @@ def explain(filters: dict) -> str:
     if filters.get("available_only"):
         parts.append("somente disponíveis agora")
     if filters.get("amenities"):
-        parts.append("com " + ", ".join(filters["amenities"]))
+        parts.append("com " + ", ".join(AMENITY_LABELS.get(a, a) for a in filters["amenities"]))
     sort = {"price": "menor tarifa primeiro", "distance": "mais perto primeiro", "power": "maior potência primeiro"}
     if filters.get("sort") in sort:
         parts.append(sort[filters["sort"]])
