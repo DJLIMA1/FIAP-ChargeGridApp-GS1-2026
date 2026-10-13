@@ -447,4 +447,8 @@ def next_stop_view(result, app, reserve_action):
     for alert in result.get('alerts') or ():
         if alert.get('level') in ('warning', 'error') or alert.get('code') == 'rain':
             controls.append(_alert_row(alert))
-    return [card(controls, border=ft.Border.all(1, theme.ACCENT))]
+    urgent = recommendation.get('action') == 'charge_needed'
+    if urgent:
+        controls[0] = ft.Row([ft.Icon(ft.Icons.BATTERY_ALERT, size=18, color=theme.ERROR),
+                              _heading('RECARGA NECESSÁRIA')], spacing=6)
+    return [card(controls, border=ft.Border.all(2 if urgent else 1, theme.ERROR if urgent else theme.ACCENT))]

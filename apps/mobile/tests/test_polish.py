@@ -84,6 +84,24 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
                             for item in descendants(screen)))
         await api.close()
 
+    def test_charge_needed_next_stop_is_highlighted(self):
+        result = {'recommendation': {'action': 'charge_needed', 'headline': 'Recarregue antes de continuar',
+                                     'message': 'A bateria não cobre o período.'},
+                  'status': {'soc_percent': 3, 'range_above_reserve_km': 0, 'demand_now': 1.0, 'in_peak': False}}
+        view = driver.next_stop_view(result, SimpleNamespace(link=lambda *a, **k: None), lambda key: None)[0]
+        self.assertIn('RECARGA NECESSÁRIA', text_values(view))
+        self.assertEqual(view.border.top.width, 2)
+
+    async def test_session_insight_conflict_shows_the_reason(self):
+        from chargegrid_app.api_client import ApiError
+        from chargegrid_app.ui.ai_features import session_insight_control
+        app = SimpleNamespace(page=SimpleNamespace(update=lambda: None), action=lambda operation: operation,
+                              api=SimpleNamespace(request=AsyncMock(side_effect=ApiError(
+                                  'O resumo fica disponível quando a recarga terminar.', 409, 'session_not_finished'))))
+        control = session_insight_control(app, 'session')
+        await control.controls[0].on_click()
+        self.assertIn('O resumo fica disponível quando a recarga terminar.', text_values(control))
+
     async def test_demo_public_search_includes_partner_network(self):
         api = DemoApi()
         await api.login(DEMO_EMAIL, DEMO_PASSWORD)

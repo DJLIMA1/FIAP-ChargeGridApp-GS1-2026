@@ -95,6 +95,7 @@ def _expandable(app, label, icon, loader):
             state['loaded'] = True
         except ApiError as exc:
             message = ('Limite de uso da IA atingido. Tente mais tarde.' if exc.status == 429 else
+                       str(exc) if exc.status == 409 else  # e.g. the charge has not finished yet
                        'Não foi possível gerar agora. Verifique a conexão e tente novamente.')
             body.controls = [ft.Text(message, size=12, color=theme.GRAY_TEXT)]
         app.page.update()
