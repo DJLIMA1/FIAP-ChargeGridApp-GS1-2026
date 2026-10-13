@@ -21,9 +21,9 @@ sys.path[:0] = [os.path.join(MOBILE, 'src'), DASHBOARD]
 os.environ['CHARGEGRID_ENABLE_DEMO'] = '1'
 os.environ.pop('OPENROUTER_API_KEY', None)  # a demo local não chama o provedor neste roteiro
 
-from chargegrid_app.api_client import ApiClient, ApiError  # noqa: E402
-from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi  # noqa: E402
-from chargegrid_dashboard.state import DashboardState  # noqa: E402
+from chargegrid_app.api_client import ApiClient, ApiError
+from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
+from chargegrid_dashboard.state import DashboardState
 
 TOKENS = json.loads(os.environ['LIVE_TOKENS'])
 BASE = f"http://127.0.0.1:{os.environ.get('CHARGEGRID_LIVE_PORT', '8631')}/v1"

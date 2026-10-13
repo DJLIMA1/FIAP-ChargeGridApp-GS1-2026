@@ -7,12 +7,12 @@ from datetime import timedelta
 from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import DB, DRIVER, OWNER, RIVAL  # noqa: E402
+from common import DB, DRIVER, OWNER, RIVAL
 
 os.environ["DATABASE_URL"] = DB
 sys.path.insert(0, sys.argv[1])
 
-from app.models import (  # noqa: E402
+from app.models import (
     ChargingSession,
     Connector,
     Device,
@@ -22,9 +22,9 @@ from app.models import (  # noqa: E402
     Telemetry,
     now,
 )
-from app.security import digest  # noqa: E402
-from sqlalchemy import create_engine, text  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+from app.security import digest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 engine = create_engine(DB, connect_args={"prepare_threshold": None})
 rng = random.Random(42)
@@ -86,7 +86,7 @@ with Session(engine) as db, db.begin():
     active = ChargingSession(user_id=uuid.UUID(DRIVER), connector_id=owner_point.id, status="charging",
                              created_at=moment - timedelta(minutes=12), started_at=moment - timedelta(minutes=11),
                              max_duration_minutes=60, price_per_kwh=owner_point.price_per_kwh,
-                             energy_wh=Decimal("8000"), cost_estimate=Decimal("18.32"), source="simulated")
+                             energy_wh=Decimal(8000), cost_estimate=Decimal("18.32"), source="simulated")
     db.add(active)
     db.flush()
     db.add(Telemetry(device_id=device.id, session_id=active.id, boot_id="boot", sequence=1,

@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import DB, ISSUER, PORT, private_key  # noqa: E402
+from common import DB, ISSUER, PORT, private_key
 
 os.environ["DATABASE_URL"] = DB
 os.environ["SUPABASE_URL"] = ISSUER
@@ -11,9 +11,9 @@ API = sys.argv[1]
 sys.path.insert(0, API)
 os.chdir(API)
 
-import uvicorn  # noqa: E402
-from app import security  # noqa: E402
-from app.main import app  # noqa: E402
+import uvicorn
+from app import security
+from app.main import app
 
 
 class LocalKey:
