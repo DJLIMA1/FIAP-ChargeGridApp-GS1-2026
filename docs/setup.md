@@ -54,7 +54,7 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-Use o mesmo `.env` da raiz. Preencha `DATABASE_URL` com o login de execução, associado ao papel SQL `chargegrid_api`, e `MIGRATION_DATABASE_URL` com a conexão administrativa usada somente para Alembic. No Supabase, prefira a string do pooler em modo transação para `DATABASE_URL`; mantenha a conexão administrativa separada para migrações. Ajuste também `SUPABASE_URL`, `SUPABASE_ANON_KEY` e, quando houver cliente web, `CORS_ORIGINS`. Em Vercel, as variáveis configuradas no painel têm precedência e o arquivo local não é enviado.
+Use o mesmo `.env` da raiz. Preencha `DATABASE_URL` com o login de execução, associado ao papel SQL `chargegrid_api`, e `MIGRATION_DATABASE_URL` com a conexão administrativa usada somente para Alembic. No Supabase, prefira a string do pooler em modo transação para `DATABASE_URL`; mantenha a conexão administrativa separada para migrações. Ajuste também `SUPABASE_URL`, `SUPABASE_ANON_KEY` e, quando houver cliente web, `CORS_ORIGINS`. Para o assistente de IA, defina `OPENROUTER_API_KEY` (e, opcionalmente, `OPENROUTER_MODEL`/`OPENROUTER_FALLBACK_MODELS`); sem ela, a busca inteligente e os insights usam regras locais e o chat do app volta às orientações locais. Veja [ia-openrouter.md](ia-openrouter.md). Em Vercel, as variáveis configuradas no painel têm precedência e o arquivo local não é enviado.
 
 Antes da primeira execução, aplique o esquema em um banco vazio:
 
@@ -77,7 +77,7 @@ Desligue a Data API no painel do Supabase. A migração remove permissões de `a
 
 ## Vercel
 
-Crie o projeto a partir deste repositório e escolha `apps/api` como **Root Directory**. Cadastre na Vercel somente `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `CORS_ORIGINS`. Não cadastre `MIGRATION_DATABASE_URL`, senha administrativa, service role ou segredo SMTP no runtime. Execute `alembic upgrade head` localmente ou em um job administrativo efêmero com `MIGRATION_DATABASE_URL`, antes de apontar a implantação para um banco novo; remova essa credencial do ambiente ao terminar. Confirme em produção que `/docs` abre e que o emissor do JWT corresponde a `SUPABASE_URL`.
+Crie o projeto a partir deste repositório e escolha `apps/api` como **Root Directory**. Cadastre na Vercel somente `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CORS_ORIGINS` e, para a IA, `OPENROUTER_API_KEY` (a chave nunca vai para o app). Não cadastre `MIGRATION_DATABASE_URL`, senha administrativa, service role ou segredo SMTP no runtime. Execute `alembic upgrade head` localmente ou em um job administrativo efêmero com `MIGRATION_DATABASE_URL`, antes de apontar a implantação para um banco novo; remova essa credencial do ambiente ao terminar. Confirme em produção que `/docs` abre e que o emissor do JWT corresponde a `SUPABASE_URL`.
 
 O APK e o painel usam o alias `chargegrid-api-preview-djlima1s-projects.vercel.app`. Atualizar ou reverter apenas `chargegrid-api-ruddy.vercel.app` não muda necessariamente esse destino. Confira `vercel alias ls` e aponte o alias usado pelos clientes para o deployment validado antes de considerar a troca de versão concluída. O fluxo `#F` exige app 0.3.6 ou superior e painel 0.3.6 ou superior; mantenha os três componentes compatíveis. Os APKs já existentes em `builds/` não recebem alterações feitas posteriormente no código-fonte.
 
