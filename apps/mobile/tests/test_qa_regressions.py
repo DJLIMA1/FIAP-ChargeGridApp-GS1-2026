@@ -58,12 +58,16 @@ class ContrastRegressionTests(unittest.TestCase):
             if path.name == 'chat.py':  # Owned by the AI chat rewrite.
                 continue
             for node in ast.walk(ast.parse(path.read_text())):
-                if isinstance(node, ast.Call) and getattr(node.func, 'attr', None) == 'Text':
-                    for keyword in node.keywords:
-                        value = keyword.value
-                        if (keyword.arg == 'color' and isinstance(value, ast.Attribute)
-                                and value.attr in ('RED', 'AMBER', 'BLUE', 'SLATE')):
-                            offenders.append(f'{path.name}:{node.lineno}')
+                name = getattr(node.func, 'attr', None) or getattr(node.func, 'id', None) if isinstance(node, ast.Call) else None
+                if name == 'Text':
+                    colours = [keyword.value for keyword in node.keywords if keyword.arg == 'color']
+                elif name == '_small':  # Text helper of the driver screen: (text, color=None).
+                    colours = node.args[1:2] + [keyword.value for keyword in node.keywords if keyword.arg == 'color']
+                else:
+                    continue
+                for value in colours:
+                    if isinstance(value, ast.Attribute) and value.attr in ('RED', 'AMBER', 'BLUE', 'SLATE'):
+                        offenders.append(f'{path.name}:{node.lineno}')
         self.assertEqual(offenders, [])
 
     def test_warning_text_meets_aa_in_both_themes(self):
@@ -262,3 +266,24 @@ class DeferredContentTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
         self.assertEqual(box.content.value, 'Carregando')
         app.page.update.assert_not_called()
+
+
+class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_zero_battery_is_kept_and_screen_opens_offline_from_local_profile(self):
+        import tempfile
+
+        from chargegrid_app.preferences import DriverProfileStore
+        from chargegrid_app.screens import driver
+        from test_driver_mode import DriverApp, fields
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'FLET_APP_STORAGE_DATA': directory}):
+            DriverProfileStore().save({'vehicle': {'preset': 'byd_seal'}, 'preferences': {'shift_start': '06:00'},
+                                       'soc_percent': 0})
+
+            async def offline(method, path, body=None, **kwargs):
+                raise ApiError('Não foi possível conectar com segurança.')
+            app = DriverApp(SimpleNamespace(is_demo=False, request=offline, new_key=lambda: 'k'))
+            screen = await driver.build(app)  # Used to fail the whole screen.
+            form = fields(screen)
+            self.assertEqual(form['Bateria agora (%)'].value, '0')  # Was replaced by 60.
+            self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
+            self.assertIn('Sem conexão', app.notices[0])
