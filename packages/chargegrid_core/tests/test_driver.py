@@ -285,3 +285,39 @@ def test_service_shift_window_and_build_from_api_payload():
     assert plan['stops'] and plan['stops'][0]['station_id'] == 'x'
     quick = build_next_stop({'soc_percent': 40}, profile, stations, at(23, 40))
     assert quick['plan_window']['minutes'] == 4 * 60
+
+
+# --- revisão de integração (2026-10): regressões ------------------------------------
+
+def test_next_stop_never_says_keep_driving_when_battery_cannot_cover_the_shift():
+    preferences = prefs(shift_start=10 * 60, shift_end=20 * 60)
+    stations = [option('near', lat=-23.552, lng=-46.634), option('far', lat=-23.60, lng=-46.70)]
+    empty = next_stop(DOLPHIN, preferences, stations, at(10, 7), at(20), 0, origin=CENTER)
+    recommendation = empty['recommendation']
+    assert recommendation['action'] == 'charge_needed'
+    assert 'nenhuma recarga' not in recommendation['headline'].lower()
+    assert recommendation['station_id'] == 'near'  # posto compatível mais próximo
+    assert 'pico' not in recommendation['message']
+    almost = next_stop(DOLPHIN, preferences, stations, at(10, 7), at(20), 0.5, origin=CENTER)
+    assert almost['recommendation']['action'] in ('stop_now', 'charge_needed')
+    no_station = next_stop(DOLPHIN, preferences, [], at(10, 7), at(20), 5, origin=CENTER)
+    assert no_station['recommendation']['action'] == 'charge_needed'
+    assert 'station_id' not in no_station['recommendation']
+    assert any(alert['code'] == 'no_station' for alert in no_station['alerts'])
+    full = next_stop(DOLPHIN, preferences, stations, at(10, 7), at(20), 100, origin=CENTER)
+    assert full['recommendation']['action'] == 'keep_driving'
+
+
+def test_next_stop_headline_uses_station_gender():
+    stations = [ChargerOption('s', 'Cantina da Vila', -23.552, -46.634, 'ccs2', 60, 2.0, connector_id='s-p')]
+    urgent = next_stop(DOLPHIN, prefs(shift_start=10 * 60, shift_end=20 * 60), stations, at(10, 7), at(20), 16,
+                       origin=CENTER)
+    assert urgent['recommendation']['headline'] == 'Pare agora em Cantina da Vila'
+
+
+def test_parse_hhmm_rejects_invalid_minutes():
+    from chargegrid_core.driver import parse_hhmm
+    assert parse_hhmm('10:30') == 630 and parse_hhmm('10h') == 600 and parse_hhmm('24:00') == 0
+    for value in ('10:99', '10:60', '25:00', '-1:00', 'ab'):
+        with pytest.raises(ValueError):
+            parse_hhmm(value)

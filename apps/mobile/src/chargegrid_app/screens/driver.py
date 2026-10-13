@@ -415,7 +415,7 @@ def next_stop_view(result, app, reserve_action):
     ]
     if recommendation.get('station_id'):
         controls.append(_station_actions(app, reserve_action, recommendation,
-                                         can_reserve=recommendation['action'] == 'stop_now'))
+                                         can_reserve=recommendation['action'] in ('stop_now', 'charge_needed')))
     if result.get('alternatives'):
         controls.append(_small('Se parar agora, melhores opções (custo + ganho perdido por kWh):'))
         for item in result['alternatives']:
