@@ -62,7 +62,8 @@ async def build(app, mode=None):
         ],spacing=20),padding=ft.Padding(top=8,bottom=8)),
         flat_button('Editar informações',theme.INPUT_BG,theme.INPUT_TEXT,on_click=app.link('profile',mode='edit')),
         *access,
-        ft.ExpansionTile(title=ft.Text('Preferências e acesso',color=theme.TEXT_COLOR),controls=settings,maintain_state=True),
+        ft.ExpansionTile(title=ft.Text('Preferências e acesso',color=theme.TEXT_COLOR),
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,controls=settings,maintain_state=True),
         ft.Text('Sair reinicia os dados desta demonstração.' if demo else 'Sair não interrompe uma recarga em andamento.',size=12,color=theme.GRAY_TEXT),
     ],spacing=18,scroll=ft.ScrollMode.AUTO)
 

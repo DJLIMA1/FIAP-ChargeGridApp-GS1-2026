@@ -40,6 +40,7 @@ async def build(app):
     controls.append(point_summary(reservation, point_heading))
     if reservation['status'] == 'confirmed':
         controls.append(ft.ExpansionTile(
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             title=ft.Text('Sobre esta confirmação', size=13, color=theme.GRAY_TEXT),
             controls=[journey_summary(reservation, reservation=True, demo=demo)]))
     if demo:

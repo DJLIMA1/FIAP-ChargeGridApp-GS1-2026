@@ -78,7 +78,8 @@ def session_card(session, *, demo=False):
         details.append(ft.Text('Limite de custo estimado: '+money(session['max_cost']),color=theme.GRAY_TEXT))
     if session.get('discount_percent'):
         details.append(ft.Text(f"Desconto aplicado: {session['discount_percent']}%",color=theme.GRAY_TEXT))
-    controls.append(ft.ExpansionTile(title=ft.Text('Detalhes da recarga',color=theme.TEXT_COLOR,size=13),controls=details))
+    controls.append(ft.ExpansionTile(title=ft.Text('Detalhes da recarga',color=theme.TEXT_COLOR,size=13),
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.START,controls=details))
     return card(controls)
 
 

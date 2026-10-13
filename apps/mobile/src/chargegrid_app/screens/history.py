@@ -38,6 +38,7 @@ def _summary(app, session, *, demo, events):
                                weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR)], spacing=2, expand=True),
         ], spacing=12),
         ft.ExpansionTile(title=ft.Text('Detalhes da sessão', size=13, color=theme.TEXT_COLOR),
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
                          controls=details, maintain_state=True, tile_padding=ft.Padding(left=0, right=0, top=0, bottom=0),
                          controls_padding=ft.Padding(left=0, right=0, top=0, bottom=8),
                          shape=ft.RoundedRectangleBorder(radius=8), collapsed_shape=ft.RoundedRectangleBorder(radius=8)),

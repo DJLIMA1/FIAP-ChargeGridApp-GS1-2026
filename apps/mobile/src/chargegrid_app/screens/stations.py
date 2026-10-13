@@ -221,6 +221,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             search_controls += [button('Salvar busca neste dispositivo',app.action(save_search),secondary=True),
                                 ft.Text('Salvamos a localização somente ao tocar em Salvar. Você pode removê-la aqui.',size=12,color=theme.GRAY_TEXT),saved_box]
         search_section = ft.ExpansionTile(
+            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             title=ft.Text('Buscar perto de um endereço',size=15,color=theme.TEXT_COLOR),
             leading=ft.Icons.SEARCH,
             controls=[card(ft.Column(search_controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))],
@@ -233,6 +234,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             collapsed_icon_color=theme.GRAY_TEXT,
         )
         filters_section = ft.ExpansionTile(
+            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             title=ft.Text('Comparar por conector, preço e tempo',size=15,color=theme.TEXT_COLOR),
             expanded=False,
             maintain_state=True,

@@ -349,3 +349,17 @@ class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('2 postos · 2 recargas', copy)
         self.assertIn('4,80 kWh registrados', copy)  # Was "4,800 kWh".
         await app.api.close()
+
+
+class ExpansionTileLayoutTests(unittest.TestCase):
+    def test_expanded_content_is_not_centred(self):
+        """Flet centres expanded controls by default: buttons shrank to the middle of the card."""
+        missing = []
+        for path in SOURCE.rglob('*.py'):
+            if path.name == 'chat.py':
+                continue
+            for node in ast.walk(ast.parse(path.read_text())):
+                if (isinstance(node, ast.Call) and getattr(node.func, 'attr', None) == 'ExpansionTile'
+                        and 'expanded_cross_axis_alignment' not in {k.arg for k in node.keywords}):
+                    missing.append(f'{path.name}:{node.lineno}')
+        self.assertEqual(missing, [])

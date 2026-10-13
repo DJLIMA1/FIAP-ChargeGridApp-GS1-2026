@@ -395,6 +395,7 @@ def plan_view(plan, app, reserve_action):
                                 font_family='BarlowCondensedBold'))
         controls.extend(stop_card(plan, stop, app, reserve_action) for stop in plan['stops'])
     controls.append(ft.ExpansionTile(
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.START,
         title=ft.Text('Como calculamos', color=theme.TEXT_COLOR),
         controls=[_small('• ' + text) for text in plan.get('assumptions', [])]
         + [_small('• Demanda por horário é uma estimativa de grandes cidades brasileiras; não usamos dados oficiais '
