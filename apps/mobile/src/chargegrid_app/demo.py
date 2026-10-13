@@ -663,8 +663,9 @@ class DemoApi:
         coupon = {'active': True, 'station_id': None, 'operator_id': _USER} if creating else self._get(self._coupons, parts[1])
         changes = {}
         if creating:
-            changes['code'] = _text(body.get('code'), 'código do cupom', 50)
-            if any(c['code'] == changes['code'] for c in self._coupons.values()):
+            # Codes are typed by drivers; match the API's case-insensitive contract.
+            changes['code'] = _text(body.get('code'), 'código do cupom', 50).upper()
+            if any(c['code'].upper() == changes['code'] for c in self._coupons.values()):
                 _fail('Já existe um cupom simulado com este código.', 'conflict', 409)
         for name in ('description', 'discount_percent', 'valid_until'):
             if name not in body and not creating:
@@ -738,7 +739,8 @@ class DemoApi:
                 _fail('O valor máximo deve ser maior que zero.')
         discount = 0
         if body.get('coupon_code'):
-            coupon = next((c for c in self._coupons.values() if c['code'] == body['coupon_code']), None)
+            typed = str(body['coupon_code']).strip().upper()
+            coupon = next((c for c in self._coupons.values() if c['code'].upper() == typed), None)
             if (not coupon or not coupon['active'] or _date(coupon['valid_until']) <= self._now()
                     or coupon['operator_id'] != self._stations[point['station_id']]['owner_id']
                     or coupon['station_id'] not in (None, point['station_id'])):
