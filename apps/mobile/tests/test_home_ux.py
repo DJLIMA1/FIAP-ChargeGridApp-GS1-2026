@@ -211,7 +211,8 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         app = HomeApp()
         app.page.width = 600
         screen = await home.build(app)
-        section = screen.controls[2]
+        # The map section (the one that tracks its own width), wherever it sits in the list.
+        section = next(item for item in screen.controls if getattr(item, 'on_size_change', None))
         action = next(item for item in descendants(screen) if isinstance(item, ft.TextButton)
                       and isinstance(item.content, ft.Text) and item.content.value == 'Recarregar agora')
         self.assertEqual(section.spacing,16)

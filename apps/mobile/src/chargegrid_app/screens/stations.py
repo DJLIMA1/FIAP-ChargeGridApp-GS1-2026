@@ -6,6 +6,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.discovery import discover
+from ..services.driver import amenity_label
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..services.planning import estimate_text, intent_limits
@@ -13,7 +14,7 @@ from ..services.search_location import SearchLocation
 from ..ui import theme
 from ..ui.ai_features import ai_search_card, ai_supported
 from ..ui.availability import point_status, station_map_record
-from ..ui.components import badge, button, card, field, money, title
+from ..ui.components import badge, button, card, field, money, pill, title
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
@@ -210,7 +211,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     refresh_saved()
     if station_id:
         station_heading = title(stations[0]['name'],stations[0]['address'])
-        controls = [station_heading,
+        amenities = [amenity for amenity in stations[0].get('amenities') or [] if isinstance(amenity,dict)]
+        amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
+        controls = [station_heading,*amenity_row,
                     card(ft.Row([
                         ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,color=theme.RED,size=23),
                         ft.Text('Para iniciar, você precisa estar no ponto. Leia o código #F atual na tela do equipamento; ele muda periodicamente.',
@@ -347,6 +350,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                         details.append(ft.Text(estimate_text(chosen,**intent_limits(chosen,intention)),size=12,color=theme.GRAY_TEXT))
                 if metadata.get('distance_km') is not None:
                     details.append(ft.Text(f"{_number(round(metadata['distance_km'],1))} km em linha reta da busca",size=12,color=theme.GRAY_TEXT))
+                amenities = [amenity for amenity in station.get('amenities') or [] if isinstance(amenity,dict)]
+                if amenities:
+                    details.append(ft.Text('Comodidades: '+' · '.join(amenity_label(amenity) for amenity in amenities),size=12,color=theme.GRAY_TEXT))
                 details.append(button('Ver pontos',app.link('stations',station_id=station['id'],**route_state)))
                 items.append(card(ft.Column(details,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
                 continue

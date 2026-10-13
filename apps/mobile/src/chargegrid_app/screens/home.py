@@ -81,7 +81,9 @@ async def build(app):
     previous = await snapshot()
     reservation, session, stations_result, month_summary = previous
     stations = stations_result['items']
-    name = ((app.profile.get('name') or '').strip().split() or ['motorista'])[0]
+    full_name = (app.profile.get('name') or '').strip()
+    # The demo profile is called "Conta demonstração": greet the role, not "Olá, Conta".
+    name = 'motorista' if demo and full_name == 'Conta demonstração' else (full_name.split() or ['motorista'])[0]
 
     identity = [
         ft.Text(f'Olá, {name}',size=22,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),
@@ -164,18 +166,29 @@ async def build(app):
             return
         map_width = event.width
     map_section.on_size_change = resize_map_section
-    driver_card = card([
-        ft.Text('MODO MOTORISTA DE APP',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-        ft.Row([
-            ft.Container(ft.Icon(ft.Icons.LOCAL_TAXI_OUTLINED,color=theme.ACCENT,size=24),width=34,height=34,
-                         bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
-            ft.Text('Planeje seu turno: rode nos picos, recarregue nas horas fracas e junte o jantar com a recarga.',
-                    size=13,color=theme.TEXT_COLOR,expand=True),
-        ],spacing=10),
-        button('Planejar meu turno',app.link('driver'),secondary=True),
-    ],border=ft.Border.all(1,theme.ACCENT))
+    def feature_card(label, icon, text, action_label, action):
+        return card([
+            ft.Text(label,size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
+            ft.Row([
+                ft.Container(ft.Icon(icon,color=theme.ACCENT,size=22),width=34,height=34,
+                             bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
+                ft.Text(text,size=13,color=theme.TEXT_COLOR,expand=True),
+            ],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
+            button(action_label,action,secondary=True),
+        ],border=ft.Border.all(1,theme.LIGHT_GRAY),col={'xs':12,'sm':6})
+
+    ai_chat = bool(getattr(app.api,'ai_enabled',False))
+    driver_card = feature_card('MODO MOTORISTA DE APP',ft.Icons.LOCAL_TAXI_OUTLINED,
+                               'Rode nos picos, recarregue nas horas fracas e junte a refeição com a recarga.',
+                               'Planejar meu turno',app.link('driver'))
+    assistant_card = feature_card('ASSISTENTE COM IA' if ai_chat else 'ASSISTENTE',ft.Icons.AUTO_AWESOME,
+                                  'Pergunte por postos, custos ou seu turno: a IA consulta os dados da sua conta.' if ai_chat else
+                                  'Tire dúvidas sobre recarga e consulte sua reserva ou última recarga.',
+                                  'Perguntar ao assistente',app.link('chat'))
+    # The product differentials sit right below the main action; side by side on tablets.
+    features = ft.ResponsiveRow([driver_card,assistant_card],spacing=10,run_spacing=10)
     controls = [
-        greeting,active_card,map_section,driver_card,summary_card,
+        greeting,active_card,features,map_section,summary_card,
     ]
     async def update():
         nonlocal previous

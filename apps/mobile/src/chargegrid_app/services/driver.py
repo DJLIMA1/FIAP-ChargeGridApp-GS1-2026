@@ -89,14 +89,17 @@ def stop_line(stop):
             f"{km(stop['detour_km'])} de desvio")
 
 
+def amenity_label(amenity):
+    """'Restaurante Cantina da Vila', but 'Café da Sé' (no repeated kind)."""
+    kind = AMENITY_TEXT.get(amenity.get('kind'), str(amenity.get('kind') or '').capitalize())
+    name = str(amenity.get('name') or '').strip()
+    if not name:
+        return kind
+    return name if name.casefold().startswith(kind.casefold()) else f'{kind} {name}'
+
+
 def amenities_text(amenities):
-    names = []
-    for amenity in amenities or ():
-        text = AMENITY_TEXT.get(amenity.get('kind'), amenity.get('kind', ''))
-        if amenity.get('name'):
-            text += f" {amenity['name']}"
-        names.append(text)
-    return ' · '.join(names)
+    return ' · '.join(amenity_label(amenity) for amenity in amenities or () if isinstance(amenity, dict))
 
 
 def stop_is_now(plan, stop):

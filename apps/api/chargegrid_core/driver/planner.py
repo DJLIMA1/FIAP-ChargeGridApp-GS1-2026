@@ -720,7 +720,7 @@ def _alerts(ctx, sim, stops, peaks, needed_at, notes):
     if needed_at is not None:
         when = _when(ctx, needed_at)
         alerts.append({'level': 'warning', 'code': 'needs_charge',
-                       'message': f'SoC insuficiente para terminar o turno sem parar: a bateria ficaria abaixo '
+                       'message': f'Bateria insuficiente para terminar o turno sem parar: ela ficaria abaixo '
                                   f'da reserva ({ctx.preferences.reserve_percent:.0f}%) por volta das '
                                   f'{hhmm(when.hour * 60 + when.minute)}.'})
         if not ctx.options:
