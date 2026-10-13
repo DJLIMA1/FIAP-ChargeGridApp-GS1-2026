@@ -1,6 +1,9 @@
+import asyncio
 from decimal import Decimal
 
 import flet as ft
+
+from chargegrid_core.formatting import kwh
 
 from ..api_client import ApiError
 from ..services.location import geocode_address
@@ -9,6 +12,10 @@ from ..ui.components import badge, button, card, date_time, field, money, title
 from ..ui.kpi import kpi_card, kpi_grid
 from . import onboarding as onboarding_screen
 from . import ownership
+
+
+def _plural(count, one, many):
+    return f'{count} {one if count == 1 else many}'
 
 
 async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None,
@@ -47,8 +54,10 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if station_id:
         station = await app.api.request('GET',f'stations/{station_id}')
         return await station_form(app,station)
-    summary = await app.api.request('GET','operator/summary')
-    result = await app.api.request('GET','operator/stations',params={'limit':100,'offset':offset})
+    # Independent reads: fetch together instead of one after the other.
+    summary, result = await asyncio.gather(
+        app.api.request('GET','operator/summary'),
+        app.api.request('GET','operator/stations',params={'limit':100,'offset':offset}))
     stations = result['items']
     instructions = card([
         ft.Text('COMO FUNCIONA',size=15,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
@@ -76,11 +85,11 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     controls = [
         button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela',app.link('operator',claim=True)),
         ft.Row([
-            ft.Text(f"{summary['stations']} postos · {summary['total_sessions']} recargas",size=18,
+            ft.Text(f"{_plural(summary['stations'],'posto','postos')} · {_plural(summary['total_sessions'],'recarga','recargas')}",size=18,
                     font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,expand=True),
             help_button,
         ],spacing=8),
-        kpi_grid([kpi_card('Energia registrada',f"{float(summary['total_energy_wh'])/1000:.3f} kWh".replace('.',','),icon=ft.Icons.BOLT),
+        kpi_grid([kpi_card('Energia registrada',kwh(float(summary['total_energy_wh'])/1000, 2),icon=ft.Icons.BOLT),
                   kpi_card('Valor estimado',money(summary['total_estimated_cost']),icon=ft.Icons.PAYMENTS_OUTLINED)],
                  columns={'xs':6}),
         ft.Text('Energia simulada nesta conta.' if is_demo else
@@ -101,7 +110,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         details = [ft.Row([ft.Text(station['name'],size=18,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,
                                    color=theme.TEXT_COLOR,expand=True),badge(status,color,width=138)],spacing=8),
                    ft.Text(station['address'],size=12,color=theme.GRAY_TEXT),
-                   ft.Text(f'{len(points)} pontos · {online} online',size=12,color=theme.GRAY_TEXT)]
+                   ft.Text(f"{_plural(len(points),'ponto','pontos')} · {online} online",size=12,color=theme.GRAY_TEXT)]
         if disabled:
             details.append(ft.Text(f'{len(disabled)} ponto(s) desativado(s). Revise para publicar ou reativar.',
                                    size=12,color=theme.GRAY_TEXT))
@@ -339,7 +348,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         controls.insert(1,card([
-            ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text(f'Use {DEMO_PRESENCE_CODE} para testar a recarga no modo motorista. Nenhum dispositivo físico será acionado.',size=13,color=theme.GRAY_TEXT),
         ]))
     if connector:
@@ -355,7 +364,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
             active.value = False
             active.disabled = True
         maintenance = card([
-            ft.Text('MANUTENÇÃO SIMULADA' if is_demo else 'MANUTENÇÃO AVANÇADA',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('MANUTENÇÃO SIMULADA' if is_demo else 'MANUTENÇÃO AVANÇADA',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text('Todas estas ações são simulações locais. Nenhuma credencial ou conexão real será alterada.' if is_demo else
                     'Estas ações alteram a conexão do equipamento. Não são necessárias para mudar a tarifa.',size=12,color=theme.GRAY_TEXT),
             ft.Text('Provisionar gera uma credencial fictícia apenas para testar este fluxo.' if is_demo else

@@ -205,9 +205,10 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('sincronização do ponto',texts(screen))
         self.assertIn('horário local',texts(screen))
         await click(screen,'Ocultar eventos da sessão')(None)
-        self.assertFalse(next(item for item in descendants(screen)
-                              if isinstance(item,ft.Container) and item.content
-                              and 'REGISTRO DA SESSÃO' in texts(item)).visible)
+        # The history row is itself a card; the events panel nested in it is hidden.
+        self.assertTrue(any(not item.visible for item in descendants(screen)
+                            if isinstance(item,ft.Container) and item.content
+                            and 'REGISTRO DA SESSÃO' in texts(item)))
 
     async def test_reservation_screen_shows_destination_and_correct_charge_context(self):
         app = HandlerApp()

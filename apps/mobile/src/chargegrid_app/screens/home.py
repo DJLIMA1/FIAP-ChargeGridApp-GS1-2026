@@ -4,10 +4,13 @@ from math import isfinite
 
 import flet as ft
 
-from ..services.maps import station_map_widget
+from chargegrid_core.formatting import kwh
+
+from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..ui import theme
 from ..ui.availability import point_status
 from ..ui.components import BRAND_PROMISE, button, card, date_time, money
+from ..ui.deferred import fill_when_ready, skeleton
 from .charging import DEMO_LABELS as DEMO_CHARGING_LABELS
 from .charging import LABELS as CHARGING_LABELS
 from .charging import SOURCE
@@ -92,8 +95,9 @@ async def build(app):
     estimated_cost = ft.Text(money(month_summary.get('estimated_cost')),size=32,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')
     def summary_text(summary):
         count = summary.get('sessions_count',0)
-        energy = f"{float(summary.get('energy_wh') or 0)/1000:.3f}".replace('.',',')
-        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy} kWh"
+        # Two decimals: "4,800 kWh" reads like four thousand eight hundred in pt-BR.
+        energy = kwh(float(summary.get('energy_wh') or 0)/1000, 2)
+        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy}"
     summary_detail = ft.Text(summary_text(month_summary),size=12,color=theme.GRAY_TEXT)
     summary_card = card([
             ft.Text('GASTO ESTIMADO NESTE MÊS',size=11,color=theme.TEXT_COLOR),
@@ -147,7 +151,10 @@ async def build(app):
                     'status':_station_status(station)[0],'price':_station_price(station)} for station in items[:3]]
         return await station_map_widget(records,lambda station_id:app.link('stations',station_id=station_id),offline=demo,width=map_width)
 
-    map_preview = ft.Container(await make_map(stations))
+    map_preview = ft.Container()
+    # Tile downloads must not delay the first paint of the home screen.
+    await fill_when_ready(app, map_preview, lambda: make_map(stations),
+                          placeholder=skeleton(map_width/STATION_MAP_RATIO))
     map_heading = ft.Text('Postos no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
     map_section = ft.Column([map_heading,map_preview],spacing=16,
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

@@ -7,13 +7,16 @@ import flet as ft
 from ..api_client import ApiError
 from ..services.discovery import discover
 from ..services.location import geocode_address, geocode_demo_address
-from ..services.maps import station_map_widget
+from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..services.search_location import SearchLocation
 from ..ui import theme
 from ..ui.availability import point_status, station_map_record
 from ..ui.components import badge, button, card, field, money, title
+from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
+
+CONNECTOR_LABELS = {'type2':'Tipo 2','ccs2':'CCS2','chademo':'CHAdeMO','bench':'Bancada'}
 
 
 def _available(station, point):
@@ -50,7 +53,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
     connector_filter = ft.Dropdown(label='Conector',value=connector_type or '',
-        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),('type2','Tipo 2'),('ccs2','CCS2'),('chademo','CHAdeMO'),('bench','Bancada')]],
+        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),*CONNECTOR_LABELS.items()]],
         color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
     available_filter = ft.Checkbox(label='Somente pontos disponíveis',value=available_only)
     price_filter = field('Tarifa máxima (R$/kWh)',str(max_price_per_kwh) if max_price_per_kwh is not None else '')
@@ -218,6 +221,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             search_controls += [button('Salvar busca neste dispositivo',app.action(save_search),secondary=True),
                                 ft.Text('Salvamos a localização somente ao tocar em Salvar. Você pode removê-la aqui.',size=12,color=theme.GRAY_TEXT),saved_box]
         search_section = ft.ExpansionTile(
+            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             title=ft.Text('Buscar perto de um endereço',size=15,color=theme.TEXT_COLOR),
             leading=ft.Icons.SEARCH,
             controls=[card(ft.Column(search_controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))],
@@ -230,6 +234,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             collapsed_icon_color=theme.GRAY_TEXT,
         )
         filters_section = ft.ExpansionTile(
+            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             title=ft.Text('Comparar por conector, preço e tempo',size=15,color=theme.TEXT_COLOR),
             expanded=False,
             maintain_state=True,
@@ -238,7 +243,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 button('Aplicar comparação',app.action(search))],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))])
         summary = []
         if connector_type:
-            summary.append(connector_type)
+            summary.append(CONNECTOR_LABELS.get(connector_type, connector_type))
         if available_only:
             summary.append('disponíveis')
         if max_price_per_kwh is not None:
@@ -264,7 +269,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             map_width = event.width
     map_section.on_size_change = resize_map_section
 
-    async def refresh_map(items):
+    async def refresh_map(items, initial=False):
         nonlocal map_signature
         # Details already identify the chosen station. Do not repeat its map
         # or send the user back through another map disclosure.
@@ -285,16 +290,22 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if signature == map_signature:
             return
         if items:
-            map_preview.content = await station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
-                                                          offline=demo,width=map_width,
-                                                          reference=(lat,lng) if lat is not None and lng is not None else None)
+            def draw():
+                return station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
+                                          offline=demo,width=map_width,
+                                          reference=(lat,lng) if lat is not None and lng is not None else None)
+            if initial:
+                # The list is usable before the map tiles arrive.
+                await fill_when_ready(app,map_preview,draw,placeholder=skeleton(map_width/STATION_MAP_RATIO))
+            else:
+                map_preview.content = await draw()
         else:
             map_preview.content = None
         map_preview.visible = bool(items)
         map_section.visible = bool(items)
         map_signature = signature
 
-    await refresh_map(stations)
+    await refresh_map(stations, initial=True)
     if not station_id:
         controls.append(map_section)
     result_count = ft.Text(size=12,color=theme.GRAY_TEXT,visible=not bool(station_id))

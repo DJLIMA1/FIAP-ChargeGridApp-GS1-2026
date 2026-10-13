@@ -43,7 +43,7 @@ def _step_header(step, existing_station=False):
     total = 2 if existing_station else 3
     return ft.Column([
         ft.Text(f'CONFIGURAÇÃO DO PONTO · ETAPA {current} DE {total}', size=11,
-                weight=ft.FontWeight.BOLD, color=theme.RED),
+                weight=ft.FontWeight.BOLD, color=theme.ACCENT),
         ft.Row([
             ft.Container(height=5, expand=True,
                          bgcolor=theme.RED if index <= current else theme.LIGHT_GRAY,
@@ -96,7 +96,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         controls.append(card([
-            ft.Text('PONTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('PONTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text('Nome, endereço, tarifa e recargas são exemplos locais. Nenhum equipamento físico será acionado.',
                     size=13,color=theme.GRAY_TEXT),
             _summary_line('Código para testar uma recarga após publicar',DEMO_PRESENCE_CODE),
@@ -104,7 +104,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
 
     if existing_station:
         controls.append(card([
-            ft.Text('POSTO SELECIONADO',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('POSTO SELECIONADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             _summary_line('Nome',station['name']),
             _summary_line('Endereço',station['address']),
             ft.Text('Este ponto usará o endereço do posto. Para alterar os dados de todos os pontos, '
@@ -224,11 +224,11 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
         if not point.get('online'):
             controls.append(ft.Text('Este equipamento está offline na simulação. Nenhuma conexão com ESP32 físico é necessária.' if is_demo else
                                     'O ESP32 ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
-                                    size=13, color=theme.AMBER))
+                                    size=13, color=theme.WARNING))
         if existing_station and not station.get('active'):
             controls.append(ft.Text('Este posto está desativado. Publicar o ponto mantém o posto desativado; '
                                     'reative o posto na gestão quando quiser disponibilizar seus pontos.',
-                                    size=13,color=theme.AMBER))
+                                    size=13,color=theme.WARNING))
 
         async def publish():
             # Point first, station second: a failed second request leaves the

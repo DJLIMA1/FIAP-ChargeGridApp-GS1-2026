@@ -2,6 +2,36 @@ import flet as ft
 
 from . import motion, theme
 
+# Inputs keep a white fill in both themes, so their outline colours are fixed
+# light-surface tokens (AA against white), not the theme-dependent accents.
+INPUT_FOCUS = '#205EA8'
+INPUT_ERROR = '#B91C24'
+
+
+def input_border(color=None, *, underline=False, error=False):
+    """Per-state input border (Flet 1.0 API replacing border_color & co.)."""
+    rest = INPUT_ERROR if error else (color or theme.INPUT_BORDER)
+    focus = INPUT_ERROR if error else INPUT_FOCUS
+    kind = ft.UnderlineInputBorder if underline else ft.OutlineInputBorder
+    options = {} if underline else {'border_radius': 8}
+    return {
+        ft.ControlState.DEFAULT: kind(side=ft.BorderSide(1, rest), **options),
+        ft.ControlState.FOCUSED: kind(side=ft.BorderSide(2, focus), **options),
+    }
+
+
+def mark_input(control, error=False):
+    """Show or clear the error outline, preserving the field's border style."""
+    current = control.border
+    sample = current.get(ft.ControlState.DEFAULT) if isinstance(current, dict) else current
+    control.border = input_border(underline=isinstance(sample, ft.UnderlineInputBorder), error=error)
+
+
+def input_border_color(control):
+    border = control.border
+    sample = border.get(ft.ControlState.DEFAULT) if isinstance(border, dict) else border
+    return getattr(getattr(sample, 'side', None), 'color', None)
+
 
 def labeled_field(label, value="", hint="", password=False, on_change=None, on_blur=None):
     """Campo de texto com rótulo acima."""
@@ -22,8 +52,7 @@ def labeled_field(label, value="", hint="", password=False, on_change=None, on_b
                 cursor_color=theme.INPUT_TEXT,
                 prefix_style=ft.TextStyle(color=theme.INPUT_TEXT),
                 suffix_style=ft.TextStyle(color=theme.INPUT_TEXT),
-                border_color=theme.INPUT_BORDER,
-                border_radius=8,
+                border=input_border(),
                 text_size=15,
                 content_padding=ft.Padding(left=15,right=15,top=10,bottom=10),
                 on_change=on_change,
@@ -154,7 +183,7 @@ def field(label, value="", password=False):
     control.label = label
     # Filled Material labels stay inside the white input instead of crossing
     # the dark card edge, where an outlined floating label loses contrast.
-    control.border = ft.UnderlineInputBorder()
+    control.border = input_border(underline=True)
     control.label_style = ft.TextStyle(color='#767676', size=14)
     # Let Flutter allocate space for multi-line validation errors. A fixed
     # height clips error_text below the input on narrow phones.
@@ -186,7 +215,9 @@ def text_link(text, action):
 
 
 def money(value):
-    return f"R$ {float(value or 0):.2f}".replace(".", ",")
+    """pt-BR currency with thousands separator and half-up rounding (Decimal)."""
+    from chargegrid_core.formatting import brl
+    return brl(0 if value in (None, '') else value)
 
 
 def date_time(value):

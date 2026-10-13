@@ -89,7 +89,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Nenhuma reserva ou recarga ativa',texts)
         self.assertNotIn('Aguardando equipamento iniciar',texts)
         self.assertIn('R$ 1,25',texts)
-        self.assertIn('1 recarga concluída · 1,250 kWh',texts)
+        self.assertIn('1 recarga concluída · 1,25 kWh',texts)
         self.assertIn('não têm coordenadas válidas para o mapa',texts)
         self.assertTrue(all(before is after for before,after in zip(original_controls,screen.controls)))
         app.go.assert_not_called()

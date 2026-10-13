@@ -1,8 +1,10 @@
+import os
 import time
 from datetime import timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, Header, Request
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from ...config import settings
@@ -23,24 +25,50 @@ from ...security import current_user, digest
 router = APIRouter(prefix="/auth")
 
 
-def limit(db, key, maximum=15, seconds=60):
-    window = int(time.time()) // seconds
+def limit(db, key, maximum=15, seconds=60, *, clock=time.time):
+    """Sliding-window limit (current window + weighted previous window).
+
+    A plain fixed window let a client send twice the maximum around a window
+    boundary, and made bursts that crossed the boundary look unrelated.
+    """
+    current = clock()
+    window = int(current) // seconds
+    hashed = digest(key)
     value = db.execute(
         insert(RequestLimit)
-        .values(key=digest(key), window=window, count=1, expires_at=now() + timedelta(seconds=seconds * 2))
+        .values(key=hashed, window=window, count=1, expires_at=now() + timedelta(seconds=seconds * 2))
         .on_conflict_do_update(
             index_elements=[RequestLimit.key, RequestLimit.window], set_={"count": RequestLimit.count + 1}
         )
         .returning(RequestLimit.count)
     ).scalar_one()
+    previous = db.scalar(
+        select(RequestLimit.count).where(RequestLimit.key == hashed, RequestLimit.window == window - 1)
+    ) or 0
     # Rate limits survive even when the protected operation is rejected.
     db.commit()
-    if value > maximum:
+    weight = 1 - (current % seconds) / seconds
+    if value + previous * weight > maximum:
         fail("rate_limited", "Aguarde antes de repetir", 429)
 
 
+def client_ip(request: Request):
+    """Caller address; behind Vercel the socket peer is the platform proxy.
+
+    Vercel overwrites X-Forwarded-For/X-Real-IP with the real client address, so
+    they are trusted only when running there. Elsewhere a client could forge
+    them to escape the limit, so the socket address is used.
+    """
+    if os.getenv("VERCEL"):
+        for header in ("x-real-ip", "x-forwarded-for"):
+            value = (request.headers.get(header) or "").split(",")[0].strip()
+            if value:
+                return value
+    return request.client.host if request.client else "unknown"
+
+
 def auth_limit(request: Request, db=Depends(db_session)):
-    limit(db, "auth:" + (request.client.host if request.client else "unknown"), maximum=20)
+    limit(db, "auth:" + client_ip(request), maximum=20)
 
 
 async def provider(
@@ -186,8 +214,12 @@ async def reset(data: ResetInput):
     verified = await provider(
         "POST", "/verify", {"email": data.email, "token": data.code, "type": "recovery"}
     )
-    await provider("PUT", "/user", {"password": data.password}, token=verified["access_token"])
-    await provider("POST", "/logout?scope=global", token=verified["access_token"])
+    token = verified.get("access_token")
+    if not isinstance(token, str) or not token:
+        # A provider success without a session must not become a 500.
+        fail("auth_rejected", "Credenciais ou código inválidos", 401)
+    await provider("PUT", "/user", {"password": data.password}, token=token)
+    await provider("POST", "/logout?scope=global", token=token)
     return {"message": "Senha alterada; faça login"}
 
 

@@ -29,6 +29,7 @@ LIGHT = {
     "AMBER": "#9A5300",        # Reserva confirmada
     "BLUE": "#205EA8",         # Sincronização em andamento
     "SLATE": "#58626F",        # Estado indisponível sem erro
+    "WARNING": "#9A5300",      # Texto de aviso (AA sobre superfícies claras)
 }
 
 DARK = {
@@ -49,6 +50,7 @@ DARK = {
     "AMBER": "#9A5300",
     "BLUE": "#205EA8",
     "SLATE": "#58626F",
+    "WARNING": "#F5B76B",      # Âmbar legível (AA) sobre superfícies escuras
 }
 
 _dark_enabled = ContextVar('chargegrid_dark_mode', default=True)

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ...errors import fail
 from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, now
@@ -87,10 +87,13 @@ def start(db, user, data, key):
         fail("duration_limit", "Duração acima do limite do ponto", 422)
     discount = 0
     if data.coupon_code:
+        typed = data.coupon_code.strip().upper()
+        # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
         coupon = db.scalar(
-            select(Coupon).where(
-                Coupon.code == data.coupon_code, Coupon.active.is_(True), Coupon.valid_until > now()
-            )
+            select(Coupon)
+            .where(func.upper(Coupon.code) == typed, Coupon.active.is_(True), Coupon.valid_until > now())
+            .order_by((Coupon.code == data.coupon_code.strip()).desc(), Coupon.id)
+            .limit(1)
         )
         station = db.get(Station, connector.station_id)
         if (

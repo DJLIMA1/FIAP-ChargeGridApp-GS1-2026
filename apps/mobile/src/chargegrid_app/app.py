@@ -21,6 +21,7 @@ from .ui import motion, theme
 from .ui.components import brand, button, title
 
 ASSETS_DIR = str(Path(__file__).resolve().parents[2] / 'assets')
+POLL_BACKOFF_MAX = 60
 
 
 class ChargeGridApp:
@@ -45,6 +46,7 @@ class ChargeGridApp:
         self.prompting = False
         self.reduced_motion = False
         self.loading_task = None
+        self.backgrounded = False
         self.poll_callback = None
         self.poll_interval = None
         self.last_refresh_at = None
@@ -81,10 +83,14 @@ class ChargeGridApp:
         page.on_connect = self.connect
         page.on_disconnect = self.disconnect
         page.on_resize = self.resize
+        page.on_app_lifecycle_state_change = self.lifecycle
 
     async def resize(self, event):
         if self.root.content:
-            self.root.content.width = min(self.page.width or 400, 520 if self.route == 'auth' else 600)
+            width = min(self.page.width or 400, 520 if self.route == 'auth' else 600)
+            if width == self.root.content.width:
+                return  # Height-only resizes (keyboard, rotation bars) need no diff.
+            self.root.content.width = width
             self.page.update()
 
     def link(self, route, **data):
@@ -194,7 +200,6 @@ class ChargeGridApp:
                 control.opacity = 0.65
                 if isinstance(control, ft.Container):
                     control.scale = 0.985 if not self.reduced_motion else 1
-                self.page.update()
             task = asyncio.current_task()
             self.tasks.add(task)
             self.active_actions.add(task)
@@ -308,7 +313,10 @@ class ChargeGridApp:
             body.expand = True
         self.page.bgcolor = theme.BG_COLOR
         self.page.theme_mode = ft.ThemeMode.DARK if theme.is_dark() else ft.ThemeMode.LIGHT
-        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Barlow')
+        # STANDARD density keeps 48 px touch targets on web/desktop builds too
+        # (Flutter defaults those platforms to COMPACT, shrinking buttons by 8 px).
+        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Barlow',
+                                   visual_density=ft.VisualDensity.STANDARD)
         authenticated = bool(self.api.session.access_token) and route != 'auth'
         nav = []
         if authenticated:
@@ -380,10 +388,24 @@ class ChargeGridApp:
         if self.building_generation is None and not self.closed:
             self.start_poll()
 
-    def start_poll(self):
+    def start_poll(self, immediate=False):
         if self.poll_task and self.poll_task is not asyncio.current_task():
             self.poll_task.cancel()
-        self.poll_task = asyncio.create_task(self.poll(self.poll_callback, self.poll_interval, self.generation))
+        self.poll_task = asyncio.create_task(
+            self.poll(self.poll_callback, self.poll_interval, self.generation, immediate=immediate))
+
+    async def lifecycle(self, event):
+        """Pause polling in background; refresh immediately when shown again."""
+        state = getattr(event, 'state', None)
+        hidden = state in (ft.AppLifecycleState.HIDE, ft.AppLifecycleState.PAUSE)
+        resumed = state in (ft.AppLifecycleState.SHOW, ft.AppLifecycleState.RESUME)
+        was_hidden = self.backgrounded
+        if hidden:
+            self.backgrounded = True
+        elif resumed:
+            self.backgrounded = False
+            if was_hidden and self.poll_callback and not self.closed and self.building_generation is None:
+                self.start_poll(immediate=True)
 
     def mark_refresh(self, success):
         """Receipt time of a service query is never a device measurement time."""
@@ -434,11 +456,17 @@ class ChargeGridApp:
             if generation == self.generation and not self.closed:
                 self.page.update()
 
-    async def poll(self, callback, interval, generation):
+    async def poll(self, callback, interval, generation, immediate=False):
         failed = False
+        failures = 0
+        delay = 0 if immediate else interval
         while self.generation == generation and not self.closed:
-            await asyncio.sleep(interval)
+            await asyncio.sleep(delay)
+            delay = interval
             if self.active_actions or self.prompting or getattr(self, 'refresh_in_progress', False):
+                continue
+            if getattr(self, 'backgrounded', False):
+                # Hidden app: no network or battery use; resuming refreshes at once.
                 continue
             self.refresh_in_progress = True
             try:
@@ -448,7 +476,12 @@ class ChargeGridApp:
                     self.freshness.live_region = failed
                     self.page.update()
                 failed = False
+                failures = 0
             except ApiError as exc:
+                # Adaptive polling: back off while the server or network is
+                # failing (5 s → 10 → 20 → 40 → 60 s), reset after a success.
+                failures += 1
+                delay = min(POLL_BACKOFF_MAX, interval * 2 ** min(failures, 4))
                 if generation != self.generation or self.closed:
                     return
                 if exc.status == 401 and not self.api.session.access_token:
@@ -524,8 +557,13 @@ class ChargeGridApp:
         if not await self.prepare_navigation():
             return
         self.cancel_screen()
+        offline = False
         try:
             await self.api.request('POST','auth/logout')
+        except ApiError as exc:
+            # Leaving must always work locally; an expired token or a network
+            # failure only means the server could not revoke it right now.
+            offline = exc.status not in (401, 403)
         finally:
             self.api.session.clear()
             self.reset_account_operations()
@@ -536,6 +574,8 @@ class ChargeGridApp:
             self.profile = {}
             self.reset_account_ui()
             await self.go('auth')
+        if offline:
+            self.notice('Você saiu deste aparelho. Sem conexão para avisar o servidor; o acesso expira sozinho.')
 
     async def disconnect(self, e):
         self.closed = True

@@ -1,12 +1,18 @@
+import base64
 import io
 import math
 import tempfile
+import threading
 import time
 import urllib.request
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
 import flet as ft
+
+from chargegrid_core.formatting import brl
 
 from ..ui import theme
 
@@ -15,6 +21,16 @@ _MAP_HEIGHT = 210
 _TILE_CACHE_DIR = Path(tempfile.gettempdir()) / 'chargegrid-map-tiles-v1'
 _TILE_CACHE_AGE = 7 * 24 * 60 * 60
 STATION_MAP_RATIO = 563 / 389
+# The composed map travels to the client as a data URI on every render. JPEG
+# q85 is ~70 % smaller than the PNG (≈138 KB vs 461 KB for 720×497 tiles).
+MAP_IMAGE_FORMAT = 'JPEG'
+_MAP_CACHE_SIZE = 12
+_map_cache = OrderedDict()
+_map_cache_lock = threading.Lock()
+# After a failed tile download, skip the network for a while: an offline
+# device then falls back to the schematic map at once instead of waiting.
+_NETWORK_RETRY_SECONDS = 60
+_network_down_until = 0.0
 
 
 def _marker_color(glyph, dark):
@@ -40,11 +56,18 @@ def _tile_bytes(zoom, x, y):
             return cached.read_bytes()
     except OSError:
         pass
-    data = _fetch_bytes(
-        f'https://tile.openstreetmap.org/{zoom}/{x}/{y}.png',
-        headers={'User-Agent': 'ChargeGridAcademic/1.0'},
-        timeout=5,
-    )
+    global _network_down_until
+    if time.monotonic() < _network_down_until:
+        raise OSError('Mapa online indisponível; nova tentativa em instantes.')
+    try:
+        data = _fetch_bytes(
+            f'https://tile.openstreetmap.org/{zoom}/{x}/{y}.png',
+            headers={'User-Agent': 'ChargeGridAcademic/1.0'},
+            timeout=5,
+        )
+    except OSError:
+        _network_down_until = time.monotonic() + _NETWORK_RETRY_SECONDS
+        raise
     try:
         _TILE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(data)
@@ -223,7 +246,6 @@ def _map_frame(backdrop, attribution, *, width=320, callout=None, on_layout=None
 async def station_map_widget(stations, on_select, *, offline=False, width=320, reference=None):
     """Home map with an honest selected-station callout, no inferred GPS/distance."""
     import asyncio
-    import base64
 
     height = width / STATION_MAP_RATIO
 
@@ -271,7 +293,7 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
             data = await asyncio.wait_for(asyncio.to_thread(build_map_png,center_lat,center_lng,markers,
                                                             width=source_width,height=source_height,zoom=16,
                                                             center_glyph=None,dark=False,selected_marker=(lat,lng)),timeout=7)
-            backdrop = ft.Image(src='data:image/png;base64,'+base64.b64encode(data).decode(),
+            backdrop = ft.Image(src=map_data_uri(data),
                                 width=width,height=height,fit=ft.BoxFit.COVER,semantics_label='Mapa dos postos, centrado em '+selected.get('name','posto'))
         except (ImportError,OSError,RuntimeError,ValueError,TimeoutError):
             backdrop = _schematic_map(lat,lng,markers,height=height,center_glyph=None)
@@ -285,7 +307,7 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
                          border_radius=12,padding=ft.Padding.symmetric(horizontal=8,vertical=2))
     details = [name_text,ft.Row([badge],spacing=0)]
     if selected.get('price') is not None:
-        details.append(ft.Text(f"Desde R$ {float(selected['price']):.2f}/kWh".replace('.',','),size=11,color='#58626F'))
+        details.append(ft.Text(f"Desde {brl(selected['price'])}/kWh",size=11,color='#58626F'))
     selected_action = on_select(selected['id'])
     callout = ft.Container(ft.Semantics(
                            content=ft.Column(details,spacing=4,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
@@ -303,7 +325,8 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT
                   center_glyph="🚗", dark=False, selected_marker=None):
     """Baixa os tiles do OpenStreetMap ao redor de (center_lat, center_lng),
     monta um recorte de width x height já centralizado, desenha os
-    marcadores por cima e devolve os bytes de um PNG pronto.
+    marcadores por cima e devolve os bytes da imagem pronta (JPEG por padrão,
+    ver MAP_IMAGE_FORMAT). Entradas iguais reutilizam a imagem já composta.
 
     Usa diretamente `tile.openstreetmap.org` (o servidor de tiles oficial e
     amplamente usado do projeto) em vez de serviços de terceiros que compõem
@@ -313,6 +336,41 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT
     mesmos com Pillow é mais robusto, ao custo de mais uma dependência
     (`pillow`, já usada neste projeto para gerar os ícones da barra inferior).
     """
+    key = (round(center_lat, 7), round(center_lng, 7), tuple(markers), width, height, zoom,
+           center_glyph, dark, selected_marker, MAP_IMAGE_FORMAT)
+    with _map_cache_lock:
+        if key in _map_cache:
+            # Polls redraw maps whenever a station changes; identical inputs
+            # reuse the composed image instead of re-encoding it.
+            _map_cache.move_to_end(key)
+            return _map_cache[key]
+    data = _compose_map(center_lat, center_lng, markers, width, height, zoom, center_glyph, dark, selected_marker)
+    with _map_cache_lock:
+        _map_cache[key] = data
+        while len(_map_cache) > _MAP_CACHE_SIZE:
+            _map_cache.popitem(last=False)
+    return data
+
+
+def _fetch_tiles(zoom, coordinates):
+    """Download the viewport's tiles concurrently (not one after another)."""
+    def fetch(coordinate):
+        try:
+            return coordinate, _tile_bytes(zoom, *coordinate)
+        except (OSError, ValueError):
+            return coordinate, None
+    if not coordinates:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(6, len(coordinates))) as pool:
+        return dict(pool.map(fetch, coordinates))
+
+
+def map_data_uri(data):
+    kind = 'jpeg' if data[:3] == b'\xff\xd8\xff' else 'png'
+    return f'data:image/{kind};base64,' + base64.b64encode(data).decode()
+
+
+def _compose_map(center_lat, center_lng, markers, width, height, zoom, center_glyph, dark, selected_marker):
     from PIL import Image, ImageDraw  # import local: se o Pillow não estiver
 
     cx, cy = _lonlat_to_px(center_lat, center_lng, zoom)
@@ -325,19 +383,21 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT
     canvas = Image.new("RGB", ((tile_x_max - tile_x_min + 1) * _TILE_SIZE,
                                 (tile_y_max - tile_y_min + 1) * _TILE_SIZE), (245, 245, 245))
 
+    wanted = [(tx % n_tiles, ty) for tx in range(tile_x_min, tile_x_max + 1)
+              for ty in range(tile_y_min, tile_y_max + 1) if 0 <= ty < n_tiles]
+    tiles = _fetch_tiles(zoom, sorted(set(wanted)))
     got_any_tile = False
     for tx in range(tile_x_min, tile_x_max + 1):
         for ty in range(tile_y_min, tile_y_max + 1):
-            if ty < 0 or ty >= n_tiles:
-                continue
-            wrapped_x = tx % n_tiles
-            try:
-                tile_bytes = _tile_bytes(zoom, wrapped_x, ty)
-                tile_img = Image.open(io.BytesIO(tile_bytes)).convert("RGB")
-                canvas.paste(tile_img, ((tx - tile_x_min) * _TILE_SIZE, (ty - tile_y_min) * _TILE_SIZE))
-                got_any_tile = True
-            except (OSError, ValueError):
+            tile_bytes = tiles.get((tx % n_tiles, ty))
+            if tile_bytes is None:
                 continue  # deixa essa região em cinza-claro se uma tile específica falhar
+            try:
+                tile_img = Image.open(io.BytesIO(tile_bytes)).convert("RGB")
+            except (OSError, ValueError):
+                continue
+            canvas.paste(tile_img, ((tx - tile_x_min) * _TILE_SIZE, (ty - tile_y_min) * _TILE_SIZE))
+            got_any_tile = True
 
     if not got_any_tile:
         raise RuntimeError("Nenhuma tile do mapa pôde ser baixada.")
@@ -361,12 +421,14 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT
         _draw_pin(draw, width / 2, height / 2, center_glyph, dark)
 
     buf = io.BytesIO()
-    cropped.save(buf, format="PNG")
+    if MAP_IMAGE_FORMAT == 'JPEG':
+        cropped.save(buf, format='JPEG', quality=85, optimize=True)
+    else:
+        cropped.save(buf, format='PNG')
     return buf.getvalue()
 
 async def map_widget(lat, lng, markers, center_glyph="🚗", *, offline=False, width=320):
     import asyncio
-    import base64
     height = width / STATION_MAP_RATIO
     if offline:
         preview = _schematic_map(lat, lng, markers, height=height,center_glyph=center_glyph)
@@ -377,7 +439,7 @@ async def map_widget(lat, lng, markers, center_glyph="🚗", *, offline=False, w
                 asyncio.to_thread(build_map_png, lat, lng, markers,
                                   width=720,height=round(720/STATION_MAP_RATIO),
                                   center_glyph=center_glyph, dark=False), timeout=7)
-            preview = ft.Image(src="data:image/png;base64," + base64.b64encode(data).decode(),
+            preview = ft.Image(src=map_data_uri(data),
                                width=width,height=height,fit=ft.BoxFit.COVER)
             attribution = "© OpenStreetMap contributors"
         except (ImportError, OSError, RuntimeError, ValueError, TimeoutError):

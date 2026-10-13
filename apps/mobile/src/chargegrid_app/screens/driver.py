@@ -60,8 +60,16 @@ async def build(app):
         state = {}
         app.driver_state = state
     store = DriverProfileStore()
-    remote = await app.api.request('GET', 'driver/profile')
     local = None if demo else store.load()
+    try:
+        remote = await app.api.request('GET', 'driver/profile')
+    except ApiError as error:
+        # Without network the screen still opens from the profile saved on
+        # this device; only planning itself needs the API.
+        if error.status != 0 or demo:
+            raise
+        remote = {'saved': False}
+        app.notice('Sem conexão: usando o perfil salvo neste aparelho.')
     profile = remote if remote.get('saved') or not local else {**remote, **local}
     vehicle = dict(profile.get('vehicle') or {})
     prefs = dict(profile.get('preferences') or {})
@@ -77,7 +85,9 @@ async def build(app):
     consumption = _number_field('Consumo (kWh/100 km)',
                                 vehicle.get('consumption_kwh_per_100km') or base.get('consumption_kwh_per_100km'))
     vehicle_info = _small(helpers.vehicle_summary(vehicle | {'preset': preset_key}))
-    soc = _number_field('Bateria agora (%)', state.get('soc') or (local or {}).get('soc_percent') or 60)
+    # 0 % is a real reading: only a missing value falls back to the next source.
+    soc_value = next((value for value in (state.get('soc'), (local or {}).get('soc_percent')) if value is not None), 60)
+    soc = _number_field('Bateria agora (%)', soc_value)
 
     async def preset_changed(event=None):
         chosen = by_key.get(model.value)
@@ -255,7 +265,7 @@ async def build(app):
 
 def _alert_row(alert):
     icon, color = {'error': (ft.Icons.ERROR_OUTLINE, theme.ERROR),
-                   'warning': (ft.Icons.WARNING_AMBER_ROUNDED, theme.AMBER)}.get(
+                   'warning': (ft.Icons.WARNING_AMBER_ROUNDED, theme.WARNING)}.get(
         alert.get('level'), (ft.Icons.INFO_OUTLINE, theme.GRAY_TEXT))
     return ft.Row([ft.Icon(icon, size=18, color=color),
                    ft.Text(alert['message'], size=12, color=theme.TEXT_COLOR, expand=True)],
@@ -362,7 +372,7 @@ def stop_card(plan, stop, app, reserve_action):
     if stop.get('amenities'):
         details.append(_small('Comodidades: ' + helpers.amenities_text(stop['amenities'])))
     if stop.get('available_now') is False:
-        details.append(_small('Ocupado agora — considere a fila estimada ou outro posto.', theme.AMBER))
+        details.append(_small('Ocupado agora — considere a fila estimada ou outro posto.', theme.WARNING))
     details.append(_station_actions(app, reserve_action, stop, can_reserve=helpers.stop_is_now(plan, stop)))
     return card(details, border=ft.Border.all(1, theme.LIGHT_GRAY))
 
@@ -385,6 +395,7 @@ def plan_view(plan, app, reserve_action):
                                 font_family='BarlowCondensedBold'))
         controls.extend(stop_card(plan, stop, app, reserve_action) for stop in plan['stops'])
     controls.append(ft.ExpansionTile(
+        expanded_cross_axis_alignment=ft.CrossAxisAlignment.START,
         title=ft.Text('Como calculamos', color=theme.TEXT_COLOR),
         controls=[_small('• ' + text) for text in plan.get('assumptions', [])]
         + [_small('• Demanda por horário é uma estimativa de grandes cidades brasileiras; não usamos dados oficiais '

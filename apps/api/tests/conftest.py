@@ -2,7 +2,7 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -25,10 +25,23 @@ def engine():
     engine.dispose()
 
 
-@pytest.fixture
-def factory(engine):
-    Base.metadata.drop_all(engine)
+@pytest.fixture(scope="session")
+def schema(engine):
+    # Build the schema once per run. Recreating every table per test dominated
+    # the suite (about 9 min); isolation now comes from a single TRUNCATE.
+    # CASCADE: a test database reused by another branch may hold tables that
+    # reference ours (e.g. driver_profiles -> profiles) and block a plain drop.
+    with engine.begin() as connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(text(f'DROP TABLE IF EXISTS "{table.name}" CASCADE'))
     Base.metadata.create_all(engine)
+    return ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+
+
+@pytest.fixture
+def factory(engine, schema):
+    with engine.begin() as connection:
+        connection.execute(text(f"TRUNCATE {schema} RESTART IDENTITY CASCADE"))
     yield sessionmaker(engine, expire_on_commit=False)
 
 

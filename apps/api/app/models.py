@@ -146,6 +146,7 @@ class ChargingSession(Base):
         CheckConstraint(
             "energy_wh >= 0 AND (soc_percent IS NULL OR soc_percent BETWEEN 0 AND 100) AND discount_percent BETWEEN 0 AND 100"
         ),
+        Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(
                 f"one_session_{field}",
@@ -176,7 +177,7 @@ class Command(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
     device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id"), index=True)
     reservation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("reservations.id"))
-    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charging_sessions.id"))
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charging_sessions.id"), index=True)
     type: Mapped[str] = mapped_column(String(20))
     version: Mapped[int] = mapped_column(Integer)
     parameters: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -196,13 +197,17 @@ class Telemetry(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     data: Mapped[dict] = mapped_column(JSONB)
-    __table_args__ = (UniqueConstraint("device_id", "boot_id", "sequence"),)
+    __table_args__ = (
+        UniqueConstraint("device_id", "boot_id", "sequence"),
+        # Every device sync reads its latest sample; without this it scans the table.
+        Index("ix_telemetry_device_received", "device_id", "received_at"),
+    )
 
 
 class Coupon(Base):
     __tablename__ = "coupons"
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    operator_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"))
+    operator_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), index=True)
     station_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("stations.id"))
     code: Mapped[str] = mapped_column(String(50), unique=True)
     description: Mapped[str] = mapped_column(String(200))

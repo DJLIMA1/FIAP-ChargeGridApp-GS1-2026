@@ -154,15 +154,22 @@ def lock_point(db, user, connector_id):
     return connector
 
 
-def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
+def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED,
+                 station=_DEVICE_NOT_LOADED, reservation=_DEVICE_NOT_LOADED, session=_DEVICE_NOT_LOADED):
     """Public state without identity data: available/offline/reserved/charging/
     reconciling/disabled/fault/occupied. A deadline never implies availability.
+
+    Batch serializers may pass rows they already loaded for this connector; any
+    omitted dependency is read here, so single-point callers keep one code path.
     """
     if device is _DEVICE_NOT_LOADED:
         device = device_for(db, connector)
-    station = db.get(Station, connector.station_id)
-    reservation = active_res(db, connector.id)
-    session = active_session(db, connector.id)
+    if station is _DEVICE_NOT_LOADED:
+        station = db.get(Station, connector.station_id)
+    if reservation is _DEVICE_NOT_LOADED:
+        reservation = active_res(db, connector.id)
+    if session is _DEVICE_NOT_LOADED:
+        session = active_session(db, connector.id)
     reserved_until = (
         reservation.expires_at
         if reservation
