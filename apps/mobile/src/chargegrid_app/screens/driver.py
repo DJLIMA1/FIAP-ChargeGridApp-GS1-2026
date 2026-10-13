@@ -13,10 +13,18 @@ from ..demo import DEMO_LOCATIONS
 from ..preferences import DriverProfileStore
 from ..services import driver as helpers
 from ..services.location import geocode_address, geocode_demo_address
-from ..ui import theme
+from ..ui import motion, theme
 from ..ui.components import button, card, disclosure_field, field, pill, title
 
 DEMO_REGION = 'Praça da Sé'
+RESULTS_KEY = 'driver-results'
+DEMAND_SOURCES = {'heuristica': 'horários típicos', 'open-meteo': 'clima', 'informado': 'informado por você'}
+
+
+def demand_source_text(source):
+    """'heuristica+open-meteo' -> 'horários típicos + clima' (keys are API values)."""
+    parts = [DEMAND_SOURCES.get(part, part) for part in str(source or '').split('+') if part]
+    return ' + '.join(parts) or 'estimativa'
 
 
 def _colors():
@@ -148,7 +156,7 @@ async def build(app):
          ft.Row([ft.Container(reserve, expand=1), ft.Container(target, expand=1)]), home, home_price,
          _small('Refeições: o planejador tenta parar para comer num posto com restaurante ou café, '
                 'recarregando enquanto você come.'), *meal_rows],
-        expanded=not remote.get('saved') and not local, on_update=lambda: app.page.update())
+        expanded=not demo and not remote.get('saved') and not local, on_update=lambda: app.page.update())
 
     mode = _dropdown('O que planejar', state.get('mode') or ('full_shift' if demo else 'auto'), helpers.MODES)
     region = field('Onde você está (bairro ou endereço, opcional)', state.get('region', DEMO_REGION if demo else ''))
@@ -209,19 +217,20 @@ async def build(app):
                 raise
             # Sem rede: o perfil fica no aparelho e o plano usa os dados enviados.
 
-    results = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    results = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        key=ft.ScrollKey(RESULTS_KEY))
 
     async def plan_shift():
         body = await request_body()
         result = await app.api.request('POST', 'driver/plan', {**body, 'mode': mode.value})
         state.update(plan=result, next=None)
-        show()
+        await show()
 
     async def next_stop():
         body = await request_body()
         result = await app.api.request('POST', 'driver/next-stop', body)
         state.update(next=result)
-        show()
+        await show()
 
     def reserve_action(connector_id):
         async def reserve():
@@ -231,7 +240,7 @@ async def build(app):
             await app.go('reservations')
         return app.action(reserve)
 
-    def show():
+    async def show():
         controls = []
         if state.get('next'):
             controls.extend(next_stop_view(state['next'], app, reserve_action))
@@ -239,6 +248,12 @@ async def build(app):
             controls.extend(plan_view(state['plan'], app, reserve_action))
         results.controls = controls
         app.page.update()
+        # The answer appears below the form: bring it into view instead of
+        # leaving the user wondering whether the button worked.
+        try:
+            await screen.scroll_to(scroll_key=RESULTS_KEY, duration=motion.duration(350))
+        except (AttributeError, RuntimeError, AssertionError):
+            pass  # Not mounted (tests) or no client: the results are still rendered.
 
     if state.get('plan') or state.get('next'):
         results.controls = [*(next_stop_view(state['next'], app, reserve_action) if state.get('next') else []),
@@ -258,7 +273,9 @@ async def build(app):
         _small('O plano considera consumo, autonomia, picos estimados de demanda, refeições, potência, tarifa '
                'e ocupação dos postos.'),
     ])
-    return ft.ListView([*header, car_card, shift_section, actions, results], spacing=12, expand=True)
+    screen = ft.Column([*header, car_card, shift_section, actions, results], spacing=12, expand=True,
+                       scroll=ft.ScrollMode.AUTO, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    return screen
 
 
 # --- resultados ------------------------------------------------------------------------------
@@ -298,7 +315,7 @@ def summary_card(plan):
                 metric('Energia', kwh(totals['energy_kwh']))], spacing=8),
         _small(f"Paradas: {totals['stops']} ({duration(totals['stop_minutes'])}) · bateria no fim "
                f"{totals['end_soc_percent']:.0f}% · {km(totals['driving_km'])} rodados"),
-        _small(f"Estratégia ingênua: {brl(baseline['net_profit'])} líquido, {baseline['stops']} parada(s), "
+        _small(f"Sem planejar: {brl(baseline['net_profit'])} líquido, {baseline['stops']} parada(s), "
                f"{duration(baseline['peak_stop_minutes'])} parado no pico."),
         _small(comparison['message']),
     ])
@@ -365,8 +382,9 @@ def stop_card(plan, stop, app, reserve_action):
                spacing=10),
         _small(helpers.stop_line(stop)),
         _small(f"{stop['connector_type'].upper()} {stop['power_kw']:.0f} kW · {brl(stop['price_per_kwh'])}/kWh · "
-               f"bateria {stop['soc_before']:.0f}% → {stop['soc_after']:.0f}% · ganho que deixa de fazer "
-               f"{brl(stop['opportunity_cost'])}"),
+               f"bateria {stop['soc_before']:.0f}% → {stop['soc_after']:.0f}%"
+               + (f" · deixa de ganhar {brl(stop['opportunity_cost'])} em corridas"
+                  if (stop.get('opportunity_cost') or 0) >= 0.01 else ' · sem perder corridas')),
         ft.Text(stop['reason'], size=13, color=theme.TEXT_COLOR),
     ]
     if stop.get('amenities'):
@@ -383,8 +401,8 @@ def plan_view(plan, app, reserve_action):
     controls = [
         ft.Text(f"Plano {window['start']}–{window['end']} · {window['date'][8:10]}/{window['date'][5:7]}", size=20,
                 weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR, font_family='BarlowCondensedBold'),
-        _small(f"Demanda: {plan['demand']['label']} ({source}). {plan['stations_considered']} posto(s) compatíveis "
-               'considerados.'),
+        _small(f"Demanda: {plan['demand']['label']} ({demand_source_text(source)}). "
+               f"{plan['stations_considered']} posto(s) compatíveis considerados."),
         summary_card(plan),
     ]
     if plan['alerts']:
@@ -410,8 +428,8 @@ def next_stop_view(result, app, reserve_action):
         _heading('PRÓXIMA PARADA AGORA'),
         ft.Text(recommendation['headline'], size=18, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
         ft.Text(recommendation['message'], size=13, color=theme.TEXT_COLOR),
-        _small(f"Bateria {status['soc_percent']:.0f}% · ~{status['range_above_reserve_km']} km acima da reserva · "
-               f"demanda agora x{status['demand_now']:.2f}{peak}".replace('.', ',')),
+        _small(f"Bateria {status['soc_percent']:.0f}% · ~{max(0, round(status['range_above_reserve_km'] or 0))} km acima da reserva · "
+               f"demanda agora {status['demand_now']:.2f}× a média{peak}".replace('.', ',')),
     ]
     if recommendation.get('station_id'):
         controls.append(_station_actions(app, reserve_action, recommendation,
@@ -429,4 +447,8 @@ def next_stop_view(result, app, reserve_action):
     for alert in result.get('alerts') or ():
         if alert.get('level') in ('warning', 'error') or alert.get('code') == 'rain':
             controls.append(_alert_row(alert))
-    return [card(controls, border=ft.Border.all(1, theme.ACCENT))]
+    urgent = recommendation.get('action') == 'charge_needed'
+    if urgent:
+        controls[0] = ft.Row([ft.Icon(ft.Icons.BATTERY_ALERT, size=18, color=theme.ERROR),
+                              _heading('RECARGA NECESSÁRIA')], spacing=6)
+    return [card(controls, border=ft.Border.all(2 if urgent else 1, theme.ERROR if urgent else theme.ACCENT))]

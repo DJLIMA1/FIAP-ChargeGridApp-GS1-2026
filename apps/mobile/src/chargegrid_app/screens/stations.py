@@ -6,6 +6,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.discovery import discover
+from ..services.driver import amenity_label
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..services.planning import estimate_text, intent_limits
@@ -13,7 +14,7 @@ from ..services.search_location import SearchLocation
 from ..ui import theme
 from ..ui.ai_features import ai_search_card, ai_supported
 from ..ui.availability import point_status, station_map_record
-from ..ui.components import badge, button, card, field, money, title
+from ..ui.components import badge, button, card, field, money, pill, title
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
@@ -113,7 +114,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     address = field('Endereço para buscar',query)
     address.max_length = 300
-    latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',str(radius))
+    latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',f'{float(radius):g}'.replace('.',',') if isinstance(radius,(int,float)) else str(radius))
     search_mode = ft.Dropdown(label='Buscar por',value='address' if query or lat is None else 'coordinates',
                               options=[ft.DropdownOption(key='address',text='Endereço'),ft.DropdownOption(key='coordinates',text='Coordenadas')],
                               color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
@@ -124,9 +125,11 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if search_query:
             if demo:
                 from ..demo import DEMO_LOCATIONS
-                coordinates = geocode_demo_address(search_query,DEMO_LOCATIONS)
+                from ..services.driver_demo import DEMO_DRIVER_NETWORK
+                coordinates = geocode_demo_address(search_query,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
                 if not coordinates:
-                    raise ApiError('Na conta demo, busque Posto Demo Centro ou Vila Mariana, ou selecione Coordenadas. A busca não acessa a internet.')
+                    raise ApiError('Na conta demo, busque um local de exemplo (Praça da Sé, Av. Paulista, Congonhas, '
+                                   'Vila Madalena) ou selecione Coordenadas. A busca não acessa a internet.')
             else:
                 try:
                     coordinates = await geocode_address(search_query)
@@ -208,7 +211,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     refresh_saved()
     if station_id:
         station_heading = title(stations[0]['name'],stations[0]['address'])
-        controls = [station_heading,
+        amenities = [amenity for amenity in stations[0].get('amenities') or [] if isinstance(amenity,dict)]
+        amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
+        controls = [station_heading,*amenity_row,
                     card(ft.Row([
                         ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,color=theme.RED,size=23),
                         ft.Text('Para iniciar, você precisa estar no ponto. Leia o código #F atual na tela do equipamento; ele muda periodicamente.',
@@ -345,6 +350,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                         details.append(ft.Text(estimate_text(chosen,**intent_limits(chosen,intention)),size=12,color=theme.GRAY_TEXT))
                 if metadata.get('distance_km') is not None:
                     details.append(ft.Text(f"{_number(round(metadata['distance_km'],1))} km em linha reta da busca",size=12,color=theme.GRAY_TEXT))
+                amenities = [amenity for amenity in station.get('amenities') or [] if isinstance(amenity,dict)]
+                if amenities:
+                    details.append(ft.Text('Comodidades: '+' · '.join(amenity_label(amenity) for amenity in amenities),size=12,color=theme.GRAY_TEXT))
                 details.append(button('Ver pontos',app.link('stations',station_id=station['id'],**route_state)))
                 items.append(card(ft.Column(details,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
                 continue

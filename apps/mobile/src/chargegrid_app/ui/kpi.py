@@ -34,7 +34,7 @@ def kpi_card(label, value, *, hint=None, icon=None, tone=None, width=None, col=N
 
 def kpi_grid(cards, *, columns=None):
     """Grade responsiva: 2 colunas no celular, 3 no tablet e 4 no desktop."""
-    columns = columns or {'xs': 6, 'md': 4, 'xl': 3}
+    columns = columns or {'xs': 6, 'md': 4, 'lg': 3}
     for item in cards:
         if getattr(item, 'col', 12) in (None, {}, 12):
             item.col = columns

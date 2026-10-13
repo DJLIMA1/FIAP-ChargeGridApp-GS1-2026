@@ -302,7 +302,8 @@ class DashboardApp:
         self.poll_callback = None
 
     def compact(self):
-        return (self.page.width or 1280) < 900
+        # Icons-only menu below 1100 px: on 1024 px screens the tables keep all columns visible.
+        return (self.page.width or 1280) < 1100
 
     async def resize(self, event=None):
         if self.route != 'section':

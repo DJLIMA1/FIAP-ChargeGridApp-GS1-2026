@@ -455,6 +455,11 @@ class DemoApi(OwnerApiMixin):
                     'total_energy_wh': _decimal(sum(Decimal(s['energy_wh']) for s in records), '0.001'),
                     'total_estimated_cost': _decimal(sum(Decimal(s['cost_estimate']) for s in records), '0.0001')}
         if path in ('stations', 'operator/stations') and method == 'GET':
+            if path == 'stations':
+                # A busca pública (lista, busca inteligente e chat IA) já enxerga a rede
+                # parceira fictícia, não só depois do primeiro plano do Modo Motorista.
+                from .services.driver_demo import ensure_network
+                ensure_network(self)
             stations = [s for s in self._stations.values() if s['owner_id'] == _USER] if path.startswith('operator/') else [s for s in self._stations.values() if s['active']]
             if (params.get('lat') is None) != (params.get('lng') is None):
                 _fail('Informe latitude e longitude juntas.', 'coordinates_required')

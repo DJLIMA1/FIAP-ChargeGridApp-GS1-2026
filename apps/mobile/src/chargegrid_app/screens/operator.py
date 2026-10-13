@@ -80,9 +80,8 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         app.page.update()
 
     help_button = button('Como funciona',app.action(toggle_instructions),secondary=True)
-    help_button.height = 40
     help_button.content.size = 12
-    help_button.width = 124
+    # Intrinsic height: a fixed 40 px box clipped the 48 px touch-target padding.
     controls = [
         button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela',app.link('operator',claim=True)),
         ft.Row([
@@ -125,7 +124,6 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
             from ..demo import DEMO_PRESENCE_CODE
             details.append(ft.Text(f'Recarga de demonstração: {DEMO_PRESENCE_CODE}',size=12,color=theme.GRAY_TEXT))
         configure = button('Revisar pontos' if disabled else 'Configurar',app.link('operator',station_id=station['id']),secondary=True)
-        configure.height = 40
         if not disabled:
             configure.content = ft.Row([
                 ft.Image(src='/figma/configure.svg',width=16,height=16,color=theme.TEXT_COLOR),configure.content,
@@ -134,7 +132,6 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                    button('Recargas',app.link('history',station_id=station['id']),secondary=True)]
         for action in actions:
             action.expand = True
-            action.height = 40
             action.content.size = 13
         details += [configure,ft.Row(actions,spacing=8)]
         controls.append(card(ft.Column(details,spacing=6)))

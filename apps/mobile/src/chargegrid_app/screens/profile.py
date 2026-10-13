@@ -2,7 +2,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..ui import theme
-from ..ui.components import button, card, field, flat_button, title
+from ..ui.components import button, card, field, title
 
 
 async def build(app, mode=None):
@@ -44,6 +44,8 @@ async def build(app, mode=None):
             button('Usar como motorista' if vendor else 'Usar como operador',
                    app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor')),secondary=True),
             ft.Text('A troca de modo mantém sua reserva ou recarga.',size=12,color=theme.GRAY_TEXT),
+            ft.Text('Com a mesma conta, acompanhe receita, ocupação e alertas dos seus postos no painel web '
+                    'do proprietário, com insights de IA.',size=12,color=theme.GRAY_TEXT),
         ])]
 
     settings = [
@@ -60,7 +62,7 @@ async def build(app, mode=None):
             info('Nome',profile.get('name')),info('E-mail',email),
             info('Telefone',profile.get('phone')),info('Veículo',profile.get('vehicle_description')),
         ],spacing=20),padding=ft.Padding(top=8,bottom=8)),
-        flat_button('Editar informações',theme.INPUT_BG,theme.INPUT_TEXT,on_click=app.link('profile',mode='edit')),
+        button('Editar informações',app.link('profile',mode='edit'),secondary=True),
         *access,
         ft.ExpansionTile(title=ft.Text('Preferências e acesso',color=theme.TEXT_COLOR),
         expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,controls=settings,maintain_state=True),

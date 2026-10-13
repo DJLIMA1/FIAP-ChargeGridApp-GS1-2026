@@ -83,7 +83,9 @@ class DemoDriverRoutesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profile['vehicle']['preset'], 'byd_dolphin')
         self.assertTrue(any(p['key'] == 'renault_kwid_etech' for p in profile['presets']))
         stations = (await self.api.request('GET', 'stations'))['items']
-        self.assertGreater(len(stations), before)  # rede parceira criada no primeiro uso
+        # A rede parceira já aparece na primeira busca pública (lista, busca IA e chat).
+        self.assertEqual(len(stations), before)
+        self.assertGreater(before, 1)
         self.assertTrue(any(a['kind'] == 'restaurante' for s in stations for a in s.get('amenities', [])))
         saved = await self.api.request('PUT', 'driver/profile', {
             'vehicle': {'preset': 'byd_dolphin'},

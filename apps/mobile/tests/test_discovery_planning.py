@@ -127,7 +127,9 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_demo_filters_before_pagination_and_validates(self):
         api = DemoApi()
         await api.login(DEMO_EMAIL,DEMO_PASSWORD)
-        # Add a second visible station to exercise paging; isolated in-memory fixtures.
+        # Add a second visible station to exercise paging; isolated in-memory fixtures
+        # (without the partner network that the demo listing adds on first use).
+        api._driver_network = True
         values = list(api._stations.values())
         values[1]['active'] = True
         points = list(api._points.values())

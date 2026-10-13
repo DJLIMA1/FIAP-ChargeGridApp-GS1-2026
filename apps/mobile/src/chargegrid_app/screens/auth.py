@@ -27,6 +27,21 @@ def auth_button(text, action, *, secondary=False):
     )
 
 
+HIGHLIGHTS = (
+    (ft.Icons.LOCAL_TAXI_OUTLINED, 'Modo Motorista: planeje as recargas do seu turno'),
+    (ft.Icons.AUTO_AWESOME, 'Assistente com IA que consulta postos e a sua conta'),
+    (ft.Icons.INSIGHTS, 'Painel web para donos de postos, com insights'),
+)
+
+
+def highlights():
+    """Compact product differentials on the sign-in screen (first impression)."""
+    rows = [ft.Row([ft.Icon(icon, size=18, color=theme.ACCENT),
+                    ft.Text(text, size=13, color=theme.TEXT_COLOR, expand=True)], spacing=10)
+            for icon, text in HIGHLIGHTS]
+    return ft.Column(rows, spacing=8, tight=True)
+
+
 def back_link(app):
     return ft.TextButton(
         ft.Row(
@@ -258,7 +273,8 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         submit_button = auth_button('Entrar', app.action(submit))
         password.on_submit = app.action(submit)
         controls = [
-            ft.Column([brand(), ft.Text(BRAND_PROMISE, size=14, color=theme.GRAY_TEXT)], spacing=8),
+            ft.Column([brand(), ft.Text(BRAND_PROMISE, size=14, color=theme.GRAY_TEXT),
+                       ft.Container(highlights(), padding=ft.Padding(top=8, left=0, right=0, bottom=0))], spacing=8),
             email_field,
             password_field,
             text_link('Esqueci minha senha', app.link('auth', mode='forgot', email_value=email_value)),

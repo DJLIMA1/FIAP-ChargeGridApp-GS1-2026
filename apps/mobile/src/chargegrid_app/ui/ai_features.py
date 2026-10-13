@@ -88,13 +88,14 @@ def _expandable(app, label, icon, loader):
             body.visible = not body.visible
             app.page.update()
             return
-        body.controls, body.visible = [_loading('Gerando…')], True
+        body.controls, body.visible = [_loading('Gerando análise… pode levar alguns segundos.')], True
         app.page.update()
         try:
             body.controls = await loader()
             state['loaded'] = True
         except ApiError as exc:
             message = ('Limite de uso da IA atingido. Tente mais tarde.' if exc.status == 429 else
+                       str(exc) if exc.status == 409 else  # e.g. the charge has not finished yet
                        'Não foi possível gerar agora. Verifique a conexão e tente novamente.')
             body.controls = [ft.Text(message, size=12, color=theme.GRAY_TEXT)]
         app.page.update()
@@ -102,7 +103,8 @@ def _expandable(app, label, icon, loader):
     header = ft.TextButton(content=ft.Row([ft.Icon(icon, color=theme.RED, size=18),
                                            ft.Text(label, size=13, color=theme.TEXT_COLOR, weight=ft.FontWeight.BOLD)],
                                           spacing=6, tight=True),
-                           on_click=app.action(toggle), tooltip=label)
+                           # No tooltip: it would repeat the visible label over the loading text.
+                           on_click=app.action(toggle), data=('ai-disclosure', label))
     return ft.Column([header, body], spacing=4)
 
 
@@ -134,6 +136,11 @@ def owner_insights_control(app, days=30):
                 ft.Text(str(item.get('detail') or ''), size=12, color=theme.TEXT_COLOR),
                 ft.Text(f"{kind} · impacto {_IMPACT_LABELS.get(item.get('impact'), 'médio')}", size=11, color=theme.GRAY_TEXT),
             ], spacing=4), padding=10, border=ft.Border.all(1, theme.LIGHT_GRAY)))
-        controls.append(ft.Text(_origin_label(result.get('model')), size=11, color=theme.GRAY_TEXT, italic=True))
+        origin = _origin_label(result.get('model'))
+        if getattr(app.api, 'is_demo', False):
+            # The demo owner analytics include a simulated 30-day history (same as the web dashboard),
+            # so these totals are larger than the sessions created during the presentation.
+            origin += ' Na demo, a análise usa um histórico simulado de 30 dias, o mesmo do painel web.'
+        controls.append(ft.Text(origin, size=11, color=theme.GRAY_TEXT, italic=True))
         return controls
     return _expandable(app, f'Insights dos meus postos ({days} dias)', ft.Icons.INSIGHTS, load)
