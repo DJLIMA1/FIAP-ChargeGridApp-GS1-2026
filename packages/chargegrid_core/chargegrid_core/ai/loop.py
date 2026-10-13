@@ -26,6 +26,7 @@ MAX_CALLS_PER_ROUND = 4
 BUDGET_SECONDS = 22.0
 MIN_ROUND_SECONDS = 2.5
 FALLBACK_REPLY = "Não consegui concluir a resposta agora. Tente reformular a pergunta ou use as telas do app."
+TIMEOUT_REPLY = "A resposta demorou mais que o permitido. Veja abaixo o que já encontrei ou pergunte de novo."
 
 
 @dataclass
@@ -82,7 +83,7 @@ async def run_chat(complete, toolbox, history: list, *, system: str, max_rounds:
     outcome = ChatOutcome(reply="")
     used: list[str] = []
     reply = ""
-    retried = False
+    retried = timed_out = False
     for round_index in range(max_rounds):
         remaining = budget_seconds - (clock() - started)
         if remaining < MIN_ROUND_SECONDS:
@@ -92,14 +93,22 @@ async def run_chat(complete, toolbox, history: list, *, system: str, max_rounds:
         final_round = round_index == max_rounds - 1
         tools = toolbox.definitions()
         try:
-            response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
+            try:
+                response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
+            except LLMUnavailable as exc:
+                remaining = budget_seconds - (clock() - started)
+                # Uma nova tentativa só cabe se ainda houver tempo útil (limite de 30 s da Vercel).
+                if exc.code != "ai_bad_response" or retried or remaining < MIN_ROUND_SECONDS:
+                    raise
+                retried = True
+                response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
         except LLMUnavailable as exc:
-            remaining = budget_seconds - (clock() - started)
-            # Uma nova tentativa só cabe se ainda houver tempo útil (limite de 30 s da Vercel).
-            if exc.code != "ai_bad_response" or retried or remaining < MIN_ROUND_SECONDS:
+            # Estourou o tempo depois de consultar dados: responde com os botões do que foi
+            # encontrado em vez de um erro 504 que descarta todo o trabalho da conversa.
+            if exc.code != "ai_timeout" or not toolbox.records:
                 raise
-            retried = True
-            response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
+            timed_out = True
+            break
         outcome.rounds += 1
         outcome.model = response.get("model") or outcome.model
         _add_usage(outcome.usage, response.get("usage"))
@@ -118,7 +127,7 @@ async def run_chat(complete, toolbox, history: list, *, system: str, max_rounds:
         break
     if not reply and outcome.rounds == 0:
         raise LLMUnavailable("O assistente demorou demais para responder.", status=504, code="ai_timeout")
-    reply = plain_text(strip_identifiers(reply)) or FALLBACK_REPLY
+    reply = plain_text(strip_identifiers(reply)) or (TIMEOUT_REPLY if timed_out else FALLBACK_REPLY)
     if len(reply) > MAX_REPLY_CHARS:
         reply = reply[: MAX_REPLY_CHARS - 1].rstrip() + "…"
     outcome.reply = reply

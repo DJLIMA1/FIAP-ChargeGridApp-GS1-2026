@@ -106,6 +106,9 @@ async def insight(data: SessionInsightInput, user=Depends(current_user), db=Depe
     obj = db.get(ChargingSession, data.session_id)
     if not obj or obj.user_id != user.id:
         fail("not_found", "Sessão não encontrada", 404)
+    if obj.status not in ("completed", "interrupted"):
+        # O app só oferece o resumo de recargas encerradas; evita gasto de IA com dados parciais.
+        fail("session_not_finished", "O resumo fica disponível quando a recarga terminar.", 409)
     enforce_limits(db, user)
     started = time.monotonic()
     result, meta = await session_insight(session_row(db, obj), DbSource(db, user).recent_sessions(30), now=_now(),

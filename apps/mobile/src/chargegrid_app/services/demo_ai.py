@@ -178,6 +178,8 @@ async def handle(api, method, path, body):
         record = api._sessions.get(str(body.get('session_id') or ''))
         if not record:
             raise ApiError('Sessão não encontrada.', 404, 'not_found')
+        if record.get('status') not in ('completed', 'interrupted'):
+            raise ApiError('O resumo fica disponível quando a recarga terminar.', 409, 'session_not_finished')
         session = api._operation_row(record, 'session')
         return (await session_insight(session, source.recent_sessions(30), now=now, llm=llm))[0]
     if not api._profile.get('operator_enabled'):

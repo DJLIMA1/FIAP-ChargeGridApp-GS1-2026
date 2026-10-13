@@ -451,3 +451,15 @@ def test_loop_does_not_retry_bad_response_without_time_left():
         run(run_chat(script, Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s",
                      budget_seconds=22, clock=lambda: next(ticks)))
     assert len(script.seen) == 1
+
+
+def test_loop_timeout_after_tools_degrades_to_actions_instead_of_error():
+    toolbox = Toolbox(Source(), now=NOW)
+    timeout = LLMUnavailable("lento", status=504, code="ai_timeout")
+    script = Script(response(calls=[("search_stations", {"text": "Paulista"})]), timeout)
+    outcome = run(run_chat(script, toolbox, [{"role": "user", "content": "postos na paulista"}], system="s"))
+    assert "demorou" in outcome.reply and outcome.rounds == 1
+    assert outcome.tools_used == ["search_stations"]
+    assert outcome.suggested_actions[0] == {"type": "open_station", "station_id": "s1", "label": "Ver Paulista Hub"}
+    with pytest.raises(LLMUnavailable):  # sem nenhum dado consultado, o erro continua honesto
+        run(run_chat(Script(timeout), Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s"))

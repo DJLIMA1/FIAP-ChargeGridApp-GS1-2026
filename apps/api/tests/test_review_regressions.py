@@ -200,3 +200,17 @@ def test_next_stop_with_empty_battery_never_says_keep_driving(factory, seed):
     far = client.post("/v1/driver/next-stop", json={"soc_percent": 5, "lat": -10.0, "lng": -50.0, "radius_km": 5})
     assert far.json()["recommendation"]["action"] == "charge_needed"
     assert "station_id" not in far.json()["recommendation"]
+
+
+def test_session_insight_only_for_finished_sessions(factory, seed):
+    moment = now()
+    with factory.begin() as db:
+        active = ChargingSession(user_id=seed["a"], connector_id=seed["point"], status="charging",
+                                 max_duration_minutes=30, price_per_kwh=2, energy_wh=500, cost_estimate=1,
+                                 created_at=moment - timedelta(minutes=5), started_at=moment - timedelta(minutes=4))
+        db.add(active)
+        db.flush()
+        active_id = active.id
+    client, _, _ = client_for(factory, seed["a"])
+    response = client.post("/v1/ai/session-insight", json={"session_id": str(active_id)})
+    assert response.status_code == 409 and response.json()["error"]["code"] == "session_not_finished"

@@ -51,7 +51,8 @@ SPECS = {
     "estimate_charge": {
         "description": ("Estima energia, tempo e custo de uma recarga num ponto (connector_id) ou com potência/tarifa "
                         "informadas. Informe um alvo: energy_kwh, faixa de bateria (battery_kwh + from/to_percent), "
-                        "budget_brl ou minutes."),
+                        "budget_brl ou minutes. Use somente connector_id devolvido antes por search_stations ou "
+                        "get_station_details (não chame em paralelo com a busca)."),
         "parameters": {"type": "object", "properties": {
             "connector_id": _ID,
             "power_kw": {"type": "number", "minimum": 0.5, "maximum": 1000},

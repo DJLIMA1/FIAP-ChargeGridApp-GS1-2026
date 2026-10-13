@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from chargegrid_core.ai.stations import compact_point
 
-from ...http_helpers import point_row, reservation_row, session_row, station_row
+from ...http_helpers import point_row, reservation_row, session_row, session_rows, station_row
 from ...models import ChargingSession, Connector, DriverProfile, Reservation, Station
 from ...service import RES_ACTIVE, SESSION_ACTIVE, row
 from ..driver.routes import _saved as saved_driver_profile
@@ -71,7 +71,7 @@ class DbSource:
     def recent_sessions(self, limit):
         query = (select(ChargingSession).where(ChargingSession.user_id == self.user.id)
                  .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc()).limit(limit))
-        return [session_row(self.db, obj) for obj in self.db.scalars(query)]
+        return session_rows(self.db, self.db.scalars(query).all())  # lote: sem N+1 por sessão
 
     def month_summary(self):
         return me_summary(user=self.user, db=self.db)
