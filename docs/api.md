@@ -92,7 +92,7 @@ Sem IA, ou se ela falhar, responde por regras com `model:"chargegrid-regras"`.
 
 POST `/ai/session-insight`
 
-Corpo: `{session_id}`. Só aceita sessões do próprio usuário; para as demais, a resposta é 404.
+Corpo: `{session_id}`. Só aceita sessões do próprio usuário; para as demais, a resposta é 404. Sessões ainda não encerradas (diferentes de `completed`/`interrupted`) recebem 409 `session_not_finished`.
 
 Resposta 200: `{session_id,summary,tips:[string],comparison:{cost_brl,energy_kwh,price_per_kwh,avg_cost_brl,avg_price_per_kwh,cost_vs_avg_percent,peak_hour,history_sessions},generated_at,model}`.
 
@@ -123,3 +123,5 @@ Migrações usam `MIGRATION_DATABASE_URL`, uma conexão administrativa direta. A
 A versão atual exige `alembic upgrade head` até `d85af641bc01`. Além da migração anterior de tipo de conta e cronologia, ela permite posto de fábrica sem dono e cria `device_claims` com auditoria, unicidade e RLS. O runtime recebe somente SELECT/UPDATE nessa tabela: criar claims exige a credencial administrativa da ferramenta de fábrica. Nenhum owner legado é alterado. Aplicar a migração antes de publicar o código correspondente. Downgrade recusa remover a nulabilidade enquanto houver postos sem dono, evitando apagar equipamento para retornar ao esquema antigo.
 
 A migração `a71c3e5d9b20` (assistente de IA, sobre `a3f1c9d2e7b4`) cria `ai_usage` somente com metadados de uso: usuário, função, status, modelo, tokens, custo, latência e nomes das ferramentas. Ela não guarda perguntas nem respostas. Aplica RLS, e somente o papel `chargegrid_api` recebe SELECT/INSERT.
+
+A migração `b8e4f2a6c913` (sobre `a71c3e5d9b20`) revoga `PUBLIC`, `anon` e `authenticated` de `device_claims`, `session_events`, `driver_profiles` e `ai_usage`, como a migração inicial faz com as demais tabelas: no Supabase, os privilégios padrão do schema `public` concedem ALL (inclusive TRUNCATE, que o RLS não cobre) a esses papéis em toda tabela nova. O downgrade não devolve os privilégios. Detalhes da revisão em [revisao-integracao-2026-10.md](revisao-integracao-2026-10.md).

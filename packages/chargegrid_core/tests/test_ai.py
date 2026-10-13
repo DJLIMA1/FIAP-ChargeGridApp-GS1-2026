@@ -418,3 +418,64 @@ def test_indicators_from_dashboard_analytics_feed_rules_and_writer():
     result, meta = run(owner_insights_from_indicators(ind, now=NOW, llm=writer))
     assert result["recommendations"] == [{"title": "T", "detail": "D", "impact": "high", "kind": "operations"}]
     assert "Dispositivo" in writer.seen[0]["messages"][1]["content"] or "P2" in writer.seen[0]["messages"][1]["content"]
+
+
+# --- revisão de integração (2026-10): regressões ------------------------------------
+
+@pytest.mark.parametrize("payload", [
+    {"choices": [{"message": "texto solto"}]},
+    {"choices": [{"message": {"content": "oi", "tool_calls": {"function": {"name": "x"}}}}]},
+    {"choices": [{"message": {"content": "oi", "tool_calls": ["lixo", None, {"function": "x"}]}}]},
+    {"choices": [{"message": {"content": "oi"}}], "usage": "muitos"},
+    {"choices": [{"message": {"content": "oi"}}], "usage": {"prompt_tokens": "abc", "completion_tokens": None,
+                                                           "cost": "NaN"}},
+    {"choices": "nenhuma"},
+    {"choices": [{"message": {"content": None, "tool_calls": [
+        {"id": 7, "function": {"name": "search_stations", "arguments": {"near_place": {1, 2}}}}]}}]},
+])
+def test_parse_completion_never_crashes_on_malformed_provider_payloads(payload):
+    try:
+        parsed = parse_completion(payload)
+    except LLMUnavailable:
+        return
+    assert isinstance(parsed["content"], str)
+    assert all(isinstance(call["arguments"], str) and isinstance(call["id"], str) for call in parsed["tool_calls"])
+    assert parsed["usage"]["prompt_tokens"] >= 0 and parsed["usage"]["cost"] == parsed["usage"]["cost"]  # não é NaN
+
+
+def test_loop_does_not_retry_bad_response_without_time_left():
+    ticks = iter([0.0, 0.0, 21.0, 21.0])
+    bad = LLMUnavailable("malformed", code="ai_bad_response")
+    script = Script(bad, response("tarde demais"))
+    with pytest.raises(LLMUnavailable):
+        run(run_chat(script, Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s",
+                     budget_seconds=22, clock=lambda: next(ticks)))
+    assert len(script.seen) == 1
+
+
+def test_loop_timeout_after_tools_degrades_to_actions_instead_of_error():
+    toolbox = Toolbox(Source(), now=NOW)
+    timeout = LLMUnavailable("lento", status=504, code="ai_timeout")
+    script = Script(response(calls=[("search_stations", {"text": "Paulista"})]), timeout)
+    outcome = run(run_chat(script, toolbox, [{"role": "user", "content": "postos na paulista"}], system="s"))
+    assert "demorou" in outcome.reply and outcome.rounds == 1
+    assert outcome.tools_used == ["search_stations"]
+    assert outcome.suggested_actions[0] == {"type": "open_station", "station_id": "s1", "label": "Ver Paulista Hub"}
+    with pytest.raises(LLMUnavailable):  # sem nenhum dado consultado, o erro continua honesto
+        run(run_chat(Script(timeout), Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s"))
+
+
+def test_plan_driver_shift_lists_stations_around_the_driver():
+    class Nearby(DriverSource):
+        def list_stations(self, near=None, radius_km=None):
+            self.calls.append(("list", near, radius_km))
+            return STATIONS
+
+    source = Nearby()
+    origin = {"lat": -23.60, "lng": -46.66}
+    toolbox = Toolbox(source, now=datetime(2026, 10, 13, 10, 0, tzinfo=timezone.utc), origin=origin)
+    run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 30}))
+    assert source.calls[-1] == ("list", origin, 30.0)
+    run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 30, "near_place": "Paulista"}))
+    near = source.calls[-1][1]
+    assert source.calls[-1][2] == 30.0 and abs(near["lat"] + 23.5614) < 1e-6

@@ -25,6 +25,7 @@ from ...errors import fail
 from ...http_helpers import station_rows
 from ...models import DriverProfile, Station, now
 from ...security import current_user
+from ..auth.routes import limit
 from .schemas import DriverProfileInput, NextStopInput, PlanInput
 from .weather import weather_signal
 
@@ -33,6 +34,8 @@ router = APIRouter()
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 MAX_STATIONS = 40
 LIVE_HORIZON_HOURS = 16
+# O planejador é CPU (centenas de ms) e consulta o clima: limite por usuário contra abuso/custo.
+PLAN_LIMIT = (30, 60)
 
 
 def local_now() -> datetime:
@@ -133,6 +136,7 @@ def _signals(data: NextStopInput, current: datetime):
 def _prepare(data: NextStopInput, user, db):
     if (data.lat is None) != (data.lng is None):
         fail("coordinates_required", "Informe lat e lng juntos", 422)
+    limit(db, f"driver-plan:{user.id}", maximum=PLAN_LIMIT[0], seconds=PLAN_LIMIT[1])
     saved = _saved(db.get(DriverProfile, user.id))
     profile = _validated(merge_profile(saved, {"vehicle": _dump(data.vehicle),
                                                "preferences": _dump(data.preferences)}))

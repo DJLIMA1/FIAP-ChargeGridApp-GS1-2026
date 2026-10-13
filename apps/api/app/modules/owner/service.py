@@ -196,9 +196,16 @@ SESSION_COLUMNS = (
 )
 
 
-def _search(q, *extra):
-    pattern = f"%{q.strip()}%"
-    return or_(Station.name.ilike(pattern), Connector.public_code.ilike(pattern), *extra)
+def _literal(q):
+    """Texto digitado vira literal no LIKE ("%" e "_" não funcionam como curingas)."""
+    return q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _search(q, column):
+    text = _literal(q)
+    pattern = f"%{text}%"
+    return or_(Station.name.ilike(pattern, escape="\\"), Connector.public_code.ilike(pattern, escape="\\"),
+               cast(column, String).ilike(f"{text}%", escape="\\"))
 
 
 def session_query(scope, window, status=None, q=None):
@@ -208,7 +215,7 @@ def session_query(scope, window, status=None, q=None):
     if status:
         query = query.where(ChargingSession.status.in_(status))
     if q and q.strip():
-        query = query.where(_search(q, cast(ChargingSession.id, String).ilike(f"{q.strip()}%")))
+        query = query.where(_search(q, ChargingSession.id))
     return query.order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
 
 
@@ -225,7 +232,7 @@ def reservation_query(scope, window, status=None, q=None):
     if status:
         query = query.where(Reservation.status.in_(status))
     if q and q.strip():
-        query = query.where(_search(q, cast(Reservation.id, String).ilike(f"{q.strip()}%")))
+        query = query.where(_search(q, Reservation.id))
     return query.order_by(Reservation.created_at.desc(), Reservation.id.desc())
 
 
