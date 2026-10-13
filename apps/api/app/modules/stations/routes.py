@@ -154,6 +154,11 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
         select(Reservation.id).where(Reservation.connector_id == obj.id, Reservation.status.in_(RES_ACTIVE))
     ):
         fail("point_busy", "Encerre reservas/recargas antes de alterar o ponto")
+    if data.public_code is not None and db.scalar(
+        select(Connector.id).where(Connector.public_code == data.public_code, Connector.id != obj.id)
+    ):
+        # Was a generic IntegrityError 409 ("Operação conflita com registro existente").
+        fail("public_code_taken", "Já existe um ponto com este código público. Escolha outro.", 409)
     update(obj, data)
     db.flush()
     return point_row(db, obj)

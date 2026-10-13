@@ -221,3 +221,16 @@ def test_profile_fixture_cleanup_isolated_between_tests(factory):
     with factory() as db:
         assert db.scalar(select(Profile.id).limit(1)) is None
         assert db.scalar(select(Coupon.id).limit(1)) is None
+
+
+def test_duplicate_public_code_has_specific_message(factory, seed):
+    add_stations(factory, seed["owner"], 1, "D")
+    client, _ = client_for(factory, seed["owner"])
+    try:
+        response = client.patch(f"/v1/connectors/{seed['point']}", json={"public_code": "D-0-0"})
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "public_code_taken"
+        assert client.patch(f"/v1/connectors/{seed['point']}", json={"public_code": "CG-01"}).status_code == 200
+    finally:
+        clear_overrides()
+
