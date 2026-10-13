@@ -23,7 +23,7 @@ def _retired_ids(db, connector_ids):
     if not connector_ids:
         return set()
     return set(db.scalars(
-        select(Device.connector_id).join(Command, Command.device_id == Device.id).where(
+        select(Device.connector_id).select_from(Command).join(Device, Device.id == Command.device_id).where(
             Device.connector_id.in_(connector_ids),
             Command.type == "FACTORY_RESET",
             Command.status == "applied",
