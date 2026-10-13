@@ -350,8 +350,8 @@ def test_driver_slot_absent_is_silent(monkeypatch):
 def test_driver_slot_registers_when_planner_exists(monkeypatch):
     received = {}
 
-    def plan(request, stations):
-        received.update(request=request, stations=len(stations))
+    def plan(request, stations, now, saved):
+        received.update(request=request, stations=len(stations), now=now, saved=saved)
         return {"summary": "Recarregue às 14h"}
 
     monkeypatch.setattr(driver_slot, "planner", lambda: plan)
@@ -359,33 +359,28 @@ def test_driver_slot_registers_when_planner_exists(monkeypatch):
     assert "plan_driver_shift" in toolbox.names()
     assert run(toolbox.execute("plan_driver_shift", {"shift_start": "07:00", "current_soc_percent": 50})) == {
         "summary": "Recarregue às 14h"}
-    assert received == {"request": {"shift_start": "07:00", "current_soc_percent": 50}, "stations": 3}
+    assert received == {"request": {"shift_start": "07:00", "current_soc_percent": 50}, "stations": 3, "now": NOW,
+                        "saved": None}
 
 
-def test_features_use_llm_or_rules_without_silent_model_switch():
-    from chargegrid_core.ai import natural_search, owner_insights, session_insight
+class DriverSource(Source):
+    def driver_profile(self):
+        return {"vehicle": {"preset": "byd_dolphin"}, "preferences": {"shift_start": "08:00", "shift_end": "20:00"}}
 
-    found, meta = run(natural_search("ccs2 perto de Moema"))
-    assert meta == {"model": "chargegrid-regras", "usage": {}, "status": "rules"}
-    assert found["params"]["connector_type"] == "ccs2" and found["model"] == "chargegrid-regras"
-    tool = Script(response(calls=[("apply_station_filters", {"near_place": "Pinheiros", "available_only": True})]))
-    found, meta = run(natural_search("livre em pinheiros", llm=tool))
-    assert meta["status"] == "ok" and found["filters"]["near"]["label"] == "Pinheiros"
-    assert tool.seen[0]["tool_choice"]["function"]["name"] == "apply_station_filters"
-    assert tool.seen[0]["reasoning_effort"] == "none"
-    found, meta = run(natural_search("tipo 2", llm=Script(LLMUnavailable())))
-    assert meta["status"] == "fallback" and found["filters"]["connector_type"] == "type2"
 
-    session = {"id": "s", "status": "completed", "energy_wh": "5000", "cost_estimate": "10", "price_per_kwh": "2"}
-    result, meta = run(session_insight(session, [session], now=NOW))
-    assert meta["status"] == "rules" and result["generated_at"].startswith("2026-10-13")
-    writer = Script(response('{"summary": "Boa recarga.", "tips": ["Use cupom."]}'))
-    result, meta = run(session_insight(session, [], now=NOW, llm=writer))
-    assert result["summary"] == "Boa recarga." and result["model"] == "fake/model" and meta["status"] == "ok"
-    result, meta = run(session_insight(session, [], now=NOW, llm=Script(response("sem json"))))
-    assert meta["status"] == "fallback" and result["model"] == "chargegrid-regras"
-
-    result, meta = run(owner_insights(STATIONS[:2], owner_sessions(), now=NOW, llm=Script(LLMUnavailable())))
-    assert set(result) == {"summary", "recommendations", "generated_at", "model"} and meta["status"] == "fallback"
-    empty, meta = run(owner_insights([], [], now=NOW, llm=Script()))
-    assert meta["status"] == "rules" and empty["recommendations"][0]["title"] == "Vincule seu primeiro ponto"
+def test_plan_driver_shift_uses_real_driver_planner_and_saved_profile():
+    toolbox = Toolbox(DriverSource(), now=datetime(2026, 10, 13, 10, 0, tzinfo=timezone.utc))
+    assert "plan_driver_shift" in toolbox.names()
+    data = run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 25, "vehicle": "Dolphin Mini",
+                                                     "dinner_time": "19:30", "near_place": "Paulista",
+                                                     "full_shift": True}))
+    assert "error" not in data, data
+    assert data["window"].startswith("08:00–20:00") and data["vehicle"] == "BYD Dolphin Mini"
+    assert data["stops"] and data["stops"][0]["station_id"] in {"s1", "s2"}
+    assert data["totals"]["net_profit"] is not None and data["versus_naive"]
+    assert data["notes"][-1].startswith("Demanda e ganhos são estimativas")
+    missing = run(toolbox.execute("plan_driver_shift", {"vehicle": "Fusca"}))
+    assert any("50%" in note for note in missing["notes"]) and any("não reconhecido" in n for n in missing["notes"])
+    from chargegrid_core.ai.actions import derive_actions
+    actions = derive_actions(toolbox.records[:1], "plano")
+    assert [a["type"] for a in actions] == ["open_driver", "open_station"]

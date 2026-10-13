@@ -83,7 +83,8 @@ class ChatAiTests(unittest.IsolatedAsyncioTestCase):
                                 'context': {'mode': 'driver'}})
         last = app.chat_messages[-1]
         self.assertEqual(last['source'], 'ai')
-        self.assertEqual([a['label'] for a in last['actions']], ['Ver Posto Demo', 'Reservar P1'])
+        self.assertEqual([a['label'] for a in last['actions']], ['Ver Posto Demo', 'Reservar P1', 'Modo motorista'])
+        self.assertEqual(last['actions'][2]['route'], 'driver')
         self.assertEqual(last['actions'][1], {'label': 'Reservar P1', 'route': 'stations', 'data': {'station_id': 's1'}})
         typing = next(c for c in descendants(screen) if isinstance(c, ft.Semantics) and c.label == 'Assistente digitando')
         self.assertFalse(typing.visible)
@@ -187,6 +188,27 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_data['stations'][0]['name'], 'Posto Demo Centro')
         self.assertIn('demonstração', calls[0][0]['content'])
         self.assertEqual([a['type'] for a in result['suggested_actions']], ['open_station', 'reserve'])
+
+    async def test_demo_chat_plans_driver_shift_with_driver_engine(self):
+        calls = []
+
+        async def fake_complete(messages, tools, timeout=None, tool_choice='auto', **options):
+            calls.append(messages)
+            if len(calls) == 1:
+                return {'content': '', 'model': 'fake', 'usage': {}, 'tool_calls': [
+                    {'id': '1', 'name': 'plan_driver_shift', 'arguments': '{"current_soc_percent": 20, "full_shift": true}'}]}
+            return {'content': 'Recarregue antes do almoço.', 'model': 'fake', 'usage': {}, 'tool_calls': []}
+
+        with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'test-key'}), \
+                patch.object(demo_ai, 'complete', fake_complete):
+            result = await self.api.request('POST', 'ai/chat', {'messages': [
+                {'role': 'user', 'content': 'planeja meu turno de hoje'}]})
+        data = json.loads(calls[1][-1]['content'])
+        self.assertNotIn('error', data)
+        self.assertTrue(data['stops'])
+        self.assertEqual(result['suggested_actions'][0]['type'], 'open_driver')
+        mapped = chat._ai_actions(result['suggested_actions'])
+        self.assertEqual(mapped[0]['route'], 'driver')
 
     async def test_demo_validation_and_rate_limit(self):
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'k'}):

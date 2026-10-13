@@ -13,8 +13,9 @@ from sqlalchemy import select
 from chargegrid_core.ai.stations import compact_point
 
 from ...http_helpers import point_row, reservation_row, session_row, station_row
-from ...models import ChargingSession, Connector, Reservation, Station
+from ...models import ChargingSession, Connector, DriverProfile, Reservation, Station
 from ...service import RES_ACTIVE, SESSION_ACTIVE, row
+from ..driver.routes import _saved as saved_driver_profile
 from ..users.routes import me_summary
 
 MAX_STATIONS = 40
@@ -86,3 +87,7 @@ class DbSource:
                  .where(Station.owner_id == self.user.id, ChargingSession.created_at >= since)
                  .order_by(ChargingSession.created_at.desc()).limit(MAX_OWNER_SESSIONS))
         return [{**row(obj), "station_id": str(station_id)} for obj, station_id in self.db.execute(query)]
+
+    def driver_profile(self):
+        """Perfil salvo do Modo Motorista (validado), usado por ``plan_driver_shift``."""
+        return saved_driver_profile(self.db.get(DriverProfile, self.user.id))

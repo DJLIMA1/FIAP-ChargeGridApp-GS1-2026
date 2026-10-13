@@ -112,6 +112,15 @@ class DemoSource:
     def owner_sessions(self, since):
         return (self._get('operator/charging-sessions', {'limit': 100}) or {}).get('items', [])
 
+    def driver_profile(self):
+        return self.api._driver_profile
+
+    def driver_stations(self):
+        # Mesmos postos que POST driver/plan da demo usa (inclui a rede parceira com comodidades).
+        from .driver_demo import ensure_network
+        ensure_network(self.api)
+        return [self.api._station_row(s) for s in self.api._stations.values() if s['active']]
+
 
 def _limit():
     now = time.monotonic()

@@ -281,3 +281,19 @@ def test_configured_models_deduplicate_and_limit():
         openrouter_model = "a"
         openrouter_fallback_models = "b, a, c, d"
     assert configured_models(Config()) == ["a", "b", "c"]
+
+
+def test_chat_plan_driver_shift_uses_saved_driver_profile(factory, seed):
+    from app.models import DriverProfile
+    with factory.begin() as db:
+        db.add(DriverProfile(user_id=seed["a"], vehicle={"preset": "byd_dolphin"},
+                             preferences={"shift_start": "08:00", "shift_end": "20:00"}))
+    llm = FakeLLM(reply(calls=[("plan_driver_shift", {"current_soc_percent": 30, "full_shift": True})]),
+                  reply("Plano pronto."))
+    client, _ = client_for(factory, seed["a"], llm)
+    body = ask(client, "planeja meu turno").json()
+    assert "plan_driver_shift" in [t["function"]["name"] for t in llm.calls[0]["tools"]]
+    data = json.loads(llm.calls[1]["messages"][-1]["content"])
+    assert "error" not in data and data["window"].startswith("08:00–20:00") and data["vehicle"] == "BYD Dolphin"
+    assert body["tools_used"] == ["plan_driver_shift"]
+    assert body["suggested_actions"][0] == {"type": "open_driver", "label": "Abrir modo motorista"}

@@ -54,6 +54,10 @@ def derive_actions(records: list[tuple[str, dict, dict]], reply: str, user_text:
             actions.append({"type": "open_operator", "label": "Abrir meus postos"})
         elif name == "plan_driver_shift":
             actions.append({"type": "open_driver", "label": "Abrir modo motorista"})
+            stop = next(iter(data.get("stops") or []), None)
+            if stop and stop.get("station_id"):
+                actions.append({"type": "open_station", "station_id": stop["station_id"],
+                                "label": f"Ver {stop.get('station_name') or 'posto'}"[:60]})
     unique, seen = [], set()
     for action in actions:
         key = (action["type"], action.get("station_id"), action.get("connector_id"), action.get("session_id"))

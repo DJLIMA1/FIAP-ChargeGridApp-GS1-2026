@@ -8,6 +8,8 @@ cliente demo (dados em memória). Métodos podem ser síncronos ou ``async``:
 * ``current_reservation() -> dict | None`` / ``current_session() -> dict | None``
 * ``recent_sessions(limit: int) -> list[dict]`` / ``month_summary() -> dict | None``
 * ``owner_stations() -> list[dict]`` / ``owner_sessions(since: datetime) -> list[dict]``
+* opcionais: ``get_connector(id)``, ``driver_profile() -> dict | None`` (perfil salvo do Modo
+  Motorista) e ``driver_stations() -> list[dict]`` (postos para o planejador)
 
 O titular é sempre o usuário autenticado da ``source``: nenhuma ferramenta
 recebe ``user_id`` do modelo.
@@ -237,9 +239,13 @@ class Toolbox:
         return {**indicators, "base_recommendations": owner_recommendations(indicators)}
 
     async def _plan_driver_shift(self, args: dict) -> dict:
-        stations = await _call(self.source.list_stations, near=None, radius_km=None) or []
+        if hasattr(self.source, "driver_stations"):
+            stations = await _call(self.source.driver_stations) or []
+        else:
+            stations = await _call(self.source.list_stations, near=None, radius_km=None) or []
+        saved = await _call(self.source.driver_profile) if hasattr(self.source, "driver_profile") else None
         try:
-            result = await _call(self._planner, args, stations)
-        except Exception:  # noqa: BLE001 - o planejador é opcional e não pode derrubar o chat
+            result = await _call(self._planner, args, stations, self.now, saved)
+        except Exception:  # noqa: BLE001 - o planejador não pode derrubar o chat
             return {"error": "planejador do modo motorista indisponível no momento"}
         return result if isinstance(result, dict) else {"result": result}
