@@ -9,6 +9,7 @@ from chargegrid_app.ui.kpi import empty_state, point_status_badge, skeleton_bloc
 from chargegrid_app.ui.tables import cell_badge, data_table
 from chargegrid_core.formatting import brl, kwh
 
+from .amenities import AmenitiesEditor, amenities_summary
 from .base import View, embed, section
 
 COLUMNS = (('code', 'Ponto'), ('type', 'Conector'), ('power', 'Potência'), ('price', 'Tarifa'),
@@ -104,13 +105,15 @@ class StationsView(View):
                         self.dash.action(lambda: self.set_station_active(station, not published)),
                         secondary=published)
         edit = button('Editar posto', self.dash.link('operator', station_id=station['id']), secondary=True)
+        amenities = button('Comodidades', self.dash.action(lambda: self.edit_amenities(station)), secondary=True)
         online = sum(bool(self.live.get(p['id'], p).get('online')) for p in points)
         return section(
             station['name'],
             data_table(COLUMNS, rows, empty_message='Nenhum ponto neste posto.', numeric=('power', 'price')),
-            subtitle=f"{station.get('address', '')} · {len(points)} ponto(s), {online} online",
+            subtitle=f"{station.get('address', '')} · {len(points)} ponto(s), {online} online\n"
+                     f"{amenities_summary(station.get('amenities'))}",
             actions=[badge('Publicado' if published else 'Não publicado',
-                           theme.GREEN if published else theme.SLATE, width=110), edit, toggle],
+                           theme.GREEN if published else theme.SLATE, width=110), edit, amenities, toggle],
         )
 
     def point_actions(self, station, point):
@@ -130,6 +133,12 @@ class StationsView(View):
                                       on_click=self.dash.link('history', station_id=station['id'])))
         return ft.PopupMenuButton(icon=ft.Icons.MORE_VERT, icon_color=theme.TEXT_COLOR, items=items,
                                   tooltip=f"Ações do ponto {point['public_code']}")
+
+    async def edit_amenities(self, station):
+        async def saved(updated):
+            await self.load()
+
+        self.dash.page.show_dialog(AmenitiesEditor(self.dash, station, saved).dialog())
 
     async def set_station_active(self, station, active):
         await self.dash.api.request('PATCH', f"stations/{station['id']}", {'active': active})

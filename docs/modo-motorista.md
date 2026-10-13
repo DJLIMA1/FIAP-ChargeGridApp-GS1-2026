@@ -126,5 +126,5 @@ ganho sobre a estratégia ingênua; depois bateria 16% → "Próxima parada agor
   não entram.
 - A otimização usa faixas de SoC e poda: é próxima do ótimo, não garantidamente ótima — por isso o plano é
   sempre comparado (e nunca pior) que a estratégia ingênua.
-- A edição de comodidades pelo dono existe na API (e na demo), mas ainda não há formulário na tela de
-  operador do app.
+- A edição de comodidades pelo dono existe na API (e na demo) e no dashboard web do proprietário
+  (`apps/dashboard`, seção Postos e pontos → Comodidades); ainda não há formulário na tela de operador do app.

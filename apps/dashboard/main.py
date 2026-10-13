@@ -10,8 +10,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # O dashboard importa o app (tema, componentes, ApiClient, demo) e chargegrid_core
-# diretamente de apps/mobile/src. Em um build empacotado, os pacotes ficam ao lado.
-for path in (HERE, HERE.parent / 'mobile' / 'src'):
+# diretamente de apps/mobile/src. Em um build empacotado, ficam em ./src (veja README).
+for path in (HERE, HERE / 'src', HERE.parent / 'mobile' / 'src'):
     if path.is_dir() and str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

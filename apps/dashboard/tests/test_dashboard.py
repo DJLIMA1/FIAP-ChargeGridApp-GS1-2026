@@ -12,6 +12,7 @@ from chargegrid_dashboard.app import DashboardApp
 from chargegrid_dashboard.state import DashboardState, bucket_label
 from chargegrid_dashboard.views import VIEWS
 from chargegrid_dashboard.views import sessions as sessions_view
+from chargegrid_dashboard.views.amenities import amenities_payload, amenities_summary
 from chargegrid_dashboard.views.stations import parse_price
 from helpers import FakePage, MemoryPreferences, clickable, descendants, settle, texts
 
@@ -38,6 +39,18 @@ class StateTests(unittest.TestCase):
         self.assertEqual(state.period_label(), '01/10/2026 – 03/10/2026')
         self.assertEqual(bucket_label('2026-10-01T03:00:00+00:00', 'day'), '01/10')
         self.assertEqual(bucket_label('2026-10-01T15:00:00+00:00', 'hour'), '12h')
+
+    def test_amenities_payload_validation(self):
+        rows = [{'kind': 'cafe', 'name': ' Café ', 'distance': '60'}, {'kind': 'shopping', 'name': '', 'distance': ''}]
+        self.assertEqual(amenities_payload(rows), [{'kind': 'cafe', 'name': 'Café', 'distance_m': 60},
+                                                   {'kind': 'shopping', 'name': ''}])
+        for bad in ({'kind': 'bar'}, {'kind': 'cafe', 'distance': '1,5'}, {'kind': 'cafe', 'distance': '9000'},
+                    {'kind': 'cafe', 'name': 'x' * 81}):
+            with self.assertRaises(ValueError):
+                amenities_payload([bad])
+        with self.assertRaises(ValueError):
+            amenities_payload([{'kind': 'cafe'}] * 13)
+        self.assertEqual(amenities_summary([]), 'Nenhuma comodidade cadastrada')
 
     def test_price_parsing(self):
         self.assertEqual(parse_price('R$ 1,5'), '1.5000')
@@ -137,6 +150,25 @@ class DemoDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Salvar ponto', content)
         await self.dash.go('operator', claim=True)
         self.assertEqual(self.dash.state.section, 'stations')
+
+    async def test_station_amenities_editor_patches_station(self):
+        await self.open('stations')
+        station = self.dash.stations[0]
+        await self.dash.view.edit_amenities(station)
+        dialog = self.page.dialogs[-1]
+        editor_rows = [row for row in descendants(dialog.content) if isinstance(row, ft.Row)
+                       and any(isinstance(c, ft.Dropdown) for c in row.controls)]
+        before = len(editor_rows)
+        await clickable(dialog, '+ Adicionar comodidade')(None)
+        dropdowns = [item for item in descendants(dialog.content) if isinstance(item, ft.Dropdown)]
+        self.assertEqual(len(dropdowns), before + 1)
+        dropdowns[-1].value = 'banheiro'
+        fields = [item for item in descendants(dialog.content) if isinstance(item, ft.TextField)]
+        fields[-2].value, fields[-1].value = 'Sanitário', '30'
+        await clickable(dialog, 'Salvar')(None)
+        updated = next(s for s in await self.dash.load_stations() if s['id'] == station['id'])
+        self.assertEqual(updated['amenities'][-1], {'kind': 'banheiro', 'name': 'Sanitário', 'distance_m': 30})
+        self.assertIn('Sanitário (30 m)', texts(self.dash.content))
 
     async def test_coupons_reuse_app_form(self):
         content = await self.open('coupons', create=True)
