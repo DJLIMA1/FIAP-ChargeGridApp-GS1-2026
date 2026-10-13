@@ -22,7 +22,7 @@ from chargegrid_core.driver import (
 
 from ...database import db_session
 from ...errors import fail
-from ...http_helpers import station_row
+from ...http_helpers import station_rows
 from ...models import DriverProfile, Station, now
 from ...security import current_user
 from .schemas import DriverProfileInput, NextStopInput, PlanInput
@@ -105,7 +105,8 @@ def _stations(db, lat, lng, radius_km):
         query = query.where(distance <= radius_km).order_by(distance, Station.id)
     else:
         query = query.order_by(Station.id)
-    return [station_row(db, obj) for obj in db.scalars(query.limit(MAX_STATIONS))]
+    # One batch serialization for up to MAX_STATIONS stations (no per-point queries).
+    return station_rows(db, db.scalars(query.limit(MAX_STATIONS)).all())
 
 
 def _signals(data: NextStopInput, current: datetime):
