@@ -68,13 +68,13 @@ def test_default_discovery_only_serializes_requested_page(factory,seed,monkeypat
         db.add_all([Station(owner_id=seed['owner'],name=f'Station {i}',address='Test',latitude=0,longitude=0)
                     for i in range(3)])
     rendered = []
-    original = routes.station_row
+    original = routes.station_rows
 
-    def tracked(db,station):
-        rendered.append(station.id)
-        return original(db,station)
+    def tracked(db,stations):
+        rendered.extend(station.id for station in stations)
+        return original(db,stations)
 
-    monkeypatch.setattr(routes,'station_row',tracked)
+    monkeypatch.setattr(routes,'station_rows',tracked)
     client, _ = client_for(factory,seed['a'])
     try:
         response = client.get('/v1/stations',params={'limit':1})

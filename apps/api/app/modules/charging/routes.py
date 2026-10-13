@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 
 from ...database import db_session
 from ...errors import fail
-from ...http_helpers import page, session_row
+from ...http_helpers import page, session_row, session_rows
 from ...models import ChargingSession, Connector, SessionEvent, Station
 from ...schemas import (
     StartInput,
@@ -96,7 +96,7 @@ def history(
         .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc()),
         limit,
         offset,
-        lambda obj: session_row(db, obj),
+        many=lambda items: session_rows(db, items),
     )
 
 
@@ -115,20 +115,25 @@ def station_history(
         .where(Connector.station_id == station_id)
         .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
     )
-    return page(db, query, limit, offset, lambda obj: session_row(db, obj))
+    return page(db, query, limit, offset, many=lambda items: session_rows(db, items))
 
 
 @router.get("/operator/summary")
 def summary(user=Depends(current_user), db=Depends(db_session)):
     operator(user)
-    sessions = db.scalars(
-        select(ChargingSession).join(Connector).join(Station).where(Station.owner_id == user.id)
-    ).all()
+    # Aggregate in SQL; loading every historical session grew without bound.
+    total_sessions, energy_wh, estimated_cost = db.execute(
+        select(
+            func.count(ChargingSession.id),
+            func.sum(ChargingSession.energy_wh),
+            func.sum(ChargingSession.cost_estimate),
+        ).join(Connector).join(Station).where(Station.owner_id == user.id)
+    ).one()
     return {
         "stations": db.scalar(select(func.count()).select_from(Station).where(Station.owner_id == user.id)),
-        "total_sessions": len(sessions),
-        "total_energy_wh": str(sum(x.energy_wh for x in sessions)),
-        "total_estimated_cost": str(sum(x.cost_estimate for x in sessions)),
+        "total_sessions": total_sessions,
+        "total_energy_wh": str(energy_wh if energy_wh is not None else 0),
+        "total_estimated_cost": str(estimated_cost if estimated_cost is not None else 0),
     }
 
 
@@ -147,4 +152,4 @@ def operator_history(
         .where(Station.owner_id == user.id)
         .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
     )
-    return page(db, query, limit, offset, lambda obj: session_row(db, obj))
+    return page(db, query, limit, offset, many=lambda items: session_rows(db, items))

@@ -8,7 +8,7 @@ from sqlalchemy import case, func, select
 
 from ...database import db_session
 from ...errors import fail
-from ...http_helpers import page, point_row, station_row, update
+from ...http_helpers import page, point_row, station_row, station_rows, update
 from ...models import ChargingSession, Connector, Reservation, Station
 from ...schemas import (
     ConnectorInput,
@@ -68,9 +68,9 @@ def stations(
         if sort in ("default", "distance"):
             if sort == "distance":
                 query = query.order_by(None).order_by(distance, Station.id)
-            def render(obj):
-                return discover([station_row(db, obj)], lat=lat, lng=lng)[0]
-            return page(db, query, limit, offset, render)
+            def render(items):
+                return [discover([item], lat=lat, lng=lng)[0] for item in station_rows(db, items)]
+            return page(db, query, limit, offset, many=render)
     # Narrow by static point attributes before materializing authoritative states.
     # Availability itself also includes reservations, watchdog and reconciliation.
     point_query = select(Connector.id).where(Connector.station_id == Station.id, Connector.active.is_(True))
@@ -86,7 +86,7 @@ def stations(
     # Availability includes device reconciliation and active operations. Use the
     # authoritative serializer before pagination, rather than a weaker SQL guess.
     records = discover(
-        [station_row(db, obj) for obj in db.scalars(query)],
+        station_rows(db, db.scalars(query).all()),
         connector_type=connector_type, available_only=available_only,
         max_price_per_kwh=max_price_per_kwh, sort=sort, lat=lat, lng=lng,
     )
@@ -172,5 +172,5 @@ def operator_stations(
         select(Station).where(Station.owner_id == user.id).order_by(Station.id),
         limit,
         offset,
-        lambda obj: station_row(db, obj),
+        many=lambda items: station_rows(db, items),
     )

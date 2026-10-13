@@ -6,7 +6,6 @@ from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
     availability,
-    device_for,
     online,
     owned,
     row,
@@ -20,34 +19,91 @@ def update(obj, data):
         setattr(obj, key, value)
 
 
-def point_row(db, connector):
+def _retired_ids(db, connector_ids):
+    if not connector_ids:
+        return set()
+    return set(db.scalars(
+        select(Device.connector_id).join(Command, Command.device_id == Device.id).where(
+            Device.connector_id.in_(connector_ids),
+            Command.type == "FACTORY_RESET",
+            Command.status == "applied",
+        ).distinct()
+    ))
+
+
+def _point_state(db, connectors):
+    """Load every row that availability needs for many points in four queries."""
+    ids = [point.id for point in connectors]
+    if not ids:
+        return {}, {}, {}, set()
+    devices = {
+        device.connector_id: device
+        for device in db.scalars(select(Device).where(Device.connector_id.in_(ids), Device.revoked.is_(False)))
+    }
+    reservations = {
+        item.connector_id: item
+        for item in db.scalars(
+            select(Reservation).where(Reservation.connector_id.in_(ids), Reservation.status.in_(RES_ACTIVE))
+        )
+    }
+    sessions = {
+        item.connector_id: item
+        for item in db.scalars(
+            select(ChargingSession).where(
+                ChargingSession.connector_id.in_(ids), ChargingSession.status.in_(SESSION_ACTIVE)
+            )
+        )
+    }
+    return devices, reservations, sessions, _retired_ids(db, ids)
+
+
+def _render_point(db, connector, station, devices, reservations, sessions, retired):
     result = row(connector)
-    device = device_for(db, connector)
-    result.update(availability(db, connector, device=device))
+    device = devices.get(connector.id)
+    result.update(availability(
+        db, connector, device=device, station=station,
+        reservation=reservations.get(connector.id), session=sessions.get(connector.id),
+    ))
     result.update(
         online=online(device),
         physical_state=device.physical_state if device else "unknown",
-        retired=bool(db.scalar(
-            select(Command.id).join(Device, Device.id == Command.device_id).where(
-                Device.connector_id == connector.id,
-                Command.type == "FACTORY_RESET",
-                Command.status == "applied",
-            ).limit(1)
-        )),
+        retired=connector.id in retired,
     )
     return result
 
 
+def point_row(db, connector):
+    station = db.get(Station, connector.station_id)
+    return _render_point(db, connector, station, *_point_state(db, [connector]))
+
+
+def station_rows(db, stations):
+    """Serialize stations with a constant number of queries, not per point (N+1)."""
+    stations = list(stations)
+    if not stations:
+        return []
+    connectors = db.scalars(
+        select(Connector).where(Connector.station_id.in_([station.id for station in stations]))
+    ).all()
+    state = _point_state(db, connectors)
+    by_station = {}
+    for point in connectors:
+        by_station.setdefault(point.station_id, []).append(point)
+    results = []
+    for station in stations:
+        result = row(station)
+        result.pop("presence_secret", None)
+        result["latitude"] = float(station.latitude)
+        result["longitude"] = float(station.longitude)
+        result["connectors"] = [
+            _render_point(db, point, station, *state) for point in by_station.get(station.id, [])
+        ]
+        results.append(result)
+    return results
+
+
 def station_row(db, station):
-    result = row(station)
-    result.pop("presence_secret", None)
-    result["latitude"] = float(station.latitude)
-    result["longitude"] = float(station.longitude)
-    result["connectors"] = [
-        point_row(db, point)
-        for point in db.scalars(select(Connector).where(Connector.station_id == station.id))
-    ]
-    return result
+    return station_rows(db, [station])[0]
 
 
 def point_context(db, connector):
@@ -69,19 +125,47 @@ def reservation_row(db, reservation):
     return result
 
 
-def session_row(db, session):
-    result = row(session)
-    if result:
+def session_rows(db, sessions):
+    """History pages: preload points, stations and devices instead of N+1 lookups."""
+    sessions = list(sessions)
+    connector_ids = {session.connector_id for session in sessions}
+    devices = {}
+    # Strong references keep these rows in the (weak) identity map, so the
+    # db.get() calls in point_context below are served from memory.
+    loaded = []
+    if connector_ids:
+        connectors = db.scalars(select(Connector).where(Connector.id.in_(connector_ids))).all()
+        station_ids = {point.station_id for point in connectors}
+        loaded = [*connectors, *db.scalars(select(Station).where(Station.id.in_(station_ids))).all()]
+        devices = {
+            device.connector_id: device
+            for device in db.scalars(
+                select(Device).where(Device.connector_id.in_(connector_ids), Device.revoked.is_(False))
+            )
+        }
+    results = []
+    for session in sessions:
+        result = row(session)
         connector = db.get(Connector, session.connector_id)
         result.update(point_context(db, connector))
-        result["online"] = online(device_for(db, connector))
-    return result
+        result["online"] = online(devices.get(connector.id))
+        results.append(result)
+    del loaded
+    return results
 
 
-def page(db, query, limit, offset, renderer=row):
+def session_row(db, session):
+    if session is None:
+        return None
+    return session_rows(db, [session])[0]
+
+
+def page(db, query, limit, offset, renderer=row, *, many=None):
+    """Paginate; ``many`` renders the whole page at once to avoid N+1 queries."""
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     items = db.scalars(query.limit(limit).offset(offset)).all()
-    return {"items": [renderer(x) for x in items], "total": total, "limit": limit, "offset": offset}
+    rendered = many(items) if many else [renderer(x) for x in items]
+    return {"items": rendered, "total": total, "limit": limit, "offset": offset}
 
 
 def own_device(db, user, device_id, *, require_idle=True):
