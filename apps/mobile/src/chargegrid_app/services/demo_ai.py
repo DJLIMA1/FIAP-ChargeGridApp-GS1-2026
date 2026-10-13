@@ -14,12 +14,14 @@ from datetime import timedelta
 
 import httpx
 
+from chargegrid_core import analytics
 from chargegrid_core.ai import (
     LLMUnavailable,
     Toolbox,
     build_payload,
+    indicators_from_dashboard,
     natural_search,
-    owner_insights,
+    owner_insights_from_indicators,
     parse_completion,
     run_chat,
     session_insight,
@@ -180,8 +182,23 @@ async def handle(api, method, path, body):
         return (await session_insight(session, source.recent_sessions(30), now=now, llm=llm))[0]
     if not api._profile.get('operator_enabled'):
         raise ApiError('Operador não habilitado.', 403, 'forbidden')
+    return await _owner_insights(api, body, now, llm)
+
+
+async def _owner_insights(api, body, now, llm):
+    """Mesmo corpo do dashboard ({from, to, station_id}) e os mesmos indicadores
+    (chargegrid_core.analytics via demo_owner) que a tela de Insights mostra."""
+    from ..demo_owner import owner_for
+
     days = body.get('days', 30)
-    if not isinstance(days, int) or not 7 <= days <= 90:
-        raise ApiError('Período deve ter de 7 a 90 dias.', 422, 'validation_error')
-    sessions = source.owner_sessions(now - timedelta(days=days))
-    return (await owner_insights(source.owner_stations(), sessions, now=now, days=days, llm=llm))[0]
+    if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366:
+        raise ApiError('Período deve ter de 1 a 366 dias.', 422, 'validation_error')
+    params = {key: body[key] for key in ('from', 'to', 'station_id') if body.get(key)}
+    if 'from' not in params:
+        end = analytics.parse_time(params.get('to')) or now
+        params['from'] = (end - timedelta(days=days)).isoformat()
+    owner = owner_for(api)
+    overview, heatmap = owner.overview(params), owner.heatmap(params)
+    alerts = owner.alerts({'station_id': params.get('station_id')})['items']
+    indicators = indicators_from_dashboard(overview, heatmap, alerts)
+    return (await owner_insights_from_indicators(indicators, now=now, llm=llm))[0]

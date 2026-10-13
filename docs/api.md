@@ -98,20 +98,23 @@ Resposta 200: `{session_id,summary,tips:[string],comparison:{cost_brl,energy_kwh
 
 POST `/ai/owner-insights`
 
-Exige operador habilitado; caso contrário, 403. Corpo opcional: `{days?:7–90}` (padrão 30). **Contrato estável,
-consumido pelo dashboard web:**
+Exige operador habilitado; caso contrário, 403. Corpo opcional, o mesmo filtro do dashboard:
+`{from?:ISO-8601, to?:ISO-8601, station_id?:UUID, days?:1–366}`. Sem `from`, analisa os últimos `days` dias (padrão 30)
+até `to` ou agora; janela inválida → 422 `invalid_period`; posto de outro dono → 404. **Contrato estável, consumido pelo
+dashboard web:**
 
 ```json
 {"summary": "string",
- "recommendations": [{"title": "string", "detail": "string", "impact": "alto|médio|baixo",
+ "recommendations": [{"title": "string", "detail": "string", "impact": "high|medium|low",
                       "kind": "pricing|operations|marketing"}],
  "generated_at": "ISO-8601 UTC",
  "model": "deepseek/deepseek-v4.1-flash | chargegrid-regras"}
 ```
 
-As recomendações vêm dos indicadores dos postos do dono: receita e energia estimadas, sessões por hora, ocupação,
-interrupções/falhas e pontos offline. A IA apenas redige a partir desses números. Se a resposta da IA for inválida, a
-rota devolve as recomendações por regras.
+Os indicadores são os mesmos de `/owner/overview`, `/owner/heatmap` e `/owner/alerts` (`chargegrid_core.analytics`):
+receita e energia estimadas, ticket médio, ocupação, disponibilidade, interrupções/falhas, no-show de reservas,
+sessões por hora e alertas de pontos. A IA apenas redige a partir desses números (sem raciocínio estendido, ~2–5 s).
+Se a resposta da IA for inválida ou indisponível, a rota devolve as recomendações por regras.
 
 ## Banco e papel de execução
 

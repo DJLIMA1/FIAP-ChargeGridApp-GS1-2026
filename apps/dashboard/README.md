@@ -70,6 +70,7 @@ compartilhado com `apps/mobile/src`, monte um diretório de build com tudo lado 
 rm -rf /tmp/cg-dashboard-web && mkdir -p /tmp/cg-dashboard-web/src
 cp -R apps/dashboard/main.py apps/dashboard/pyproject.toml apps/dashboard/chargegrid_dashboard /tmp/cg-dashboard-web/
 cp -R apps/mobile/src/chargegrid_app apps/mobile/src/chargegrid_core /tmp/cg-dashboard-web/src/
+rm -f /tmp/cg-dashboard-web/src/chargegrid_app/services/demo_ai.py  # prévia de IA local, nunca publicar
 cp -R apps/mobile/assets /tmp/cg-dashboard-web/assets
 cd /tmp/cg-dashboard-web && flet build web --base-url /painel/ --route-url-strategy hash
 # saída em build/web → qualquer hospedagem estática (Vercel, GitHub Pages, S3)

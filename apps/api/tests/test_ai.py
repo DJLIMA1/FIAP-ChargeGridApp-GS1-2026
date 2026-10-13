@@ -229,7 +229,7 @@ def test_owner_insights_contract(factory, seed):
     assert all(set(r) == {"title", "detail", "impact", "kind"} and r["kind"] in ("pricing", "operations", "marketing")
                for r in body["recommendations"])
     written = {"summary": "Bom início.", "recommendations": [
-        {"title": "Cupom à tarde", "detail": "Ocupação de 0,1%: ofereça 10% das 14h às 17h.", "impact": "médio", "kind": "marketing"}]}
+        {"title": "Cupom à tarde", "detail": "Ocupação de 0,1%: ofereça 10% das 14h às 17h.", "impact": "medium", "kind": "marketing"}]}
     llm = FakeLLM(reply(json.dumps(written, ensure_ascii=False), model="anthropic/claude-haiku-5.5"))
     client, _ = client_for(factory, seed["owner"], llm)
     body = client.post("/v1/ai/owner-insights", json={"days": 7}).json()
@@ -243,6 +243,16 @@ def test_owner_insights_contract(factory, seed):
         db.commit()
     client, _ = client_for(factory, seed["owner"], None)
     assert "1 posto" in client.post("/v1/ai/owner-insights", json={}).json()["summary"]
+    # Mesmo corpo do dashboard: {from, to, station_id}, com indicadores de chargegrid_core.analytics.
+    window = {"from": (now() - timedelta(days=1)).isoformat(), "to": now().isoformat(), "station_id": str(seed["station"])}
+    body = client.post("/v1/ai/owner-insights", json=window).json()
+    assert set(body) == {"summary", "recommendations", "generated_at", "model"} and "1 recarga" in body["summary"]
+    assert all(r["impact"] in ("high", "medium", "low") for r in body["recommendations"])
+    empty = client.post("/v1/ai/owner-insights", json={**window, "from": (now() - timedelta(hours=1)).isoformat()}).json()
+    assert "0 recarga" in empty["summary"]
+    assert client.post("/v1/ai/owner-insights", json={**window, "station_id": str(other.id)}).status_code == 404
+    bad = client.post("/v1/ai/owner-insights", json={"from": now().isoformat(), "to": (now() - timedelta(days=1)).isoformat()})
+    assert bad.status_code == 422
 
 
 def test_openrouter_client_headers_payload_and_errors(monkeypatch):

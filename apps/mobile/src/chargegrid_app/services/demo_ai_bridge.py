@@ -24,5 +24,9 @@ def chat_available():
 async def handle(api, method, path, body):
     module = _module()
     if module is None:
+        if (method, path) == ('POST', 'ai/owner-insights'):
+            # Sem a prévia de IA, o dashboard demo mostra o exemplo local no mesmo contrato.
+            from ..demo_owner import owner_for
+            return owner_for(api).route(method, path, {}, body)
         raise ApiError('Assistente de IA indisponível nesta versão do app.', 503, 'ai_unavailable')
     return await module.handle(api, method, path, body)

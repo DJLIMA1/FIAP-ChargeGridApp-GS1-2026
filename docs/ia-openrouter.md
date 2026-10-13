@@ -167,8 +167,9 @@ Detalhes em [api.md](api.md#assistente-de-ia). Resumo:
   e devolve `{reply, suggested_actions:[{type, label, station_id?, connector_id?, session_id?}], tools_used, model}`.
 * `POST /v1/ai/search` recebe `{query, lat?, lng?}` e devolve `{filters, unsupported, explanation, params, model}`.
 * `POST /v1/ai/session-insight` recebe `{session_id}` e devolve `{session_id, summary, tips, comparison, generated_at, model}`.
-* `POST /v1/ai/owner-insights` recebe `{days?: 7–90}` e devolve **exatamente**
-  `{summary, recommendations:[{title, detail, impact:"alto"|"médio"|"baixo", kind:"pricing"|"operations"|"marketing"}], generated_at, model}`.
+* `POST /v1/ai/owner-insights` recebe o filtro do dashboard `{from?, to?, station_id?, days?}` e devolve **exatamente**
+  `{summary, recommendations:[{title, detail, impact:"high"|"medium"|"low", kind:"pricing"|"operations"|"marketing"}], generated_at, model}`.
+  Os indicadores vêm de `chargegrid_core.analytics` (os mesmos do dashboard, via `indicators_from_dashboard`).
 
 `model = "chargegrid-regras"` indica resposta por regras determinísticas, usada quando a IA está desligada ou falhou.
 Busca e insights sempre respondem dessa forma. O chat responde `503` e o app usa as orientações locais.
@@ -209,7 +210,8 @@ A prévia demo lê as mesmas `OPENROUTER_MODEL`/`OPENROUTER_FALLBACK_MODELS`/`OP
    * o chat usa as orientações locais;
    * a **Busca inteligente** na aba Recarga funciona por regras. Exemplo: "tipo 2 disponível perto do centro até R$ 2/kWh";
    * o **Resumo inteligente da recarga** aparece no Histórico;
-   * os **Insights dos meus postos** aparecem em Postos, no modo operador.
+   * os **Insights dos meus postos** aparecem em Postos, no modo operador, e na seção **Insights IA** do dashboard
+     web (`apps/dashboard`). Com a chave no processo, o dashboard demo também usa a IA real.
 2. **Demo com IA real:** exporte a chave apenas no processo, sem imprimir:
    `set -a; source ../../.env; set +a` e depois o mesmo comando. O chat passa a usar o laço do core, chamando o OpenRouter
    com ferramentas sobre os dados demo. Perguntas sugeridas:

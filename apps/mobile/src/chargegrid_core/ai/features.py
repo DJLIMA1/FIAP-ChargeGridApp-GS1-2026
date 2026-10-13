@@ -82,8 +82,15 @@ async def session_insight(session: dict, history: list[dict], *, now: datetime, 
 
 async def owner_insights(stations: list[dict], sessions: list[dict], *, now: datetime, days: int = 30,
                          llm=None) -> tuple[dict, dict]:
-    """Contrato estável: {summary, recommendations:[{title, detail, impact, kind}], generated_at, model}."""
+    """Variante a partir de registros REST (postos + sessões)."""
     indicators = owner_indicators(stations, [s for s in sessions if s], now=now, days=days)
+    return await owner_insights_from_indicators(indicators, now=now, llm=llm)
+
+
+async def owner_insights_from_indicators(indicators: dict, *, now: datetime, llm=None) -> tuple[dict, dict]:
+    """Contrato estável: {summary, recommendations:[{title, detail, impact, kind}], generated_at, model}.
+
+    ``indicators`` vem de ``owner_indicators`` ou de ``indicators_from_dashboard`` (analytics)."""
     base = owner_recommendations(indicators)
     result, meta = {"summary": owner_summary(indicators), "recommendations": base}, _meta()
     if llm is not None and indicators["points"]:

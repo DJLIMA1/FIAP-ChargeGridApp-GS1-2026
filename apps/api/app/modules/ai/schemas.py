@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -34,4 +35,10 @@ class SessionInsightInput(Input):
 
 
 class OwnerInsightsInput(Input):
-    days: int = Field(default=30, ge=7, le=90)
+    """Mesmo filtro do dashboard (``from``/``to`` ISO e ``station_id`` opcional).
+    Sem ``from``/``to``, analisa os últimos ``days`` dias."""
+
+    start: datetime | None = Field(default=None, alias="from")
+    end: datetime | None = Field(default=None, alias="to")
+    station_id: UUID | None = None
+    days: int = Field(default=30, ge=1, le=366)

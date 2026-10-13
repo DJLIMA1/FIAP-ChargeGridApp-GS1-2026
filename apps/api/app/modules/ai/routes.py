@@ -14,8 +14,9 @@ from fastapi import APIRouter, Depends
 from chargegrid_core.ai import (
     LLMUnavailable,
     Toolbox,
+    indicators_from_dashboard,
     natural_search,
-    owner_insights,
+    owner_insights_from_indicators,
     run_chat,
     session_insight,
     system_prompt,
@@ -26,7 +27,8 @@ from ...errors import fail
 from ...http_helpers import session_row
 from ...models import ChargingSession
 from ...security import current_user
-from ...service import operator
+from ..owner import routes as owner_routes
+from ..owner import service as owner_service
 from .client import get_llm
 from .schemas import ChatInput, OwnerInsightsInput, SearchInput, SessionInsightInput
 from .service import enforce_limits, record_usage
@@ -101,15 +103,19 @@ async def insight(data: SessionInsightInput, user=Depends(current_user), db=Depe
 async def insights_for_owner(data: OwnerInsightsInput | None = None, user=Depends(current_user),
                              db=Depends(db_session), llm=Depends(get_llm)):
     """Contrato estável (dashboard web):
-    {summary, recommendations: [{title, detail, impact, kind}], generated_at, model}."""
-    operator(user)
+    {summary, recommendations: [{title, detail, impact, kind}], generated_at, model}.
+
+    Indicadores calculados por ``chargegrid_core.analytics`` (os mesmos de ``/owner/*``)."""
+    data = data or OwnerInsightsInput()
+    scope = owner_routes.scope_for(db, user, data.station_id)
     enforce_limits(db, user)
-    days = (data or OwnerInsightsInput()).days
-    now = _now()
-    source = DbSource(db, user)
+    end = data.end or _now()
+    window = owner_routes.window_for(data.start or end - timedelta(days=data.days), end)
+    indicators = indicators_from_dashboard(owner_service.overview(db, scope, window),
+                                           owner_service.heatmap(db, scope, window),
+                                           owner_service.alerts(db, scope)["items"])
     started = time.monotonic()
-    result, meta = await owner_insights(source.owner_stations(), source.owner_sessions(now - timedelta(days=days)),
-                                        now=now, days=days, llm=llm)
+    result, meta = await owner_insights_from_indicators(indicators, now=_now(), llm=llm)
     record_usage(db, user, "owner_insights", meta["status"], model=meta["model"], usage=meta["usage"],
                  latency_ms=_elapsed_ms(started))
     return result

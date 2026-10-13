@@ -3,6 +3,7 @@
 import json
 import re
 import unittest
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -220,12 +221,35 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
                 await self.api.request('POST', 'ai/search', {'query': 'ccs'})
             self.assertEqual(error.exception.status, 429)
 
+    async def test_demo_dashboard_owner_insights_use_real_ai_with_key(self):
+        seen = []
+
+        async def fake_complete(messages, tools, timeout=None, tool_choice='auto', **options):
+            seen.append((messages, options))
+            return {'content': json.dumps({'summary': 'Resumo IA.', 'recommendations': [
+                {'title': 'Pico', 'detail': 'Tarifa maior às 18h.', 'impact': 'high', 'kind': 'pricing'}]}),
+                'model': 'deepseek/deepseek-v4.1-flash', 'usage': {}, 'tool_calls': []}
+
+        end = self.api._now()
+        body = {'from': (end - timedelta(days=7)).isoformat(), 'to': end.isoformat(), 'station_id': None}
+        with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'test-key'}), \
+                patch.object(demo_ai, 'complete', fake_complete):
+            result = await self.api.owner_insights(body)
+        self.assertEqual(result['model'], 'deepseek/deepseek-v4.1-flash')
+        self.assertEqual(result['recommendations'][0]['impact'], 'high')
+        facts = json.loads(seen[0][0][1]['content'])['indicadores']
+        self.assertEqual(facts['period_days'], 7)
+        self.assertGreater(facts['sessions'], 0)  # histórico fictício do dashboard (chargegrid_core.analytics)
+        self.assertEqual(seen[0][1]['reasoning_effort'], 'none')
+
     async def test_bridge_without_preview_module_is_unavailable(self):
         with patch.object(demo_ai_bridge, '_module', return_value=None):
             self.assertFalse(demo_ai_bridge.chat_available())
             with self.assertRaises(ApiError) as error:
                 await demo_ai_bridge.handle(self.api, 'POST', 'ai/search', {'query': 'x'})
             self.assertEqual(error.exception.code, 'ai_unavailable')
+            sample = await demo_ai_bridge.handle(self.api, 'POST', 'ai/owner-insights', {})
+            self.assertEqual(set(sample), {'summary', 'recommendations', 'generated_at', 'model'})
 
 
 class AiScreensTests(unittest.IsolatedAsyncioTestCase):
@@ -264,7 +288,7 @@ class AiScreensTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Valores estimados', texts(screen))
             screen = await operator.build(self.app)
             await by_tooltip(screen, 'Insights dos meus postos (30 dias)')(None)
-            self.assertIn('Nos últimos 30 dias', texts(screen))
+            self.assertRegex(texts(screen), r'De \d{2}/\d{2} a \d{2}/\d{2}: \d+ recarga')
             self.assertRegex(texts(screen), r'impacto (alto|médio|baixo)')
 
 

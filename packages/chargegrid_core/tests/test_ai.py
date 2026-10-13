@@ -187,7 +187,7 @@ def test_owner_indicators_and_rules():
     assert 0 < ind["occupancy_percent"] < 15
     recs = owner_recommendations(ind)
     assert {r["kind"] for r in recs} <= {"pricing", "operations", "marketing"}
-    assert all(r["impact"] in ("alto", "médio", "baixo") for r in recs)
+    assert all(r["impact"] in ("high", "medium", "low") for r in recs)
     assert "R$ 200,00" in owner_summary(ind)
     empty = owner_indicators([], [], now=NOW)
     assert owner_recommendations(empty)[0]["kind"] == "operations"
@@ -225,7 +225,7 @@ def test_writer_parsers_validate_contract():
         {"title": "Cupom", "detail": "10% das 14h às 17h", "impact": "medio", "kind": "Pricing"},
         {"title": "x", "detail": "y", "impact": "enorme", "kind": "outro"}, {"title": "sem detalhe"}]})
     parsed = parse_owner_insights(content)
-    assert parsed["recommendations"][0] == {"title": "Cupom", "detail": "10% das 14h às 17h", "impact": "médio", "kind": "pricing"}
+    assert parsed["recommendations"][0] == {"title": "Cupom", "detail": "10% das 14h às 17h", "impact": "medium", "kind": "pricing"}
     assert parsed["recommendations"][1]["kind"] == "operations" and len(parsed["recommendations"]) == 2
     assert parse_owner_insights('{"summary": "x", "recommendations": []}') is None
     assert parse_session_insight('{"summary": "Ok", "tips": ["a", 3, ""]}') == {"summary": "Ok", "tips": ["a"]}
@@ -384,3 +384,37 @@ def test_plan_driver_shift_uses_real_driver_planner_and_saved_profile():
     from chargegrid_core.ai.actions import derive_actions
     actions = derive_actions(toolbox.records[:1], "plano")
     assert [a["type"] for a in actions] == ["open_driver", "open_station"]
+
+
+
+def test_indicators_from_dashboard_analytics_feed_rules_and_writer():
+    from chargegrid_core import analytics
+    from chargegrid_core.ai import indicators_from_dashboard, owner_insights_from_indicators
+
+    start, end = NOW - timedelta(days=7), NOW
+    sessions = [{"connector_id": "p1", "status": "interrupted" if i == 0 else "completed", "energy_wh": "10000",
+                 "cost_estimate": "20", "started_at": (NOW - timedelta(days=i, hours=1)).isoformat(),
+                 "ended_at": (NOW - timedelta(days=i, minutes=5)).isoformat(), "created_at": (NOW - timedelta(days=i, hours=1)).isoformat()}
+                for i in range(5)]
+    totals = analytics.summarize_sessions(sessions, start, end, NOW)
+    totals.update(reservations=10, no_shows=3)
+    overview = {"period": {"from": start.isoformat(), "to": end.isoformat()}, "station_id": None,
+                "kpis": analytics.build_kpis(totals, points=2, points_online=1, start=start, end=end),
+                "stations": {"total": 1}, "ranking": []}
+    heat = analytics.heatmap_payload(analytics.heatmap_cells(sessions, start, end))
+    heat["peak_hours"] = analytics.peak_hours(heat)
+    alerts = [{"kind": "device_offline", "title": "Dispositivo offline", "detail": "P2: sem comunicação."}]
+    ind = indicators_from_dashboard(overview, heat, alerts)
+    assert ind["sessions"] == 5 and ind["revenue_brl"] == 100 and ind["energy_kwh"] == 50
+    assert ind["offline_points"] == 1 and ind["no_show_percent"] == 30 and ind["period_days"] == 7
+    assert sum(ind["sessions_by_hour"].values()) == 5 and ind["peak_hours"]
+    result, meta = run(owner_insights_from_indicators(ind, now=NOW))
+    titles = [r["title"] for r in result["recommendations"]]
+    assert "Recupere os pontos sem comunicação" in titles and "Reduza reservas não utilizadas" in titles
+    assert result["summary"].startswith("De 06/10 a 13/10") and meta["status"] == "rules"
+    assert all(r["impact"] in ("high", "medium", "low") for r in result["recommendations"])
+    writer = Script(response('{"summary": "ok", "recommendations": [{"title": "T", "detail": "D", '
+                             '"impact": "alto", "kind": "maintenance"}]}'))
+    result, meta = run(owner_insights_from_indicators(ind, now=NOW, llm=writer))
+    assert result["recommendations"] == [{"title": "T", "detail": "D", "impact": "high", "kind": "operations"}]
+    assert "Dispositivo" in writer.seen[0]["messages"][1]["content"] or "P2" in writer.seen[0]["messages"][1]["content"]

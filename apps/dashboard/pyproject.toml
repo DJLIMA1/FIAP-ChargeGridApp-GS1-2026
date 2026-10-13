@@ -11,7 +11,9 @@ product = "ChargeGrid Painel"
 artifact = "chargegrid-dashboard"
 
 [tool.flet.app]
-exclude = [".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", "__pycache__"]
+exclude = [".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", "__pycache__",
+           # Prévia local de IA (chama o OpenRouter direto): nunca vai para o site publicado.
+           "src/chargegrid_app/services/demo_ai.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

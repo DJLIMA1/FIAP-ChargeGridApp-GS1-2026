@@ -9,7 +9,8 @@ from .components import button, card, field
 
 RULES_MODEL = 'chargegrid-regras'
 _SCREEN_PARAMS = ('lat', 'lng', 'radius', 'connector_type', 'available_only', 'max_price_per_kwh', 'sort')
-_KIND_LABELS = {'pricing': 'Preço', 'operations': 'Operação', 'marketing': 'Divulgação'}
+_KIND_LABELS = {'pricing': 'Preço', 'operations': 'Operação', 'marketing': 'Divulgação', 'maintenance': 'Manutenção'}
+_IMPACT_LABELS = {'high': 'alto', 'medium': 'médio', 'low': 'baixo'}
 
 
 def ai_supported(app):
@@ -131,7 +132,7 @@ def owner_insights_control(app, days=30):
             controls.append(card(ft.Column([
                 ft.Text(str(item.get('title') or ''), size=14, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
                 ft.Text(str(item.get('detail') or ''), size=12, color=theme.TEXT_COLOR),
-                ft.Text(f"{kind} · impacto {item.get('impact') or 'médio'}", size=11, color=theme.GRAY_TEXT),
+                ft.Text(f"{kind} · impacto {_IMPACT_LABELS.get(item.get('impact'), 'médio')}", size=11, color=theme.GRAY_TEXT),
             ], spacing=4), padding=10, border=ft.Border.all(1, theme.LIGHT_GRAY)))
         controls.append(ft.Text(_origin_label(result.get('model')), size=11, color=theme.GRAY_TEXT, italic=True))
         return controls

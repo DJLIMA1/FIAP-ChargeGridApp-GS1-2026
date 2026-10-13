@@ -16,7 +16,7 @@ LOCAL_TZ = timezone(timedelta(hours=-3))  # America/Sao_Paulo (sem horário de v
 PEAK_HOURS = range(18, 21)  # horário de ponta das distribuidoras: 18h-21h
 FINISHED = ("completed", "interrupted")
 KINDS = ("pricing", "operations", "marketing")
-IMPACTS = ("alto", "médio", "baixo")
+IMPACTS = ("high", "medium", "low")  # mesmo vocabulário do dashboard web
 
 
 def _date(value) -> datetime | None:
@@ -126,41 +126,51 @@ def owner_recommendations(ind: dict) -> list[dict]:
     recs = []
     if not ind["points"]:
         return [_rec("Vincule seu primeiro ponto", "Escaneie o QR de propriedade do equipamento para publicar o posto.",
-                     "alto", "operations")]
+                     "high", "operations")]
     if ind["offline_points"] or ind["fault_points"]:
         recs.append(_rec("Recupere os pontos sem comunicação",
                          f"{ind['offline_points']} ponto(s) offline e {ind['fault_points']} com falha deixam de atender motoristas.",
-                         "alto", "operations"))
+                         "high", "operations"))
     if ind["sessions"] and ind["failure_rate_percent"] >= 10:
         recs.append(_rec("Reduza interrupções",
                          f"{ind['failure_rate_percent']:.0f}% das sessões terminaram interrompidas ou com falha. Verifique cabo, rede e firmware.",
-                         "alto", "operations"))
+                         "high", "operations"))
     if ind["sessions"] == 0:
         recs.append(_rec("Divulgue o posto", "Nenhuma recarga no período. Crie um cupom de boas-vindas e confira se o endereço está correto.",
-                         "alto", "marketing"))
+                         "high", "marketing"))
     elif ind["occupancy_percent"] < 15:
         quiet = [h for h in range(8, 22) if str(h) not in ind["sessions_by_hour"]]
         window = f"{quiet[0]}h–{quiet[0] + 3}h" if quiet else "horários de menor movimento"
         recs.append(_rec("Ocupe os horários ociosos",
                          f"Ocupação de {_num(ind['occupancy_percent'])}%. Um cupom de 10% em {window} pode atrair recargas sem reduzir a receita no pico.",
-                         "médio", "pricing"))
+                         "medium", "pricing"))
     if ind["sessions"] and ind["peak_window_sessions"] / ind["sessions"] >= 0.4:
         recs.append(_rec("Valorize o horário de ponta",
                          "Boa parte das recargas acontece entre 18h e 21h. Avalie tarifa diferenciada ou reserva nesse horário.",
-                         "médio", "pricing"))
+                         "medium", "pricing"))
     if ind["sessions"] and ind["avg_ticket_brl"] and ind["avg_ticket_brl"] < 10:
         recs.append(_rec("Aumente o ticket médio",
                          f"Ticket médio de {brl(ind['avg_ticket_brl'])}. Sugira recargas maiores com cupom progressivo ou parceria com comércio próximo.",
-                         "baixo", "marketing"))
+                         "low", "marketing"))
+    if (ind.get("no_show_percent") or 0) >= 10 and ind.get("reservations"):
+        recs.append(_rec("Reduza reservas não utilizadas",
+                         f"{_num(ind['no_show_percent'])}% das reservas expiraram sem recarga. Considere lembretes "
+                         "ou um prazo de tolerância menor.", "medium", "operations"))
     if not recs:
-        recs.append(_rec("Mantenha a operação", "Indicadores estáveis. Acompanhe semanalmente ocupação e falhas.", "baixo", "operations"))
+        recs.append(_rec("Mantenha a operação", "Indicadores estáveis. Acompanhe semanalmente ocupação e falhas.", "low", "operations"))
     return recs[:5]
 
 
 def owner_summary(ind: dict) -> str:
     if not ind["points"]:
         return "Você ainda não tem pontos publicados."
-    return (f"Nos últimos {ind['period_days']} dias: {ind['sessions']} recarga(s), "
+    start, end = _date(ind.get("period_from")), _date(ind.get("period_to"))
+    if start and end:
+        last = end - timedelta(microseconds=1)
+        label = f"De {start.astimezone(LOCAL_TZ):%d/%m} a {last.astimezone(LOCAL_TZ):%d/%m}"
+    else:
+        label = f"Nos últimos {ind['period_days']} dias"
+    return (f"{label}: {ind['sessions']} recarga(s), "
             f"{_num(ind['energy_kwh'])} kWh e {brl(ind['revenue_brl'])} estimados em {ind['stations']} posto(s). "
             f"Ocupação média de {_num(ind['occupancy_percent'])}%.")
 
@@ -221,3 +231,49 @@ def session_summary(facts: dict) -> str:
         text += (" Custo na sua média." if abs(delta) < 5 else
                  f" Custo {abs(delta)}% {'acima' if delta > 0 else 'abaixo'} da sua média de {brl(facts['avg_cost_brl'])}.")
     return text
+
+
+def _dec(value) -> float:
+    try:
+        return float(value) if value not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def indicators_from_dashboard(overview: dict, heatmap: dict, alerts: list[dict]) -> dict:
+    """Converte as saídas de ``chargegrid_core.analytics`` (overview, heatmap e alertas do dashboard)
+    no mesmo formato de ``owner_indicators`` — base das recomendações e do texto da IA."""
+    kpis = overview.get("kpis") or {}
+    period = overview.get("period") or {}
+    start, end = _date(period.get("from")), _date(period.get("to"))
+    days = max(1, round((end - start).total_seconds() / 86400)) if start and end else 30
+    sessions = int(kpis.get("sessions") or 0)
+    interrupted, failed = int(kpis.get("interrupted_sessions") or 0), int(kpis.get("failed_sessions") or 0)
+    by_hour = [sum(row[hour] for row in heatmap.get("cells") or []) for hour in range(24)]
+    kinds = [alert.get("kind") for alert in alerts or []]
+    stations = overview.get("stations") or {}
+    revenue, energy = _dec(kpis.get("revenue")), _dec(kpis.get("energy_kwh"))
+    return {
+        "period_days": days, "period_from": period.get("from"), "period_to": period.get("to"),
+        "station_id": overview.get("station_id"),
+        "stations": int(stations.get("total") or 0), "points": int(kpis.get("points") or 0),
+        "points_online": int(kpis.get("points_online") or 0),
+        "offline_points": kinds.count("device_offline"), "fault_points": kinds.count("device_fault"),
+        "sessions": sessions, "completed": max(0, sessions - interrupted), "interrupted": interrupted,
+        "failed": failed, "active": int(kpis.get("active_sessions") or 0),
+        "failure_rate_percent": round(100 * (interrupted + failed) / (sessions + failed), 1) if sessions + failed else 0.0,
+        "energy_kwh": round(energy, 2), "revenue_brl": round(revenue, 2),
+        "avg_ticket_brl": round(_dec(kpis.get("average_ticket")), 2),
+        "avg_price_per_kwh": round(revenue / energy, 2) if energy else None,
+        "occupancy_percent": round(_dec(kpis.get("occupancy_percent")), 1),
+        "uptime_percent": kpis.get("uptime_percent") and round(_dec(kpis["uptime_percent"]), 1),
+        "reservations": int(kpis.get("reservations") or 0), "no_show_percent": round(_dec(kpis.get("no_show_percent")), 1),
+        "sessions_by_hour": {str(h): by_hour[h] for h in range(24) if by_hour[h]},
+        "peak_hours": [item.get("hour") for item in heatmap.get("peak_hours") or []],
+        "peak_window_sessions": sum(by_hour[h] for h in PEAK_HOURS),
+        "per_station": [{key: item.get(key) for key in ("station_name", "public_code", "revenue", "energy_kwh",
+                                                         "sessions", "occupancy_percent")}
+                        for item in (overview.get("ranking") or [])[:10]],
+        "alerts": [alert.get("detail") or alert.get("title") for alert in (alerts or [])[:6]],
+        "source": "chargegrid_core.analytics (mesmos indicadores do dashboard; energia simulada na bancada)",
+    }
