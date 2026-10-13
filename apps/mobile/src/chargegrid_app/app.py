@@ -313,7 +313,10 @@ class ChargeGridApp:
             body.expand = True
         self.page.bgcolor = theme.BG_COLOR
         self.page.theme_mode = ft.ThemeMode.DARK if theme.is_dark() else ft.ThemeMode.LIGHT
-        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Barlow')
+        # STANDARD density keeps 48 px touch targets on web/desktop builds too
+        # (Flutter defaults those platforms to COMPACT, shrinking buttons by 8 px).
+        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Barlow',
+                                   visual_density=ft.VisualDensity.STANDARD)
         authenticated = bool(self.api.session.access_token) and route != 'auth'
         nav = []
         if authenticated:

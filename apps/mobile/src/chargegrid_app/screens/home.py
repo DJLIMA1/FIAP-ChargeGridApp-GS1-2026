@@ -4,6 +4,8 @@ from math import isfinite
 
 import flet as ft
 
+from chargegrid_core.formatting import kwh
+
 from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..ui import theme
 from ..ui.availability import point_status
@@ -93,8 +95,9 @@ async def build(app):
     estimated_cost = ft.Text(money(month_summary.get('estimated_cost')),size=32,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')
     def summary_text(summary):
         count = summary.get('sessions_count',0)
-        energy = f"{float(summary.get('energy_wh') or 0)/1000:.3f}".replace('.',',')
-        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy} kWh"
+        # Two decimals: "4,800 kWh" reads like four thousand eight hundred in pt-BR.
+        energy = kwh(float(summary.get('energy_wh') or 0)/1000, 2)
+        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy}"
     summary_detail = ft.Text(summary_text(month_summary),size=12,color=theme.GRAY_TEXT)
     summary_card = card([
             ft.Text('GASTO ESTIMADO NESTE MÊS',size=11,color=theme.TEXT_COLOR),
