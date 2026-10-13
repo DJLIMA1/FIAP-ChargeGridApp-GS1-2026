@@ -49,10 +49,11 @@ vendedores ainda sem equipamento são orientados a vincular o primeiro ponto pel
 - **Sessões e reservas**: abas, filtro por status, busca, paginação e exportação **CSV/JSON**.
 - **Cupons**: tabela, ativar/desativar e criação/edição com o formulário do app.
 - **Insights IA**: chama `POST /v1/ai/owner-insights` sob demanda; 404/erro mostram estado vazio.
-  Na demo, um exemplo é gerado localmente.
+  Na demo, usa a IA real quando `OPENROUTER_API_KEY` está no processo e regras locais sem ela; o rodapé
+  informa a origem ("Gerado por IA (modelo)" ou "Gerado por regras do ChargeGrid").
 
 Cabeçalho: período (hoje / 7 dias / 30 dias / personalizado), posto, atualizar agora, tema claro/escuro e
-conta. Menu lateral recolhível; abaixo de 900 px ele fica só com ícones (tablet).
+conta. Menu lateral recolhível; abaixo de 1100 px ele fica só com ícones (tablets e telas de 1024 px), para as tabelas caberem inteiras.
 
 ## Testes
 
