@@ -332,3 +332,20 @@ class CouponAndFilterUxTests(unittest.IsolatedAsyncioTestCase):
             screen = await stations.build(app, connector_type='type2')
         self.assertIn('Comparação: Tipo 2', texts(screen))
         self.assertNotIn('Comparação: type2', texts(screen))
+
+
+class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
+    async def test_counts_are_pluralised_and_energy_is_unambiguous(self):
+        from chargegrid_app.screens import operator
+        from test_behavior import HandlerApp
+        from test_consumer_flows import texts
+        app = HandlerApp()
+        app.api = DemoApi()
+        await app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
+        screen = await operator.build(app)
+        copy = texts(screen)
+        self.assertIn('1 ponto · 1 online', copy)  # Was "1 pontos".
+        self.assertIn('2 pontos', copy)
+        self.assertIn('2 postos · 2 recargas', copy)
+        self.assertIn('4,80 kWh registrados', copy)  # Was "4,800 kWh".
+        await app.api.close()
