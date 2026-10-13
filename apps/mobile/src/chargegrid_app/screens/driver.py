@@ -428,7 +428,7 @@ def next_stop_view(result, app, reserve_action):
         _heading('PRÓXIMA PARADA AGORA'),
         ft.Text(recommendation['headline'], size=18, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
         ft.Text(recommendation['message'], size=13, color=theme.TEXT_COLOR),
-        _small(f"Bateria {status['soc_percent']:.0f}% · ~{status['range_above_reserve_km']} km acima da reserva · "
+        _small(f"Bateria {status['soc_percent']:.0f}% · ~{max(0, round(status['range_above_reserve_km'] or 0))} km acima da reserva · "
                f"demanda agora {status['demand_now']:.2f}× a média{peak}".replace('.', ',')),
     ]
     if recommendation.get('station_id'):

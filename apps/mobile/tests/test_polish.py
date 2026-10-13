@@ -91,6 +91,11 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         view = driver.next_stop_view(result, SimpleNamespace(link=lambda *a, **k: None), lambda key: None)[0]
         self.assertIn('RECARGA NECESSÁRIA', text_values(view))
         self.assertEqual(view.border.top.width, 2)
+        result['status']['range_above_reserve_km'] = -0.0
+        visible = ' '.join(text_values(driver.next_stop_view(result, SimpleNamespace(link=lambda *a, **k: None),
+                                                             lambda key: None)[0]))
+        self.assertIn('~0 km acima da reserva', visible)
+        self.assertNotIn('-0', visible)
 
     async def test_session_insight_conflict_shows_the_reason(self):
         from chargegrid_app.api_client import ApiError
