@@ -519,18 +519,31 @@ def _dec(value: float, digits: int = 1) -> str:
     return f'{value:.{digits}f}'.replace('.', ',')
 
 
+_MASCULINE = ('posto', 'hub', 'estacionamento', 'shopping', 'aeroporto', 'eletroposto', 'carregador', 'ponto',
+              'restaurante', 'mercado', 'supermercado', 'centro')
+
+
+def _at_station(name: str) -> str:
+    first = (name.split() or [''])[0].casefold()
+    return f'no {name}' if first in _MASCULINE else f'em {name}'
+
+
 def _reason(ctx, stop, peaks, needed_at):
     option, result, meal = stop['option'], stop['result'], stop['meal']
     start = _when(ctx, stop['t'])
     slot = ctx.slots[stop['t']]
+    where = _at_station(option.station_name)
     if meal is not None:
         amenity = option.meal_amenity(meal.meal.kind)
         place = AMENITY_LABELS.get(amenity.kind, amenity.kind) if amenity else 'comodidades'
-        where = f'{place} a {amenity.distance_m} m' if amenity and amenity.distance_m is not None else place
-        text = (f'{meal.meal.label} às {_hour_label(start)} no {option.station_name} ({where}) — '
+        if amenity and amenity.distance_m == 0:
+            place += ' no local'
+        elif amenity and amenity.distance_m is not None:
+            place += f' a {amenity.distance_m} m'
+        text = (f'{meal.meal.label} às {_hour_label(start)} {where} ({place}) — '
                 f'carrega {_dec(result.kwh)} kWh enquanto você come')
     else:
-        text = (f'Recarga às {_hour_label(start)} no {option.station_name} — '
+        text = (f'Recarga às {_hour_label(start)} {where} — '
                 f'+{_dec(result.kwh)} kWh em {duration(result.charge_minutes)}')
     details = []
     if slot.demand < PEAK_THRESHOLD and peaks:

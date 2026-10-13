@@ -161,7 +161,9 @@ class Amenity:
         text = AMENITY_LABELS.get(self.kind, self.kind)
         if self.name:
             text = f'{text} {self.name}'
-        if self.distance_m is not None:
+        if self.distance_m == 0:
+            text += ' no local'
+        elif self.distance_m is not None:
             text += f' a {self.distance_m} m'
         return text
 
