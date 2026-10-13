@@ -537,6 +537,7 @@ class ChargeGridApp:
         self.chat_draft = ''
         self._chat_account_id = None
         self._chat_pending = None
+        self.driver_state = {}
 
     async def enter_demo(self):
         if not demo_enabled():

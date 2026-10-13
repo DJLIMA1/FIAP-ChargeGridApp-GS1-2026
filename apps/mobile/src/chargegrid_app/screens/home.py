@@ -164,8 +164,18 @@ async def build(app):
             return
         map_width = event.width
     map_section.on_size_change = resize_map_section
+    driver_card = card([
+        ft.Text('MODO MOTORISTA DE APP',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
+        ft.Row([
+            ft.Container(ft.Icon(ft.Icons.LOCAL_TAXI_OUTLINED,color=theme.ACCENT,size=24),width=34,height=34,
+                         bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
+            ft.Text('Planeje seu turno: rode nos picos, recarregue nas horas fracas e junte o jantar com a recarga.',
+                    size=13,color=theme.TEXT_COLOR,expand=True),
+        ],spacing=10),
+        button('Planejar meu turno',app.link('driver'),secondary=True),
+    ],border=ft.Border.all(1,theme.ACCENT))
     controls = [
-        greeting,active_card,map_section,summary_card,
+        greeting,active_card,map_section,driver_card,summary_card,
     ]
     async def update():
         nonlocal previous

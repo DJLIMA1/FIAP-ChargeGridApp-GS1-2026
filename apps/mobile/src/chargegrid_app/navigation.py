@@ -3,6 +3,7 @@ from .screens import (
     charging,
     chat,
     coupons,
+    driver,
     history,
     home,
     operator,
@@ -11,7 +12,7 @@ from .screens import (
     stations,
 )
 
-SCREENS = {module.__name__.split('.')[-1]: module.build for module in (auth,home,stations,reservations,charging,history,profile,operator,coupons,chat)}
+SCREENS = {module.__name__.split('.')[-1]: module.build for module in (auth,home,stations,reservations,charging,history,profile,operator,coupons,chat,driver)}
 TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
 
 
@@ -27,6 +28,8 @@ def tab_entries(mode):
 
 
 def active_tab(route, data, mode):
+    if route == 'driver':
+        return 'home'
     if route in ('stations', 'reservations', 'charging'):
         return 'stations' if mode != 'vendor' else None
     if route == 'profile' or (route == 'coupons' and not data.get('manage')):
