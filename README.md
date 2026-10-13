@@ -27,6 +27,7 @@ Este `main` documenta a fundação integrada com app, API e painel físico. A br
 | Componente | Função | Código |
 | --- | --- | --- |
 | Aplicativo | Cadastro/login, busca de postos, reserva, recarga em etapas, histórico, chat de orientações e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
+| Dashboard web | Painel do proprietário: KPIs, gráficos, alertas, postos/tarifas, sessões e exportação CSV/JSON, reaproveitando o app | [`apps/dashboard/`](apps/dashboard/) |
 | API | Autenticação, autorização, regras de reserva/recarga e comandos para dispositivos | [`apps/api/`](apps/api/) |
 | Banco | Perfis, postos, pontos, reservas, sessões, dispositivos, comandos e telemetria | [`apps/api/migrations/`](apps/api/migrations/) |
 | Painel ESP32 | Interface touch, sincronização HTTPS, confirmação de comandos e parada local | [`firmware/esp32/`](firmware/esp32/) |

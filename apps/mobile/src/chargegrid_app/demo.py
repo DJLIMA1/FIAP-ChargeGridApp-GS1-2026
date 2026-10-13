@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .api_client import ApiError
+from .owner_api import OwnerApiMixin
 from .services.discovery import discover
 from .session import Session
 
@@ -92,7 +93,7 @@ def _fields(body, allowed):
         _fail('Este formulário contém campos não reconhecidos na demonstração.')
 
 
-class DemoApi:
+class DemoApi(OwnerApiMixin):
     is_demo = True
 
     def __init__(self, clock=None, start_at=None):
@@ -545,6 +546,9 @@ class DemoApi:
                            and (parts[0] != 'stations' or self._points[s['connector_id']]['station_id'] == parts[1])]
             records.sort(key=lambda s: (s['created_at'], s['id']), reverse=True)
             return self._page([self._operation_row(s, 'session') for s in records], params)
+        if parts[0] == 'owner' or path == 'ai/owner-insights':
+            from .demo_owner import owner_for
+            return owner_for(self).route(method, path, params, body)
         if parts[0] == 'driver':
             from .services.driver_demo import driver_route
             return driver_route(self, method, path, body)
@@ -787,3 +791,7 @@ class DemoApi:
             reservation['status'] = 'consumed'
         return self._operation_row(session, 'session')
 
+    async def download(self, path, params=None):
+        """Exportações do dashboard geradas localmente (CSV/JSON fictícios)."""
+        from .demo_owner import owner_for
+        return owner_for(self).download(path, params)

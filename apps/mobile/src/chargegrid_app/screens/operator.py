@@ -9,6 +9,7 @@ from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..ui import theme
 from ..ui.components import badge, button, card, date_time, field, money, title
+from ..ui.kpi import kpi_card, kpi_grid
 from . import onboarding as onboarding_screen
 from . import ownership
 
@@ -88,8 +89,14 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                     font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,expand=True),
             help_button,
         ],spacing=8),
+<<<<<<< HEAD
         ft.Text(f"{kwh(float(summary['total_energy_wh'])/1000, 2)} registrados · {money(summary['total_estimated_cost'])} estimados",
                 size=12,color=theme.GRAY_TEXT),
+=======
+        kpi_grid([kpi_card('Energia registrada',f"{float(summary['total_energy_wh'])/1000:.3f} kWh".replace('.',','),icon=ft.Icons.BOLT),
+                  kpi_card('Valor estimado',money(summary['total_estimated_cost']),icon=ft.Icons.PAYMENTS_OUTLINED)],
+                 columns={'xs':6}),
+>>>>>>> main
         ft.Text('Energia simulada nesta conta.' if is_demo else
                 'O total pode incluir energia simulada, medida ou estimada. Consulte a origem em cada sessão.',
                 size=12,color=theme.GRAY_TEXT),

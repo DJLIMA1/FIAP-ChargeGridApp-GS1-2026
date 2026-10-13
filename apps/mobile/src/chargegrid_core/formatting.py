@@ -66,3 +66,21 @@ def km(value: Number | None) -> str:
     if amount.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) < 10:
         return f"{_ptbr(amount, 1)} km"
     return f"{_ptbr(amount, 0)} km"
+
+
+def percent(value: Number | None, digits: int = 1) -> str:
+    """percent(42.25) -> '42,3%'; None -> '—' (sem dados)."""
+    amount = None if value is None or value == "" else _decimal(value)
+    if amount is None:
+        return "—"
+    sign = "-" if amount.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP) < 0 else ""
+    return f"{sign}{_ptbr(amount, digits)}%"
+
+
+def integer(value: Number | None) -> str:
+    """integer(12345) -> '12.345'."""
+    amount = None if value is None or value == "" else _decimal(value)
+    if amount is None:
+        return "—"
+    sign = "-" if amount.quantize(Decimal(1), rounding=ROUND_HALF_UP) < 0 else ""
+    return f"{sign}{_ptbr(amount, 0)}"

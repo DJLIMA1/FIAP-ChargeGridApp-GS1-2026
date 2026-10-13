@@ -1,0 +1,27 @@
+[project]
+name = "chargegrid-dashboard"
+version = "0.1.0"
+description = "Dashboard web do proprietário de postos ChargeGrid (Flet)"
+requires-python = ">=3.10"
+# Reaproveita o app (apps/mobile/src) e o chargegrid_core; veja README.md.
+dependencies = ["flet==1.0.0", "httpx>=0.28,<1"]
+
+[tool.flet]
+product = "ChargeGrid Painel"
+artifact = "chargegrid-dashboard"
+
+[tool.flet.app]
+exclude = [".env", ".env.*", "tests", ".pytest_cache", ".ruff_cache", "__pycache__"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+src = [".", "tests", "../mobile/src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chargegrid_app", "chargegrid_core", "chargegrid_dashboard", "helpers"]

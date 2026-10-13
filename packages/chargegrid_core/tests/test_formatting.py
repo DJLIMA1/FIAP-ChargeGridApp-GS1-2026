@@ -39,3 +39,13 @@ def test_km_and_duration_edges():
     assert duration(0.5) == "1 min"
     assert duration(-4) == "0 min"
     assert duration(120) == "2 h"
+
+
+def test_percent_and_integer_round_half_up():
+    from chargegrid_core.formatting import integer, percent
+    assert percent(42.25) == "42,3%"
+    assert percent(None) == "—" and percent("") == "—"
+    assert percent("7") == "7,0%"
+    assert integer(12345) == "12.345"
+    assert integer(2.5) == "3"
+    assert integer(None) == "—"
