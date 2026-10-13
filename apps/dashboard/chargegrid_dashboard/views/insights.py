@@ -76,9 +76,13 @@ class InsightsView(View):
 
     def render(self, result):
         recommendations = result.get('recommendations') or []
-        footer = f"Modelo: {result.get('model') or '—'} · gerado em {local_time(result.get('generated_at'))}"
+        model = result.get('model') or ''
+        origin = ('Gerado por regras do ChargeGrid' if model in ('', 'chargegrid-regras') else
+                  f'Gerado por IA ({model})')
+        footer = f"{origin} · {local_time(result.get('generated_at'))}"
         if getattr(self.dash.api, 'is_demo', False):
-            footer += ' · exemplo local da conta demo'
+            # The demo may call the real AI (local key) or the rules: both use fictitious data.
+            footer += ' · dados fictícios da conta demo'
         return [
             section('Resumo', ft.Text(result.get('summary') or '—', size=14, color=theme.TEXT_COLOR,
                                       selectable=True)),

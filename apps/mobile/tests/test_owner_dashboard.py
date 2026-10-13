@@ -185,7 +185,7 @@ class SharedComponentTests(unittest.TestCase):
         grid = kpi.kpi_grid([kpi.kpi_card('Receita', 'R$ 10,00', hint='Período')])
         card = grid.controls[0]
         self.assertEqual(card.label, 'Receita: R$ 10,00. Período')
-        self.assertEqual(card.col, {'xs': 6, 'md': 4, 'xl': 3})
+        self.assertEqual(card.col, {'xs': 6, 'md': 4, 'lg': 3})
         self.assertEqual(kpi.point_status_badge({'availability_status': 'offline'}).content.value, 'Offline')
         self.assertIn('Crítico', texts(kpi.alert_tile({'severity': 'critical', 'title': 'Offline', 'detail': 'x'})))
         self.assertIn('Tentar novamente', texts(kpi.error_state('falhou', lambda: None)))

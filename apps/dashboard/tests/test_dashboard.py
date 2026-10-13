@@ -186,7 +186,8 @@ class DemoDashboardTests(unittest.IsolatedAsyncioTestCase):
         content = texts(self.dash.content)
         self.assertIn('Resumo', content)
         self.assertIn('Alto impacto', content)
-        self.assertIn('exemplo local da conta demo', content)
+        self.assertIn('dados fictícios da conta demo', content)
+        self.assertIn('Gerado por', content)
         content = await self.open('insights')
         self.assertIn('Resumo', content)
 
