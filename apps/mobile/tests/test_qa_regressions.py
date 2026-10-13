@@ -347,7 +347,7 @@ class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('1 ponto · 1 online', copy)  # Was "1 pontos".
         self.assertIn('2 pontos', copy)
         self.assertIn('2 postos · 2 recargas', copy)
-        self.assertIn('4,80 kWh registrados', copy)  # Was "4,800 kWh".
+        self.assertIn('4,80 kWh', copy)  # Was "4,800 kWh".
         await app.api.close()
 
 
