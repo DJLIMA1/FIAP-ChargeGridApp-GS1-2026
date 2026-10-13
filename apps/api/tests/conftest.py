@@ -29,7 +29,11 @@ def engine():
 def schema(engine):
     # Build the schema once per run. Recreating every table per test dominated
     # the suite (about 9 min); isolation now comes from a single TRUNCATE.
-    Base.metadata.drop_all(engine)
+    # CASCADE: a test database reused by another branch may hold tables that
+    # reference ours (e.g. driver_profiles -> profiles) and block a plain drop.
+    with engine.begin() as connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(text(f'DROP TABLE IF EXISTS "{table.name}" CASCADE'))
     Base.metadata.create_all(engine)
     return ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
 
