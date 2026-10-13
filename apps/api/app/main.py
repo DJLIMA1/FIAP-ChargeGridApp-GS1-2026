@@ -16,6 +16,7 @@ from .modules.auth.routes import router as auth_router
 from .modules.charging.routes import router as charging_router
 from .modules.coupons.routes import router as coupons_router
 from .modules.devices.routes import router as devices_router
+from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
 from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
@@ -37,6 +38,7 @@ for router in (
     devices_router,
     ownership_router,
     coupons_router,
+    owner_router,
 ):
     app.include_router(router, prefix="/v1")
 
