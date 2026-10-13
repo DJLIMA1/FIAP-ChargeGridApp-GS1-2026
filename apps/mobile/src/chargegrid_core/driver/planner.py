@@ -800,20 +800,44 @@ def next_stop(vehicle: VehicleProfile, preferences: DriverPreferences, options: 
     status = {'soc_percent': round(soc_percent, 1), 'range_above_reserve_km': round(range_km),
               'hours_until_reserve': round(usable / hourly_kwh, 1), 'demand_now': round(first.demand, 2),
               'in_peak': first.demand >= PEAK_THRESHOLD}
+    needs_charge = any(alert.get('code') in ('needs_charge', 'battery_empty') for alert in plan['alerts'])
     if stops and stops[0]['start_at'] == start.isoformat():
         recommendation = {'action': 'stop_now', **stops[0],
-                          'headline': f"Pare agora no {stops[0]['station_name']}",
+                          'headline': f"Pare agora {_at_station(stops[0]['station_name'])}",
                           'message': stops[0]['reason']}
     elif stops:
         recommendation = {'action': 'stop_later', **stops[0],
                           'headline': f"Siga rodando — próxima parada às {stops[0]['start']}",
                           'message': stops[0]['reason']}
+    elif needs_charge:
+        # Sem parada viável (bateria quase vazia, nenhum posto alcançável/compatível): nunca dizer
+        # "nenhuma recarga necessária" quando a bateria não cobre o período.
+        recommendation = _charge_needed(ctx)
     else:
         recommendation = {'action': 'keep_driving', 'headline': 'Siga rodando: nenhuma recarga necessária',
                           'message': f'A bateria cobre o período planejado (até {plan["window"]["end"]}) '
                                      f'com cerca de {km(range_km)} acima da reserva.'}
-    if status['in_peak'] and recommendation['action'] != 'stop_now':
+    if status['in_peak'] and recommendation['action'] in ('stop_later', 'keep_driving'):
         recommendation['message'] += ' Agora é horário de pico estimado: melhor continuar rodando.'
     return {'estimate': True, 'now': start.isoformat(), 'status': status, 'recommendation': recommendation,
             'alternatives': alternatives[:3], 'plan_window': plan['window'], 'alerts': plan['alerts'],
             'demand': plan['demand']}
+
+
+def _charge_needed(ctx: _Context) -> dict:
+    """Recomendação quando a bateria não cobre o período e o plano não achou parada viável."""
+    if not ctx.options:
+        return {'action': 'charge_needed', 'headline': 'Recarregue antes de continuar',
+                'message': 'A bateria não cobre o período acima da reserva e nenhum posto compatível com o seu '
+                           'carro foi encontrado na região. Amplie o raio de busca antes de aceitar novas corridas.'}
+    index = min(range(len(ctx.options)), key=lambda i: (ctx.distance[i], i))
+    option = ctx.options[index]
+    reachable = ctx.soc0 - ctx.detour_km(index, 0) * ctx.vehicle.consumption_kwh_per_100km / 100 > 0
+    message = ('A bateria não cobre o período acima da reserva. Siga para o posto compatível mais próximo antes '
+               'de aceitar novas corridas.' if reachable else
+               'A bateria está praticamente vazia e pode não chegar a um posto. Siga direto ao posto compatível '
+               'mais próximo, sem aceitar corridas, e acione assistência se necessário.')
+    return {'action': 'charge_needed', 'station_id': option.station_id, 'connector_id': option.connector_id,
+            'public_code': option.public_code, 'station_name': option.station_name, 'address': option.address,
+            'latitude': option.latitude, 'longitude': option.longitude, 'available_now': option.available,
+            'headline': f'Recarregue o quanto antes {_at_station(option.station_name)}', 'message': message}

@@ -8,11 +8,11 @@ import math
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from chargegrid_core.ai.stations import compact_point
 
-from ...http_helpers import point_row, reservation_row, session_row, station_row
+from ...http_helpers import point_row, reservation_row, session_row, session_rows, station_row
 from ...models import ChargingSession, Connector, DriverProfile, Reservation, Station
 from ...service import RES_ACTIVE, SESSION_ACTIVE, row
 from ..driver.routes import _saved as saved_driver_profile
@@ -40,19 +40,27 @@ class DbSource:
             dlng = radius_km / max(1.0, 111.0 * math.cos(math.radians(near["lat"])))
             query = query.where(Station.latitude.between(near["lat"] - dlat, near["lat"] + dlat),
                                 Station.longitude.between(near["lng"] - dlng, near["lng"] + dlng))
+            # Os MAX_STATIONS mais próximos (aproximação plana), não os primeiros por id.
+            scale = math.cos(math.radians(near["lat"]))
+            closeness = (func.power(Station.latitude - near["lat"], 2)
+                         + func.power((Station.longitude - near["lng"]) * scale, 2))
+            query = query.order_by(None).order_by(closeness, Station.id)
         return [station_row(self.db, obj) for obj in self.db.scalars(query.limit(MAX_STATIONS))]
 
     def get_station(self, station_id):
         key = _uuid(station_id)
         obj = self.db.get(Station, key) if key else None
-        return station_row(self.db, obj) if obj and obj.active else None
+        return station_row(self.db, obj) if obj and obj.active and obj.owner_id is not None else None
 
     def get_connector(self, connector_id):
         key = _uuid(connector_id)
         connector = self.db.get(Connector, key) if key else None
-        if not connector:
+        if not connector or not connector.active:
             return None
         station = self.db.get(Station, connector.station_id)
+        # Mesmo recorte da listagem pública: ponto de posto oculto/sem dono não é consultável.
+        if station is None or not station.active or station.owner_id is None:
+            return None
         return {**compact_point(point_row(self.db, connector)), "station_id": str(station.id), "station_name": station.name}
 
     def current_reservation(self):
@@ -68,7 +76,7 @@ class DbSource:
     def recent_sessions(self, limit):
         query = (select(ChargingSession).where(ChargingSession.user_id == self.user.id)
                  .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc()).limit(limit))
-        return [session_row(self.db, obj) for obj in self.db.scalars(query)]
+        return session_rows(self.db, self.db.scalars(query).all())  # lote: sem N+1 por sessão
 
     def month_summary(self):
         return me_summary(user=self.user, db=self.db)

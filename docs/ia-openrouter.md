@@ -179,8 +179,12 @@ Busca e insights sempre respondem dessa forma. O chat responde `503` e o app usa
 * **Limite por usuário** (tabela `request_limits`, a mesma do login): 20 pedidos a cada 10 min e 200 por dia, somando
   todas as funções de IA. Há também um teto global de 5.000 por dia para proteger o crédito da chave. Ao atingir o limite,
   a API responde `429 ai_rate_limited`.
-* **Tempo**: o laço tem orçamento de 22 s. Cada chamada ao OpenRouter tem timeout de até 22 s e conexão de 5 s.
-  Busca e textos usam 12 s. A Vercel permite 30 s.
+* **Tempo**: o laço tem orçamento de 22 s. Cada chamada ao OpenRouter tem prazo **total** (conexão + resposta,
+  via `asyncio.timeout`) igual ao tempo restante do orçamento, com conexão de até 5 s; a nova tentativa após resposta
+  malformada só ocorre se ainda restarem 2,5 s. Busca e textos usam 12 s. A Vercel permite 30 s. Se o tempo acabar
+  depois de o assistente já ter consultado dados, o chat responde 200 com um aviso curto e os botões do que encontrou
+  (em vez de 504). Antes de cada chamada ao provedor a transação do banco é encerrada, para não manter conexão
+  "idle in transaction" no pooler durante a espera.
 * **Registro de uso** na tabela `ai_usage` (migração `a71c3e5d9b20`): guarda somente usuário, função, status, modelo,
   tokens, custo em US$, latência e nomes das ferramentas. **Não guarda perguntas, respostas nem dados consultados.**
 * **Chave**: `OPENROUTER_API_KEY` existe só no backend (Vercel/`.env` local) e no processo local da prévia demo. Ela

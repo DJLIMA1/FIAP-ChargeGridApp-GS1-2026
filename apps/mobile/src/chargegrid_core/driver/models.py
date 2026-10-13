@@ -25,7 +25,7 @@ def parse_hhmm(value) -> int:
     else:
         text = str(value or '').strip().lower().replace('h', ':')
         hours, _, minutes = text.partition(':')
-        if not hours.isdigit() or (minutes and not minutes.isdigit()):
+        if not hours.isdigit() or (minutes and (not minutes.isdigit() or int(minutes) > 59)):
             raise ValueError(f'Horário inválido: {value!r}')
         minute = int(hours) * 60 + int(minutes or 0)
     if not 0 <= minute <= 24 * 60:

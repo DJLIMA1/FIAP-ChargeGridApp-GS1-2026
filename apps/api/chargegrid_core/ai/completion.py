@@ -7,6 +7,7 @@ para o provedor e devolve ``parse_completion(json)`` ao laço do assistente.
 from __future__ import annotations
 
 import json
+import math
 import uuid
 
 
@@ -36,39 +37,64 @@ def build_payload(messages: list[dict], tools: list[dict] | None, *, models: lis
     return payload
 
 
+def _int(value) -> int:
+    try:
+        number = int(float(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, number)
+
+
+def _cost(value) -> float:
+    try:
+        number = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return number if math.isfinite(number) and number >= 0 else 0.0
+
+
 def parse_completion(data: dict) -> dict:
-    """Normaliza a resposta: {'content','tool_calls','model','usage','reasoning_details'}."""
+    """Normaliza a resposta: {'content','tool_calls','model','usage','reasoning_details'}.
+
+    Qualquer formato inesperado do provedor vira ``LLMUnavailable`` (nunca erro 500)."""
     if not isinstance(data, dict):
         raise LLMUnavailable("Resposta inválida do provedor de IA.")
     if data.get("error"):
         raise LLMUnavailable("O provedor de IA recusou o pedido.")
     choices = data.get("choices") or []
-    if not choices or not isinstance(choices[0], dict):
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise LLMUnavailable("Resposta vazia do provedor de IA.")
     if choices[0].get("finish_reason") == "error":
         # Ex.: MALFORMED_FUNCTION_CALL do Gemini; o laço tenta a rodada novamente uma vez.
         raise LLMUnavailable("O modelo devolveu uma resposta malformada.", status=502, code="ai_bad_response")
     message = choices[0].get("message") or {}
+    if not isinstance(message, dict):
+        raise LLMUnavailable("O modelo devolveu uma resposta malformada.", status=502, code="ai_bad_response")
+    raw_calls = message.get("tool_calls") or []
     calls = []
-    for call in message.get("tool_calls") or []:
-        function = (call or {}).get("function") or {}
-        if not function.get("name"):
+    for call in raw_calls if isinstance(raw_calls, list) else []:
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict) or not function.get("name"):
             continue
         arguments = function.get("arguments")
         if not isinstance(arguments, str):
-            arguments = json.dumps(arguments or {}, ensure_ascii=False)
+            try:
+                arguments = json.dumps(arguments or {}, ensure_ascii=False)
+            except (TypeError, ValueError):
+                arguments = "{}"
         # Alguns provedores prefixam o nome (ex.: "default_api.search_stations").
         name = str(function["name"]).rsplit(".", 1)[-1][:64]
-        calls.append({"id": call.get("id") or "call_" + uuid.uuid4().hex[:12], "name": name,
+        call_id = call.get("id")
+        calls.append({"id": str(call_id)[:64] if call_id else "call_" + uuid.uuid4().hex[:12], "name": name,
                       "arguments": arguments[:4000]})
-    usage = data.get("usage") or {}
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     return {
         "content": message.get("content") if isinstance(message.get("content"), str) else "",
         "tool_calls": calls,
-        "model": str(data.get("model") or ""),
-        "usage": {"prompt_tokens": int(usage.get("prompt_tokens") or 0),
-                  "completion_tokens": int(usage.get("completion_tokens") or 0),
-                  "cost": float(usage.get("cost") or 0.0)},
+        "model": str(data.get("model") or "")[:100],
+        "usage": {"prompt_tokens": _int(usage.get("prompt_tokens")),
+                  "completion_tokens": _int(usage.get("completion_tokens")),
+                  "cost": _cost(usage.get("cost"))},
         "reasoning_details": message.get("reasoning_details"),
         "finish_reason": choices[0].get("finish_reason"),
     }

@@ -1,5 +1,7 @@
 """Cliente OpenRouter (httpx) usado pelo assistente. A chave nunca sai do backend."""
 
+import asyncio
+
 import httpx
 
 from chargegrid_core.ai import LLMUnavailable, build_payload, parse_completion
@@ -48,9 +50,13 @@ class OpenRouterClient:
             headers["HTTP-Referer"] = self.site_url
         limit = max(1.0, min(float(timeout), MAX_TIMEOUT_SECONDS))
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=httpx.Timeout(limit, connect=5.0)) as client:
-                response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-        except httpx.TimeoutException as exc:
+            # Os tempos do httpx valem por operação (conectar, cada leitura); o prazo total
+            # garante que conexão + resposta lenta não passem do orçamento do laço.
+            async with asyncio.timeout(limit):
+                async with httpx.AsyncClient(transport=self._transport,
+                                             timeout=httpx.Timeout(limit, connect=min(5.0, limit))) as client:
+                    response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+        except (httpx.TimeoutException, TimeoutError) as exc:
             raise LLMUnavailable("O assistente demorou demais para responder.", status=504, code="ai_timeout") from exc
         except httpx.HTTPError as exc:
             raise LLMUnavailable() from exc

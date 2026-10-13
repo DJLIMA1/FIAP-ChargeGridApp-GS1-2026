@@ -45,6 +45,21 @@ def _elapsed_ms(started):
     return (time.monotonic() - started) * 1000
 
 
+def _released(db, llm):
+    """Encerra a transação de leitura antes de cada chamada ao provedor.
+
+    Sem isso a conexão ficaria "idle in transaction" durante até ~22 s de espera
+    pelo modelo (prendendo uma conexão do pooler do Supabase por requisição)."""
+    if llm is None:
+        return None
+
+    async def complete(*args, **kwargs):
+        db.commit()
+        return await llm(*args, **kwargs)
+
+    return complete
+
+
 @router.post("/chat")
 async def chat(data: ChatInput, user=Depends(current_user), db=Depends(db_session), llm=Depends(get_llm)):
     """Resposta do assistente: {reply, suggested_actions, tools_used, model}."""
@@ -63,7 +78,7 @@ async def chat(data: ChatInput, user=Depends(current_user), db=Depends(db_sessio
                            location_label="localização atual do aparelho" if origin else None)
     started = time.monotonic()
     try:
-        outcome = await run_chat(llm, toolbox, [m.model_dump() for m in data.messages], system=system)
+        outcome = await run_chat(_released(db, llm), toolbox, [m.model_dump() for m in data.messages], system=system)
     except LLMUnavailable as error:
         record_usage(db, user, "chat", "error", latency_ms=_elapsed_ms(started), commit=True)
         fail(error.code, str(error) or "Assistente de IA indisponível no momento.", 504 if error.code == "ai_timeout" else 503)
@@ -79,7 +94,7 @@ async def search(data: SearchInput, user=Depends(current_user), db=Depends(db_se
     enforce_limits(db, user)
     origin = {"lat": data.lat, "lng": data.lng} if data.lat is not None and data.lng is not None else None
     started = time.monotonic()
-    result, meta = await natural_search(data.query, origin=origin, llm=llm)
+    result, meta = await natural_search(data.query, origin=origin, llm=_released(db, llm))
     record_usage(db, user, "search", meta["status"], model=meta["model"], usage=meta["usage"],
                  latency_ms=_elapsed_ms(started))
     return result
@@ -91,9 +106,13 @@ async def insight(data: SessionInsightInput, user=Depends(current_user), db=Depe
     obj = db.get(ChargingSession, data.session_id)
     if not obj or obj.user_id != user.id:
         fail("not_found", "Sessão não encontrada", 404)
+    if obj.status not in ("completed", "interrupted"):
+        # O app só oferece o resumo de recargas encerradas; evita gasto de IA com dados parciais.
+        fail("session_not_finished", "O resumo fica disponível quando a recarga terminar.", 409)
     enforce_limits(db, user)
     started = time.monotonic()
-    result, meta = await session_insight(session_row(db, obj), DbSource(db, user).recent_sessions(30), now=_now(), llm=llm)
+    result, meta = await session_insight(session_row(db, obj), DbSource(db, user).recent_sessions(30), now=_now(),
+                                         llm=_released(db, llm))
     record_usage(db, user, "session_insight", meta["status"], model=meta["model"], usage=meta["usage"],
                  latency_ms=_elapsed_ms(started))
     return result
@@ -115,7 +134,7 @@ async def insights_for_owner(data: OwnerInsightsInput | None = None, user=Depend
                                            owner_service.heatmap(db, scope, window),
                                            owner_service.alerts(db, scope)["items"])
     started = time.monotonic()
-    result, meta = await owner_insights_from_indicators(indicators, now=_now(), llm=llm)
+    result, meta = await owner_insights_from_indicators(indicators, now=_now(), llm=_released(db, llm))
     record_usage(db, user, "owner_insights", meta["status"], model=meta["model"], usage=meta["usage"],
                  latency_ms=_elapsed_ms(started))
     return result

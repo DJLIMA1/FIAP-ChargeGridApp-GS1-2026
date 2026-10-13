@@ -64,6 +64,11 @@ almoço ou o jantar. O Modo Motorista monta o turno inteiro, decidindo **quando*
 7. **Próxima parada agora**: replaneja do slot atual até o fim do turno (ou 4 h fora do turno) e devolve
    "pare agora", "siga rodando — próxima parada às HH:MM" ou "nenhuma recarga necessária", com as três
    melhores opções de parada imediata ranqueadas por custo efetivo por kWh (tarifa + ganho perdido).
+   `recommendation.action` é `stop_now`, `stop_later`, `keep_driving` ou `charge_needed`: este último
+   aparece quando a bateria não cobre o período acima da reserva e não há parada viável (bateria quase
+   vazia ou nenhum posto compatível no raio) e aponta o posto compatível mais próximo, se houver — o app
+   nunca diz "nenhuma recarga necessária" nesse caso. `plan`/`next-stop` têm limite de 30 pedidos por
+   minuto por usuário (429).
 
 ## Saída
 

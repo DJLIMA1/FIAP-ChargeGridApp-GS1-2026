@@ -72,7 +72,8 @@ def _meal(preferences: dict, kind: str, start: str | None) -> None:
     preferences["meals"] = meals
 
 
-def plan_for_assistant(args: dict, stations: list[dict], now: datetime, saved_profile: dict | None = None) -> dict:
+def plan_for_assistant(args: dict, stations: list[dict], now: datetime, saved_profile: dict | None = None,
+                       origin: dict | None = None) -> dict:
     """Argumentos do modelo + perfil salvo -> plano compacto para a resposta do chat."""
     module = _module()
     if module is None:
@@ -100,7 +101,7 @@ def plan_for_assistant(args: dict, stations: list[dict], now: datetime, saved_pr
     if args.get("vehicle") and not preset:
         notes.append("Modelo de carro não reconhecido; usei o veículo do perfil.")
     payload = {"soc_percent": float(soc), "mode": "full_shift" if args.get("full_shift") else "auto"}
-    place = resolve_place(args.get("near_place"))
+    place = resolve_place(args.get("near_place")) or origin  # sem bairro citado: localização do aparelho
     if place:
         payload.update(lat=place["lat"], lng=place["lng"])
     local_now = now.astimezone(LOCAL_TZ).replace(tzinfo=None) if now.tzinfo else now
