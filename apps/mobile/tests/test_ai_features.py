@@ -186,7 +186,8 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
                 {'role': 'user', 'content': 'quero reservar um ponto'}], 'context': {'mode': 'driver'}})
         self.assertEqual(result['tools_used'], ['search_stations'])
         tool_data = json.loads(calls[1][-1]['content'])
-        self.assertEqual(tool_data['stations'][0]['name'], 'Posto Demo Centro')
+        # A rede parceira fictícia também aparece na busca da demo.
+        self.assertIn('Posto Demo Centro', [station['name'] for station in tool_data['stations']])
         self.assertIn('demonstração', calls[0][0]['content'])
         self.assertEqual([a['type'] for a in result['suggested_actions']], ['open_station', 'reserve'])
 
