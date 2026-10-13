@@ -43,6 +43,10 @@ GET `/coupons` filtro station_id; POST {code,description,discount_percent,statio
 
 Idempotência reserva/início/parada: mesmo usuário/operação/chave/corpo devolve recurso original; corpo diferente retorna 409. Cancelamento é naturalmente idempotente. Sem contato por 45s proíbe novas autorizações. Reserva vence chegada 10 minutos após ACK, confirmação 30s; expiração inicia liberação, disponibilidade só retorna após reconciliação física. Reiniciar o ESP32 não cancela uma reserva válida: a API reaplica a reserva com seu prazo original, sem estender o vencimento. Isso é diferente de uma recarga em andamento, que é interrompida com segurança após reboot.
 
+## Modo Motorista
+
+`GET/PUT /driver/profile` (veículo e preferências de turno/refeições), `POST /driver/plan` {soc_percent,lat?,lng?,radius_km?,mode?:"auto"|"full_shift",vehicle?,preferences?,context?,live_signals?} e `POST /driver/next-stop` planejam recargas para motoristas de app com o motor `chargegrid_core.driver`. Postos expõem `amenities:[{kind,name,distance_m}]` (`restaurante`, `cafe`, `banheiro`, `shopping`, `conveniencia`), editáveis pelo dono em PATCH `/stations/{id}`. Demanda é estimativa; clima da Open-Meteo é opcional, com fallback silencioso e origem em `demand.source`/`demand.signals`. Detalhes em [modo-motorista.md](modo-motorista.md).
+
 ## Banco e papel de execução
 
 Migrações usam `MIGRATION_DATABASE_URL`, uma conexão administrativa direta. A aplicação usa `DATABASE_URL` pelo pooler em modo transação com prepared statements automáticos desativados. A migração cria o papel sem login `chargegrid_api`, remove acesso público e de `anon`/`authenticated`, ativa RLS e concede uma política somente ao papel da API. O administrador deve executar `GRANT chargegrid_api TO <usuario_sql_da_api>`; esse usuário não deve ser dono das tabelas nem ter `BYPASSRLS`. A Data API do schema deve permanecer desativada. Nunca conceder `chargegrid_api` aos papéis Supabase `anon` ou `authenticated`.
