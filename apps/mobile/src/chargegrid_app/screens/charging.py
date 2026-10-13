@@ -13,6 +13,7 @@ from ..ui.components import (
     date_time,
     disclosure_field,
     field,
+    flat_button,
     money,
     title,
 )
@@ -390,7 +391,21 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         for control in (duration,cost,safety,coupon):
             control.width = None
         duration.keyboard_type = cost.keyboard_type = safety.keyboard_type = ft.KeyboardType.NUMBER
-        time_panel = ft.Column([duration],visible=draft['mode']=='time',horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        # One-tap durations: typing minutes on a phone keyboard is the slowest step.
+        limit_minutes = _point_limit(draft)
+        presets = sorted({minutes for minutes in (15,30,60) if minutes < limit_minutes} | {min(limit_minutes,1440)})
+
+        def choose_duration(minutes):
+            async def choose():
+                duration.value = str(minutes)
+                await changed()
+            return choose
+        preset_row = ft.Row([flat_button(f'{minutes} min' if minutes != limit_minutes else f'Máx. {minutes} min',
+                                         theme.LIGHT_GRAY,theme.TEXT_COLOR,on_click=app.action(choose_duration(minutes)),
+                                         bold=False,radius=20)
+                             for minutes in presets],wrap=True,spacing=8,run_spacing=8)
+        time_panel = ft.Column([duration,preset_row],visible=draft['mode']=='time',spacing=10,
+                               horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         safety_section,safety_summary = disclosure_field('Ajustar tempo máximo','',[
             safety,ft.Text('A recarga para ao atingir o valor ou o tempo máximo, o que acontecer primeiro.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('safety_expanded',False),on_toggle=lambda value:draft.update(safety_expanded=value),on_update=app.page.update)

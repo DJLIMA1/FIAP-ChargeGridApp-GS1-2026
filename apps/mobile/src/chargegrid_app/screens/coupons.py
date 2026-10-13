@@ -6,6 +6,7 @@ import flet as ft
 from ..api_client import ApiError
 from ..ui import theme
 from ..ui.components import button, card, date_time, field, title
+from ..ui.states import empty_state
 
 
 async def owned_stations(app):
@@ -47,12 +48,21 @@ async def build(app, manage=False, coupon=None, create=False, station_id=None, o
                 return identifier, 'Posto indisponível'
         identifiers = {item['station_id'] for item in result['items'] if item.get('station_id')}
         station_names = dict(await asyncio.gather(*(station_name(identifier) for identifier in identifiers)))
-    controls = [title('Cupons','Desconto sobre o custo estimado; não é pagamento real.')]
+    controls = [title('Cupons','Desconto sobre o custo estimado; não é pagamento real.' if manage else
+                      'Digite o código na etapa de limites da recarga. Desconto sobre o custo estimado; não é pagamento real.')]
     if manage:
         controls.append(button('Criar cupom',app.link('coupons',manage=True,create=True)))
     for item in result['items']:
         scope = station_names.get(item['station_id'],'Posto indisponível') if item.get('station_id') else 'Todos os postos deste operador'
-        details = [ft.Text(item['code'],size=20,weight=ft.FontWeight.BOLD),ft.Text(item['description']),ft.Text(f"{item['discount_percent']}% · validade {date_time(item['valid_until'])}"),ft.Text('Válido em: '+scope)]
+        details = [ft.Row([ft.Container(ft.Text(item['code'],size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,
+                                                selectable=True),
+                                        border=ft.Border.all(1,theme.GRAY_TEXT),border_radius=8,
+                                        padding=ft.Padding(left=10,right=10,top=4,bottom=4)),
+                           ft.Text(f"{item['discount_percent']}% OFF",size=16,weight=ft.FontWeight.BOLD,color=theme.ACCENT)],
+                          alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                   *([ft.Text(item['description'],color=theme.TEXT_COLOR)] if item.get('description') else []),
+                   ft.Text(f"Válido até {date_time(item['valid_until'])}",size=12,color=theme.GRAY_TEXT),
+                   ft.Text('Válido em: '+scope,size=12,color=theme.GRAY_TEXT)]
         if manage:
             expired = datetime.fromisoformat(item['valid_until'].replace('Z','+00:00')) <= datetime.now(timezone.utc)
             status = 'Inativo' if not item.get('active',True) else 'Expirado' if expired else 'Ativo'
@@ -60,7 +70,12 @@ async def build(app, manage=False, coupon=None, create=False, station_id=None, o
             details.append(button('Editar',app.link('coupons',manage=True,coupon=item),secondary=True))
         controls.append(card(details))
     if not result['items']:
-        controls.append(ft.Text('Nenhum cupom disponível.'))
+        if manage:
+            controls.append(empty_state(ft.Icons.LOCAL_OFFER_OUTLINED, 'Nenhum cupom criado',
+                                        'Crie um código de desconto para atrair motoristas aos seus pontos.'))
+        else:
+            controls.append(empty_state(ft.Icons.LOCAL_OFFER_OUTLINED, 'Nenhum cupom disponível agora',
+                                        'Quando um posto oferecer desconto, o código aparece aqui para usar no início da recarga.'))
     destination = {'manage':manage}
     if station_id:
         destination['station_id'] = station_id
@@ -113,7 +128,8 @@ def form(app,coupon=None,stations=None):
             if active.value != item.get('active',True):
                 body['active'] = active.value
         else:
-            body['code'] = code.value.strip()
+            # Codes are matched case-insensitively and stored in upper case.
+            body['code'] = code.value.strip().upper()
             if station.value and station.value != '__all__':
                 body['station_id'] = station.value
         await app.api.request('PATCH' if coupon else 'POST',f"coupons/{item['id']}" if coupon else 'coupons',body)

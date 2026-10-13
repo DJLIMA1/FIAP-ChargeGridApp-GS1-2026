@@ -287,3 +287,48 @@ class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(form['Bateria agora (%)'].value, '0')  # Was replaced by 60.
             self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
             self.assertIn('Sem conexão', app.notices[0])
+
+
+class ChargingPresetTests(unittest.IsolatedAsyncioTestCase):
+    async def test_duration_presets_fill_the_field_within_point_limit(self):
+        from test_charging_wizard import WizardApp, fields, limits_screen, texts
+        app = WizardApp()  # Point limit: 10 min.
+        screen = await limits_screen(app)
+        self.assertIn('Máx. 10 min', texts(screen))
+        self.assertNotIn('15 min', texts(screen))  # Never offer more than the point allows.
+        from test_behavior import click
+        await click(screen, 'Máx. 10 min')(None)
+        self.assertEqual(fields(screen)['Duração máxima (min)'].value, '10')
+        self.assertEqual(app.charging_draft['duration_minutes'], '10')
+
+
+class CouponAndFilterUxTests(unittest.IsolatedAsyncioTestCase):
+    async def test_coupon_form_uppercases_code_and_empty_list_explains_next_step(self):
+        from chargegrid_app.screens import coupons
+        from test_behavior import HandlerApp, click
+        from test_consumer_flows import fields, texts
+        app = HandlerApp()
+        app.api.request.return_value = {'items': [], 'total': 0}
+        screen = await coupons.build(app)
+        self.assertIn('Nenhum cupom disponível agora', texts(screen))
+        app.profile = {'operator_enabled': True}
+        app.api.request.return_value = {'items': [], 'total': 0}
+        form = await coupons.build(app, manage=True, create=True)
+        fields(form)['Código'].value = ' verao10 '
+        fields(form)['Descrição'].value = 'Verão'
+        await click(form, 'Salvar cupom')(None)
+        method, path, body = app.api.request.call_args.args
+        self.assertEqual((method, path, body['code']), ('POST', 'coupons', 'VERAO10'))
+
+    async def test_filter_summary_uses_connector_label_not_internal_key(self):
+        from unittest.mock import AsyncMock as Async
+
+        from chargegrid_app.screens import stations
+        from test_behavior import HandlerApp
+        from test_consumer_flows import texts
+        app = HandlerApp()
+        app.api.request.return_value = {'items': [], 'total': 0}
+        with patch.object(stations, 'station_map_widget', new=Async(return_value=ft.Text('Map'))):
+            screen = await stations.build(app, connector_type='type2')
+        self.assertIn('Comparação: Tipo 2', texts(screen))
+        self.assertNotIn('Comparação: type2', texts(screen))

@@ -16,6 +16,8 @@ from ..ui.components import badge, button, card, field, money, title
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
+CONNECTOR_LABELS = {'type2':'Tipo 2','ccs2':'CCS2','chademo':'CHAdeMO','bench':'Bancada'}
+
 
 def _available(station, point):
     return (station.get('active') is not False and point.get('active') is not False
@@ -51,7 +53,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
     connector_filter = ft.Dropdown(label='Conector',value=connector_type or '',
-        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),('type2','Tipo 2'),('ccs2','CCS2'),('chademo','CHAdeMO'),('bench','Bancada')]],
+        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),*CONNECTOR_LABELS.items()]],
         color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
     available_filter = ft.Checkbox(label='Somente pontos disponíveis',value=available_only)
     price_filter = field('Tarifa máxima (R$/kWh)',str(max_price_per_kwh) if max_price_per_kwh is not None else '')
@@ -239,7 +241,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 button('Aplicar comparação',app.action(search))],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))])
         summary = []
         if connector_type:
-            summary.append(connector_type)
+            summary.append(CONNECTOR_LABELS.get(connector_type, connector_type))
         if available_only:
             summary.append('disponíveis')
         if max_price_per_kwh is not None:
