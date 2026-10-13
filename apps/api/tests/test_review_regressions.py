@@ -214,3 +214,12 @@ def test_session_insight_only_for_finished_sessions(factory, seed):
     client, _, _ = client_for(factory, seed["a"])
     response = client.post("/v1/ai/session-insight", json={"session_id": str(active_id)})
     assert response.status_code == 409 and response.json()["error"]["code"] == "session_not_finished"
+
+
+def test_driver_planner_is_rate_limited_per_user(factory, seed, monkeypatch):
+    monkeypatch.setattr(driver_routes, "PLAN_LIMIT", (2, 60))
+    client, selected, _ = client_for(factory, seed["a"])
+    codes = [client.post("/v1/driver/next-stop", json={"soc_percent": 50}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    selected["id"] = seed["b"]  # limite é por usuário
+    assert client.post("/v1/driver/plan", json={"soc_percent": 50}).status_code == 200
