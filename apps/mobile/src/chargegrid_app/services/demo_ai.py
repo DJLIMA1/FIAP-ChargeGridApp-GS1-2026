@@ -54,12 +54,12 @@ def models():
     return unique[:3]
 
 
-async def complete(messages, tools, timeout=22.0, tool_choice='auto', max_tokens=900):
+async def complete(messages, tools, timeout=22.0, tool_choice='auto', max_tokens=900, reasoning_effort=None):
     key = _key()
     if not key:
         raise LLMUnavailable()
     payload = build_payload(messages, tools, models=models(), tool_choice=tool_choice, max_tokens=max_tokens,
-                            reasoning_effort=os.environ.get('OPENROUTER_REASONING_EFFORT', 'low') or None)
+                            reasoning_effort=reasoning_effort or os.environ.get('OPENROUTER_REASONING_EFFORT', 'low') or None)
     headers = {'Authorization': 'Bearer ' + key, 'X-Title': 'ChargeGrid (demo local)'}
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(max(1.0, min(float(timeout), 22.0)), connect=5.0)) as client:

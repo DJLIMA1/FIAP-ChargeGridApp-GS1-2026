@@ -90,8 +90,9 @@ class Script:
     def __init__(self, *responses):
         self.responses, self.seen = list(responses), []
 
-    async def __call__(self, messages, tools, timeout=None, tool_choice="auto", max_tokens=None):
-        self.seen.append({"messages": [dict(m) for m in messages], "tools": tools, "tool_choice": tool_choice})
+    async def __call__(self, messages, tools, timeout=None, tool_choice="auto", **options):
+        self.seen.append({"messages": [dict(m) for m in messages], "tools": tools, "tool_choice": tool_choice,
+                          **options})
         item = self.responses.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -371,6 +372,7 @@ def test_features_use_llm_or_rules_without_silent_model_switch():
     found, meta = run(natural_search("livre em pinheiros", llm=tool))
     assert meta["status"] == "ok" and found["filters"]["near"]["label"] == "Pinheiros"
     assert tool.seen[0]["tool_choice"]["function"]["name"] == "apply_station_filters"
+    assert tool.seen[0]["reasoning_effort"] == "none"
     found, meta = run(natural_search("tipo 2", llm=Script(LLMUnavailable())))
     assert meta["status"] == "fallback" and found["filters"]["connector_type"] == "type2"
 

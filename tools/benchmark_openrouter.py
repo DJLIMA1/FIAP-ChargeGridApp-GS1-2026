@@ -277,11 +277,11 @@ class Transport:
         self.reasoning = None if reasoning == "none" else reasoning
         self.free = model.endswith(":free") or model == "openrouter/free"
 
-    async def __call__(self, messages, tools, timeout=25.0, tool_choice="auto"):
+    async def __call__(self, messages, tools, timeout=25.0, tool_choice="auto", max_tokens=900, reasoning_effort=None):
         if self.spent["usd"] >= self.budget:
             raise LLMUnavailable("orçamento do benchmark atingido", code="budget")
-        payload = build_payload(messages, tools, models=[self.model], tool_choice=tool_choice,
-                                reasoning_effort=self.reasoning)
+        payload = build_payload(messages, tools, models=[self.model], tool_choice=tool_choice, max_tokens=max_tokens,
+                                reasoning_effort=reasoning_effort or self.reasoning)
         for attempt in range(3):
             try:
                 response = await self.client.post(f"{API}/chat/completions", json=payload, timeout=min(30.0, max(3.0, timeout)),

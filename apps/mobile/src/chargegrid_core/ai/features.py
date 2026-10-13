@@ -29,6 +29,8 @@ from .writer import (
 )
 
 RULES_MODEL = "chargegrid-regras"
+# Tarefas de extração/redação não precisam de raciocínio: sem ele, a resposta sai em ~1 s e
+# não esgota ``max_tokens`` (DeepSeek V4.1 Flash raciocina mesmo com effort "low").
 WRITER_TIMEOUT = 12.0
 
 
@@ -42,7 +44,8 @@ async def natural_search(query: str, *, origin: dict | None = None, llm=None) ->
     if llm is not None:
         messages, tools, choice = search_request(query)
         try:
-            response = await llm(messages, tools, timeout=WRITER_TIMEOUT, tool_choice=choice, max_tokens=400)
+            response = await llm(messages, tools, timeout=WRITER_TIMEOUT, tool_choice=choice, max_tokens=400,
+                                 reasoning_effort="none")
             meta = _meta(usage=response.get("usage"), status="fallback")
             call = next((c for c in response.get("tool_calls") or [] if c["name"] == "apply_station_filters"), None)
             if call:
@@ -62,7 +65,8 @@ async def session_insight(session: dict, history: list[dict], *, now: datetime, 
     result, meta = {"summary": session_summary(facts), "tips": tips}, _meta()
     if llm is not None:
         try:
-            response = await llm(session_insight_messages(facts, tips), None, timeout=WRITER_TIMEOUT, max_tokens=500)
+            response = await llm(session_insight_messages(facts, tips), None, timeout=WRITER_TIMEOUT, max_tokens=500,
+                                 reasoning_effort="none")
             written = parse_session_insight(response.get("content") or "")
             meta = _meta(usage=response.get("usage"), status="fallback")
             if written:
@@ -84,7 +88,8 @@ async def owner_insights(stations: list[dict], sessions: list[dict], *, now: dat
     result, meta = {"summary": owner_summary(indicators), "recommendations": base}, _meta()
     if llm is not None and indicators["points"]:
         try:
-            response = await llm(owner_insights_messages(indicators, base), None, timeout=WRITER_TIMEOUT, max_tokens=900)
+            response = await llm(owner_insights_messages(indicators, base), None, timeout=WRITER_TIMEOUT, max_tokens=900,
+                                 reasoning_effort="none")
             written = parse_owner_insights(response.get("content") or "")
             meta = _meta(usage=response.get("usage"), status="fallback")
             if written:

@@ -194,7 +194,7 @@ Busca e insights sempre respondem dessa forma. O chat responde `503` e o app usa
 | `OPENROUTER_API_KEY` | vazio (IA desligada) | chave do OpenRouter |
 | `OPENROUTER_MODEL` | `deepseek/deepseek-v4.1-flash` | modelo principal |
 | `OPENROUTER_FALLBACK_MODELS` | `anthropic/claude-haiku-5.5,qwen/qwen3.7-flash` | alternativas automáticas (máx. 2) |
-| `OPENROUTER_REASONING_EFFORT` | `low` | `reasoning.effort` (vazio desliga) |
+| `OPENROUTER_REASONING_EFFORT` | `low` | `reasoning.effort` do chat (vazio = padrão do modelo). Busca e textos usam sempre `none`: o DeepSeek V4.1 Flash raciocina mesmo com `low` e esgotava `max_tokens` (resposta em ~1 s sem raciocínio) |
 | `OPENROUTER_SITE_URL` | URL do repositório | header `HTTP-Referer` |
 | `AI_ENABLED` | `true` | desliga toda a IA sem remover a chave |
 

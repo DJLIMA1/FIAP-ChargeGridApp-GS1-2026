@@ -25,7 +25,7 @@ class FakeLLM:
         self.responses = list(responses)
         self.calls = []
 
-    async def __call__(self, messages, tools, timeout=None, tool_choice="auto", max_tokens=None):
+    async def __call__(self, messages, tools, timeout=None, tool_choice="auto", **options):
         self.calls.append({"messages": messages, "tools": tools, "tool_choice": tool_choice})
         item = self.responses.pop(0)
         if isinstance(item, Exception):
@@ -262,6 +262,9 @@ def test_openrouter_client_headers_payload_and_errors(monkeypatch):
     assert seen["headers"]["authorization"] == "Bearer sk-test" and seen["headers"]["x-title"] == "ChargeGrid"
     assert seen["headers"]["http-referer"] == "https://example.test"
     assert seen["body"]["model"] == "a" and seen["body"]["models"] == ["a", "b"]
+    assert seen["body"]["reasoning"] == {"effort": "low", "exclude": True}
+    asyncio.run(llm([{"role": "user", "content": "oi"}], None, reasoning_effort="none"))
+    assert seen["body"]["reasoning"]["effort"] == "none"
     with pytest.raises(LLMUnavailable) as error:
         asyncio.run(llm([{"role": "user", "content": "busy"}], None))
     assert error.value.code == "ai_busy"

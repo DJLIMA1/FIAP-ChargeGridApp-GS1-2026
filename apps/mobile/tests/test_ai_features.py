@@ -168,7 +168,7 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
     async def test_demo_with_key_runs_core_loop_over_demo_data(self):
         calls = []
 
-        async def fake_complete(messages, tools, timeout=None, tool_choice='auto', max_tokens=None):
+        async def fake_complete(messages, tools, timeout=None, tool_choice='auto', **options):
             calls.append(messages)
             if len(calls) == 1:
                 return {'content': '', 'model': 'fake', 'usage': {},

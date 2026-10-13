@@ -8,6 +8,7 @@ from ...config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TIMEOUT_SECONDS = 22.0  # a função da Vercel tem 30 s no total
+_DEFAULT = object()
 
 
 def configured_models(config=None) -> list[str]:
@@ -38,9 +39,10 @@ class OpenRouterClient:
         return f"OpenRouterClient(models={self.models!r})"
 
     async def __call__(self, messages, tools, timeout: float = MAX_TIMEOUT_SECONDS, tool_choice="auto",
-                       max_tokens: int = 900):
+                       max_tokens: int = 900, reasoning_effort=_DEFAULT):
+        effort = self.reasoning_effort if reasoning_effort is _DEFAULT else reasoning_effort
         payload = build_payload(messages, tools, models=self.models, tool_choice=tool_choice,
-                                reasoning_effort=self.reasoning_effort, max_tokens=max_tokens)
+                                reasoning_effort=effort, max_tokens=max_tokens)
         headers = {"Authorization": f"Bearer {self._api_key}", "X-Title": "ChargeGrid"}
         if self.site_url:
             headers["HTTP-Referer"] = self.site_url
