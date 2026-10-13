@@ -12,6 +12,7 @@ from .auth_page import AUTH_PAGE
 from .config import settings
 from .database import db_session
 from .models import Connector, Profile, Station
+from .modules.ai.routes import router as ai_router
 from .modules.auth.routes import router as auth_router
 from .modules.charging.routes import router as charging_router
 from .modules.coupons.routes import router as coupons_router
@@ -41,6 +42,7 @@ for router in (
     coupons_router,
     owner_router,
     driver_router,
+    ai_router,
 ):
     app.include_router(router, prefix="/v1")
 

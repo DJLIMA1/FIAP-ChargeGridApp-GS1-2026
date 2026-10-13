@@ -16,6 +16,9 @@ class ApiError(Exception):
 
 
 class ApiClient(OwnerApiMixin):
+    # The backend exposes /v1/ai/* (chat, NL search, insights); the key never reaches the app.
+    ai_enabled = True
+
     def __init__(self, base_url=None, transport=None):
         self.session = Session()
         self.http = httpx.AsyncClient(base_url=validate_api_url(base_url or api_url()) + '/', timeout=12, transport=transport, follow_redirects=False)

@@ -257,3 +257,20 @@ Index("ix_charging_sessions_connector_ended", ChargingSession.connector_id, Char
 Index("ix_charging_sessions_connector_created", ChargingSession.connector_id, ChargingSession.created_at)
 Index("ix_reservations_connector_created", Reservation.connector_id, Reservation.created_at)
 Index("ix_telemetry_samples_session_captured", Telemetry.session_id, Telemetry.captured_at)
+
+
+class AiUsage(Base):
+    """Uso do assistente de IA: somente metadados (sem perguntas, respostas ou dados pessoais)."""
+
+    __tablename__ = "ai_usage"
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), index=True)
+    feature: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(100), default="")
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(12, 6), default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    tools: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)

@@ -262,8 +262,8 @@ def test_apply_is_idempotent_and_conflicts_roll_back():
     tables = ("charging_sessions", "coupons", "connectors", "stations", "profiles")
     with psycopg.connect(database) as connection:
         with connection.cursor() as cursor:
-            for table in tables:
-                cursor.execute(f"DELETE FROM {table}")
+            # CASCADE also clears rows that other suites (devices, reservations...) left behind.
+            cursor.execute(f"TRUNCATE {', '.join(tables)} CASCADE")
         assert module.apply_import(connection, rows) == {
             "profiles": 1,
             "stations": 1,

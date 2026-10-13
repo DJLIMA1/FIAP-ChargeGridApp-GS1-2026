@@ -1,7 +1,10 @@
-"""Account-scoped, in-memory conversation with local guidance and read-only data.
+"""Account-scoped, in-memory conversation with the ChargeGrid AI assistant.
 
-No question is sent to a language model or a support service. Only explicit
-requests for charging/reservation information read the existing account API.
+When the API client offers AI (``api.ai_enabled``), questions go to
+``POST /v1/ai/chat``: the backend runs read-only tools for the signed-in
+account and returns suggested actions that open the normal app flows. Without
+AI (offline, limit reached, demo without key) the local guidance below answers
+and only explicit requests read the existing account API.
 """
 
 import asyncio
@@ -54,10 +57,11 @@ def _state(app):
         app.chat_draft = ''
     if not app.chat_messages:
         demo = ' Nesta conta, reservas, equipamentos e recargas são demonstrações.' if identity[1] else ''
+        ai = ' Pergunte sobre postos, custos, reservas ou seus gastos.' if getattr(app.api, 'ai_enabled', False) else ''
         app.chat_messages.append({
             'role': 'assistant',
-            'content': 'Olá! Posso orientar você nos próximos passos e consultar suas recargas e reservas.' + demo,
-            'actions': [],
+            'content': 'Olá! Posso orientar você nos próximos passos e consultar suas recargas e reservas.' + ai + demo,
+            'actions': [], 'intro': True,
         })
     return identity, app.chat_messages
 
@@ -221,8 +225,74 @@ async def answer(app, question):
     return _local_answer(question, demo)
 
 
+AI_DISCLAIMER = 'Respostas geradas por IA podem conter erros. Confira valores antes de confirmar.'
+_AI_ROUTES = {'open_station': 'stations', 'reserve': 'stations', 'open_reservation': 'reservations',
+              'open_charging': 'charging', 'open_history': 'history', 'open_operator': 'operator',
+              'search_stations': 'stations', 'open_driver': 'driver'}
+
+
+def _ai_actions(suggested):
+    from ..navigation import SCREENS
+    actions = []
+    for item in suggested if isinstance(suggested, list) else []:
+        route = _AI_ROUTES.get(item.get('type')) if isinstance(item, dict) else None
+        if not route or route not in SCREENS:
+            continue
+        data = {}
+        if item.get('station_id') and route == 'stations':
+            data['station_id'] = str(item['station_id'])
+        if item.get('session_id') and route == 'charging':
+            data['session_id'] = str(item['session_id'])
+        # Reservar abre o posto: a reserva segue o fluxo normal, com confirmação.
+        label = str(item.get('label') or 'Abrir')[:60]
+        actions.append(_action(label, route, **data))
+    return actions[:3]
+
+
+def _ai_history(messages):
+    history = []
+    for message in messages:
+        # Local fallback answers (with a note) are not model turns; skipping them
+        # also keeps a retried question as the last message.
+        if message.get('intro') or message.get('note') or message.get('role') not in ('user', 'assistant'):
+            continue
+        limit = MAX_QUESTION_LENGTH if message['role'] == 'user' else 600
+        history.append({'role': message['role'], 'content': str(message['content'])[:limit]})
+    history = history[-8:]
+    while history and history[0]['role'] != 'user':
+        history.pop(0)
+    return history
+
+
+async def ai_answer(app, messages):
+    """Ask the backend assistant; raises ApiError when AI is unavailable."""
+    mode = 'owner' if getattr(app, 'browsing_mode', 'consumer') == 'vendor' else 'driver'
+    result = await app.api.request('POST', 'ai/chat', {'messages': _ai_history(messages), 'context': {'mode': mode}})
+    if not isinstance(result, dict) or not isinstance(result.get('reply'), str) or not result['reply'].strip():
+        raise ApiError('Resposta inválida do assistente.')
+    return {'content': result['reply'].strip(), 'actions': _ai_actions(result.get('suggested_actions')), 'source': 'ai'}
+
+
+def _fallback_note(error):
+    if error.status == 429:
+        return 'Limite de perguntas à IA atingido. Respondi com as orientações locais.'
+    if error.status == 0:
+        return 'Sem conexão com o assistente de IA. Respondi com as orientações locais.'
+    return 'Assistente de IA indisponível agora. Respondi com as orientações locais.'
+
+
+def _typing_indicator():
+    bubble = ft.Container(ft.Row([
+        ft.ProgressRing(width=14, height=14, stroke_width=2, color='#FFFFFF'),
+        ft.Text('Assistente digitando…', color='#FFFFFF', size=13),
+    ], spacing=10, tight=True), bgcolor=ASSISTANT_BACKGROUND, padding=12, border_radius=4)
+    return ft.Semantics(label='Assistente digitando', live_region=True,
+                        content=ft.Row([bubble], spacing=0), visible=False)
+
+
 async def build(app, question='', topic=None):
     identity, messages = _state(app)
+    ai_mode = bool(getattr(app.api, 'ai_enabled', False))
     # Flet follows content on the client after layout. An off-screen bubble's
     # size event cannot reliably tell Python when the list is ready to scroll.
     chat_list = ft.ListView(expand=True, auto_scroll=True, auto_scroll_animation=0,
@@ -242,6 +312,7 @@ async def build(app, question='', topic=None):
     composer.max_lines = 3
     composer.data = 'chat-draft'
     progress = ft.Text('Consultando os dados da sua conta…', color=theme.GRAY_TEXT, size=12, visible=False)
+    typing = _typing_indicator()
     send_button = ft.IconButton(icon=ft.Icons.SEND_ROUNDED, icon_color='#FFFFFF', bgcolor=theme.RED,
                                tooltip='Enviar mensagem', width=46, height=46,
                                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=4)))
@@ -259,6 +330,16 @@ async def build(app, question='', topic=None):
             user = message['role'] == 'user'
             content = [ft.Text(message['content'], color='#FFFFFF', size=14,
                                semantics_label=('Você: ' if user else 'Assistente: ') + message['content'])]
+            if message.get('note'):
+                content.append(ft.Text(message['note'], color='#D0D0D5', size=11, italic=True))
+            if message.get('retry'):
+                content.append(ft.Container(
+                    ft.Row([ft.Icon(ft.Icons.REFRESH, color='#FFFFFF', size=16),
+                            ft.Text('Tentar com IA de novo', color='#FFFFFF', size=12, weight=ft.FontWeight.BOLD)],
+                           spacing=6, tight=True),
+                    on_click=app.action(lambda q=message['retry']: send(q, retry=True)), ink=True,
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=8), border_radius=8,
+                    border=ft.Border.all(1, '#77777C'), tooltip='Reenviar a pergunta ao assistente de IA'))
             if message.get('actions'):
                 content.append(ft.Row([
                     ft.Container(ft.Text(action['label'], color='#FFFFFF', size=12, weight=ft.FontWeight.BOLD),
@@ -279,7 +360,7 @@ async def build(app, question='', topic=None):
             app.chat_draft = composer.value or ''
             composer.error_text = None
 
-    async def send(value=None):
+    async def send(value=None, retry=False):
         if not current() or getattr(app, '_chat_pending', None) is not None:
             return
         raw = composer.value if value is None else value
@@ -297,13 +378,24 @@ async def build(app, question='', topic=None):
         composer.error_text = None
         pending = object()
         app._chat_pending = pending
-        messages.append({'role': 'user', 'content': text, 'actions': []})
+        if not retry:
+            messages.append({'role': 'user', 'content': text, 'actions': []})
         send_button.disabled = True
-        progress.visible = True
+        progress.visible = not ai_mode
+        typing.visible = ai_mode
         draw()
         app.page.update()
         try:
-            result = await answer(app, text)
+            if ai_mode:
+                try:
+                    result = await ai_answer(app, messages)
+                except ApiError as error:
+                    if error.status == 401:
+                        raise
+                    local = await answer(app, text)
+                    result = {**local, 'source': 'local', 'note': _fallback_note(error), 'retry': text}
+            else:
+                result = await answer(app, text)
         except ApiError:
             if current():
                 messages.append({'role': 'assistant', 'content':
@@ -330,6 +422,7 @@ async def build(app, question='', topic=None):
             if current():
                 send_button.disabled = False
                 progress.visible = False
+                typing.visible = False
                 draw()
                 app.page.update()
         return True
@@ -344,6 +437,15 @@ async def build(app, question='', topic=None):
         suggestions = ['Minha reserva', 'Reservar', *suggestions[:2]]
     elif topic == 'charging':
         suggestions = ['Minha recarga', 'Iniciar uma recarga', 'Ajuda com limites', 'Parar ou resolver uma falha']
+    if ai_mode:
+        suggestions = (['Como foram meus postos este mês?', 'Como aumentar a receita dos meus postos?',
+                        'Algum ponto meu está offline?'] if vendor else
+                       ['Postos rápidos perto da Paulista', 'Quanto gastei com recarga este mês?',
+                        'Quanto custa carregar de 20% a 80%?', 'Como iniciar uma recarga?'])
+        if topic == 'reservations':
+            suggestions = ['Minha reserva ainda está valendo?', 'Reservar um ponto perto de mim', *suggestions[:2]]
+        elif topic == 'charging':
+            suggestions = ['Como está minha recarga?', 'Resumo da última recarga', 'Parar ou resolver uma falha']
     chips = ft.Row([
         ft.Container(ft.Text(label, size=12, color=theme.TEXT_COLOR), padding=ft.Padding.symmetric(horizontal=10, vertical=8),
                      border=ft.Border.all(1, theme.LIGHT_GRAY), border_radius=4, ink=True,
@@ -366,9 +468,11 @@ async def build(app, question='', topic=None):
                              bgcolor=theme.RED, padding=10, border_radius=4),
                 ft.Column([ft.Text('Chat', size=26, color=theme.TEXT_COLOR, weight=ft.FontWeight.BOLD,
                                    font_family='BarlowCondensed'),
-                           ft.Text('Assistente do ChargeGrid · orientações automáticas', size=11, color=theme.GRAY_TEXT)],
+                           ft.Text('Assistente do ChargeGrid · IA com dados da sua conta' if ai_mode else
+                                   'Assistente do ChargeGrid · orientações automáticas', size=11, color=theme.GRAY_TEXT)],
                           spacing=2, expand=True)], spacing=12),
-        chat_list, *contextual, chips, progress,
+        chat_list, typing, *contextual, chips, progress,
         ft.Row([composer, send_button], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Text('Conversa disponível só nesta sessão.', size=10, color=theme.GRAY_TEXT),
+        ft.Text((AI_DISCLAIMER + ' ' if ai_mode else '') + 'Conversa disponível só nesta sessão.', size=10,
+                color=theme.GRAY_TEXT),
     ], expand=True, spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

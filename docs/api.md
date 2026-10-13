@@ -61,8 +61,65 @@ Somente leitura, para contas com `operator_enabled` (senão 403). Escopo: postos
 
 Ações de gestão continuam nos endpoints existentes (PATCH `/stations/{id}`, PATCH `/connectors/{id}`, `/coupons`, `/devices/*`). Índices de apoio: migração `a3f1c9d2e7b4`. Insights de IA: POST `/ai/owner-insights` (contrato `{summary, recommendations:[{title, detail, impact, kind}], generated_at, model}`); o dashboard trata 404/erro como estado vazio.
 
+## Assistente de IA
+
+Rotas autenticadas (Bearer). A chave do OpenRouter fica somente no backend. As ferramentas da IA apenas **leem** dados do
+usuário autenticado e nunca reservam, iniciam ou cobram. Os limites são compartilhados por todas as rotas de IA: 20
+pedidos a cada 10 minutos e 200 por dia por usuário, além de um teto global diário. Ao exceder, a resposta é 429
+`ai_rate_limited`. O uso é registrado em `ai_usage` apenas com metadados: tokens, custo, latência, modelo e nomes das
+ferramentas. Detalhes e escolha do modelo em [ia-openrouter.md](ia-openrouter.md).
+
+POST `/ai/chat`
+
+Corpo: `{messages:[{role:"user"|"assistant",content:string≤2000}] (1–12, a última do usuário), context?:{mode:"driver"|"owner",screen?:string,lat?:number,lng?:number}}`.
+
+Resposta 200: `{reply,suggested_actions,tools_used,model}`. Cada item de `suggested_actions` tem o formato
+`{type,label,station_id?,connector_id?,session_id?}`, com `type` entre `open_station`, `reserve`, `open_reservation`,
+`open_charging`, `open_history`, `open_operator`, `search_stations` e `open_driver`. O app abre a tela correspondente,
+e a ação com efeito segue o fluxo normal, com confirmação. As ferramentas de dono só ficam disponíveis com
+`operator_enabled`.
+
+Erros: 503 `ai_unavailable`/`ai_busy`/`ai_quota` (IA desligada ou provedor indisponível; não há troca para modelo caro),
+504 `ai_timeout` e 422 para histórico inválido.
+
+POST `/ai/search`
+
+Corpo: `{query:string 2–300, lat?, lng?}`. Converte a busca em linguagem natural em filtros estruturados.
+
+Resposta 200: `{filters:{near?:{label,lat,lng},radius_km?,text?,connector_type?,min_power_kw?,max_price_per_kwh?,available_only?,sort?,amenities?},unsupported:[string],explanation,params,model}`.
+`params` traz os parâmetros da tela/`GET /stations` (`lat,lng,radius,connector_type,max_price_per_kwh,available_only,sort`).
+Sem IA, ou se ela falhar, responde por regras com `model:"chargegrid-regras"`.
+
+POST `/ai/session-insight`
+
+Corpo: `{session_id}`. Só aceita sessões do próprio usuário; para as demais, a resposta é 404.
+
+Resposta 200: `{session_id,summary,tips:[string],comparison:{cost_brl,energy_kwh,price_per_kwh,avg_cost_brl,avg_price_per_kwh,cost_vs_avg_percent,peak_hour,history_sessions},generated_at,model}`.
+
+POST `/ai/owner-insights`
+
+Exige operador habilitado; caso contrário, 403. Corpo opcional, o mesmo filtro do dashboard:
+`{from?:ISO-8601, to?:ISO-8601, station_id?:UUID, days?:1–366}`. Sem `from`, analisa os últimos `days` dias (padrão 30)
+até `to` ou agora; janela inválida → 422 `invalid_period`; posto de outro dono → 404. **Contrato estável, consumido pelo
+dashboard web:**
+
+```json
+{"summary": "string",
+ "recommendations": [{"title": "string", "detail": "string", "impact": "high|medium|low",
+                      "kind": "pricing|operations|marketing"}],
+ "generated_at": "ISO-8601 UTC",
+ "model": "deepseek/deepseek-v4.1-flash | chargegrid-regras"}
+```
+
+Os indicadores são os mesmos de `/owner/overview`, `/owner/heatmap` e `/owner/alerts` (`chargegrid_core.analytics`):
+receita e energia estimadas, ticket médio, ocupação, disponibilidade, interrupções/falhas, no-show de reservas,
+sessões por hora e alertas de pontos. A IA apenas redige a partir desses números (sem raciocínio estendido, ~2–5 s).
+Se a resposta da IA for inválida ou indisponível, a rota devolve as recomendações por regras.
+
 ## Banco e papel de execução
 
 Migrações usam `MIGRATION_DATABASE_URL`, uma conexão administrativa direta. A aplicação usa `DATABASE_URL` pelo pooler em modo transação com prepared statements automáticos desativados. A migração cria o papel sem login `chargegrid_api`, remove acesso público e de `anon`/`authenticated`, ativa RLS e concede uma política somente ao papel da API. O administrador deve executar `GRANT chargegrid_api TO <usuario_sql_da_api>`; esse usuário não deve ser dono das tabelas nem ter `BYPASSRLS`. A Data API do schema deve permanecer desativada. Nunca conceder `chargegrid_api` aos papéis Supabase `anon` ou `authenticated`.
 
 A versão atual exige `alembic upgrade head` até `d85af641bc01`. Além da migração anterior de tipo de conta e cronologia, ela permite posto de fábrica sem dono e cria `device_claims` com auditoria, unicidade e RLS. O runtime recebe somente SELECT/UPDATE nessa tabela: criar claims exige a credencial administrativa da ferramenta de fábrica. Nenhum owner legado é alterado. Aplicar a migração antes de publicar o código correspondente. Downgrade recusa remover a nulabilidade enquanto houver postos sem dono, evitando apagar equipamento para retornar ao esquema antigo.
+
+A migração `a71c3e5d9b20` (assistente de IA, sobre `a3f1c9d2e7b4`) cria `ai_usage` somente com metadados de uso: usuário, função, status, modelo, tokens, custo, latência e nomes das ferramentas. Ela não guarda perguntas nem respostas. Aplica RLS, e somente o papel `chargegrid_api` recebe SELECT/INSERT.

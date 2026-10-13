@@ -36,6 +36,8 @@ exclude = [
     "__pycache__", "src/chargegrid_app/__pycache__",
     "src/chargegrid_app/screens/__pycache__", "src/chargegrid_app/services/__pycache__",
     "src/chargegrid_app/ui/__pycache__",
+    # Local demo preview calls OpenRouter directly; never ship it in the APK.
+    "src/chargegrid_app/services/demo_ai.py",
 ]
 
 [tool.setuptools.packages.find]

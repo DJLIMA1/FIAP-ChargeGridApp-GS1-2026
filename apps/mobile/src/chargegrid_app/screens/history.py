@@ -3,6 +3,7 @@ import flet as ft
 from chargegrid_core.formatting import kwh
 
 from ..ui import theme
+from ..ui.ai_features import ai_supported, session_insight_control
 from ..ui.components import button, card, date_time, money, title
 from ..ui.point_summary import event_disclosure, point_summary
 from ..ui.states import SESSION_TONES, empty_state, status_chip
@@ -22,6 +23,8 @@ def _summary(app, session, *, demo, events):
                ft.Text('Fim: '+date_time(session.get('ended_at')), size=12, color=theme.GRAY_TEXT)]
     if events:
         details.extend(event_disclosure(app, session['id']))
+        if ai_supported(app) and session.get('status') in ('completed', 'interrupted'):
+            details.append(session_insight_control(app, session['id']))
     return card([
         ft.Row([status_chip(labels.get(session['status'], session['status']), SESSION_TONES.get(session['status'], 'SLATE')),
                 ft.Text(when, size=12, color=theme.GRAY_TEXT)],
