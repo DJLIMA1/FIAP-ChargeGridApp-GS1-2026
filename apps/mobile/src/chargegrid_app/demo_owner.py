@@ -362,7 +362,7 @@ class DemoOwner:
                 'title': 'Recupere o ponto offline',
                 'detail': 'Há equipamento sem comunicação: cada dia parado reduz a disponibilidade e a receita. '
                           'Verifique energia e Wi-Fi do painel.',
-                'impact': 'high', 'kind': 'maintenance',
+                'impact': 'high', 'kind': 'operations',
             })
         if kpis.get('no_show_percent') and Decimal(kpis['no_show_percent']) >= 10:
             recommendations.append({

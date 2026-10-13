@@ -45,14 +45,17 @@ class DbSource:
     def get_station(self, station_id):
         key = _uuid(station_id)
         obj = self.db.get(Station, key) if key else None
-        return station_row(self.db, obj) if obj and obj.active else None
+        return station_row(self.db, obj) if obj and obj.active and obj.owner_id is not None else None
 
     def get_connector(self, connector_id):
         key = _uuid(connector_id)
         connector = self.db.get(Connector, key) if key else None
-        if not connector:
+        if not connector or not connector.active:
             return None
         station = self.db.get(Station, connector.station_id)
+        # Mesmo recorte da listagem pública: ponto de posto oculto/sem dono não é consultável.
+        if station is None or not station.active or station.owner_id is None:
+            return None
         return {**compact_point(point_row(self.db, connector)), "station_id": str(station.id), "station_name": station.name}
 
     def current_reservation(self):
