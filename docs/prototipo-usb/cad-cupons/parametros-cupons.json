@@ -1,0 +1,9 @@
+{
+  "status": "TEST_COUPONS_NOT_FINAL_ENCLOSURE_PARTS",
+  "units": "mm",
+  "print": {"material": "PETG", "nozzle": 0.4, "layer_height": 0.2, "walls": 3, "infill_percent": 25, "supports": false, "physical_test_performed": false},
+  "rail": {"side_clearances": [0.25, 0.35, 0.45], "male_bottom_width": 12.0, "male_top_width": 8.0, "male_height": 3.2, "length": 30.0, "female_width": 26.0, "floor_height": 3.0, "female_height": 8.0, "end_stop": 2.0, "pull_tab_width": 16.0, "pull_tab_length": 10.0, "marker_diameter": 2.0, "marker_depth": 1.0},
+  "latch": {"grip_length": 12.0, "grip_width": 14.0, "beam_lower_y": 6.0, "beam_thickness": 1.2, "extrusion_width": 8.0, "root_radius": 1.0, "beam_end_x": 36.0, "hook_back_x": 29.0, "hook_tip_x": 33.0, "hook_height": 0.8, "keeper_x_start": 20.0, "keeper_length": 8.0, "keeper_side_clearance": 0.35, "keeper_release_relief": 1.0, "keeper_floor": 2.0, "keeper_roof": 2.0, "vertical_clearance_per_side": 0.35, "release_displacement_for_geometry_test": 0.6},
+  "mesh": {"linear_deflection": 0.04, "angular_deflection_rad": 0.15, "vertex_weld_decimals": 6},
+  "notes": ["Folga do trilho medida horizontalmente em cada flanco; nao e folga normal a face inclinada.", "Folga inferior do trilho igual a folga lateral; trilho possui abertura superior e retencao por flancos inclinados.", "Trava e receptor sao cupons manuais independentes; ainda nao incluem interface de fixacao na casca.", "Ensaios geometricos nao substituem teste fisico de forca, fadiga, temperatura e fluencia."]
+}

@@ -1,0 +1,170 @@
+{
+  "status": "CONCEPT_ONLY_NOT_FOR_MANUFACTURE",
+  "units": "mm",
+  "description": "Volumes parametrizáveis sem juntas funcionais. Não são modelos de placas reais. Todos os plugs e cabos exigem nova validação de interferência.",
+  "axes": "X width, Y cassette height, Z forward depth, local reference independent of original STEP",
+  "parts": [
+    {
+      "name": "CONCEPT_base_84x156x2p4",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "dimensions": [
+        84,
+        156,
+        2.4
+      ],
+      "color": [
+        0.65,
+        0.75,
+        0.78
+      ]
+    },
+    {
+      "name": "CONCEPT_replaceable_left_rail",
+      "origin": [
+        0,
+        0,
+        2.4
+      ],
+      "dimensions": [
+        4,
+        156,
+        5
+      ],
+      "color": [
+        0.93,
+        0.58,
+        0.16
+      ]
+    },
+    {
+      "name": "CONCEPT_replaceable_right_rail",
+      "origin": [
+        80,
+        0,
+        2.4
+      ],
+      "dimensions": [
+        4,
+        156,
+        5
+      ],
+      "color": [
+        0.93,
+        0.58,
+        0.16
+      ]
+    },
+    {
+      "name": "CONCEPT_protection_carrier",
+      "origin": [
+        6,
+        3,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        34,
+        2
+      ],
+      "color": [
+        0.2,
+        0.56,
+        0.42
+      ]
+    },
+    {
+      "name": "CONCEPT_power_carrier",
+      "origin": [
+        6,
+        42,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        46,
+        2
+      ],
+      "color": [
+        0.25,
+        0.36,
+        0.7
+      ]
+    },
+    {
+      "name": "CONCEPT_control_carrier",
+      "origin": [
+        6,
+        93,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        57,
+        2
+      ],
+      "color": [
+        0.18,
+        0.48,
+        0.61
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_protection_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        8,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        24,
+        18
+      ],
+      "color": [
+        0.83,
+        0.9,
+        0.87
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_power_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        47,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        36,
+        30.6
+      ],
+      "color": [
+        0.81,
+        0.84,
+        0.94
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_control_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        98,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        47,
+        25
+      ],
+      "color": [
+        0.77,
+        0.88,
+        0.92
+      ]
+    }
+  ]
+}

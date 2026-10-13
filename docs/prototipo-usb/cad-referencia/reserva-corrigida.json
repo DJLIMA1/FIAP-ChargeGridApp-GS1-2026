@@ -1,0 +1,2265 @@
+{
+  "status": "RESERVA_DE_ESTUDO_NAO_LIBERADA_PARA_FABRICACAO",
+  "reference": "casca-original-70-REFERENCIA.brep",
+  "reference_solids": 9,
+  "reference_BRep_valid": true,
+  "coordinates": "X largura; Y para traseira; Z altura; origem STEP original escalada",
+  "original_40mm_collision_mm3": 109.34878138107823,
+  "candidates": [
+    {
+      "width_mm": 84,
+      "height_mm": 156,
+      "depth_mm": 36.0,
+      "back_Y_mm": 127.0,
+      "bounds_mm": {
+        "min": [
+          -42.0,
+          91.0,
+          48.269067304028354
+        ],
+        "max": [
+          42.0,
+          127.0,
+          204.26906730402834
+        ],
+        "size_xyz": [
+          84.0,
+          36.0,
+          156.0
+        ]
+      },
+      "tests": [
+        {
+          "solid_index": 0,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98612884437179,
+              85.57478400833072,
+              -93.73093272597166
+            ],
+            "max": [
+              72.98685796326274,
+              149.87816357071893,
+              221.30362713422375
+            ],
+            "size_xyz": [
+              145.97298680763453,
+              64.3033795623882,
+              315.0345598601954
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 1.624781816948314,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                29.619986338068777,
+                128.6247818169483,
+                166.2433684251692
+              ],
+              "envelope": [
+                29.61998633806877,
+                127.0,
+                166.2433684251692
+              ]
+            }
+          ],
+          "boundary_distance_mm": 1.624781816948314,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                29.619986338068777,
+                128.6247818169483,
+                166.2433684251692
+              ],
+              "envelope": [
+                29.61998633806877,
+                127.0,
+                166.2433684251692
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 183864.74331105233
+        },
+        {
+          "solid_index": 1,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98483745007928,
+              34.5735975069656,
+              -93.7191033774737
+            ],
+            "max": [
+              72.98483745005893,
+              105.20978408410713,
+              221.30357732616156
+            ],
+            "size_xyz": [
+              145.96967490013822,
+              70.63618657714153,
+              315.0226807036353
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 2.5734059405871923,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                88.42664477697825,
+                204.28522376391697
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                42.0,
+                88.42664477697825,
+                204.28522376391697
+              ],
+              "envelope": [
+                42.0,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                -37.36346741491952,
+                88.42664476363038,
+                204.28522338276107
+              ],
+              "envelope": [
+                -37.36346741491966,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 2.5734059405871923,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                88.42664477697825,
+                204.28522376391697
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                42.0,
+                88.42664477697825,
+                204.28522376391697
+              ],
+              "envelope": [
+                42.0,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                -37.36346741491952,
+                88.42664476363038,
+                204.28522338276107
+              ],
+              "envelope": [
+                -37.36346741491966,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 129414.39693746934
+        },
+        {
+          "solid_index": 2,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -7.743300462698434,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              -6.930444350809599,
+              40.00299531191417,
+              -48.82520261134099
+            ],
+            "size_xyz": [
+              0.8128561118888351,
+              0.6545919850571735,
+              5.830569641802008
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 109.97811008729042,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 109.97811008729042,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 109.67220129802833,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 0.006138325898426226
+        },
+        {
+          "solid_index": 3,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -5.390467017643077,
+              39.45230786414599,
+              -53.73037205015277
+            ],
+            "max": [
+              -4.835046090037699,
+              39.89910162249,
+              -49.750699438203995
+            ],
+            "size_xyz": [
+              0.5554209276053781,
+              0.4467937583440076,
+              3.9796726119487786
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                42.0,
+                91.0,
+                48.269067304028354
+              ],
+              "envelope": [
+                42.0,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.74763765439351,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -4.9769042646603,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                -4.976904264660298,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.54038396527417,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628961493033607
+        },
+        {
+          "solid_index": 4,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -2.0778804786369998,
+              39.593327961021,
+              -52.949829683657995
+            ],
+            "max": [
+              1.3237896795327,
+              39.817640892753154,
+              -51.00679138175099
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.2243129317321575,
+              1.943038301907002
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.79598408483113,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.9824858137035,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                -1.982485813703498,
+                91.0,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.2283950145985,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                1.2283950145984974,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 111.69301679864326,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.004539057719630972
+        },
+        {
+          "solid_index": 5,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -1.4390127692361,
+              39.51930044503899,
+              -52.290452981415
+            ],
+            "max": [
+              1.9626573889335999,
+              39.743503730145946,
+              -50.347414679515
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.22420328510695242,
+              1.9430383019000033
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.24510306034082,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.3436181043019,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                -1.3436181043019033,
+                91.0,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.8672627239994,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                1.8672627239994029,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 111.1415265716289,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0027159065534391076
+        },
+        {
+          "solid_index": 6,
+          "shell_solid_bounds_mm": {
+            "min": [
+              4.8343900508007,
+              39.45230786414424,
+              -53.730372050149995
+            ],
+            "max": [
+              5.389810978268269,
+              39.89910162249,
+              -49.750699438202545
+            ],
+            "size_xyz": [
+              0.5554209274675692,
+              0.4467937583457626,
+              3.97967261194745
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.74763765439351,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                4.9762482254233,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                4.976248225423298,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.5403839652729,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628956474681657
+        },
+        {
+          "solid_index": 7,
+          "shell_solid_bounds_mm": {
+            "min": [
+              6.9297883115717,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              7.742644423697958,
+              40.002995311914,
+              -48.82520261134012
+            ],
+            "size_xyz": [
+              0.8128561121262576,
+              0.654591985057003,
+              5.830569641802882
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 109.97811008729042,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                7.137627464765,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                7.1376274647650035,
+                91.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 109.67220129802763,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.006138326436612198
+        },
+        {
+          "solid_index": 8,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.76671447952543,
+              45.67502628097846,
+              23.714904523820167
+            ],
+            "max": [
+              72.76670813823507,
+              86.27553381595062,
+              221.14356388632996
+            ],
+            "size_xyz": [
+              145.5334226177605,
+              40.60050753497217,
+              197.4286593625098
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 11.692466611243454,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -36.55721443769162,
+                85.72038443483923,
+                214.70168130719912
+              ],
+              "envelope": [
+                -36.55721443769027,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55721443775417,
+                85.72038443479396,
+                214.70168130810805
+              ],
+              "envelope": [
+                36.55721443775417,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 11.692466611243454,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -36.55721443769162,
+                85.72038443483923,
+                214.70168130719912
+              ],
+              "envelope": [
+                -36.55721443769027,
+                91.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55721443775417,
+                85.72038443479396,
+                214.70168130810805
+              ],
+              "envelope": [
+                36.55721443775417,
+                91.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 4.724466184049376,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 59343.12336285628
+        }
+      ],
+      "total_intersection_volume_mm3": 0.0,
+      "passes_1mm_geometric_clearance": true,
+      "minimum_boundary_distance_mm": 1.624781816948314
+    },
+    {
+      "width_mm": 84,
+      "height_mm": 156,
+      "depth_mm": 36.0,
+      "back_Y_mm": 126.5,
+      "bounds_mm": {
+        "min": [
+          -42.0,
+          90.5,
+          48.269067304028354
+        ],
+        "max": [
+          42.0,
+          126.5,
+          204.26906730402834
+        ],
+        "size_xyz": [
+          84.0,
+          36.0,
+          156.0
+        ]
+      },
+      "tests": [
+        {
+          "solid_index": 0,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98612884437179,
+              85.57478400833072,
+              -93.73093272597166
+            ],
+            "max": [
+              72.98685796326274,
+              149.87816357071893,
+              221.30362713422375
+            ],
+            "size_xyz": [
+              145.97298680763453,
+              64.3033795623882,
+              315.0345598601954
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 1.8964907580719488,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                30.430547063198613,
+                126.65958064255774,
+                206.15883216082221
+              ],
+              "envelope": [
+                30.430547063193643,
+                126.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                4.639452936808981,
+                126.65958064079621,
+                206.15883216097097
+              ],
+              "envelope": [
+                4.639452936809214,
+                126.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 1.8964907580719488,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                30.430547063198613,
+                126.65958064255774,
+                206.15883216082221
+              ],
+              "envelope": [
+                30.430547063193643,
+                126.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                4.639452936808981,
+                126.65958064079621,
+                206.15883216097097
+              ],
+              "envelope": [
+                4.639452936809214,
+                126.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 183864.74331105233
+        },
+        {
+          "solid_index": 1,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98483745007928,
+              34.5735975069656,
+              -93.7191033774737
+            ],
+            "max": [
+              72.98483745005893,
+              105.20978408410713,
+              221.30357732616156
+            ],
+            "size_xyz": [
+              145.96967490013822,
+              70.63618657714153,
+              315.0226807036353
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 2.0734157953124286,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                88.42662507287102,
+                204.28208543768733
+              ],
+              "envelope": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                42.0,
+                88.42662507287102,
+                204.28208543768733
+              ],
+              "envelope": [
+                42.0,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                -37.36682541065509,
+                88.42662506047887,
+                204.2820851352602
+              ],
+              "envelope": [
+                -37.36682541065519,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 2.0734157953124286,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                88.42662507287102,
+                204.28208543768733
+              ],
+              "envelope": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                42.0,
+                88.42662507287102,
+                204.28208543768733
+              ],
+              "envelope": [
+                42.0,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                -37.36682541065509,
+                88.42662506047887,
+                204.2820851352602
+              ],
+              "envelope": [
+                -37.36682541065519,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 129414.39693746934
+        },
+        {
+          "solid_index": 2,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -7.743300462698434,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              -6.930444350809599,
+              40.00299531191417,
+              -48.82520261134099
+            ],
+            "size_xyz": [
+              0.8128561118888351,
+              0.6545919850571735,
+              5.830569641802008
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 109.74417115181575,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 109.74417115181575,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 109.44059910685412,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 0.006138325898426226
+        },
+        {
+          "solid_index": 3,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -5.390467017643077,
+              39.45230786414599,
+              -53.73037205015277
+            ],
+            "max": [
+              -4.835046090037699,
+              39.89910162249,
+              -49.750699438203995
+            ],
+            "size_xyz": [
+              0.5554209276053781,
+              0.4467937583440076,
+              3.9796726119487786
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                42.0,
+                90.5,
+                48.269067304028354
+              ],
+              "envelope": [
+                42.0,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.51579775757395,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -4.9769042646603,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                -4.976904264660298,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.31013366328922,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628961493033607
+        },
+        {
+          "solid_index": 4,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -2.0778804786369998,
+              39.593327961021,
+              -52.949829683657995
+            ],
+            "max": [
+              1.3237896795327,
+              39.817640892753154,
+              -51.00679138175099
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.2243129317321575,
+              1.943038301907002
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                126.5,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                126.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.56695472027923,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.9824858137035,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                -1.982485813703498,
+                90.5,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.2283950145985,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                1.2283950145984974,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 111.46478207252173,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.004539057719630972
+        },
+        {
+          "solid_index": 5,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -1.4390127692361,
+              39.51930044503899,
+              -52.290452981415
+            ],
+            "max": [
+              1.9626573889335999,
+              39.743503730145946,
+              -50.347414679515
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.22420328510695242,
+              1.9430383019000033
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.01460379360405,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.3436181043019,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                -1.3436181043019033,
+                90.5,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.8672627239994,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                1.8672627239994029,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.91182278009066,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0027159065534391076
+        },
+        {
+          "solid_index": 6,
+          "shell_solid_bounds_mm": {
+            "min": [
+              4.8343900508007,
+              39.45230786414424,
+              -53.730372050149995
+            ],
+            "max": [
+              5.389810978268269,
+              39.89910162249,
+              -49.750699438202545
+            ],
+            "size_xyz": [
+              0.5554209274675692,
+              0.4467937583457626,
+              3.97967261194745
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.51579775757395,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                4.9762482254233,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                4.976248225423298,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.31013366328793,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628956474681657
+        },
+        {
+          "solid_index": 7,
+          "shell_solid_bounds_mm": {
+            "min": [
+              6.9297883115717,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              7.742644423697958,
+              40.002995311914,
+              -48.82520261134012
+            ],
+            "size_xyz": [
+              0.8128561121262576,
+              0.654591985057003,
+              5.830569641802882
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 109.74417115181575,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                7.137627464765,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                7.1376274647650035,
+                90.5,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 109.44059910685343,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.006138326436612198
+        },
+        {
+          "solid_index": 8,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.76671447952543,
+              45.67502628097846,
+              23.714904523820167
+            ],
+            "max": [
+              72.76670813823507,
+              86.27553381595062,
+              221.14356388632996
+            ],
+            "size_xyz": [
+              145.5334226177605,
+              40.60050753497217,
+              197.4286593625098
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 11.475148710118374,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -36.55690584467897,
+                85.71005224737118,
+                214.6966959149071
+              ],
+              "envelope": [
+                -36.55690584465656,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55690584470342,
+                85.71005224596253,
+                214.69669591518897
+              ],
+              "envelope": [
+                36.55690584460562,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 11.475148710118374,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -36.55690584467897,
+                85.71005224737118,
+                214.6966959149071
+              ],
+              "envelope": [
+                -36.55690584465656,
+                90.5,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55690584470342,
+                85.71005224596253,
+                214.69669591518897
+              ],
+              "envelope": [
+                36.55690584460562,
+                90.5,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 4.224466184049376,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 59343.12336285628
+        }
+      ],
+      "total_intersection_volume_mm3": 0.0,
+      "passes_1mm_geometric_clearance": true,
+      "minimum_boundary_distance_mm": 1.8964907580719488
+    },
+    {
+      "width_mm": 84,
+      "height_mm": 156,
+      "depth_mm": 34.0,
+      "back_Y_mm": 127.0,
+      "bounds_mm": {
+        "min": [
+          -42.0,
+          93.0,
+          48.269067304028354
+        ],
+        "max": [
+          42.0,
+          127.0,
+          204.26906730402834
+        ],
+        "size_xyz": [
+          84.0,
+          34.0,
+          156.0
+        ]
+      },
+      "tests": [
+        {
+          "solid_index": 0,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98612884437179,
+              85.57478400833072,
+              -93.73093272597166
+            ],
+            "max": [
+              72.98685796326274,
+              149.87816357071893,
+              221.30362713422375
+            ],
+            "size_xyz": [
+              145.97298680763453,
+              64.3033795623882,
+              315.0345598601954
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 1.624781816948314,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                29.619986338068777,
+                128.6247818169483,
+                166.2433684251692
+              ],
+              "envelope": [
+                29.61998633806877,
+                127.0,
+                166.2433684251692
+              ]
+            }
+          ],
+          "boundary_distance_mm": 1.624781816948314,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                29.619986338068777,
+                128.6247818169483,
+                166.2433684251692
+              ],
+              "envelope": [
+                29.61998633806877,
+                127.0,
+                166.2433684251692
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 183864.74331105233
+        },
+        {
+          "solid_index": 1,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.98483745007928,
+              34.5735975069656,
+              -93.7191033774737
+            ],
+            "max": [
+              72.98483745005893,
+              105.20978408410713,
+              221.30357732616156
+            ],
+            "size_xyz": [
+              145.96967490013822,
+              70.63618657714153,
+              315.0226807036353
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 3.983014647736654,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                45.982960049560475,
+                92.97914507936443,
+                203.90138335631372
+              ],
+              "envelope": [
+                42.0,
+                93.0,
+                203.90138335631372
+              ]
+            },
+            {
+              "shell": [
+                45.982960049557356,
+                92.97914507936225,
+                201.17310066218457
+              ],
+              "envelope": [
+                42.0,
+                93.0,
+                201.1731006621846
+              ]
+            }
+          ],
+          "boundary_distance_mm": 3.983014647736654,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                45.982960049560475,
+                92.97914507936443,
+                203.90138335631372
+              ],
+              "envelope": [
+                42.0,
+                93.0,
+                203.90138335631372
+              ]
+            },
+            {
+              "shell": [
+                45.982960049557356,
+                92.97914507936225,
+                201.17310066218457
+              ],
+              "envelope": [
+                42.0,
+                93.0,
+                201.1731006621846
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 0.0,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 129414.39693746934
+        },
+        {
+          "solid_index": 2,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -7.743300462698434,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              -6.930444350809599,
+              40.00299531191417,
+              -48.82520261134099
+            ],
+            "size_xyz": [
+              0.8128561118888351,
+              0.6545919850571735,
+              5.830569641802008
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 110.93147021771928,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.93147021771928,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -7.138283504002,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                -7.138283504001997,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.6163629681775,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 0.006138325898426226
+        },
+        {
+          "solid_index": 3,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -5.390467017643077,
+              39.45230786414599,
+              -53.73037205015277
+            ],
+            "max": [
+              -4.835046090037699,
+              39.89910162249,
+              -49.750699438203995
+            ],
+            "size_xyz": [
+              0.5554209276053781,
+              0.4467937583440076,
+              3.9796726119487786
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                42.0,
+                93.0,
+                48.269067304028354
+              ],
+              "envelope": [
+                42.0,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.6925691985472,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -4.9769042646603,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                -4.976904264660298,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 111.47905669093312,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628961493033607
+        },
+        {
+          "solid_index": 4,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -2.0778804786369998,
+              39.593327961021,
+              -52.949829683657995
+            ],
+            "max": [
+              1.3237896795327,
+              39.817640892753154,
+              -51.00679138175099
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.2243129317321575,
+              1.943038301907002
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 112.72962674138387,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.9824858137035,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                -1.982485813703498,
+                93.0,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.2283950145985,
+                39.593328061021,
+                -51.006791481751
+              ],
+              "envelope": [
+                1.2283950145984974,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 112.62352968190525,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.004539057719630972
+        },
+        {
+          "solid_index": 5,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -1.4390127692361,
+              39.51930044503899,
+              -52.290452981415
+            ],
+            "max": [
+              1.9626573889335999,
+              39.743503730145946,
+              -50.347414679515
+            ],
+            "size_xyz": [
+              3.4016701581696998,
+              0.22420328510695242,
+              1.9430383019000033
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 112.18465025450537,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -1.3436181043019,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                -1.3436181043019033,
+                93.0,
+                48.269067304028354
+              ]
+            },
+            {
+              "shell": [
+                1.8672627239994,
+                39.519300545039,
+                -50.347414779515
+              ],
+              "envelope": [
+                1.8672627239994029,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 112.07794124515095,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0027159065534391076
+        },
+        {
+          "solid_index": 6,
+          "shell_solid_bounds_mm": {
+            "min": [
+              4.8343900508007,
+              39.45230786414424,
+              -53.730372050149995
+            ],
+            "max": [
+              5.389810978268269,
+              39.89910162249,
+              -49.750699438202545
+            ],
+            "size_xyz": [
+              0.5554209274675692,
+              0.4467937583457626,
+              3.97967261194745
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 111.6925691985472,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                4.9762482254233,
+                39.452307964146,
+                -49.750699538204
+              ],
+              "envelope": [
+                4.976248225423298,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 111.47905669093186,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.0028628956474681657
+        },
+        {
+          "solid_index": 7,
+          "shell_solid_bounds_mm": {
+            "min": [
+              6.9297883115717,
+              39.348403326856996,
+              -54.655772253143
+            ],
+            "max": [
+              7.742644423697958,
+              40.002995311914,
+              -48.82520261134012
+            ],
+            "size_xyz": [
+              0.8128561121262576,
+              0.654591985057003,
+              5.830569641802882
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 0.0,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ],
+              "envelope": [
+                -42.0,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 110.93147021771928,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                7.137627464765,
+                39.348403426857,
+                -48.825202711341
+              ],
+              "envelope": [
+                7.1376274647650035,
+                93.0,
+                48.269067304028354
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 110.6163629681768,
+          "raw_solid_distance_inconsistent_with_bounds": true,
+          "shell_signed_volume_mm3": 0.006138326436612198
+        },
+        {
+          "solid_index": 8,
+          "shell_solid_bounds_mm": {
+            "min": [
+              -72.76671447952543,
+              45.67502628097846,
+              23.714904523820167
+            ],
+            "max": [
+              72.76670813823507,
+              86.27553381595062,
+              221.14356388632996
+            ],
+            "size_xyz": [
+              145.5334226177605,
+              40.60050753497217,
+              197.4286593625098
+            ]
+          },
+          "common_BRep_valid": true,
+          "common_volume_mm3": 0.0,
+          "solid_distance_raw_mm": 12.718344817204624,
+          "raw_nearest_points": [
+            {
+              "shell": [
+                -36.55862613580055,
+                85.75734706039857,
+                214.7237444050104
+              ],
+              "envelope": [
+                -36.55862613580055,
+                93.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55862613586109,
+                85.75734706032651,
+                214.72374440590406
+              ],
+              "envelope": [
+                36.55862613586109,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "boundary_distance_mm": 12.718344817204624,
+          "boundary_distance_algorithm_done": true,
+          "boundary_nearest_points": [
+            {
+              "shell": [
+                -36.55862613580055,
+                85.75734706039857,
+                214.7237444050104
+              ],
+              "envelope": [
+                -36.55862613580055,
+                93.0,
+                204.26906730402834
+              ]
+            },
+            {
+              "shell": [
+                36.55862613586109,
+                85.75734706032651,
+                214.72374440590406
+              ],
+              "envelope": [
+                36.55862613586109,
+                93.0,
+                204.26906730402834
+              ]
+            }
+          ],
+          "bounding_box_distance_lower_bound_mm": 6.724466184049376,
+          "raw_solid_distance_inconsistent_with_bounds": false,
+          "shell_signed_volume_mm3": 59343.12336285628
+        }
+      ],
+      "total_intersection_volume_mm3": 0.0,
+      "passes_1mm_geometric_clearance": true,
+      "minimum_boundary_distance_mm": 1.624781816948314
+    }
+  ],
+  "selected_candidate_index": 1,
+  "selected_envelope": {
+    "width_mm": 84,
+    "height_mm": 156,
+    "depth_mm": 36.0,
+    "back_Y_mm": 126.5,
+    "bounds_mm": {
+      "min": [
+        -42.0,
+        90.5,
+        48.269067304028354
+      ],
+      "max": [
+        42.0,
+        126.5,
+        204.26906730402834
+      ],
+      "size_xyz": [
+        84.0,
+        36.0,
+        156.0
+      ]
+    },
+    "minimum_boundary_clearance_mm": 1.8964907580719488,
+    "original_solids_total_common_volume_mm3": 0.0,
+    "native_file": "envelope-84x156x36-POSICIONADO.brep"
+  },
+  "distance_method": "BRepExtrema_DistShapeShape between boundary-face compounds of each original solid and the envelope. This avoids erroneous implicit interior classification observed on small decorative original solids. BRepAlgoAPI_Common was independently evaluated against all 9 original solids.",
+  "anomaly": "Five small decorative solids returned raw solid-to-solid distance zero with nearest points outside their own bounding boxes. Both raw results and bounded-face results are retained in this report. Original geometry was not modified.",
+  "limits": [
+    "Zero intersection and positive boundary distance do not prove that a volume is in the intended cavity; exterior free space also has those properties. Placement follows the known central cavity, but no watertight cavity solid was reconstructed.",
+    "The reference retains original industrial walls/ribs/posts. Rebuilding walls inward for FDM may reduce this clearance.",
+    "The 36 mm limit is a total study envelope. Real boards, headers, terminal blocks, plugs, bend radii and insertion/removal paths remain unvalidated.",
+    "Only the generic power reservation depth is reduced. No real component was shrunk to force a fit.",
+    "This is not a printable shell or final cassette; it does not validate fatigue, heat, electrical behavior or assembly motion."
+  ],
+  "corrected_cassette": {
+    "file": "cassete-reserva-36mm-POSICIONADO-ESTUDO.brep",
+    "BRep_roundtrip_valid": true,
+    "bounds_mm": {
+      "min": [
+        -42.0,
+        90.5,
+        48.269067304028354
+      ],
+      "max": [
+        42.0,
+        126.5,
+        204.26906730402834
+      ],
+      "size_xyz": [
+        84.0,
+        36.0,
+        156.0
+      ]
+    },
+    "parts": [
+      {
+        "name": "CONCEPT_base_84x156x2p4",
+        "local_origin_mm": [
+          0,
+          0,
+          0
+        ],
+        "local_dimensions_mm": [
+          84,
+          156,
+          2.4
+        ],
+        "previous_local_depth_mm": 2.4,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -42.0,
+            124.1,
+            48.269067304028354
+          ],
+          "max": [
+            42.0,
+            126.5,
+            204.26906730402834
+          ],
+          "size_xyz": [
+            84.0,
+            2.4000000000000057,
+            156.0
+          ]
+        }
+      },
+      {
+        "name": "CONCEPT_replaceable_left_rail",
+        "local_origin_mm": [
+          0,
+          0,
+          2.4
+        ],
+        "local_dimensions_mm": [
+          4,
+          156,
+          5
+        ],
+        "previous_local_depth_mm": 5,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -42.0,
+            119.1,
+            48.269067304028354
+          ],
+          "max": [
+            -38.0,
+            124.1,
+            204.26906730402834
+          ],
+          "size_xyz": [
+            4.0,
+            5.0,
+            156.0
+          ]
+        }
+      },
+      {
+        "name": "CONCEPT_replaceable_right_rail",
+        "local_origin_mm": [
+          80,
+          0,
+          2.4
+        ],
+        "local_dimensions_mm": [
+          4,
+          156,
+          5
+        ],
+        "previous_local_depth_mm": 5,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            38.0,
+            119.1,
+            48.269067304028354
+          ],
+          "max": [
+            42.0,
+            124.1,
+            204.26906730402834
+          ],
+          "size_xyz": [
+            4.0,
+            5.0,
+            156.0
+          ]
+        }
+      },
+      {
+        "name": "CONCEPT_protection_carrier",
+        "local_origin_mm": [
+          6,
+          3,
+          7.4
+        ],
+        "local_dimensions_mm": [
+          72,
+          34,
+          2
+        ],
+        "previous_local_depth_mm": 2,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -36.0,
+            117.1,
+            51.269067304028354
+          ],
+          "max": [
+            36.0,
+            119.1,
+            85.26906730402835
+          ],
+          "size_xyz": [
+            72.0,
+            2.0,
+            34.0
+          ]
+        }
+      },
+      {
+        "name": "CONCEPT_power_carrier",
+        "local_origin_mm": [
+          6,
+          42,
+          7.4
+        ],
+        "local_dimensions_mm": [
+          72,
+          46,
+          2
+        ],
+        "previous_local_depth_mm": 2,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -36.0,
+            117.1,
+            90.26906730402835
+          ],
+          "max": [
+            36.0,
+            119.1,
+            136.26906730402834
+          ],
+          "size_xyz": [
+            72.0,
+            2.0,
+            45.999999999999986
+          ]
+        }
+      },
+      {
+        "name": "CONCEPT_control_carrier",
+        "local_origin_mm": [
+          6,
+          93,
+          7.4
+        ],
+        "local_dimensions_mm": [
+          72,
+          57,
+          2
+        ],
+        "previous_local_depth_mm": 2,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -36.0,
+            117.1,
+            141.26906730402834
+          ],
+          "max": [
+            36.0,
+            119.1,
+            198.26906730402834
+          ],
+          "size_xyz": [
+            72.0,
+            2.0,
+            57.0
+          ]
+        }
+      },
+      {
+        "name": "RESERVED_GENERIC_protection_NOT_A_COMPONENT",
+        "local_origin_mm": [
+          12,
+          8,
+          9.4
+        ],
+        "local_dimensions_mm": [
+          60,
+          24,
+          18
+        ],
+        "previous_local_depth_mm": 18,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -30.0,
+            99.1,
+            56.269067304028354
+          ],
+          "max": [
+            30.0,
+            117.1,
+            80.26906730402835
+          ],
+          "size_xyz": [
+            60.0,
+            18.0,
+            24.0
+          ]
+        }
+      },
+      {
+        "name": "RESERVED_GENERIC_power_NOT_A_COMPONENT",
+        "local_origin_mm": [
+          12,
+          47,
+          9.4
+        ],
+        "local_dimensions_mm": [
+          60,
+          36,
+          26.6
+        ],
+        "previous_local_depth_mm": 30.6,
+        "depth_was_reduced": true,
+        "placed_bounds_mm": {
+          "min": [
+            -30.0,
+            90.5,
+            95.26906730402835
+          ],
+          "max": [
+            30.0,
+            117.1,
+            131.26906730402834
+          ],
+          "size_xyz": [
+            60.0,
+            26.599999999999994,
+            35.999999999999986
+          ]
+        }
+      },
+      {
+        "name": "RESERVED_GENERIC_control_NOT_A_COMPONENT",
+        "local_origin_mm": [
+          12,
+          98,
+          9.4
+        ],
+        "local_dimensions_mm": [
+          60,
+          47,
+          25
+        ],
+        "previous_local_depth_mm": 25,
+        "depth_was_reduced": false,
+        "placed_bounds_mm": {
+          "min": [
+            -30.0,
+            92.1,
+            146.26906730402834
+          ],
+          "max": [
+            30.0,
+            117.1,
+            193.26906730402834
+          ],
+          "size_xyz": [
+            60.0,
+            25.0,
+            47.0
+          ]
+        }
+      }
+    ],
+    "note": "Generic volumes only; no PCB shapes or functional joints.",
+    "STEP_export": {
+      "file": "cassete-r2-36mm-POSICIONADO-ESTUDO.step",
+      "roundtrip_BRep_valid": true,
+      "roundtrip_solids": 9,
+      "roundtrip_bounds_mm": {
+        "min": [
+          -42.0,
+          90.5,
+          48.269067304028
+        ],
+        "max": [
+          42.0,
+          126.5,
+          204.26906730402
+        ],
+        "size_xyz": [
+          84.0,
+          36.0,
+          155.999999999992
+        ]
+      }
+    }
+  },
+  "baseline_revision": "r2: generic reserve depth 36 mm; prior 40 mm concept remains historical and collides with the original frame"
+}

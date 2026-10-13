@@ -1,0 +1,19 @@
+{
+  "scale": 0.5,
+  "reference_mesh_scale": 0.7,
+  "split_world_z": 58.05,
+  "split_gap": 0.25,
+  "bed_xy": [
+    220,
+    220
+  ],
+  "cassette_width": 60,
+  "cassette_height": 112,
+  "cassette_world_origin": [
+    -30,
+    90.2,
+    34
+  ],
+  "physical_fit_tested": false,
+  "power_module_selected": false
+}

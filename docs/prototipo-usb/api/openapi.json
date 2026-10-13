@@ -1,0 +1,1735 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "ChargeGrid Mini — referência TPS25810 não selecionada",
+    "version": "0.1.0-draft",
+    "description": "REFERÊNCIA NÃO IMPLEMENTADA E NÃO SELECIONADA. O usuário exige módulos prontos, sem montagem SMD; TPS25810 e INA260 avulsos foram excluídos. Esta versão documenta apenas o perfil elétrico anteriormente estudado. A fonte pronta ainda será escolhida: os perfis 1500/3000 mA e comandos elétricos NÃO se aplicam a qualquer módulo ou carregador comercial. Sessões/idempotência/leases são base reutilizável; capacidades e schemas precisam ser revistos conforme funções reais. Novo ESP32 separado do painel. Não certifica GoodWe, SEMS, OCPP ou USB-PD. Ver notas-integracao.md."
+  },
+  "servers": [
+    {
+      "url": "http://{charger_host}",
+      "description": "Exemplo para LAN privada do pitch; não expor na Internet. Host real será provisionado.",
+      "variables": {
+        "charger_host": {
+          "default": "chargegrid-mini.local"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ChargerToken": []
+    }
+  ],
+  "paths": {
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Capacidades efetivamente liberadas após ensaio",
+        "responses": {
+          "200": {
+            "description": "Capacidades; estado inicial deste projeto ainda não validado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                },
+                "examples": {
+                  "projeto_atual": {
+                    "value": {
+                      "api_version": "1.0-draft",
+                      "device_id": "cg-mini-01",
+                      "firmware_version": "not-implemented",
+                      "hardware_revision": null,
+                      "validation_state": "not_validated",
+                      "operational": false,
+                      "source_mode": "usb_type_c_current",
+                      "nominal_voltage_v": 5,
+                      "usb_pd_supported": false,
+                      "soc_supported": false,
+                      "supported_current_limits_ma": [],
+                      "limit_change_mode": "unvalidated",
+                      "measurement_location": "charger_usb_port",
+                      "lease_default_s": 15,
+                      "lease_min_s": 5,
+                      "lease_max_s": 30,
+                      "recommended_renew_interval_s": 5,
+                      "max_session_duration_s": 3600,
+                      "command_retention_s": 86400,
+                      "session_retention_s": 86400,
+                      "start_verification_timeout_ms": null,
+                      "stop_verification_timeout_ms": null,
+                      "sample_max_age_ms": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente ou incorreta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "operationId": "getStatus",
+        "summary": "Estado físico, lease e medidas da sessão atual ou última",
+        "description": "Consulta não renova a autorização temporal. Poll sugerido 1 s; timeout não equivale a saída desligada. Exemplo numérico é hipotético.",
+        "responses": {
+          "200": {
+            "description": "Snapshot coerente de um único boot; Cache-Control: no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                },
+                "examples": {
+                  "exemplo_hipotetico_1500ma": {
+                    "value": {
+                      "device_id": "cg-mini-01",
+                      "boot_id": "c0710001-1111-4111-8111-111111111111",
+                      "revision": 13,
+                      "uptime_ms": 20400,
+                      "state": "energized",
+                      "source_enabled_commanded": true,
+                      "output_state": "on",
+                      "phone_presence": "attached",
+                      "requested_current_limit_ma": 1500,
+                      "advertised_current_limit_ma": 1500,
+                      "advertisement_evidence": "gpio_readback",
+                      "measurement": {
+                        "sample_uptime_ms": 20380,
+                        "age_ms": 20,
+                        "quality": "valid",
+                        "voltage_v": 4.98,
+                        "current_ma": 820,
+                        "power_w": 4.0836,
+                        "source": "measured",
+                        "location": "charger_usb_port"
+                      },
+                      "session": {
+                        "session_id": "c0710002-2222-4222-8222-222222222222",
+                        "state": "active",
+                        "started_boot_id": "c0710001-1111-4111-8111-111111111111",
+                        "energy_wh": 0.008,
+                        "reverse_energy_wh": 0,
+                        "energy_quality": "complete",
+                        "unmeasured_ms": 0,
+                        "elapsed_ms": 7400,
+                        "max_duration_s": 600,
+                        "soc_percent": null,
+                        "end_reason": null
+                      },
+                      "lease": {
+                        "lease_id": "c0710003-3333-4333-8333-333333333333",
+                        "remaining_ms": 7600
+                      },
+                      "fault": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente ou incorreta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/commands": {
+      "post": {
+        "operationId": "submitCommand",
+        "summary": "Aceitar comando idempotente para o carregador independente",
+        "description": "command_id é a chave de idempotência. Mesmo ID e mesmo JSON semântico retornam o registro existente antes de conferir boot/revision; mesmo ID com conteúdo diferente retorna 409. Novo comando requer expected_boot_id atual. Start/set_limit exigem expected_revision atual; aceitação reserva revisão nova. STOP é prioritário e não depende da revisão. Há somente uma sessão ativa. Validar persistência antes de energizar. HTTP202 não é ACK físico. O novo perfil deve constar nas capacidades. Nenhum endpoint define tensão variável ou potência em watts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              },
+              "examples": {
+                "iniciar_1_5a": {
+                  "value": {
+                    "command_id": "c0710004-4444-4444-8444-444444444444",
+                    "type": "start",
+                    "expected_boot_id": "c0710001-1111-4111-8111-111111111111",
+                    "session_id": "c0710002-2222-4222-8222-222222222222",
+                    "expected_revision": 12,
+                    "lease_id": "c0710003-3333-4333-8333-333333333333",
+                    "lease_ttl_s": 15,
+                    "max_duration_s": 600,
+                    "requested_current_limit_ma": 1500
+                  }
+                },
+                "alterar_3a_se_validado": {
+                  "value": {
+                    "expected_boot_id": "c0710001-1111-4111-8111-111111111111",
+                    "session_id": "c0710002-2222-4222-8222-222222222222",
+                    "command_id": "c0710005-5555-4555-8555-555555555555",
+                    "type": "set_limit",
+                    "expected_revision": 13,
+                    "requested_current_limit_ma": 3000,
+                    "allow_interruption": true
+                  }
+                },
+                "parar": {
+                  "value": {
+                    "command_id": "c0710006-6666-4666-8666-666666666666",
+                    "type": "stop",
+                    "expected_boot_id": "c0710001-1111-4111-8111-111111111111",
+                    "session_id": "c0710002-2222-4222-8222-222222222222",
+                    "reason": "operator"
+                  }
+                },
+                "renovar": {
+                  "value": {
+                    "command_id": "c0710007-7777-4777-8777-777777777777",
+                    "type": "renew_lease",
+                    "expected_boot_id": "c0710001-1111-4111-8111-111111111111",
+                    "session_id": "c0710002-2222-4222-8222-222222222222",
+                    "lease_id": "c0710003-3333-4333-8333-333333333333",
+                    "lease_ttl_s": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Comando novo persistido; consultar seu resultado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                },
+                "examples": {
+                  "recebido": {
+                    "value": {
+                      "command_id": "c0710004-4444-4444-8444-444444444444",
+                      "type": "start",
+                      "session_id": "c0710002-2222-4222-8222-222222222222",
+                      "boot_id": "c0710001-1111-4111-8111-111111111111",
+                      "status": "received",
+                      "accepted_revision": 13,
+                      "accepted_uptime_ms": 13000,
+                      "completed_uptime_ms": null,
+                      "verification": "pending",
+                      "interruption_performed": false,
+                      "error": null,
+                      "completed_boot_id": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Repetição idempotente: resultado existente; não reexecuta nem prolonga lease.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                },
+                "examples": {
+                  "aplicado_anteriormente": {
+                    "value": {
+                      "command_id": "c0710004-4444-4444-8444-444444444444",
+                      "type": "start",
+                      "session_id": "c0710002-2222-4222-8222-222222222222",
+                      "boot_id": "c0710001-1111-4111-8111-111111111111",
+                      "status": "applied",
+                      "accepted_revision": 13,
+                      "accepted_uptime_ms": 13000,
+                      "completed_uptime_ms": 13600,
+                      "verification": "gpio_and_vbus",
+                      "interruption_performed": false,
+                      "error": null,
+                      "completed_boot_id": "c0710001-1111-4111-8111-111111111111"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente ou incorreta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Pedido conflita com estado ou identidade.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "reboot": {
+                    "value": {
+                      "error": {
+                        "code": "boot_mismatch",
+                        "message": "O boot mudou. Consulte o estado; não repita START automaticamente."
+                      }
+                    }
+                  },
+                  "interrupcao": {
+                    "value": {
+                      "error": {
+                        "code": "interruption_required",
+                        "message": "Esta unidade exige interrupção para trocar o perfil. Envie novo comando com allow_interruption=true se autorizado."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Pedido fora do contrato ou perfil não liberado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "perfil_nao_suportado": {
+                    "value": {
+                      "error": {
+                        "code": "unsupported_current_limit",
+                        "message": "1000 mA não é um perfil liberado; consulte /v1/capabilities."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Taxa de pedidos excedida. Não renova lease.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Operação não liberada ou indisponível.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "hardware_nao_validado": {
+                    "value": {
+                      "error": {
+                        "code": "hardware_not_validated",
+                        "message": "PCB, fonte, cabo e firmware ainda não foram validados para energizar."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/commands/{command_id}": {
+      "get": {
+        "operationId": "getCommand",
+        "summary": "Consultar ACK recebido, aplicado ou falho",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registro do comando, independentemente do estado atual da saída.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                },
+                "examples": {
+                  "aplicado": {
+                    "value": {
+                      "command_id": "c0710004-4444-4444-8444-444444444444",
+                      "type": "start",
+                      "session_id": "c0710002-2222-4222-8222-222222222222",
+                      "boot_id": "c0710001-1111-4111-8111-111111111111",
+                      "status": "applied",
+                      "accepted_revision": 13,
+                      "accepted_uptime_ms": 13000,
+                      "completed_uptime_ms": 13600,
+                      "verification": "gpio_and_vbus",
+                      "interruption_performed": false,
+                      "error": null,
+                      "completed_boot_id": "c0710001-1111-4111-8111-111111111111"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente ou incorreta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Identificador desconhecido ou fora do período de retenção.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Recuperar energia e encerramento para reconciliação",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumo persistido; sessão encerrada tem totais imutáveis.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credencial ausente ou incorreta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Identificador desconhecido ou fora do período de retenção.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ChargerToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token aleatório próprio do carregador, compartilhado somente com o adaptador autorizado. Não é JWT do usuário nem device_key do backend. HTTP apenas em Wi-Fi privado isolado; não oferece sigilo contra membros da LAN."
+      }
+    },
+    "schemas": {
+      "StartCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "type",
+          "expected_boot_id",
+          "session_id",
+          "expected_revision",
+          "lease_id",
+          "lease_ttl_s",
+          "max_duration_s",
+          "requested_current_limit_ma"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "const": "start"
+          },
+          "expected_boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_ttl_s": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 30
+          },
+          "max_duration_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "requested_current_limit_ma": {
+            "type": "integer",
+            "enum": [
+              1500,
+              3000
+            ],
+            "description": "Perfil Type-C em mA. Deve constar nas capacidades validadas do aparelho. Não é corrente medida nem contrato USB-PD."
+          }
+        }
+      },
+      "SetLimitCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "type",
+          "expected_boot_id",
+          "session_id",
+          "expected_revision",
+          "requested_current_limit_ma",
+          "allow_interruption"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "const": "set_limit"
+          },
+          "expected_boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requested_current_limit_ma": {
+            "type": "integer",
+            "enum": [
+              1500,
+              3000
+            ],
+            "description": "Perfil Type-C em mA. Deve constar nas capacidades validadas do aparelho. Não é corrente medida nem contrato USB-PD."
+          },
+          "allow_interruption": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StopCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "type",
+          "expected_boot_id",
+          "session_id",
+          "reason"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "const": "stop"
+          },
+          "expected_boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "duration_limit",
+              "cost_limit",
+              "panel_shutdown"
+            ]
+          }
+        }
+      },
+      "RenewLeaseCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "type",
+          "expected_boot_id",
+          "session_id",
+          "lease_id",
+          "lease_ttl_s"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "const": "renew_lease"
+          },
+          "expected_boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_ttl_s": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 30
+          }
+        }
+      },
+      "CommandRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StartCommand"
+          },
+          {
+            "$ref": "#/components/schemas/SetLimitCommand"
+          },
+          {
+            "$ref": "#/components/schemas/StopCommand"
+          },
+          {
+            "$ref": "#/components/schemas/RenewLeaseCommand"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "start": "#/components/schemas/StartCommand",
+            "set_limit": "#/components/schemas/SetLimitCommand",
+            "stop": "#/components/schemas/StopCommand",
+            "renew_lease": "#/components/schemas/RenewLeaseCommand"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "not_found",
+                  "idempotency_conflict",
+                  "boot_mismatch",
+                  "revision_conflict",
+                  "session_conflict",
+                  "lease_expired",
+                  "unsupported_current_limit",
+                  "interruption_required",
+                  "hardware_not_validated",
+                  "device_fault",
+                  "busy",
+                  "storage_unavailable",
+                  "rate_limited"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "device_id",
+          "firmware_version",
+          "hardware_revision",
+          "validation_state",
+          "operational",
+          "source_mode",
+          "nominal_voltage_v",
+          "usb_pd_supported",
+          "soc_supported",
+          "supported_current_limits_ma",
+          "limit_change_mode",
+          "measurement_location",
+          "lease_default_s",
+          "lease_min_s",
+          "lease_max_s",
+          "recommended_renew_interval_s",
+          "max_session_duration_s",
+          "command_retention_s",
+          "session_retention_s",
+          "start_verification_timeout_ms",
+          "stop_verification_timeout_ms",
+          "sample_max_age_ms"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "1.0-draft"
+          },
+          "device_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "firmware_version": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "hardware_revision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation_state": {
+            "type": "string",
+            "enum": [
+              "not_validated",
+              "validated_for_demo"
+            ]
+          },
+          "operational": {
+            "type": "boolean"
+          },
+          "source_mode": {
+            "const": "usb_type_c_current"
+          },
+          "nominal_voltage_v": {
+            "const": 5
+          },
+          "usb_pd_supported": {
+            "const": false
+          },
+          "soc_supported": {
+            "const": false
+          },
+          "supported_current_limits_ma": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [
+                1500,
+                3000
+              ],
+              "description": "Perfil Type-C em mA. Deve constar nas capacidades validadas do aparelho. Não é corrente medida nem contrato USB-PD."
+            },
+            "uniqueItems": true,
+            "maxItems": 2
+          },
+          "limit_change_mode": {
+            "type": "string",
+            "enum": [
+              "unvalidated",
+              "stop_then_restart",
+              "online_validated"
+            ]
+          },
+          "measurement_location": {
+            "const": "charger_usb_port"
+          },
+          "lease_default_s": {
+            "const": 15
+          },
+          "lease_min_s": {
+            "const": 5
+          },
+          "lease_max_s": {
+            "const": 30
+          },
+          "recommended_renew_interval_s": {
+            "const": 5
+          },
+          "max_session_duration_s": {
+            "const": 3600
+          },
+          "command_retention_s": {
+            "type": "integer",
+            "minimum": 86400
+          },
+          "session_retention_s": {
+            "type": "integer",
+            "minimum": 86400
+          },
+          "start_verification_timeout_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stop_verification_timeout_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sample_max_age_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "A lista contém somente perfis ensaiados no conjunto fonte, PCB, cabo e firmware. Sem ensaio: operational=false, lista vazia e tempos de verificação nulos. Os exemplos de operação são ilustrações de contrato, não resultados de testes.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "validation_state": {
+                  "const": "not_validated"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "operational": {
+                  "const": false
+                },
+                "supported_current_limits_ma": {
+                  "maxItems": 0
+                },
+                "limit_change_mode": {
+                  "const": "unvalidated"
+                },
+                "start_verification_timeout_ms": {
+                  "type": "null"
+                },
+                "stop_verification_timeout_ms": {
+                  "type": "null"
+                },
+                "sample_max_age_ms": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "operational": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "validation_state": {
+                  "const": "validated_for_demo"
+                },
+                "supported_current_limits_ma": {
+                  "minItems": 1
+                },
+                "limit_change_mode": {
+                  "enum": [
+                    "stop_then_restart",
+                    "online_validated"
+                  ]
+                },
+                "start_verification_timeout_ms": {
+                  "type": "integer"
+                },
+                "stop_verification_timeout_ms": {
+                  "type": "integer"
+                },
+                "sample_max_age_ms": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Measurement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sample_uptime_ms",
+          "age_ms",
+          "quality",
+          "voltage_v",
+          "current_ma",
+          "power_w",
+          "source",
+          "location"
+        ],
+        "properties": {
+          "sample_uptime_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "age_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "unavailable",
+              "stale"
+            ]
+          },
+          "voltage_v": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_ma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "power_w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "const": "measured"
+          },
+          "location": {
+            "const": "charger_usb_port"
+          }
+        },
+        "description": "Grandezas assinadas onde aplicável. INA260 após TPS25810 OUT e antes do receptáculo: exclui consumo do ESP32, VCONN e perdas no cabo/celular. power_w = voltage_v × current_ma / 1000, usando corrente assinada. Não usar Power Register positivo para inferir direção. Sem amostra válida os três valores são null; source=measured identifica o método, não garante qualidade válida.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "quality": {
+                  "const": "valid"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "voltage_v": {
+                  "type": "number"
+                },
+                "current_ma": {
+                  "type": "number"
+                },
+                "power_w": {
+                  "type": "number"
+                },
+                "sample_uptime_ms": {
+                  "type": "integer"
+                },
+                "age_ms": {
+                  "type": "integer"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "voltage_v": {
+                  "type": "null"
+                },
+                "current_ma": {
+                  "type": "null"
+                },
+                "power_w": {
+                  "type": "null"
+                },
+                "sample_uptime_ms": {
+                  "type": "null"
+                },
+                "age_ms": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Session": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "session_id",
+          "state",
+          "started_boot_id",
+          "energy_wh",
+          "reverse_energy_wh",
+          "energy_quality",
+          "unmeasured_ms",
+          "elapsed_ms",
+          "max_duration_s",
+          "soc_percent",
+          "end_reason"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "interrupted",
+              "failed"
+            ]
+          },
+          "started_boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "energy_wh": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reverse_energy_wh": {
+            "type": "number",
+            "minimum": 0
+          },
+          "energy_quality": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "incomplete"
+            ]
+          },
+          "unmeasured_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_duration_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "soc_percent": {
+            "type": "null"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "duration_limit",
+                  "cost_limit",
+                  "panel_shutdown",
+                  "lease_expired",
+                  "device_reboot",
+                  "disconnected",
+                  "hardware_fault",
+                  "sensor_invalid",
+                  "command_failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "Energia entregue acumulada da sessão, calculada de amostras válidas com relógio monotônico, nunca da potência solicitada. Reverso contabilizado separado. Sobrevive ao reboot sem diminuir o máximo já publicado. Encerramento congela os totais; energia não observada permanece declarada incompleta.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "active"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "end_reason": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "end_reason": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Fault": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "since_uptime_ms"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "hardware_fault",
+              "sensor_invalid",
+              "verification_failed",
+              "storage_unavailable",
+              "unexpected_voltage"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "since_uptime_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "device_id",
+          "boot_id",
+          "revision",
+          "uptime_ms",
+          "state",
+          "source_enabled_commanded",
+          "output_state",
+          "phone_presence",
+          "requested_current_limit_ma",
+          "advertised_current_limit_ma",
+          "advertisement_evidence",
+          "measurement",
+          "session",
+          "lease",
+          "fault"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uptime_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "starting",
+              "energized",
+              "changing_limit",
+              "stopping",
+              "stopped",
+              "fault"
+            ]
+          },
+          "source_enabled_commanded": {
+            "type": "boolean"
+          },
+          "output_state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "on",
+              "unknown"
+            ]
+          },
+          "phone_presence": {
+            "type": "string",
+            "enum": [
+              "attached",
+              "detached",
+              "unknown"
+            ]
+          },
+          "requested_current_limit_ma": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  1500,
+                  3000
+                ],
+                "description": "Perfil Type-C em mA. Deve constar nas capacidades validadas do aparelho. Não é corrente medida nem contrato USB-PD."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "advertised_current_limit_ma": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  1500,
+                  3000
+                ],
+                "description": "Perfil Type-C em mA. Deve constar nas capacidades validadas do aparelho. Não é corrente medida nem contrato USB-PD."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "advertisement_evidence": {
+            "type": "string",
+            "enum": [
+              "gpio_readback",
+              "none"
+            ]
+          },
+          "measurement": {
+            "$ref": "#/components/schemas/Measurement"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "lease_id",
+                  "remaining_ms"
+                ],
+                "properties": {
+                  "lease_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "remaining_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fault": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fault"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "requested é o último perfil aceito; advertised é a seleção Type-C conferida nos GPIOs de uma implementação previamente ensaiada, não leitura independente de CC nem negociação PD. advertised=null e phone_presence=unknown com EN=0. output_state só on/off com medição recente compatível; caso contrário unknown. energized significa saída habilitada e presença detectada, podendo o celular consumir zero.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source_enabled_commanded": {
+                  "const": false
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "advertised_current_limit_ma": {
+                  "type": "null"
+                },
+                "phone_presence": {
+                  "const": "unknown"
+                },
+                "advertisement_evidence": {
+                  "const": "none"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "energized"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "source_enabled_commanded": {
+                  "const": true
+                },
+                "output_state": {
+                  "const": "on"
+                },
+                "phone_presence": {
+                  "const": "attached"
+                },
+                "session": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "const": "active"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "fault"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fault": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CommandResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_id",
+          "type",
+          "session_id",
+          "boot_id",
+          "status",
+          "accepted_revision",
+          "accepted_uptime_ms",
+          "completed_uptime_ms",
+          "verification",
+          "interruption_performed",
+          "error",
+          "completed_boot_id"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "start",
+              "set_limit",
+              "stop",
+              "renew_lease"
+            ]
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "boot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "received",
+              "applied",
+              "failed"
+            ]
+          },
+          "accepted_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "accepted_uptime_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed_uptime_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "gpio_and_vbus",
+              "output_off_measured",
+              "lease_updated",
+              "failed"
+            ]
+          },
+          "interruption_performed": {
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "lease_expired",
+                      "device_reboot",
+                      "hardware_fault",
+                      "sensor_invalid",
+                      "verification_failed",
+                      "disconnected",
+                      "superseded_by_stop"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 240
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_boot_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Boot ao qual completed_uptime_ms se refere. Pode diferir de boot_id ao encerrar um comando pendente depois de reboot."
+          }
+        },
+        "description": "received confirma gravação/aceitação, nunca energização. applied é terminal e exige o critério físico do comando; renew_lease confirma somente a concessão temporal. Nenhum ACK confirma watts exigidos do celular. Estado atual vem de /status; resultado antigo não prova que a saída ainda está ligada.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "received"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "completed_uptime_ms": {
+                  "type": "null"
+                },
+                "verification": {
+                  "const": "pending"
+                },
+                "error": {
+                  "type": "null"
+                },
+                "completed_boot_id": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "applied"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "completed_uptime_ms": {
+                  "type": "integer"
+                },
+                "verification": {
+                  "enum": [
+                    "gpio_and_vbus",
+                    "output_off_measured",
+                    "lease_updated"
+                  ]
+                },
+                "error": {
+                  "type": "null"
+                },
+                "completed_boot_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "failed"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "completed_uptime_ms": {
+                  "type": "integer"
+                },
+                "verification": {
+                  "const": "failed"
+                },
+                "error": {
+                  "type": "object"
+                },
+                "completed_boot_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "applied"
+                },
+                "type": {
+                  "const": "stop"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "verification": {
+                  "const": "output_off_measured"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "applied"
+                },
+                "type": {
+                  "const": "renew_lease"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "verification": {
+                  "const": "lease_updated"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "applied"
+                },
+                "type": {
+                  "enum": [
+                    "start",
+                    "set_limit"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "verification": {
+                  "const": "gpio_and_vbus"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "x-implementation-status": "reference-only; TPS25810 discrete route excluded by ready-made-modules requirement; no runtime implementation"
+}

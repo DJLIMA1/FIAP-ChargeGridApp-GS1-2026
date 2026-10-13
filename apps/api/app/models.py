@@ -3,10 +3,12 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     Numeric,
@@ -152,6 +154,19 @@ class ChargingSession(Base):
             for field in ("user_id", "connector_id")
         ),
     )
+
+
+class SessionEvent(Base):
+    """Server-observed facts; keys prevent retries from duplicating a fact."""
+
+    __tablename__ = "session_events"
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("charging_sessions.id"), index=True)
+    event_key: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(40))
+    source: Mapped[str] = mapped_column(String(30))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("session_id", "event_key"),)
 
 
 class Command(Base):

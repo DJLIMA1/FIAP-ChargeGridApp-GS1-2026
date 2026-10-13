@@ -32,7 +32,12 @@ async def build(app):
                                point_context=reservation,max_duration=min(30,connector.get('max_duration_minutes') or 30))))
     if reservation['status'] != 'confirmed':
         controls.append(journey_summary(reservation, reservation=True, demo=demo))
-    controls.append(point_summary(reservation, 'Ponto reservado'))
+    point_heading = {
+        'pending_device': 'Ponto solicitado',
+        'confirmed': 'Ponto reservado',
+        'cancelling': 'Ponto em liberação',
+    }.get(reservation['status'], 'Ponto da reserva')
+    controls.append(point_summary(reservation, point_heading))
     if reservation['status'] == 'confirmed':
         controls.append(ft.ExpansionTile(
             title=ft.Text('Sobre esta confirmação', size=13, color=theme.GRAY_TEXT),

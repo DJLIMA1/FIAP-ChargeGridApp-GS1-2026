@@ -1,0 +1,253 @@
+{
+  "date": "2026-10-05",
+  "currency": "BRL",
+  "shipping_included": false,
+  "destination_postcode": null,
+  "total_budget_brl": 250,
+  "purchase_list_complete": false,
+  "not_for_manufacture": true,
+  "units": "mm unless otherwise stated",
+  "unknown_fields_are_null": true,
+  "main_route_partial_subtotal_brl": null,
+  "unallocated_brl": null,
+  "components": [
+    {
+      "id": "CTRL",
+      "sku": null,
+      "name": "ESP32 WROOM escolhido pelo usuário, origem chinesa",
+      "price_brl": null,
+      "selection": "user_selected_family_exact_development_board_pending",
+      "stock": "not_applicable_user_selected_supplier_unknown",
+      "already_owned": null,
+      "purchase_url": null,
+      "board_envelope_mm": null,
+      "holes": null,
+      "pcb_thickness": null,
+      "assembly_assumption": "development board with USB and headers; confirm exact board",
+      "retention": "adjustable replaceable cradle, no board-specific holes in shell",
+      "unresolved": [
+        "exact board model",
+        "pin count and spacing",
+        "USB type and position",
+        "dimensions and underside clearance",
+        "acquisition cost or confirmation already owned"
+      ],
+      "removed_reference": {
+        "sku": "RoboCore 1013",
+        "reason": "user will not use this board",
+        "dimensions_must_not_be_reused": true
+      }
+    },
+    {
+      "id": "USB",
+      "sku": "TPS25810RVCR kit3 CRAME MLB4066677603",
+      "name": "USB-C source controller IC",
+      "price_brl": 29.5,
+      "pack_quantity": 3,
+      "selection": "excluded_custom_SMD_assembly_not_available",
+      "stock": "more_than_50_observed_browser",
+      "purchase_url": "https://www.mercadolivre.com.br/kit-com-3-circuitos-integrados-tps25810-controlador-de-driver-usb-c/p/MLB50168984",
+      "datasheet_url": "https://www.ti.com/lit/ds/symlink/tps25810.pdf",
+      "chip_envelope_mm": [
+        3,
+        4,
+        0.8
+      ],
+      "height_is_max": true,
+      "pitch_mm": 0.5,
+      "board_envelope_mm": null,
+      "holes": null,
+      "unresolved": [
+        "seller text A36 contradicts photograph and manufacturer marking 25810",
+        "PCB cost",
+        "SMD assembly",
+        "connector model",
+        "phone current response"
+      ],
+      "exclusion_reason": "User requires ready-made modules only"
+    },
+    {
+      "id": "METER",
+      "sku": "EasyTronics 13290",
+      "name": "INA260 IC",
+      "price_brl": 27,
+      "selection": "excluded_custom_SMD_assembly_not_available",
+      "stock": "available_to_order_seller",
+      "purchase_url": "https://www.easytronics.com.br/ina260-monitor-de-tensao-corrente-e-energia",
+      "datasheet_url": "https://www.ti.com/lit/ds/symlink/ina260.pdf",
+      "chip_body_nominal_mm": [
+        5,
+        4.4
+      ],
+      "lead_span_mm": [
+        6.2,
+        6.6
+      ],
+      "chip_max_height_mm": 1.2,
+      "pitch_mm": 0.65,
+      "board_envelope_mm": null,
+      "holes": null,
+      "total_path_resistance_typical_ohm": 0.0045,
+      "unresolved": [
+        "adapter not assembled",
+        "power traces must carry current",
+        "PCB layout"
+      ],
+      "exclusion_reason": "User requires ready-made modules only"
+    },
+    {
+      "id": "PSU",
+      "sku": "RoboCore 1114",
+      "name": "External 5V5A supply",
+      "price_brl": 49.9,
+      "selection": "unselected_power_module_pending",
+      "stock": "catalog_orderable_quantity_not_verified",
+      "purchase_url": "https://www.robocore.net/fonte/fonte-chaveada-5v-5a",
+      "board_envelope_mm": null,
+      "enclosure_envelope_mm": null,
+      "inside_charger": false,
+      "unresolved": [
+        "regulation at full project load",
+        "P4 dimensions and current rating",
+        "cable drop"
+      ]
+    },
+    {
+      "id": "CABLE",
+      "sku": "RoboCore 1461",
+      "name": "USB-C to USB-C 1m",
+      "price_brl": 19.9,
+      "selection": "unselected_power_module_pending",
+      "purchase_url": "https://www.robocore.net/cabo/cabo-usb-c-x-usb-c",
+      "length_mm": 1000,
+      "cable_diameter_mm": null,
+      "overmold_envelope_mm": null,
+      "min_bend_radius_mm": null,
+      "retention": "replaceable split strain-relief insert",
+      "unresolved": [
+        "3A rating",
+        "plug dimensions",
+        "cable drop"
+      ]
+    },
+    {
+      "id": "CUT_OPTION",
+      "sku": "RoboCore 258",
+      "name": "Relay5V Metaltex module",
+      "price_brl": 10.5,
+      "selection": "optional_only_if_required_by_final_circuit",
+      "purchase_url": "https://www.robocore.net/driver-motor/modulo-rele",
+      "drawing_url": "https://d229kd5ey79jzj.cloudfront.net/258/Modulo.Rele_v2.2_mechanical.png",
+      "datasheet_url": "https://d229kd5ey79jzj.cloudfront.net/258/Relay_AX.pdf",
+      "pcb_outline_mm": [
+        43.8,
+        25.4
+      ],
+      "assembly_height_mm": null,
+      "hole_count": 4,
+      "hole_diameter_mm": 3.4,
+      "hole_center_rectangle_mm": [
+        38.7,
+        20.3
+      ],
+      "retention": "replaceable cradle; one datum pin and slotted secondary locator to be designed",
+      "unresolved": [
+        "received PCB revision",
+        "underside clearance",
+        "connector service space"
+      ]
+    },
+    {
+      "id": "METER_ALT",
+      "sku": "MakerHero 9SS68",
+      "name": "INA219 R100 module",
+      "price_brl": 12.9,
+      "selection": "not_selected_for_5V3A_path",
+      "stock": "in_stock_explicit",
+      "purchase_url": "https://www.makerhero.com/produto/sensor-de-corrente-dc-ina219-i2c/",
+      "datasheet_url": "https://www.ti.com/lit/ds/symlink/ina219.pdf",
+      "board_envelope_mm": null,
+      "holes": null,
+      "shunt_ohm": 0.1,
+      "calculated_drop_at_3A_v": 0.3
+    },
+    {
+      "id": "BUCK_ALT",
+      "sku": "RoboCore 3250",
+      "name": "Mini5605V control branch",
+      "price_brl": 7.5,
+      "selection": "only_for_12V_architecture_not_current_5V_direction",
+      "purchase_url": "https://www.robocore.net/regulador-de-tensao/conversor-dc-dc-step-down-mini-560-5v",
+      "board_envelope_mm": [
+        29,
+        18,
+        5.4
+      ],
+      "holes": null,
+      "datasheet_url": null,
+      "unresolved": [
+        "IC identity",
+        "thermal performance",
+        "mounting edge zones"
+      ]
+    },
+    {
+      "id": "THERM",
+      "sku": "MakerHero 9SS58",
+      "name": "MF52-103 NTC10k",
+      "price_brl": 0.99,
+      "selection": "candidate_beta_not_confirmed",
+      "purchase_url": "https://www.makerhero.com/produto/termistor-ntc-10k-ohm/",
+      "body_envelope_mm": null,
+      "beta_K": null,
+      "unresolved": [
+        "beta",
+        "lot datasheet",
+        "retention near hot area without shorting"
+      ]
+    },
+    {
+      "id": "LED",
+      "sku": "MakerHero PAIF5 variant pending",
+      "name": "5mm RGB common cathode",
+      "price_brl": null,
+      "price_range_brl": [
+        0.49,
+        0.59
+      ],
+      "selection": "candidate_variant_pending",
+      "purchase_url": "https://www.makerhero.com/produto/led-alto-brilho-5-mm-rgb/",
+      "body_nominal_diameter_mm": 5,
+      "flange_diameter_mm": null,
+      "unresolved": [
+        "variant",
+        "pinout",
+        "flange and lead geometry"
+      ]
+    }
+  ],
+  "known_priced_items_excluding_controller_brl": null,
+  "remaining_for_controller_and_other_costs_brl": null,
+  "assembly_constraint": "ready_made_modules_only_no_custom_SMD_PCB",
+  "active_power_route": null,
+  "discarded_custom_PCB_route_partial_subtotal_brl": 126.3,
+  "budget_note": "O subtotal anterior de R$126,30 pertence à rota com CIs avulsos excluída após o usuário exigir módulos prontos. Não é subtotal de compra atual.",
+  "variable_charge_control_required": true,
+  "on_off_only_solution_accepted": false,
+  "requirements_updated": "2026-10-07",
+  "usb_c_phone_compatibility_required": true,
+  "phone_model_required_for_architecture": false,
+  "proprietary_protocol_dependency_accepted": false,
+  "proposed_standard_power_profiles": {
+    "status": "study_only_no_selected_module",
+    "nominal_voltage_v": 5,
+    "advertised_current_ma": [
+      1500,
+      3000
+    ],
+    "variable_consumption_on_every_phone_guaranteed": false,
+    "continuous_current_control_implemented": false
+  },
+  "mechanical_revision": "cad-impressao-50-v1/README.md",
+  "mechanical_revision_status": "print_meshes_digitally_checked_generic_carriers_physical_fit_pending"
+}

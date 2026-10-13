@@ -1,0 +1,50 @@
+[
+  {
+    "file": "pranchas/00-ensaios.3mf",
+    "verified_objects": 7,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/01-traseira-superior.3mf",
+    "verified_objects": 1,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/02-traseira-inferior.3mf",
+    "verified_objects": 1,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/03-quadro-superior.3mf",
+    "verified_objects": 1,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/04-quadro-inferior.3mf",
+    "verified_objects": 1,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/05-tampa-frontal.3mf",
+    "verified_objects": 1,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/06-internos-e-fixacoes.3mf",
+    "verified_objects": 28,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  },
+  {
+    "file": "pranchas/07-cabos-5mm-OPCIONAL.3mf",
+    "verified_objects": 6,
+    "unit": "millimeter",
+    "topology_and_placement_valid": true
+  }
+]

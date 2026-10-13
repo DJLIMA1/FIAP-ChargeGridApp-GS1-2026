@@ -1,0 +1,64 @@
+[
+  {
+    "solid": 0,
+    "repairs": [
+      {
+        "remove_tiny_duplicate_face_area": 0.003831043104715939,
+        "edge": [
+          [
+            46.9698674,
+            134.5747841,
+            -34.578867
+          ],
+          [
+            47.0738175,
+            134.5701182,
+            -34.3656967
+          ]
+        ]
+      },
+      {
+        "collapsed_tiny_seam_vertices": 3,
+        "max_displacement_mm": 0.14177840552671198
+      },
+      {
+        "collapsed_tiny_seam_vertices": 4,
+        "max_displacement_mm": 0.1602845339960973
+      }
+    ],
+    "triangles": 67062,
+    "manifold_status": "Error.NoError",
+    "volume": 183112.53190213625
+  },
+  {
+    "solid": 1,
+    "repairs": [
+      {
+        "filled_boundary_vertices": 8,
+        "bounds_mm": [
+          14.3777406,
+          0.0320619000000022,
+          1.1760129000000035
+        ]
+      },
+      {
+        "filled_boundary_vertices": 8,
+        "bounds_mm": [
+          14.451292599999999,
+          0.022807299999996644,
+          0.43785830000000203
+        ]
+      }
+    ],
+    "triangles": 64908,
+    "manifold_status": "Error.NoError",
+    "volume": 135213.1240022809
+  },
+  {
+    "solid": 8,
+    "repairs": [],
+    "triangles": 15012,
+    "manifold_status": "Error.NoError",
+    "volume": 59256.28291764598
+  }
+]

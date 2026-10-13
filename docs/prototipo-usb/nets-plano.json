@@ -1,0 +1,1105 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "status": "HISTORICAL_ROUTE_EXCLUDED_USER_REQUIRES_READY_MADE_MODULES",
+  "fabrication_ready": false,
+  "purchase_bom_complete": false,
+  "hardware_tested": false,
+  "units": "SI with explicit keys",
+  "missing_information_is_null": true,
+  "sources": {
+    "tps": "https://www.ti.com/lit/ds/symlink/tps25810.pdf",
+    "ina": "https://www.ti.com/lit/ds/symlink/ina260.pdf",
+    "esp": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+    "evm": "https://www.ti.com/lit/ug/slvuai0a/slvuai0a.pdf",
+    "usb_capacitance": "https://www.ti.com/lit/ds/symlink/tps25740.pdf",
+    "xl4015": "https://www.xlsemi.com/datasheet/XL4015-EN.pdf"
+  },
+  "components": {
+    "U1": {
+      "part": "TPS25810RVCR",
+      "package": "RVC WQFN20 3x4mm",
+      "source": "https://www.ti.com/lit/ds/symlink/tps25810.pdf",
+      "pins": {
+        "1": [
+          "FAULT_N",
+          "TPS_FAULT_N"
+        ],
+        "2": [
+          "IN1",
+          "+5V_POWER"
+        ],
+        "3": [
+          "IN1",
+          "+5V_POWER"
+        ],
+        "4": [
+          "IN2",
+          "+5V_POWER"
+        ],
+        "5": [
+          "AUX",
+          "+3V3_LOGIC"
+        ],
+        "6": [
+          "EN",
+          "TPS_EN"
+        ],
+        "7": [
+          "CHG",
+          "TPS_CHG"
+        ],
+        "8": [
+          "CHG_HI",
+          "TPS_CHG_HI"
+        ],
+        "9": [
+          "REF_RTN",
+          "REF_RETURN_ISLAND"
+        ],
+        "10": [
+          "REF",
+          "REF_BIAS"
+        ],
+        "11": [
+          "CC1",
+          "CC1"
+        ],
+        "12": [
+          "GND",
+          "GND"
+        ],
+        "13": [
+          "CC2",
+          "CC2"
+        ],
+        "14": [
+          "OUT",
+          "VBUS_SWITCHED"
+        ],
+        "15": [
+          "OUT",
+          "VBUS_SWITCHED"
+        ],
+        "16": [
+          "DEBUG_N",
+          null
+        ],
+        "17": [
+          "AUDIO_N",
+          null
+        ],
+        "18": [
+          "POL_N",
+          null
+        ],
+        "19": [
+          "UFP_N",
+          "TPS_UFP_N"
+        ],
+        "20": [
+          "LD_DET_N",
+          null
+        ],
+        "EP": [
+          "THERMAL_PAD",
+          "GND"
+        ]
+      }
+    },
+    "U2": {
+      "part": "INA260AIPW",
+      "package": "PW TSSOP16",
+      "source": "https://www.ti.com/lit/ds/symlink/ina260.pdf",
+      "pins": {
+        "1": [
+          "IN+",
+          "VBUS_SWITCHED"
+        ],
+        "2": [
+          "IN+",
+          "VBUS_SWITCHED"
+        ],
+        "3": [
+          "IN+",
+          "VBUS_SWITCHED"
+        ],
+        "4": [
+          "A1",
+          "GND"
+        ],
+        "5": [
+          "A0",
+          "GND"
+        ],
+        "6": [
+          "GND",
+          "GND"
+        ],
+        "7": [
+          "ALERT_N",
+          "INA_ALERT_N"
+        ],
+        "8": [
+          "SDA",
+          "I2C_SDA"
+        ],
+        "9": [
+          "SCL",
+          "I2C_SCL"
+        ],
+        "10": [
+          "VS",
+          "+3V3_LOGIC"
+        ],
+        "11": [
+          "GND",
+          "GND"
+        ],
+        "12": [
+          "VBUS",
+          "VBUS_PORT"
+        ],
+        "13": [
+          "NC",
+          null
+        ],
+        "14": [
+          "IN-",
+          "VBUS_PORT"
+        ],
+        "15": [
+          "IN-",
+          "VBUS_PORT"
+        ],
+        "16": [
+          "IN-",
+          "VBUS_PORT"
+        ]
+      },
+      "i2c_address_7bit": "0x40",
+      "exact_purchase_suffix_to_confirm": true
+    },
+    "CTRL": {
+      "part": "ESP32-WROOM-32 development board, exact model pending",
+      "physical_header_map": null,
+      "source": "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf",
+      "gpios": [
+        {
+          "gpio": 21,
+          "net": "I2C_SDA",
+          "direction": "open_drain_bidir"
+        },
+        {
+          "gpio": 22,
+          "net": "I2C_SCL",
+          "direction": "open_drain"
+        },
+        {
+          "gpio": 25,
+          "net": "TPS_EN",
+          "direction": "output",
+          "reset_target": 0
+        },
+        {
+          "gpio": 26,
+          "net": "TPS_CHG",
+          "direction": "output",
+          "reset_target": 0
+        },
+        {
+          "gpio": 27,
+          "net": "TPS_CHG_HI",
+          "direction": "output",
+          "reset_target": 0
+        },
+        {
+          "gpio": 32,
+          "net": "TPS_UFP_N",
+          "direction": "input"
+        },
+        {
+          "gpio": 33,
+          "net": "TPS_FAULT_N",
+          "direction": "input"
+        },
+        {
+          "gpio": 34,
+          "net": "INA_ALERT_N",
+          "direction": "input",
+          "external_pullup_required": true
+        }
+      ],
+      "power_input": "board-approved 5V input only after checking board schematic",
+      "logic_supply_output": "+3V3_LOGIC",
+      "ground": "GND"
+    },
+    "J_USB": {
+      "part": null,
+      "footprint": null,
+      "logical_contacts": {
+        "A4": "VBUS_PORT",
+        "A9": "VBUS_PORT",
+        "B4": "VBUS_PORT",
+        "B9": "VBUS_PORT",
+        "A1": "GND",
+        "A12": "GND",
+        "B1": "GND",
+        "B12": "GND",
+        "A5": "CC1",
+        "B5": "CC2"
+      },
+      "unused_contact_groups": [
+        "D+",
+        "D-",
+        "SBU1",
+        "SBU2",
+        "SuperSpeed"
+      ],
+      "shield_connection": "pending_system_ESD_layout_review",
+      "warning": "Logical Type-C contacts; NOT pad numbering for a commercial footprint."
+    },
+    "R_REF": {
+      "kind": "resistor",
+      "ohm": 100000,
+      "pins": {
+        "1": [
+          "end_a",
+          "REF_BIAS"
+        ],
+        "2": [
+          "end_b",
+          "REF_RETURN_ISLAND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "datasheet: 1% or better, <=100ppm/K; isolated return"
+    },
+    "R_EN_PD": {
+      "kind": "resistor",
+      "ohm": 10000,
+      "pins": {
+        "1": [
+          "end_a",
+          "TPS_EN"
+        ],
+        "2": [
+          "end_b",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal: default disabled during reset"
+    },
+    "R_CHG_PD": {
+      "kind": "resistor",
+      "ohm": 10000,
+      "pins": {
+        "1": [
+          "end_a",
+          "TPS_CHG"
+        ],
+        "2": [
+          "end_b",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal: default low"
+    },
+    "R_CHGHI_PD": {
+      "kind": "resistor",
+      "ohm": 10000,
+      "pins": {
+        "1": [
+          "end_a",
+          "TPS_CHG_HI"
+        ],
+        "2": [
+          "end_b",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal: default low"
+    },
+    "R_FAULT_PU": {
+      "kind": "resistor",
+      "ohm": 100000,
+      "pins": {
+        "1": [
+          "end_a",
+          "TPS_FAULT_N"
+        ],
+        "2": [
+          "end_b",
+          "+3V3_LOGIC"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "TI recommended pull-up to AUX; AUX=3.3V"
+    },
+    "R_UFP_PU": {
+      "kind": "resistor",
+      "ohm": 100000,
+      "pins": {
+        "1": [
+          "end_a",
+          "TPS_UFP_N"
+        ],
+        "2": [
+          "end_b",
+          "+3V3_LOGIC"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "TI recommended pull-up to AUX; AUX=3.3V"
+    },
+    "R_ALERT_PU": {
+      "kind": "resistor",
+      "ohm": 10000,
+      "pins": {
+        "1": [
+          "end_a",
+          "INA_ALERT_N"
+        ],
+        "2": [
+          "end_b",
+          "+3V3_LOGIC"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal, validate rise time"
+    },
+    "R_SDA_PU": {
+      "kind": "resistor",
+      "ohm": 4700,
+      "pins": {
+        "1": [
+          "end_a",
+          "I2C_SDA"
+        ],
+        "2": [
+          "end_b",
+          "+3V3_LOGIC"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal, validate bus capacitance/rise time"
+    },
+    "R_SCL_PU": {
+      "kind": "resistor",
+      "ohm": 4700,
+      "pins": {
+        "1": [
+          "end_a",
+          "I2C_SCL"
+        ],
+        "2": [
+          "end_b",
+          "+3V3_LOGIC"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "design proposal, validate bus capacitance/rise time"
+    },
+    "R_BLEED_OPT": {
+      "kind": "resistor",
+      "ohm": 1000,
+      "pins": {
+        "1": [
+          "end_a",
+          "VBUS_SWITCHED"
+        ],
+        "2": [
+          "end_b",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "reason": "optional discharge support; decide population after tests",
+      "population": "undecided_optional",
+      "proposed_rating_w": 0.125
+    },
+    "C_BULK": {
+      "kind": "capacitor",
+      "nominal_uF": 150,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "+5V_POWER"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "nominal proposal; effective minimum120uF at operating conditions",
+      "voltage_rating_v": null
+    },
+    "C_IN_HF": {
+      "kind": "capacitor",
+      "nominal_uF": 0.1,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "+5V_POWER"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "local bypass near IN1/IN2",
+      "voltage_rating_v": null
+    },
+    "C_IN_LOCAL": {
+      "kind": "capacitor",
+      "nominal_uF": 10,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "+5V_POWER"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "provisional extra local ceramic; source transient validation required",
+      "voltage_rating_v": null
+    },
+    "C_AUX": {
+      "kind": "capacitor",
+      "nominal_uF": 0.1,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "+3V3_LOGIC"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "near U1 AUX",
+      "voltage_rating_v": null
+    },
+    "C_INA": {
+      "kind": "capacitor",
+      "nominal_uF": 0.1,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "+3V3_LOGIC"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "near U2 VS",
+      "voltage_rating_v": null
+    },
+    "C_PORT": {
+      "kind": "capacitor",
+      "nominal_uF": 6.8,
+      "pins": {
+        "1": [
+          "positive_or_rail",
+          "VBUS_PORT"
+        ],
+        "2": [
+          "return",
+          "GND"
+        ]
+      },
+      "mpn": null,
+      "footprint": null,
+      "status": "TPS simplified schematic; resolve 10uF textual conflict and total unloaded-port capacitance",
+      "voltage_rating_v": null
+    }
+  },
+  "nets": {
+    "TPS_FAULT_N": [
+      {
+        "ref": "U1",
+        "pin": "1",
+        "name": "FAULT_N"
+      },
+      {
+        "ref": "R_FAULT_PU",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 33
+      }
+    ],
+    "+5V_POWER": [
+      {
+        "ref": "U1",
+        "pin": "2",
+        "name": "IN1"
+      },
+      {
+        "ref": "U1",
+        "pin": "3",
+        "name": "IN1"
+      },
+      {
+        "ref": "U1",
+        "pin": "4",
+        "name": "IN2"
+      },
+      {
+        "ref": "C_BULK",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "C_IN_HF",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "C_IN_LOCAL",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "CTRL",
+        "logical_power_port": "board_approved_5V_input_pending_verification"
+      }
+    ],
+    "+3V3_LOGIC": [
+      {
+        "ref": "U1",
+        "pin": "5",
+        "name": "AUX"
+      },
+      {
+        "ref": "U2",
+        "pin": "10",
+        "name": "VS"
+      },
+      {
+        "ref": "R_FAULT_PU",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_UFP_PU",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_ALERT_PU",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_SDA_PU",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_SCL_PU",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "C_AUX",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "C_INA",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "CTRL",
+        "logical_power_port": "3V3_output_pending_board_verification"
+      }
+    ],
+    "TPS_EN": [
+      {
+        "ref": "U1",
+        "pin": "6",
+        "name": "EN"
+      },
+      {
+        "ref": "R_EN_PD",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 25
+      }
+    ],
+    "TPS_CHG": [
+      {
+        "ref": "U1",
+        "pin": "7",
+        "name": "CHG"
+      },
+      {
+        "ref": "R_CHG_PD",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 26
+      }
+    ],
+    "TPS_CHG_HI": [
+      {
+        "ref": "U1",
+        "pin": "8",
+        "name": "CHG_HI"
+      },
+      {
+        "ref": "R_CHGHI_PD",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 27
+      }
+    ],
+    "REF_RETURN_ISLAND": [
+      {
+        "ref": "U1",
+        "pin": "9",
+        "name": "REF_RTN"
+      },
+      {
+        "ref": "R_REF",
+        "pin": "2",
+        "name": "end_b"
+      }
+    ],
+    "REF_BIAS": [
+      {
+        "ref": "U1",
+        "pin": "10",
+        "name": "REF"
+      },
+      {
+        "ref": "R_REF",
+        "pin": "1",
+        "name": "end_a"
+      }
+    ],
+    "CC1": [
+      {
+        "ref": "U1",
+        "pin": "11",
+        "name": "CC1"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "A5"
+      }
+    ],
+    "GND": [
+      {
+        "ref": "U1",
+        "pin": "12",
+        "name": "GND"
+      },
+      {
+        "ref": "U1",
+        "pin": "EP",
+        "name": "THERMAL_PAD"
+      },
+      {
+        "ref": "U2",
+        "pin": "4",
+        "name": "A1"
+      },
+      {
+        "ref": "U2",
+        "pin": "5",
+        "name": "A0"
+      },
+      {
+        "ref": "U2",
+        "pin": "6",
+        "name": "GND"
+      },
+      {
+        "ref": "U2",
+        "pin": "11",
+        "name": "GND"
+      },
+      {
+        "ref": "R_EN_PD",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_CHG_PD",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_CHGHI_PD",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "R_BLEED_OPT",
+        "pin": "2",
+        "name": "end_b"
+      },
+      {
+        "ref": "C_BULK",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "C_IN_HF",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "C_IN_LOCAL",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "C_AUX",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "C_INA",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "C_PORT",
+        "pin": "2",
+        "name": "return"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "A1"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "A12"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "B1"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "B12"
+      },
+      {
+        "ref": "CTRL",
+        "logical_power_port": "GND"
+      }
+    ],
+    "CC2": [
+      {
+        "ref": "U1",
+        "pin": "13",
+        "name": "CC2"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "B5"
+      }
+    ],
+    "VBUS_SWITCHED": [
+      {
+        "ref": "U1",
+        "pin": "14",
+        "name": "OUT"
+      },
+      {
+        "ref": "U1",
+        "pin": "15",
+        "name": "OUT"
+      },
+      {
+        "ref": "U2",
+        "pin": "1",
+        "name": "IN+"
+      },
+      {
+        "ref": "U2",
+        "pin": "2",
+        "name": "IN+"
+      },
+      {
+        "ref": "U2",
+        "pin": "3",
+        "name": "IN+"
+      },
+      {
+        "ref": "R_BLEED_OPT",
+        "pin": "1",
+        "name": "end_a"
+      }
+    ],
+    "TPS_UFP_N": [
+      {
+        "ref": "U1",
+        "pin": "19",
+        "name": "UFP_N"
+      },
+      {
+        "ref": "R_UFP_PU",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 32
+      }
+    ],
+    "INA_ALERT_N": [
+      {
+        "ref": "U2",
+        "pin": "7",
+        "name": "ALERT_N"
+      },
+      {
+        "ref": "R_ALERT_PU",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 34
+      }
+    ],
+    "I2C_SDA": [
+      {
+        "ref": "U2",
+        "pin": "8",
+        "name": "SDA"
+      },
+      {
+        "ref": "R_SDA_PU",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 21
+      }
+    ],
+    "I2C_SCL": [
+      {
+        "ref": "U2",
+        "pin": "9",
+        "name": "SCL"
+      },
+      {
+        "ref": "R_SCL_PU",
+        "pin": "1",
+        "name": "end_a"
+      },
+      {
+        "ref": "CTRL",
+        "logical_gpio": 22
+      }
+    ],
+    "VBUS_PORT": [
+      {
+        "ref": "U2",
+        "pin": "12",
+        "name": "VBUS"
+      },
+      {
+        "ref": "U2",
+        "pin": "14",
+        "name": "IN-"
+      },
+      {
+        "ref": "U2",
+        "pin": "15",
+        "name": "IN-"
+      },
+      {
+        "ref": "U2",
+        "pin": "16",
+        "name": "IN-"
+      },
+      {
+        "ref": "C_PORT",
+        "pin": "1",
+        "name": "positive_or_rail"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "A4"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "A9"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "B4"
+      },
+      {
+        "ref": "J_USB",
+        "logical_contact": "B9"
+      }
+    ]
+  },
+  "power_interface": {
+    "input_net": "+5V_POWER",
+    "nominal_v": 5.0,
+    "supply_validated": false,
+    "front_end_fuse_reverse_polarity_ovp": "selection and coordination pending; their voltage drops must be included",
+    "ground": "GND",
+    "ctrl_supply_backfeed": "do not connect board USB and external5V simultaneously without verified board power topology"
+  },
+  "profiles": [
+    {
+      "name": "off",
+      "en": 0,
+      "chg": 0,
+      "chg_hi": 0,
+      "presence": "unknown"
+    },
+    {
+      "name": "typec_1500mA",
+      "en": 1,
+      "chg": 1,
+      "chg_hi": 0,
+      "advertised_ma": 1500,
+      "current_limit_typ_a": 1.7
+    },
+    {
+      "name": "typec_3000mA",
+      "en": 1,
+      "chg": 1,
+      "chg_hi": 1,
+      "advertised_ma": 3000,
+      "current_limit_typ_a": 3.4
+    }
+  ],
+  "control": {
+    "online_change_allowed_by_ic": true,
+    "online_change_verified_with_phone": false,
+    "sink_adjust_reference_max_ms": 60,
+    "smooth_transition_guaranteed": false,
+    "reset_default_off": true,
+    "external_watchdog_present": false,
+    "ina_alert_function": "pending, only one limit function at a time"
+  },
+  "metering": {
+    "current_positive_direction": "TPS OUT -> USB-C receptacle",
+    "voltage_sense_location": "VBUS_PORT near USB receptacle",
+    "excluded": [
+      "ESP32 consumption",
+      "TPS internal consumption",
+      "VCONN power",
+      "USB cable losses downstream",
+      "phone battery conversion losses"
+    ],
+    "i2c_initial_hz": 100000,
+    "configuration_normal_proposed": "0x6127",
+    "configuration_bench_fast_proposed": "0x6007",
+    "manufacturer_id_expected": "0x5449",
+    "die_id_expected_mask": "0xFFF0",
+    "die_id_expected_masked": "0x2270",
+    "signed_current_lsb_a": 0.00125,
+    "voltage_lsb_v": 0.00125,
+    "raw_power_register_is_always_positive": true,
+    "signed_power_formula": "signed_current_a * voltage_v"
+  },
+  "proposed_stop_verification": {
+    "port_voltage_below_v": 0.8,
+    "timeout_ms": 1000,
+    "status": "engineering proposal, validate discharge for EN low/AUX loss and phone capacitance; not certified timing"
+  },
+  "calculated_voltage_budget_at_3A": {
+    "source_v_assumed": 5.0,
+    "port_min_v": 4.75,
+    "tps_worst_published_ohm": 0.055,
+    "ina_typical_not_max_ohm": 0.0045,
+    "tps_drop_v": 0.165,
+    "ina_typical_drop_v": 0.0135,
+    "remaining_drop_v": 0.0715,
+    "remaining_loop_resistance_ohm": 0.0238333333333333,
+    "not_a_worst_case_guarantee": true
+  },
+  "pending_blocks": [
+    "exact development board supply/headers",
+    "external source regulation and transients",
+    "input connector/fuse/reverse protection/OVP",
+    "USB connector exact MPN/footprint and shield",
+    "ESD protection MPNs including VCONN-compatible CC protection",
+    "capacitor MPN/effective values/rating",
+    "NTC selection/circuit/temperature limits",
+    "optional bleeder population",
+    "PCB copper/thermal calculation and assembly quote",
+    "phone and cable validation"
+  ],
+  "test_points": [
+    "+5V_POWER",
+    "+3V3_LOGIC",
+    "GND",
+    "VBUS_SWITCHED",
+    "VBUS_PORT",
+    "CC1",
+    "CC2",
+    "TPS_EN",
+    "TPS_CHG",
+    "TPS_CHG_HI",
+    "TPS_UFP_N",
+    "TPS_FAULT_N",
+    "INA_ALERT_N"
+  ],
+  "alternative_power_route": {
+    "selected": false,
+    "description": "12V external -> XL4015 adjusted once to5.1V -> +5V_POWER",
+    "module_url": "https://www.easytronics.com.br/xl4015-modulo-step-down-5a",
+    "module_declared_mm": [
+      54,
+      23,
+      15
+    ],
+    "module_mounting_holes": null,
+    "new_thermal_load": true,
+    "12V_2A_supply_validated": false,
+    "warning": "XL4015 tab is SW, not ground; inspect supplied heatsink insulation. No digital phone-current control here."
+  },
+  "eligible_under_current_user_constraints": false,
+  "exclusion_reason": "User now requires only ready-made modules; bare TPS25810 and INA260 require custom PCB and SMD assembly."
+}

@@ -2,7 +2,7 @@ import flet as ft
 
 from ..ui import theme
 from ..ui.components import button, card, date_time, title
-from ..ui.point_summary import point_summary
+from ..ui.point_summary import event_disclosure, point_summary
 from .charging import session_card
 
 
@@ -22,6 +22,8 @@ async def build(app, station_id=None, offset=0, manage=False):
                       'Sessões registradas e valores estimados. Nenhuma cobrança real.')]
     for session in result['items']:
         controls += [point_summary(session,'Local da recarga'),session_card(session,demo=demo),ft.Text('Início: '+date_time(session.get('started_at'))),ft.Text('Fim: '+date_time(session.get('ended_at')))]
+        if not manage and not station_id:
+            controls.extend(event_disclosure(app, session['id']))
     if not result['items']:
         controls.append(ft.Text('Nenhuma sessão registrada.'))
     if offset:

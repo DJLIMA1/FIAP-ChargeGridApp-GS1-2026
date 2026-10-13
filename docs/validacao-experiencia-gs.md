@@ -4,7 +4,7 @@ Data: 29/09/2026. Implementação integrada e verificação local concluídas.
 
 ## Escopo
 
-P0 + P1 e demonstração do plano em `plano-experiencia-gs-2026.md`: home e marca, contraste/acessibilidade, escolha assistida, planejamento antes da reserva, confirmação e atualização dos dados. Histórico avançado e painel analítico (P2) ficam para outra entrega.
+P0 + P1 e demonstração do plano em `plano-experiencia-gs-2026.md`: home e marca, contraste/acessibilidade, escolha assistida, planejamento antes da reserva, confirmação e atualização dos dados. Em 30/09, um registro observável mínimo de sessão foi acrescentado (`registro-sessao-local.md`); filtros históricos e painel analítico (restante de P2) ficam para outra entrega.
 
 Três subagentes implementam áreas distintas, com revisão pelo orquestrador. As mudanças preexistentes de keepalive, configuração Vercel, versão mobile e instalação foram preservadas.
 

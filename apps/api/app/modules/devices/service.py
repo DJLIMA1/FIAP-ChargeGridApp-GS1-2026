@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -17,7 +18,8 @@ from ...models import (
     now,
 )
 from ...presence_code import current_code
-from ...service import active_res, active_session, issue, reconcile_expiry, row
+from ...service import active_res, active_session, issue, online, reconcile_expiry, row
+from ...session_events import record as record_session_event
 
 
 def sync(db, authenticated_device, data):
@@ -38,6 +40,7 @@ def sync(db, authenticated_device, data):
     )
     if device.revoked or device.key_hash != authenticated_key_hash:
         fail("unauthorized", "Chave revogada ou alterada", 401)
+    was_offline = not online(device)
     completed_reset_id = None
     for ack in data.acks:
         command = db.get(Command, ack.command_id)
@@ -100,11 +103,19 @@ def sync(db, authenticated_device, data):
         if cmd.expires_at <= now():
             continue
         if ack.status == "received":
+            if cmd.status == "received":
+                continue
             cmd.status = "received"
+            if cmd.session_id:
+                record_session_event(db, db.get(ChargingSession, cmd.session_id),
+                                     "command_received", "device_sync", f"received:{cmd.id}")
             continue
         if ack.status == "failed":
             cmd.status = "failed"
             cmd.error = ack.error
+            if cmd.session_id:
+                record_session_event(db, db.get(ChargingSession, cmd.session_id),
+                                     "command_failed", "device_sync", f"failed:{cmd.id}")
             if cmd.type == "START" and session:
                 session.status = "stopping"
                 issue(db, connector, device, "STOP", session=session, parameters={"reason": "start_failed"})
@@ -195,6 +206,12 @@ def sync(db, authenticated_device, data):
         if compatible:
             cmd.status = "applied"
             device.reconciled = True
+            if cmd.session_id:
+                record_session_event(db, db.get(ChargingSession, cmd.session_id),
+                                     f"{cmd.type.lower()}_applied", "device_sync", f"applied:{cmd.id}")
+                if cmd.type == "STOP":
+                    record_session_event(db, db.get(ChargingSession, cmd.session_id),
+                                         "ended", "device_sync", f"ended:{cmd.session_id}")
     if data.session_id and not terminal_replay:
         reported = db.get(ChargingSession, data.session_id)
         reported.energy_wh = energy_wh
@@ -214,6 +231,7 @@ def sync(db, authenticated_device, data):
             "fault",
         ):
             finish(reported, data, "device_stopped")
+            record_session_event(db, reported, "ended", "device_sync", f"ended:{reported.id}")
             for cmd in db.scalars(
                 select(Command).where(
                     Command.session_id == reported.id, Command.status.in_(("pending", "received"))
@@ -246,6 +264,10 @@ def sync(db, authenticated_device, data):
     ):
         # Physical activity without a valid START acknowledgement remains blocked.
         device.reconciled = False
+    if was_offline and session and data.session_id == session.id and device.reconciled:
+        sync_key = hashlib.sha256(f"{data.boot_id}:{data.sequence}".encode()).hexdigest()
+        record_session_event(db, session, "offline_reconciled", "device_sync",
+                             f"reconciled:{sync_key}")
     last_sample = db.scalar(
         select(Telemetry)
         .where(Telemetry.device_id == device.id)

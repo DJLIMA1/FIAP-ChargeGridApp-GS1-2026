@@ -1,0 +1,20 @@
+{
+  "physical_test_performed": false,
+  "date": null,
+  "operator": null,
+  "printer": null,
+  "filament_brand_and_material": null,
+  "slicer_and_profile": null,
+  "nozzle_mm": null,
+  "layer_height_mm": null,
+  "measured_male_bottom_width_mm": null,
+  "rail_results": [
+    {"side_clearance_mm": 0.45, "mark_count": 3, "fully_inserts_by_hand": null, "slides_without_binding": null, "play_observation": null, "cycles": null, "damage": null},
+    {"side_clearance_mm": 0.35, "mark_count": 2, "fully_inserts_by_hand": null, "slides_without_binding": null, "play_observation": null, "cycles": null, "damage": null},
+    {"side_clearance_mm": 0.25, "mark_count": 1, "fully_inserts_by_hand": null, "slides_without_binding": null, "play_observation": null, "cycles": null, "damage": null}
+  ],
+  "latch_result": {"inserts": null, "retains": null, "releases_with_lateral_pressure": null, "returns_to_initial_position": null, "cycles": null, "damage": null},
+  "chosen_side_clearance_mm": null,
+  "changes_for_next_coupon": null,
+  "notes": null
+}

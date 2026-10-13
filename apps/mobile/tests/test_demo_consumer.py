@@ -74,6 +74,11 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             await app.poll()
             completed_screen = await charging.build(app,session_id=session_id)
             self.assertIn('Recarga simulada concluída',texts(completed_screen))
+            await click(completed_screen,'Ver eventos da sessão')(None)
+            self.assertIn('Início confirmado na simulação',texts(completed_screen))
+            self.assertIn('simulador local',texts(completed_screen))
+            kinds = [event['kind'] for event in await app.api.request('GET',f'charging-sessions/{session_id}/events')]
+            self.assertEqual(kinds,['start_requested','start_applied','stop_requested','ended'])
             history_screen = await history.build(app)
             self.assertIn('Posto Demo Centro',texts(history_screen))
             self.assertIn('HISTÓRICO SIMULADO',texts(history_screen))

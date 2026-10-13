@@ -1,0 +1,349 @@
+{
+  "status": "REFERENCE_NOT_FOR_MANUFACTURE",
+  "source_sha256": "dad2a7a04d5e5ee3a4910721e62fedfcc08763ce41629c49d8e0bb8d1eab153d",
+  "scale": 0.7,
+  "coordinates": "X largura; Y positivo para traseira; Z altura; origem STEP original escalada",
+  "parts": [
+    {
+      "name": "traseira_original_70_REFERENCIA",
+      "BRep_valid": true,
+      "solids": 1,
+      "bounds_mm": {
+        "min": [
+          -72.98612884437179,
+          85.57478400833072,
+          -93.73093272597166
+        ],
+        "max": [
+          72.98685796326274,
+          149.87816357071893,
+          221.30362713422375
+        ],
+        "size_xyz": [
+          145.97298680763453,
+          64.3033795623882,
+          315.0345598601954
+        ]
+      }
+    },
+    {
+      "name": "quadro_original_70_REFERENCIA",
+      "BRep_valid": true,
+      "solids": 7,
+      "bounds_mm": {
+        "min": [
+          -72.98483745007928,
+          34.5735975069656,
+          -93.7191033774737
+        ],
+        "max": [
+          72.98483745005893,
+          105.20978408410713,
+          221.30357732616156
+        ],
+        "size_xyz": [
+          145.96967490013822,
+          70.63618657714153,
+          315.0226807036353
+        ]
+      }
+    },
+    {
+      "name": "tampa_original_70_REFERENCIA",
+      "BRep_valid": true,
+      "solids": 1,
+      "bounds_mm": {
+        "min": [
+          -72.76671447952543,
+          45.67502628097846,
+          23.714904523820167
+        ],
+        "max": [
+          72.76670813823507,
+          86.27553381595062,
+          221.14356388632996
+        ],
+        "size_xyz": [
+          145.5334226177605,
+          40.60050753497217,
+          197.4286593625098
+        ]
+      }
+    }
+  ],
+  "shell_export": {
+    "file": null,
+    "STEP_round_trip_BRep_valid": false,
+    "STEP_discarded_when_invalid": true,
+    "native_file": "casca-original-70-REFERENCIA.brep",
+    "native_BRep_round_trip_valid": true,
+    "solids": 9,
+    "bounds_mm": {
+      "min": [
+        -72.98612884437179,
+        34.5735975069656,
+        -93.73093272597166
+      ],
+      "max": [
+        72.98685796326274,
+        149.87816357071893,
+        221.30362713422375
+      ],
+      "size_xyz": [
+        145.97298680763453,
+        115.30456606375333,
+        315.0345598601954
+      ]
+    }
+  },
+  "assembly_export": {
+    "file": null,
+    "STEP_round_trip_BRep_valid": false,
+    "STEP_discarded_when_invalid": true,
+    "native_file": "casca-e-cassete-posicionado-ESTUDO.brep",
+    "native_BRep_round_trip_valid": true,
+    "solids": 18,
+    "bounds_mm": {
+      "min": [
+        -72.98612884437179,
+        34.5735975069656,
+        -93.73093272597166
+      ],
+      "max": [
+        72.98685796326274,
+        149.87816357071893,
+        221.30362713422375
+      ],
+      "size_xyz": [
+        145.97298680763453,
+        115.30456606375333,
+        315.0345598601954
+      ]
+    }
+  },
+  "cassette_envelope_mm": {
+    "min": [
+      -42.0,
+      83.19999999999999,
+      48.269067304028354
+    ],
+    "max": [
+      42.0,
+      123.19999999999999,
+      204.26906730402834
+    ],
+    "size_xyz": [
+      84.0,
+      40.0,
+      156.0
+    ]
+  },
+  "collision_tests": [
+    {
+      "original_shell_part": "traseira_original_70_REFERENCIA",
+      "algorithm_done": true,
+      "common_BRep_valid": true,
+      "intersection_volume_mm3": 0.0,
+      "intersecting_solids": 0
+    },
+    {
+      "original_shell_part": "quadro_original_70_REFERENCIA",
+      "algorithm_done": true,
+      "common_BRep_valid": true,
+      "intersection_volume_mm3": 109.34878138107823,
+      "intersecting_solids": 3,
+      "intersection_bounds_mm": {
+        "min": [
+          -42.000000100000015,
+          83.19999989999998,
+          136.58516388706394
+        ],
+        "max": [
+          42.000000100000015,
+          88.42654343193998,
+          204.26906740402836
+        ],
+        "size_xyz": [
+          84.00000020000003,
+          5.2265435319399955,
+          67.68390351696442
+        ]
+      }
+    },
+    {
+      "original_shell_part": "tampa_original_70_REFERENCIA",
+      "algorithm_done": true,
+      "common_BRep_valid": true,
+      "intersection_volume_mm3": 0.0,
+      "intersecting_solids": 0
+    }
+  ],
+  "placement_screening": [
+    {
+      "backplane_y_scaled_mm": 124.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 77.49854386529358
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 125.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 54.556143352586425
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 126.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 77.65578264670873
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 127.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 42.00603964287747
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 128.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 6.376298297635605
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 129.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 235.7043542493157
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 130.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 656.7283975134566
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    },
+    {
+      "backplane_y_scaled_mm": 131.2,
+      "intersections": [
+        {
+          "part": "traseira_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 1529.403045916953
+        },
+        {
+          "part": "quadro_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        },
+        {
+          "part": "tampa_original_70_REFERENCIA",
+          "done": true,
+          "volume_mm3": 0.0
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Casca original apenas escalada: mantém nervuras, postes e furos industriais, sem reconstrução FDM.",
+    "Interseção testa o envelope maciço reservado contra material da casca; não demonstra contenção, montagem ou espessura de parede.",
+    "Não modela cabo, plugs, conectores, ventilação ou movimento de remoção; podem ultrapassar o envelope.",
+    "Validade BRep/round trip não é aprovação de impressão ou segurança elétrica."
+  ]
+}

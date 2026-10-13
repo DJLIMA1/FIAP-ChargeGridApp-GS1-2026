@@ -187,6 +187,28 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('R$ 2,00/kWh',texts(screen))
         self.assertIn('limite de 5 min',texts(screen))
 
+    async def test_history_reveals_only_fetched_observed_events(self):
+        app = HandlerApp()
+        session = {**CONTEXT,'id':'session','status':'completed','max_duration_minutes':5,'price_per_kwh':'1.25'}
+        async def request(method,path,**kwargs):
+            if path == 'me/charging-sessions':
+                return {'items':[session],'total':1}
+            self.assertEqual(path,'charging-sessions/session/events')
+            return [{'kind':'start_requested','source':'api','observed_at':'2026-09-27T12:00:00+00:00'},
+                    {'kind':'start_applied','source':'device_sync','observed_at':'2026-09-27T12:00:05+00:00'}]
+        app.api.request.side_effect = request
+        screen = await history.build(app)
+        self.assertNotIn('REGISTRO DA SESSÃO',texts(screen))
+        await click(screen,'Ver eventos da sessão')(None)
+        self.assertIn('REGISTRO DA SESSÃO',texts(screen))
+        self.assertIn('Início confirmado pelo ponto',texts(screen))
+        self.assertIn('sincronização do ponto',texts(screen))
+        self.assertIn('horário local',texts(screen))
+        await click(screen,'Ocultar eventos da sessão')(None)
+        self.assertFalse(next(item for item in descendants(screen)
+                              if isinstance(item,ft.Container) and item.content
+                              and 'REGISTRO DA SESSÃO' in texts(item)).visible)
+
     async def test_reservation_screen_shows_destination_and_correct_charge_context(self):
         app = HandlerApp()
         app.api.request.return_value = reservation()
@@ -196,6 +218,17 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         await click(screen,'Cheguei: informar código')(None)
         self.assertEqual(app.go.call_args.kwargs['max_duration'],10)
         self.assertEqual(app.go.call_args.kwargs['point_context']['connector']['id'],'point-one')
+
+    async def test_pending_reservation_does_not_label_point_as_reserved(self):
+        app = HandlerApp()
+        app.api.request.return_value = reservation('pending_device')
+        pending = await reservations.build(app)
+        self.assertIn('PONTO SOLICITADO', texts(pending))
+        self.assertNotIn('PONTO RESERVADO', texts(pending))
+        self.assertNotIn('Cheguei: informar código', texts(pending))
+        app.api.request.return_value = reservation('confirmed')
+        confirmed = await reservations.build(app)
+        self.assertIn('PONTO RESERVADO', texts(confirmed))
 
     async def test_operator_history_preserves_scope_through_pagination(self):
         app = HandlerApp()

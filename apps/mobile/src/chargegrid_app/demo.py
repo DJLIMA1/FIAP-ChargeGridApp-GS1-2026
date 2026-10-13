@@ -98,6 +98,7 @@ class DemoApi:
         self._counter = 0
         self._stations, self._points, self._devices = {}, {}, {}
         self._reservations, self._sessions, self._coupons = {}, {}, {}
+        self._session_events = {}
         self._reservation_runtime, self._session_runtime, self._resets = {}, {}, {}
         self._claims = {DEMO_CLAIM_TOKEN: None}
         self._idempotency = {}
@@ -172,7 +173,7 @@ class DemoApi:
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
         for store in (self._stations, self._points, self._devices, self._reservations, self._sessions,
-                      self._coupons, self._reservation_runtime, self._session_runtime, self._resets,
+                      self._session_events, self._coupons, self._reservation_runtime, self._session_runtime, self._resets,
                       self._claims, self._idempotency):
             store.clear()
 
@@ -194,7 +195,7 @@ class DemoApi:
             self.last_session_id = result['id']
             self.charging_operation_sessions[signature] = result['id']
             self.clear_operation('reservations')
-        elif method == 'GET' and path.startswith('charging-sessions/') and result:
+        elif method == 'GET' and path.startswith('charging-sessions/') and isinstance(result, dict):
             self.last_session_id = result['id']
             if result['status'] in _TERMINAL:
                 for request, session_id in tuple(self.charging_operation_sessions.items()):
@@ -269,12 +270,14 @@ class DemoApi:
             if runtime.get('never_started'):
                 if self._elapsed >= runtime['stop_at']:
                     session.update(status='failed', ended_at=self._iso(runtime['stop_at']), end_reason='requested')
+                    self._event(sid, 'ended', at=session['ended_at'])
                 continue
             if self._elapsed < start:
                 continue
             session['started_at'] = self._iso(start)
             if session['status'] == 'starting':
                 session['status'] = 'charging'
+                self._event(sid, 'start_applied', at=session['started_at'])
             effective_price = Decimal(session['price_per_kwh']) * (100 - session['discount_percent']) / 100
             power = runtime['power_kw']
             deadlines = [(float(start + session['max_duration_minutes'] * 60), 'duration_limit')]
@@ -294,11 +297,17 @@ class DemoApi:
                            last_measurement_at=self._iso(observed))
             if self._elapsed >= deadline:
                 session.update(status='completed', ended_at=self._iso(deadline), end_reason=reason)
+                self._event(sid, 'ended', at=session['ended_at'])
         for device_id, reset in self._resets.items():
             if reset['status'] == 'pending' and self._elapsed >= reset['due']:
                 reset['status'] = 'applied'
                 self._devices[device_id]['revoked'] = True
                 self._points[self._devices[device_id]['connector_id']]['retired'] = True
+
+    def _event(self, session_id, kind, *, at=None):
+        self._session_events.setdefault(session_id, []).append({
+            'kind': kind, 'source': 'simulator', 'observed_at': at or self._iso(),
+        })
 
     def _make_station(self, data, *, active=True):
         sid = self._id('station')
@@ -487,6 +496,9 @@ class DemoApi:
             return self._operation_row(reservation, 'reservation')
         if (method, path) == ('POST', 'charging-sessions'):
             return self._start(body)
+        if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'events' and method == 'GET':
+            self._get(self._sessions, parts[1])
+            return self._session_events.get(parts[1], [])
         if parts[0] == 'charging-sessions' and len(parts) == 2 and method == 'GET':
             record = self._current('session') if parts[1] == 'current' else self._get(self._sessions, parts[1])
             return self._operation_row(record, 'session')
@@ -496,6 +508,7 @@ class DemoApi:
                 runtime = self._session_runtime[session['id']]
                 runtime.update(stop_at=self._elapsed + 1, never_started=session['status'] == 'starting')
                 session['status'] = 'stopping'
+                self._event(session['id'], 'stop_requested')
             return self._operation_row(session, 'session')
         if method == 'GET' and (path in ('me/charging-sessions', 'operator/charging-sessions') or
                                 (len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'charging-sessions')):
@@ -738,6 +751,7 @@ class DemoApi:
                    'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': None, 'source': 'simulated',
                    'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None}
         self._sessions[sid] = session
+        self._event(sid, 'start_requested')
         self._session_runtime[sid] = {'start_at': self._elapsed + 1, 'power_kw': Decimal(point['power_kw'])}
         if reservation:
             reservation['status'] = 'consumed'

@@ -1,0 +1,147 @@
+{
+  "status": "HISTORICAL_70_PERCENT_CONCEPT_NOT_CURRENT_PRINT_REVISION",
+  "date": "2026-10-05",
+  "source_sha256": "dad2a7a04d5e5ee3a4910721e62fedfcc08763ce41629c49d8e0bb8d1eab153d",
+  "units": "mm",
+  "scale": {
+    "value": 0.7,
+    "status": "historical_superseded_by_user_50_percent_request"
+  },
+  "shell_external_HWD": {
+    "original": [
+      450.04937114313634,
+      208.53283821090645,
+      164.72080857679052
+    ],
+    "scaled_70_percent": [
+      315.0345598001954,
+      145.9729867476345,
+      115.30456600375337
+    ],
+    "status": "measured_STEP_envelope"
+  },
+  "white_cap_HWD": {
+    "original": [
+      282.0409418607283,
+      207.9048893682293,
+      58.00072496424596
+    ],
+    "scaled_70_percent": [
+      197.4286593025098,
+      145.5334225577605,
+      40.60050747497217
+    ],
+    "status": "measured_STEP_envelope"
+  },
+  "original_support_HW_scaled": [
+    184.8,
+    109.2
+  ],
+  "original_PCB_HWD_scaled": [
+    140,
+    91,
+    22.54
+  ],
+  "coordinate_system": {
+    "x": "width, centerline 0",
+    "h": "height above shell lowest point",
+    "y": "STEP Y positive toward rear; target size uses 0.7*STEP Y"
+  },
+  "cassette": {
+    "status": "concept_envelope_checked_against_original_solids_not_final_fit",
+    "width": 84,
+    "height": 156,
+    "base_thickness": 2.4,
+    "total_study_depth": 36,
+    "height_above_base_interval": [
+      142,
+      298
+    ],
+    "STEP_Y_backplane_candidate": 180.71428571428572,
+    "carrier_nominal_width": 72,
+    "replaceable_rails": true,
+    "connector_and_wire_envelopes_required": true,
+    "previous_study_depth": 40,
+    "scaled_Y_backplane_mm": 126.5,
+    "original_solids_intersection_mm3": 0,
+    "minimum_boundary_clearance_mm": 1.8964907580719488,
+    "check_report": "cad-referencia/reserva-corrigida.json",
+    "full_assembly_validated": false
+  },
+  "mesh_screening": {
+    "original_sampling_mm": 0.5,
+    "target_sampling_mm": 0.35,
+    "source_mesh_linear_deflection_mm": 0.35,
+    "source_mesh_angular_deflection_rad": 0.35,
+    "conservative_region_screened_target_WHH": [
+      85,
+      140,
+      300
+    ],
+    "uniform_y_span_before_walls_mm": 57.19,
+    "interpretation": "Y extrema of projected surfaces only; not a Boolean collision/solid containment test; holes, seams, and ribs not repaired"
+  },
+  "modularity": {
+    "shell_interface": "four universal sockets with replaceable load-bearing shoes, exact coordinates TBD",
+    "cassette_service": "remove entire front assembly; release sacrificial latch; lift cassette short distance and withdraw forward",
+    "carrier_interface": "replaceable edge rails and keyed retaining strip; no PCB-specific holes in shell",
+    "cable_interface": "replaceable split insert in lower existing outlet; separate strain relief and electrical connector",
+    "fragile_parts": "latches and board clips are separately replaceable"
+  },
+  "FDM_initial_proposals": {
+    "material": "PETG",
+    "wall": 2.4,
+    "moving_fit_gaps_per_side": [
+      0.25,
+      0.35,
+      0.45
+    ],
+    "coupon_before_shell": true,
+    "release_clip_beam_length": 22,
+    "release_clip_root_thickness": 1.2,
+    "release_clip_tip_thickness": 0.9,
+    "release_clip_width": 8,
+    "release_clip_root_radius": 1.0,
+    "release_clip_assembly_deflection": 0.6,
+    "clip_status": "superseded_initial_taper_sketch_use_actual_coupon_parameters_no_physical_test",
+    "print_orientation": "clips flat with beam in XY; avoid root loading across Z layer bonds",
+    "coupon_files": "cad-cupons/parametros-cupons.json"
+  },
+  "printing_220": {
+    "white_cap": "single part, envelope 197.43 x 145.53 x 40.60 before new joints/supports",
+    "rear_and_frame": "split into segments, trial seam H=185; resulting heights 185 and130.03; segment joints included in bed check",
+    "cassette": "single part 156 x84 before tabs",
+    "finish": "rear/side seams remain and need finishing if visually invisible is required"
+  },
+  "release_gates": [
+    "Freeze exact seller PCB revision and connector variant",
+    "Measure PCB, components, pins, connector plug and bend radius",
+    "BRep shell extraction/offset validity and Boolean clearance",
+    "Assembly/disassembly swept volumes",
+    "Fit coupons and one carrier prototype",
+    "Thermal and RF validation in closed shell",
+    "Cable retention and repeated opening test",
+    "Printer/support/bed adhesion preview"
+  ],
+  "sources": [
+    "https://help.prusa3d.com/article/modeling-with-3d-printing-in-mind_164135",
+    "https://help.prusa3d.com/article/petg_2059",
+    "https://www.hubs.com/knowledge-base/how-design-snap-fit-joints-3d-printing/",
+    "https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32/pcb-layout-design.html"
+  ],
+  "revision": "r2",
+  "ready_modules_only": true,
+  "cable_requirements_updated": "2026-10-07",
+  "power_module_selected": false,
+  "output_cable": {
+    "type": "complete_replaceable_USB_C_to_USB_C",
+    "minimum_declared_current_a": 3,
+    "selected_sku": null,
+    "diameter_mm": null,
+    "internal_plug_envelope_mm": null,
+    "bend_radius_mm": null,
+    "retention": "replaceable_split_insert_around_intact_cable",
+    "assembly_envelope_validated": false
+  },
+  "active_revision": "cad-impressao-50-v1/parametros.json"
+}

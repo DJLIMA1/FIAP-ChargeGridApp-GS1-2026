@@ -1,6 +1,6 @@
 # ChargeGrid — plano de experiência e diferenciação para a Global Solution
 
-Data: 29/09/2026. Status: P0 + P1 implementados e roteiro de demonstração atualizado após aprovação do usuário. Verificação local registrada em `validacao-experiencia-gs.md`. P2 permanece como segunda entrega; validação com usuários/banca e novo ensaio físico não foram realizados.
+Data: 29/09/2026. Status: P0 + P1 implementados e roteiro de demonstração atualizado após aprovação do usuário. Verificação local registrada em `validacao-experiencia-gs.md`. Em 30/09 foi acrescentado um registro observável mínimo de eventos de sessão, descrito em `registro-sessao-local.md`; o restante de P2 permanece para outra entrega. Validação com usuários/banca e novo ensaio físico não foram realizados.
 
 ## Objetivo e premissas
 

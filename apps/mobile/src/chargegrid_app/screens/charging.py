@@ -16,7 +16,7 @@ from ..ui.components import (
     money,
     title,
 )
-from ..ui.point_summary import journey_summary, point_summary
+from ..ui.point_summary import event_disclosure, journey_summary, point_summary
 from ..ui.point_summary import point_context as context_from_station
 
 LABELS = {'starting':'Aguardando equipamento iniciar','charging':'Recarga confirmada','stopping':'Parada pendente no equipamento','completed':'Recarga concluída','failed':'Falha confirmada','interrupted':'Recarga interrompida'}
@@ -219,6 +219,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         state = ft.Container(session_card(session,demo=demo))
         journey = ft.Container(journey_summary(session, demo=demo))
         controls = [title('Minha recarga'),state,journey,point_summary(session)]
+        controls.extend(event_disclosure(app, session['id']))
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
             if current['status'] != session['status']:

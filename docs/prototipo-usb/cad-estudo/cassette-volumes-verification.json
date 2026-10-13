@@ -1,0 +1,140 @@
+{
+  "status": "concept_only_not_for_manufacture",
+  "file": "cassette-volumes-CONCEITO.step",
+  "valid_BRep": true,
+  "solids": 9,
+  "envelope_mm": [
+    84.0,
+    156.0,
+    40.0
+  ],
+  "coordinates": "X width, Y cassette height, Z forward depth, local reference independent of original STEP",
+  "verified": "STEP write/read round trip and individual/composite BRep validity only",
+  "not_verified": [
+    "shell fit",
+    "board and cable fit",
+    "assembly motion",
+    "functional joints",
+    "snap-fit compliance",
+    "thermal behavior"
+  ],
+  "parts": [
+    {
+      "name": "CONCEPT_base_84x156x2p4",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "dimensions": [
+        84,
+        156,
+        2.4
+      ]
+    },
+    {
+      "name": "CONCEPT_replaceable_left_rail",
+      "origin": [
+        0,
+        0,
+        2.4
+      ],
+      "dimensions": [
+        4,
+        156,
+        5
+      ]
+    },
+    {
+      "name": "CONCEPT_replaceable_right_rail",
+      "origin": [
+        80,
+        0,
+        2.4
+      ],
+      "dimensions": [
+        4,
+        156,
+        5
+      ]
+    },
+    {
+      "name": "CONCEPT_protection_carrier",
+      "origin": [
+        6,
+        3,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        34,
+        2
+      ]
+    },
+    {
+      "name": "CONCEPT_power_carrier",
+      "origin": [
+        6,
+        42,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        46,
+        2
+      ]
+    },
+    {
+      "name": "CONCEPT_control_carrier",
+      "origin": [
+        6,
+        93,
+        7.4
+      ],
+      "dimensions": [
+        72,
+        57,
+        2
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_protection_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        8,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        24,
+        18
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_power_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        47,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        36,
+        30.6
+      ]
+    },
+    {
+      "name": "RESERVED_GENERIC_control_NOT_A_COMPONENT",
+      "origin": [
+        12,
+        98,
+        9.4
+      ],
+      "dimensions": [
+        60,
+        47,
+        25
+      ]
+    }
+  ]
+}

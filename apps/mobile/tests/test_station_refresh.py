@@ -9,6 +9,23 @@ from test_behavior import HandlerApp, click, descendants
 
 
 class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_page_after_catalog_shrinks_points_back_to_previous_page(self):
+        app = HandlerApp()
+        station = {'id': 's', 'name': 'Posto', 'address': 'Rua', 'latitude': 0,
+                   'longitude': 0, 'connectors': []}
+        app.api.request.side_effect = [
+            {'items': [station], 'total': 21},
+            {'items': [], 'total': 19},
+        ]
+        with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
+            screen = await stations.build(app, offset=20)
+            await app.poll()
+        self.assertIn('Anterior', [c.content.value for c in descendants(screen)
+                                   if isinstance(c, ft.TextButton) and isinstance(c.content, ft.Text)])
+        messages = [c.value for c in descendants(screen) if isinstance(c, ft.Text)]
+        self.assertIn('Nenhum posto nesta página. Volte para a página anterior.', messages)
+        self.assertNotIn('Nenhum posto encontrado para esta busca.', messages)
+
     async def test_callout_refreshes_name_and_tariff_and_its_action_keeps_station_identity(self):
         app = HandlerApp()
         point = {'id':'p','public_code':'CG-01','connector_type':'Tipo 2','power_kw':'7.2',

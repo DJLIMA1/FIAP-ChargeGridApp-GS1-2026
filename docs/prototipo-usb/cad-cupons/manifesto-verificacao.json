@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "status": "TEST_COUPONS_NOT_FINAL_ENCLOSURE_PARTS",
+  "units": "mm",
+  "physical_test_performed": false,
+  "parts": [
+    {
+      "id": "trilho-macho-comum",
+      "quantity": 1,
+      "role": "Macho comum dos tres trilhos; puxador para desmontagem",
+      "orientation": "Base larga plana na mesa; puxador no mesmo plano.",
+      "STL": "stl/trilho-macho-comum.stl",
+      "STEP": "step/trilho-macho-comum.step",
+      "envelope_xyz_mm": [
+        16.0,
+        40.0,
+        3.2
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 1472.0,
+      "mesh": {
+        "triangles": 28,
+        "welded_vertices": 16,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1472.0
+      },
+      "STL_read_back": {
+        "triangles": 28,
+        "welded_vertices": 16,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1472.0000219345093
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "df809f3fd3f2222bd0ba6896acef0a7bcb67159cf4c93745746cd30a24151113"
+    },
+    {
+      "id": "trilho-femea-25",
+      "quantity": 1,
+      "role": "1 ponto(s) = folga horizontal de 0.25 mm por lado",
+      "orientation": "Base plana na mesa; cavidade aberta para cima; sem suporte.",
+      "STL": "stl/trilho-femea-25.stl",
+      "STEP": "step/trilho-femea-25.step",
+      "envelope_xyz_mm": [
+        26.0,
+        32.0,
+        8.0
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 5168.04590734641,
+      "mesh": {
+        "triangles": 372,
+        "welded_vertices": 188,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5168.04883606937
+      },
+      "STL_read_back": {
+        "triangles": 372,
+        "welded_vertices": 188,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5168.048849290554
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "35570e3227b2893c102d20469ac05b3a1d9a4cc55b65c70f0c7c38b2c5c30a97"
+    },
+    {
+      "id": "trilho-femea-35",
+      "quantity": 1,
+      "role": "2 ponto(s) = folga horizontal de 0.35 mm por lado",
+      "orientation": "Base plana na mesa; cavidade aberta para cima; sem suporte.",
+      "STL": "stl/trilho-femea-35.stl",
+      "STEP": "step/trilho-femea-35.step",
+      "envelope_xyz_mm": [
+        26.0,
+        32.0,
+        8.0
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 5125.154314692821,
+      "mesh": {
+        "triangles": 708,
+        "welded_vertices": 356,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5125.160172138741
+      },
+      "STL_read_back": {
+        "triangles": 708,
+        "welded_vertices": 356,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5125.160078726503
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "0c1dafbd4614e663b89d2950e9adc7db3d72ea884cca34ddd8cbaea7bdcb47bc"
+    },
+    {
+      "id": "trilho-femea-45",
+      "quantity": 1,
+      "role": "3 ponto(s) = folga horizontal de 0.45 mm por lado",
+      "orientation": "Base plana na mesa; cavidade aberta para cima; sem suporte.",
+      "STL": "stl/trilho-femea-45.stl",
+      "STEP": "step/trilho-femea-45.step",
+      "envelope_xyz_mm": [
+        26.0,
+        32.0,
+        8.0
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 5080.762722039231,
+      "mesh": {
+        "triangles": 1044,
+        "welded_vertices": 524,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5080.7715082081095
+      },
+      "STL_read_back": {
+        "triangles": 1044,
+        "welded_vertices": 524,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 5080.771430279113
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "aa22bb9f1bca0617de38578dbab9be223312a792d7d1754baf7bf09d91e1fcd1"
+    },
+    {
+      "id": "trava-flexivel-substituivel",
+      "quantity": 1,
+      "role": "Pega + lingueta flexivel de cupom; independente da casca",
+      "orientation": "Perfil plano XY na mesa; lingua 1,2 mm flexiona em XY, largura extrudada 8 mm; sem suporte.",
+      "STL": "stl/trava-flexivel-substituivel.stl",
+      "STEP": "step/trava-flexivel-substituivel.step",
+      "envelope_xyz_mm": [
+        36.0,
+        14.0,
+        8.0
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 1590.6336293856407,
+      "mesh": {
+        "triangles": 208,
+        "welded_vertices": 106,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1590.6453442774807
+      },
+      "STL_read_back": {
+        "triangles": 208,
+        "welded_vertices": 106,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1590.6453123991032
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "1467fa3c48f5c7d5e8a0a8e8d125cc18c708bd8e271a2de2f8cf38866432b04d"
+    },
+    {
+      "id": "receptor-da-trava",
+      "quantity": 1,
+      "role": "Receptor de ensaio manual da lingueta, com tunel livre",
+      "orientation": "STL ja girado: eixo do tunel vertical; altura impressa 8 mm; sem ponte interna ou suporte.",
+      "STL": "stl/receptor-da-trava.stl",
+      "STEP": "step/receptor-da-trava.step",
+      "envelope_xyz_mm": [
+        12.700000000000001,
+        14.0,
+        8.000000000000002
+      ],
+      "BRep_valid": true,
+      "solids": 1,
+      "BRep_volume_mm3": 1244.92,
+      "mesh": {
+        "triangles": 32,
+        "welded_vertices": 16,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1244.92
+      },
+      "STL_read_back": {
+        "triangles": 32,
+        "welded_vertices": 16,
+        "nonmanifold_or_boundary_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "degenerate_triangles": 0,
+        "signed_mesh_volume_mm3": 1244.9199692535403
+      },
+      "step": {
+        "read_back_valid": true,
+        "read_back_solids": 1
+      },
+      "STL_sha256": "dad76b7a7b0e5b1a36d95f8235176b8f53154353bf11cd6023e53b104ede366c"
+    }
+  ],
+  "geometric_tests": [
+    {
+      "test": "trilho-femea-25",
+      "nominal_assembly_intersection_mm3": 0.0,
+      "withdrawal": [
+        {
+          "translation_y": 0,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -2,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -10,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -20,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -40,
+          "intersection_mm3": 0.0
+        }
+      ],
+      "lift_2mm_intersection_mm3": 133.31249999999997,
+      "overtravel_0p5mm_intersection_mm3": 24.799999999999955,
+      "expected": "zero collision assembled/withdrawal; positive collision on lift/overtravel confirms geometric retention only",
+      "horizontal_clearance_per_flank": 0.25,
+      "bottom_clearance": 0.25,
+      "mark_count": 1
+    },
+    {
+      "test": "trilho-femea-35",
+      "nominal_assembly_intersection_mm3": 0.0,
+      "withdrawal": [
+        {
+          "translation_y": 0,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -2,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -10,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -20,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -40,
+          "intersection_mm3": 0.0
+        }
+      ],
+      "lift_2mm_intersection_mm3": 120.41250000000005,
+      "overtravel_0p5mm_intersection_mm3": 24.480000000000018,
+      "expected": "zero collision assembled/withdrawal; positive collision on lift/overtravel confirms geometric retention only",
+      "horizontal_clearance_per_flank": 0.35,
+      "bottom_clearance": 0.35,
+      "mark_count": 2
+    },
+    {
+      "test": "trilho-femea-45",
+      "nominal_assembly_intersection_mm3": 0.0,
+      "withdrawal": [
+        {
+          "translation_y": 0,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -2,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -10,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -20,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_y": -40,
+          "intersection_mm3": 0.0
+        }
+      ],
+      "lift_2mm_intersection_mm3": 107.21249999999999,
+      "overtravel_0p5mm_intersection_mm3": 24.15999999999994,
+      "expected": "zero collision assembled/withdrawal; positive collision on lift/overtravel confirms geometric retention only",
+      "horizontal_clearance_per_flank": 0.45,
+      "bottom_clearance": 0.45,
+      "mark_count": 3
+    },
+    {
+      "test": "latch",
+      "nominal_assembly_intersection_mm3": 0.0,
+      "pull_2mm_intersection_mm3": 2.8,
+      "release_path": [
+        {
+          "translation_x": 0,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_x": -2,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_x": -4,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_x": -8,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_x": -12,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        },
+        {
+          "translation_x": -18,
+          "tongue_y_offset": -0.6,
+          "intersection_mm3": 0.0
+        }
+      ],
+      "required_hook_deflection_nominal_mm": 0.45000000000000007,
+      "tested_envelope_offset_mm": 0.6,
+      "important": "Release path translates the tongue envelope; does not simulate actual elastic deformation. Manual pressure, force, fatigue and creep remain untested."
+    }
+  ],
+  "limitations": [
+    "No physical fit, fatigue, force, thermal or creep test has been performed.",
+    "These are independent coupons, not final charger parts.",
+    "The latch root is a hand-held grip, not a finalized casing socket.",
+    "Exact tolerances depend on printer, material, profile and cooling."
+  ],
+  "print_profile": {
+    "material": "PETG",
+    "nozzle": 0.4,
+    "layer_height": 0.2,
+    "walls": 3,
+    "infill_percent": 25,
+    "supports": false,
+    "physical_test_performed": false
+  },
+  "kit": {
+    "STL": "stl/kit-completo-6-pecas.stl",
+    "STEP": "step/kit-completo-6-pecas.step",
+    "part_count": 6,
+    "envelope_xyz_mm": [
+      94.0,
+      81.0,
+      8.0
+    ],
+    "layout_mm": {
+      "trilho-macho-comum": [
+        0,
+        41,
+        0
+      ],
+      "trava-flexivel-substituivel": [
+        27,
+        45,
+        0
+      ],
+      "receptor-da-trava": [
+        74,
+        45,
+        0
+      ],
+      "trilho-femea-25": [
+        0.0,
+        0,
+        0
+      ],
+      "trilho-femea-35": [
+        34.0,
+        0,
+        0
+      ],
+      "trilho-femea-45": [
+        68.0,
+        0,
+        0
+      ]
+    },
+    "combined_mesh": {
+      "triangles": 2392,
+      "welded_vertices": 1206,
+      "nonmanifold_or_boundary_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "degenerate_triangles": 0,
+      "signed_mesh_volume_mm3": 19681.545860693706
+    }
+  }
+}

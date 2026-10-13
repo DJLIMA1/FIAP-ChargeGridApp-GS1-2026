@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, session_row
-from ...models import ChargingSession, Connector, Station
+from ...models import ChargingSession, Connector, SessionEvent, Station
 from ...schemas import (
     StartInput,
 )
@@ -56,6 +56,20 @@ def get_session(session_id: UUID, user=Depends(current_user), db=Depends(db_sess
     if not obj or obj.user_id != user.id:
         fail("not_found", "Sessão não encontrada", 404)
     return session_row(db, obj)
+
+
+@router.get("/charging-sessions/{session_id}/events")
+def session_events(session_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    session = db.get(ChargingSession, session_id)
+    if not session or session.user_id != user.id:
+        fail("not_found", "Sessão não encontrada", 404)
+    events = db.scalars(
+        select(SessionEvent).where(SessionEvent.session_id == session_id).order_by(SessionEvent.id)
+    ).all()
+    return [
+        {"kind": event.kind, "source": event.source, "observed_at": event.observed_at}
+        for event in events
+    ]
 
 
 @router.post("/charging-sessions/{session_id}/stop", status_code=202)

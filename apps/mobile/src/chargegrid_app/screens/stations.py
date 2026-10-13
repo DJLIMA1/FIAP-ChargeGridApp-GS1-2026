@@ -63,6 +63,26 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
     plan_value = field('Minutos ou valor em R$',str(intention.get('minutes',intention.get('max_cost',''))))
     plan_value.keyboard_type = ft.KeyboardType.NUMBER
+    active_plan_mode = plan_mode.value
+    plan_value.visible = active_plan_mode != 'none'
+    if active_plan_mode == 'time':
+        plan_value.label = 'Tempo disponível (min)'
+    elif active_plan_mode == 'value':
+        plan_value.label = 'Orçamento máximo (R$)'
+
+    async def change_plan_mode(event):
+        nonlocal active_plan_mode
+        if plan_mode.value != active_plan_mode:
+            # A number entered as minutes must not silently become a money limit.
+            plan_value.value = ''
+        active_plan_mode = plan_mode.value
+        plan_value.visible = active_plan_mode != 'none'
+        plan_value.label = ('Tempo disponível (min)' if active_plan_mode == 'time'
+                            else 'Orçamento máximo (R$)' if active_plan_mode == 'value'
+                            else 'Minutos ou valor em R$')
+        app.page.update()
+
+    plan_mode.on_select = change_plan_mode
 
     def filter_values():
         maximum = None
@@ -358,7 +378,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             items.append(ft.TextButton(content=ft.Text('Ver cupons deste posto',color=theme.GRAY_TEXT),on_click=app.link('coupons',station_id=station['id'])))
         return items
     listing.controls = station_cards(stations)
-    empty_state = ft.Text('Nenhum posto encontrado para esta busca.',visible=not stations)
+    empty_state = ft.Text(
+        'Nenhum posto nesta página. Volte para a página anterior.' if offset and total
+        else 'Nenhum posto encontrado para esta busca.', visible=not stations)
     controls.append(empty_state)
     pagination = ft.Column(spacing=10)
     controls.append(pagination)
@@ -394,6 +416,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 station_heading.controls[0].value = fresh[0]['name']
                 station_heading.controls[1].value = fresh[0]['address']
         empty_state.visible = not fresh
+        empty_state.value = ('Nenhum posto nesta página. Volte para a página anterior.'
+                             if offset and fresh_total else 'Nenhum posto encontrado para esta busca.')
         current_stations,total = fresh,fresh_total
         refresh_pagination()
         app.page.update()

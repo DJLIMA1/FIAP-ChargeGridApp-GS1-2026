@@ -18,6 +18,7 @@ from .models import (
     Station,
     now,
 )
+from .session_events import record as record_session_event
 
 RES_ACTIVE = ("pending_device", "confirmed", "cancelling")
 SESSION_ACTIVE = ("starting", "charging", "stopping")
@@ -103,6 +104,8 @@ def issue(db, connector, device, kind, reservation=None, session=None, parameter
     db.add(cmd)
     device.reconciled = False
     db.flush()
+    if session and kind in ("START", "STOP"):
+        record_session_event(db, session, f"{kind.lower()}_requested", "api", f"command:{cmd.id}")
     return cmd
 
 

@@ -2,8 +2,62 @@
 
 import flet as ft
 
+from ..api_client import ApiError
 from . import theme
-from .components import card, date_time, money
+from .components import button, card, date_time, money
+
+EVENT_LABELS = {
+    'start_requested': 'Início solicitado',
+    'stop_requested': 'Parada solicitada',
+    'command_received': 'Comando recebido pelo ponto',
+    'command_failed': 'Falha informada pelo ponto',
+    'start_applied': 'Início confirmado pelo ponto',
+    'stop_applied': 'Parada confirmada pelo ponto',
+    'offline_reconciled': 'Estado conciliado após período offline',
+    'ended': 'Fim da sessão observado',
+}
+EVENT_SOURCES = {'api': 'servidor', 'device_sync': 'sincronização do ponto',
+                 'simulator': 'simulador local'}
+
+
+def event_timeline(events):
+    controls = [ft.Text('REGISTRO DA SESSÃO', size=11, weight=ft.FontWeight.BOLD, color=theme.ACCENT)]
+    if not events:
+        controls.append(ft.Text('Nenhum evento detalhado disponível para esta sessão.',
+                                size=13, color=theme.GRAY_TEXT))
+    for event in events:
+        label = EVENT_LABELS.get(event.get('kind'), 'Evento registrado')
+        if event.get('source') == 'simulator':
+            label = label.replace('pelo ponto', 'na simulação')
+        source = EVENT_SOURCES.get(event.get('source'), 'origem indisponível')
+        controls.append(ft.Text(label, size=13, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR))
+        controls.append(ft.Text(f"{date_time(event.get('observed_at'))} (horário local) · {source}",
+                                size=12, color=theme.GRAY_TEXT))
+    controls.append(ft.Text('Horários do servidor ou da simulação; períodos sem conexão não são medidos.',
+                            size=12, color=theme.GRAY_TEXT))
+    return card(controls)
+
+
+def event_disclosure(app, session_id):
+    panel = ft.Container(visible=False)
+
+    async def toggle():
+        if panel.visible:
+            panel.visible = False
+            trigger.content.value = 'Ver eventos da sessão'
+        else:
+            try:
+                events = await app.api.request('GET', f'charging-sessions/{session_id}/events')
+                panel.content = event_timeline(events)
+            except ApiError:
+                panel.content = card([ft.Text('Registro detalhado indisponível agora.',
+                                              size=13, color=theme.GRAY_TEXT)])
+            panel.visible = True
+            trigger.content.value = 'Ocultar eventos da sessão'
+        app.page.update()
+
+    trigger = button('Ver eventos da sessão', app.action(toggle), secondary=True)
+    return trigger, panel
 
 
 def journey_summary(record, *, reservation=False, demo=False):

@@ -63,6 +63,27 @@ class PlanningTests(unittest.TestCase):
 
 
 class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
+    async def test_planning_field_appears_only_for_selected_unit_and_clears_on_unit_change(self):
+        app = HandlerApp()
+        app.api.request.return_value = {'items': [], 'total': 0}
+        screen = await stations.build(app)
+        mode = next(c for c in descendants(screen) if isinstance(c, ft.Dropdown) and c.label == 'Minha intenção')
+        amount = next(c for c in descendants(screen) if isinstance(c, ft.TextField)
+                      and c.label == 'Minutos ou valor em R$')
+        self.assertFalse(amount.visible)
+        mode.value = 'time'
+        await mode.on_select(None)
+        self.assertTrue(amount.visible)
+        self.assertEqual(amount.label, 'Tempo disponível (min)')
+        amount.value = '30'
+        mode.value = 'value'
+        await mode.on_select(None)
+        self.assertEqual(amount.label, 'Orçamento máximo (R$)')
+        self.assertEqual(amount.value, '')
+        mode.value = 'none'
+        await mode.on_select(None)
+        self.assertFalse(amount.visible)
+
     async def test_comparison_and_start_use_same_plan(self):
         app = HandlerApp()
         plan = {'mode':'value','max_cost':'8'}

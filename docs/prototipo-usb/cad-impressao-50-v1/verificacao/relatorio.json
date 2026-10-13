@@ -1,0 +1,1109 @@
+{
+  "version": "50-v1",
+  "source_STEP_sha256": "dad2a7a04d5e5ee3a4910721e62fedfcc08763ce41629c49d8e0bb8d1eab153d",
+  "units": "millimeters",
+  "scale": 0.5,
+  "physical_test": false,
+  "parts": [
+    {
+      "id": "01-traseira-superior",
+      "quantity": 1,
+      "size_xyz_mm": [
+        104.26501928571429,
+        34.88557528571428,
+        99.8988642857143
+      ],
+      "volume_mm3": 37833.31754230021,
+      "file": "stl/01-traseira-superior.stl",
+      "orientation": "Emenda horizontal plana sobre a mesa; suporte nas saliências internas.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "01-traseira-inferior",
+      "quantity": 1,
+      "size_xyz_mm": [
+        86.33050239542513,
+        45.926807,
+        124.87264549999999
+      ],
+      "volume_mm3": 36735.12354282987,
+      "file": "stl/01-traseira-inferior.stl",
+      "orientation": "STL invertido: emenda horizontal na mesa; suporte nas saliências internas.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "03-quadro-superior",
+      "quantity": 1,
+      "size_xyz_mm": [
+        104.2637002857143,
+        32.95,
+        99.89898307142857
+      ],
+      "volume_mm3": 24164.22416753251,
+      "file": "stl/03-quadro-superior.stl",
+      "orientation": "Emenda horizontal plana sobre a mesa; suporte nas saliências internas.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "03-quadro-inferior",
+      "quantity": 1,
+      "size_xyz_mm": [
+        86.30068936712021,
+        54.304573142857144,
+        124.86612500000001
+      ],
+      "volume_mm3": 33080.99217073825,
+      "file": "stl/03-quadro-inferior.stl",
+      "orientation": "STL invertido: emenda horizontal na mesa; suporte nas saliências internas.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "05-tampa-frontal",
+      "quantity": 1,
+      "size_xyz_mm": [
+        103.952394,
+        141.01992228571427,
+        29.00003392857142
+      ],
+      "volume_mm3": 22354.673388357583,
+      "file": "stl/05-tampa-frontal.stl",
+      "orientation": "Face externa curva voltada para a mesa, cavidade para cima. Usar suporte orgânico externo.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "06-chave-emenda",
+      "quantity": 4,
+      "size_xyz_mm": [
+        10.0,
+        22.0,
+        3.0
+      ],
+      "volume_mm3": 528.0,
+      "file": "stl/06-chave-emenda.stl",
+      "orientation": "Perfil de borboleta plano na mesa.",
+      "note": "Alinha as emendas. Colar apenas as emendas estruturais da casca; manutenção pela frente removível.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "07-pino-quarto-volta",
+      "quantity": 4,
+      "size_xyz_mm": [
+        11.6,
+        11.6,
+        31.7
+      ],
+      "volume_mm3": 669.3926251068782,
+      "file": "stl/07-pino-quarto-volta.stl",
+      "orientation": "Cabeça plana na mesa, haste vertical; suporte somente sob as duas abas finais.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "08-pino-tampa-1",
+      "quantity": 1,
+      "size_xyz_mm": [
+        6.8,
+        6.8,
+        9.0
+      ],
+      "volume_mm3": 127.83398501672504,
+      "file": "stl/08-pino-tampa-1.stl",
+      "orientation": "Cabeça na mesa; PETG. Ponta bipartida; sem suporte.",
+      "note": "Trava de pressão substituível. Testar encaixe com cupom antes da tampa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "08-pino-tampa-2",
+      "quantity": 1,
+      "size_xyz_mm": [
+        6.8,
+        6.8,
+        9.0
+      ],
+      "volume_mm3": 127.83398501672504,
+      "file": "stl/08-pino-tampa-2.stl",
+      "orientation": "Cabeça na mesa; PETG. Ponta bipartida; sem suporte.",
+      "note": "Trava de pressão substituível. Testar encaixe com cupom antes da tampa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "08-pino-tampa-3",
+      "quantity": 1,
+      "size_xyz_mm": [
+        6.8,
+        6.8,
+        9.0
+      ],
+      "volume_mm3": 127.83398501672504,
+      "file": "stl/08-pino-tampa-3.stl",
+      "orientation": "Cabeça na mesa; PETG. Ponta bipartida; sem suporte.",
+      "note": "Trava de pressão substituível. Testar encaixe com cupom antes da tampa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "08-pino-tampa-4",
+      "quantity": 1,
+      "size_xyz_mm": [
+        6.8,
+        6.8,
+        9.0
+      ],
+      "volume_mm3": 127.83398501672504,
+      "file": "stl/08-pino-tampa-4.stl",
+      "orientation": "Cabeça na mesa; PETG. Ponta bipartida; sem suporte.",
+      "note": "Trava de pressão substituível. Testar encaixe com cupom antes da tampa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "08-pino-tampa-5",
+      "quantity": 1,
+      "size_xyz_mm": [
+        6.8,
+        6.8,
+        9.25
+      ],
+      "volume_mm3": 129.89451190302646,
+      "file": "stl/08-pino-tampa-5.stl",
+      "orientation": "Cabeça na mesa; PETG. Ponta bipartida; sem suporte.",
+      "note": "Trava de pressão substituível. Testar encaixe com cupom antes da tampa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "09-bandeja-removivel",
+      "quantity": 1,
+      "size_xyz_mm": [
+        60.0,
+        112.0,
+        5.550000000000001
+      ],
+      "volume_mm3": 15642.883037299436,
+      "file": "stl/09-bandeja-removivel.stl",
+      "orientation": "Costas planas na mesa, trilhos para cima; sem suporte nos trilhos.",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "10-berco-potencia",
+      "quantity": 1,
+      "size_xyz_mm": [
+        54.0,
+        35.0,
+        4.45
+      ],
+      "volume_mm3": 3688.9703595624724,
+      "file": "stl/10-berco-potencia.stl",
+      "orientation": "STL com face superior do berço na mesa e machos para cima.",
+      "note": "Suporte genérico. Fixar placa com cintas sobre espaçadores, sem pressionar componentes.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "11-berco-esp32",
+      "quantity": 1,
+      "size_xyz_mm": [
+        42.0,
+        64.0,
+        4.45
+      ],
+      "volume_mm3": 5272.335359562473,
+      "file": "stl/11-berco-esp32.stl",
+      "orientation": "STL com face superior do berço na mesa e machos para cima.",
+      "note": "Suporte genérico. Fixar placa com cintas sobre espaçadores, sem pressionar componentes.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "20-cupom-trilho-berco",
+      "quantity": 1,
+      "size_xyz_mm": [
+        12.0,
+        12.0,
+        5.550000000000001
+      ],
+      "volume_mm3": 579.9600000578911,
+      "file": "stl/20-cupom-trilho-berco.stl",
+      "orientation": "Base plana na mesa",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "21-cupom-macho-berco",
+      "quantity": 1,
+      "size_xyz_mm": [
+        12.0,
+        12.0,
+        4.45
+      ],
+      "volume_mm3": 338.87950008323793,
+      "file": "stl/21-cupom-macho-berco.stl",
+      "orientation": "Base plana na mesa",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "12-pino-trava-berco",
+      "quantity": 2,
+      "size_xyz_mm": [
+        7.0,
+        7.0,
+        11.0
+      ],
+      "volume_mm3": 106.74606404096328,
+      "file": "stl/12-pino-trava-berco.stl",
+      "orientation": "Base plana na mesa",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "13-trava-bandeja",
+      "quantity": 2,
+      "size_xyz_mm": [
+        9.4,
+        5.0,
+        5.1
+      ],
+      "volume_mm3": 120.07494244808667,
+      "file": "stl/13-trava-bandeja.stl",
+      "orientation": "Base plana na mesa",
+      "note": "",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "14-espacador-3mm",
+      "quantity": 4,
+      "size_xyz_mm": [
+        8.0,
+        6.0,
+        4.5
+      ],
+      "volume_mm3": 157.5,
+      "file": "stl/14-espacador-3mm.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Escolher altura e pontos de apoio após conferir o verso da placa; usar cintas para retenção.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "14-espacador-5mm",
+      "quantity": 4,
+      "size_xyz_mm": [
+        8.0,
+        6.0,
+        6.5
+      ],
+      "volume_mm3": 253.5,
+      "file": "stl/14-espacador-5mm.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Escolher altura e pontos de apoio após conferir o verso da placa; usar cintas para retenção.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "15-prensa-cabo-4mm-meia",
+      "quantity": 2,
+      "size_xyz_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 908.8169132812503,
+      "file": "stl/15-prensa-cabo-4mm-meia.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Duas metades em torno do cabo, presas por cintas. Selecionar diâmetro sem esmagar a capa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "15-prensa-cabo-5mm-meia",
+      "quantity": 2,
+      "size_xyz_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 866.5264270019535,
+      "file": "stl/15-prensa-cabo-5mm-meia.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Duas metades em torno do cabo, presas por cintas. Selecionar diâmetro sem esmagar a capa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "15-prensa-cabo-6mm-meia",
+      "quantity": 2,
+      "size_xyz_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 814.8380548828133,
+      "file": "stl/15-prensa-cabo-6mm-meia.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Duas metades em torno do cabo, presas por cintas. Selecionar diâmetro sem esmagar a capa.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "16-cupom-quarto-volta",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        16.0,
+        16.0
+      ],
+      "volume_mm3": 6628.904953085745,
+      "file": "stl/16-cupom-quarto-volta.stl",
+      "orientation": "Furo horizontal, base retangular na mesa; suporte local somente se necessário.",
+      "note": "Ensaiar giro e retenção com pino 07 antes das peças principais.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "17-cupom-bucha-tampa",
+      "quantity": 1,
+      "size_xyz_mm": [
+        16.0,
+        16.0,
+        4.25
+      ],
+      "volume_mm3": 1029.3156850302496,
+      "file": "stl/17-cupom-bucha-tampa.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Furo cego para teste do pino 08-1; usar junto da placa 18.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "18-cupom-placa-tampa",
+      "quantity": 1,
+      "size_xyz_mm": [
+        16.0,
+        16.0,
+        4.35
+      ],
+      "volume_mm3": 1041.5135166654788,
+      "file": "stl/18-cupom-placa-tampa.stl",
+      "orientation": "Base plana na mesa",
+      "note": "Sobrepor na bucha 17 e inserir pino 08-1; não colar os cupons.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-4mm-a",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 922.9129247876596,
+      "file": "stl/19-inserto-4mm-a.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-4mm-b",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 922.9129247876596,
+      "file": "stl/19-inserto-4mm-b.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-5mm-a",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 901.4045244946911,
+      "file": "stl/19-inserto-5mm-a.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-5mm-b",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 901.404524494691,
+      "file": "stl/19-inserto-5mm-b.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-6mm-a",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 875.5104441431287,
+      "file": "stl/19-inserto-6mm-a.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-6mm-b",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 875.5104441431286,
+      "file": "stl/19-inserto-6mm-b.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-duplo-5mm-a",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 837.3790489893819,
+      "file": "stl/19-inserto-duplo-5mm-a.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    },
+    {
+      "id": "19-inserto-duplo-5mm-b",
+      "quantity": 1,
+      "size_xyz_mm": [
+        30.0,
+        8.925,
+        5.6
+      ],
+      "volume_mm3": 837.3790489893821,
+      "file": "stl/19-inserto-duplo-5mm-b.stl",
+      "orientation": "Flange maior na mesa. Selecionar um único par a/b.",
+      "note": "Duas metades sobre cabo intacto; prender pelas ranhuras com cintas. Não cortar ou emendar o cabo USB-C.",
+      "stl_readback": {
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "connected_components": 1
+      }
+    }
+  ],
+  "geometric_tests": [
+    {
+      "test": "cap_pin_0_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_0_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_1_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_1_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_2_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_2_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_3_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_3_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_4_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_pin_4_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "10-berco-potencia_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "10-berco-potencia_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "10-berco-potencia_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "11-berco-esp32_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "11-berco-esp32_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "11-berco-esp32_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_stop_5_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_stop_5_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_stop_55_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_stop_55_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "carrier_pin_8_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "carrier_pin_54_base_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cable_insert_a_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cable_insert_b_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "ESP32_reserve_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "ESP32_reserve_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "ESP32_reserve_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "power_reserve_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "power_reserve_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "power_reserve_cap_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_0.5mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_1mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_2mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_3mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_5mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_8mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cover_removal_25mm_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "front_removal_1mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "front_removal_3mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "front_removal_8mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "front_removal_25mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_slide_0mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_slide_1mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_slide_3mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_slide_5mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_withdraw_2mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_withdraw_5mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_withdraw_15mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_withdraw_35mm_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_pin_0_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_pin_0_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_turn_0_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_turn_30_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_turn_60_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_turn_90_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_unlocked_withdraw_1_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_unlocked_withdraw_5_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_unlocked_withdraw_15_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_unlocked_withdraw_35_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_0_locked_pull_1mm_EXPECT_POSITIVE",
+      "value": 3.2788186946807323
+    },
+    {
+      "test": "bayonet_pin_1_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_pin_1_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_turn_0_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_turn_30_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_turn_60_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_turn_90_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_unlocked_withdraw_1_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_unlocked_withdraw_5_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_unlocked_withdraw_15_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_unlocked_withdraw_35_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_1_locked_pull_1mm_EXPECT_POSITIVE",
+      "value": 3.278818694680733
+    },
+    {
+      "test": "bayonet_pin_2_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_pin_2_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_turn_0_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_turn_30_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_turn_60_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_turn_90_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_unlocked_withdraw_1_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_unlocked_withdraw_5_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_unlocked_withdraw_15_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_unlocked_withdraw_35_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_2_locked_pull_1mm_EXPECT_POSITIVE",
+      "value": 3.278818694680715
+    },
+    {
+      "test": "bayonet_pin_3_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_pin_3_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_turn_0_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_turn_30_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_turn_60_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_turn_90_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_unlocked_withdraw_1_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_unlocked_withdraw_5_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_unlocked_withdraw_15_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_unlocked_withdraw_35_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "bayonet_3_locked_pull_1mm_EXPECT_POSITIVE",
+      "value": 3.2788186946807087
+    },
+    {
+      "test": "front_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cap_frame_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_rear_intersection_mm3",
+      "value": 0
+    },
+    {
+      "test": "cassette_frame_intersection_mm3",
+      "value": 0
+    }
+  ],
+  "detached_geometry_removed": [
+    {
+      "operation": "clear internal cassette volume",
+      "discarded_small_shell_count": 0,
+      "discarded_signed_volumes_mm3": [],
+      "discarded_absolute_volume_mm3": 0,
+      "main_print_shell_preserved": true
+    },
+    {
+      "operation": "rear additions",
+      "discarded_small_shell_count": 0,
+      "discarded_signed_volumes_mm3": [],
+      "discarded_absolute_volume_mm3": 0,
+      "main_print_shell_preserved": true
+    },
+    {
+      "operation": "frame additions",
+      "discarded_small_shell_count": 6,
+      "discarded_signed_volumes_mm3": [
+        0.2502544815021706,
+        0.2416855440464787,
+        0.24014063653015238,
+        0.23697215241685277,
+        0.22474400977238315,
+        0.21796167289565443
+      ],
+      "discarded_absolute_volume_mm3": 1.411758497163692,
+      "main_print_shell_preserved": true
+    },
+    {
+      "operation": "cover additions",
+      "discarded_small_shell_count": 7,
+      "discarded_signed_volumes_mm3": [
+        -2.369713273621052e-06,
+        -2.463161967652147e-06,
+        -1.3753520025082095,
+        -1.7105704312922896,
+        -1.7118015726158413,
+        -1.712452025218777,
+        -1.88554518351369
+      ],
+      "discarded_absolute_volume_mm3": 8.395726048024049,
+      "main_print_shell_preserved": true
+    }
+  ]
+}
