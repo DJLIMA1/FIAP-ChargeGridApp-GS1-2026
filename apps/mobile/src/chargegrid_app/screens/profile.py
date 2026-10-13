@@ -2,7 +2,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..ui import theme
-from ..ui.components import button, card, field, flat_button, title
+from ..ui.components import button, card, field, title
 
 
 async def build(app, mode=None):
@@ -62,7 +62,7 @@ async def build(app, mode=None):
             info('Nome',profile.get('name')),info('E-mail',email),
             info('Telefone',profile.get('phone')),info('Veículo',profile.get('vehicle_description')),
         ],spacing=20),padding=ft.Padding(top=8,bottom=8)),
-        flat_button('Editar informações',theme.INPUT_BG,theme.INPUT_TEXT,on_click=app.link('profile',mode='edit')),
+        button('Editar informações',app.link('profile',mode='edit'),secondary=True),
         *access,
         ft.ExpansionTile(title=ft.Text('Preferências e acesso',color=theme.TEXT_COLOR),
         expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,controls=settings,maintain_state=True),
