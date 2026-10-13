@@ -135,6 +135,11 @@ def owner_insights_control(app, days=30):
                 ft.Text(str(item.get('detail') or ''), size=12, color=theme.TEXT_COLOR),
                 ft.Text(f"{kind} · impacto {_IMPACT_LABELS.get(item.get('impact'), 'médio')}", size=11, color=theme.GRAY_TEXT),
             ], spacing=4), padding=10, border=ft.Border.all(1, theme.LIGHT_GRAY)))
-        controls.append(ft.Text(_origin_label(result.get('model')), size=11, color=theme.GRAY_TEXT, italic=True))
+        origin = _origin_label(result.get('model'))
+        if getattr(app.api, 'is_demo', False):
+            # The demo owner analytics include a simulated 30-day history (same as the web dashboard),
+            # so these totals are larger than the sessions created during the presentation.
+            origin += ' Na demo, a análise usa um histórico simulado de 30 dias, o mesmo do painel web.'
+        controls.append(ft.Text(origin, size=11, color=theme.GRAY_TEXT, italic=True))
         return controls
     return _expandable(app, f'Insights dos meus postos ({days} dias)', ft.Icons.INSIGHTS, load)
