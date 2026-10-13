@@ -7,12 +7,13 @@ import flet as ft
 from ..api_client import ApiError
 from ..services.discovery import discover
 from ..services.location import geocode_address, geocode_demo_address
-from ..services.maps import station_map_widget
+from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..services.search_location import SearchLocation
 from ..ui import theme
 from ..ui.availability import point_status, station_map_record
 from ..ui.components import badge, button, card, field, money, title
+from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
 
@@ -264,7 +265,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             map_width = event.width
     map_section.on_size_change = resize_map_section
 
-    async def refresh_map(items):
+    async def refresh_map(items, initial=False):
         nonlocal map_signature
         # Details already identify the chosen station. Do not repeat its map
         # or send the user back through another map disclosure.
@@ -285,16 +286,22 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if signature == map_signature:
             return
         if items:
-            map_preview.content = await station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
-                                                          offline=demo,width=map_width,
-                                                          reference=(lat,lng) if lat is not None and lng is not None else None)
+            def draw():
+                return station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
+                                          offline=demo,width=map_width,
+                                          reference=(lat,lng) if lat is not None and lng is not None else None)
+            if initial:
+                # The list is usable before the map tiles arrive.
+                await fill_when_ready(app,map_preview,draw,placeholder=skeleton(map_width/STATION_MAP_RATIO))
+            else:
+                map_preview.content = await draw()
         else:
             map_preview.content = None
         map_preview.visible = bool(items)
         map_section.visible = bool(items)
         map_signature = signature
 
-    await refresh_map(stations)
+    await refresh_map(stations, initial=True)
     if not station_id:
         controls.append(map_section)
     result_count = ft.Text(size=12,color=theme.GRAY_TEXT,visible=not bool(station_id))

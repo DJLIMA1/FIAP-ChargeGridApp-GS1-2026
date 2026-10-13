@@ -215,3 +215,50 @@ class DemoCouponTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeferredContentTests(unittest.IsolatedAsyncioTestCase):
+    def make_app(self):
+        return SimpleNamespace(page=SimpleNamespace(update=Mock()), generation=1, tasks=set(), closed=False)
+
+    async def test_fast_content_is_inline_without_placeholder(self):
+        from chargegrid_app.ui.deferred import fill_when_ready
+        app, box = self.make_app(), ft.Container()
+
+        async def ready():
+            return ft.Text('Mapa')
+        await fill_when_ready(app, box, ready, placeholder=ft.Text('Carregando'))
+        self.assertEqual(box.content.value, 'Mapa')
+        self.assertEqual(app.tasks, set())
+
+    async def test_slow_map_shows_skeleton_then_swaps_in_place(self):
+        from chargegrid_app.ui.deferred import fill_when_ready, skeleton
+        app, box, release = self.make_app(), ft.Container(), asyncio.Event()
+
+        async def slow():
+            await release.wait()
+            return ft.Text('Mapa')
+        placeholder = skeleton(120)
+        await fill_when_ready(app, box, slow, placeholder=placeholder, wait=0.01)
+        self.assertIs(box.content, placeholder)  # The screen paints without waiting for tiles.
+        release.set()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self.assertEqual(box.content.value, 'Mapa')
+        app.page.update.assert_called_once()
+        self.assertEqual(app.tasks, set())
+
+    async def test_late_map_never_lands_on_another_screen(self):
+        from chargegrid_app.ui.deferred import fill_when_ready
+        app, box, release = self.make_app(), ft.Container(), asyncio.Event()
+
+        async def slow():
+            await release.wait()
+            return ft.Text('Mapa')
+        await fill_when_ready(app, box, slow, placeholder=ft.Text('Carregando'), wait=0.01)
+        app.generation = 2  # User navigated away.
+        release.set()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self.assertEqual(box.content.value, 'Carregando')
+        app.page.update.assert_not_called()

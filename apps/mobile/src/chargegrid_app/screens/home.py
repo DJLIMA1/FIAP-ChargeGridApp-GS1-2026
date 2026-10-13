@@ -4,10 +4,11 @@ from math import isfinite
 
 import flet as ft
 
-from ..services.maps import station_map_widget
+from ..services.maps import STATION_MAP_RATIO, station_map_widget
 from ..ui import theme
 from ..ui.availability import point_status
 from ..ui.components import BRAND_PROMISE, button, card, date_time, money
+from ..ui.deferred import fill_when_ready, skeleton
 from .charging import DEMO_LABELS as DEMO_CHARGING_LABELS
 from .charging import LABELS as CHARGING_LABELS
 from .charging import SOURCE
@@ -147,7 +148,10 @@ async def build(app):
                     'status':_station_status(station)[0],'price':_station_price(station)} for station in items[:3]]
         return await station_map_widget(records,lambda station_id:app.link('stations',station_id=station_id),offline=demo,width=map_width)
 
-    map_preview = ft.Container(await make_map(stations))
+    map_preview = ft.Container()
+    # Tile downloads must not delay the first paint of the home screen.
+    await fill_when_ready(app, map_preview, lambda: make_map(stations),
+                          placeholder=skeleton(map_width/STATION_MAP_RATIO))
     map_heading = ft.Text('Postos no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
     map_section = ft.Column([map_heading,map_preview],spacing=16,
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
