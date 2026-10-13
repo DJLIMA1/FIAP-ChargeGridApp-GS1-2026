@@ -107,6 +107,36 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         await control.controls[0].on_click()
         self.assertIn('O resumo fica disponível quando a recarga terminar.', text_values(control))
 
+    async def test_chat_shows_partial_answer_with_actions_when_ai_times_out(self):
+        from chargegrid_app.services import demo_ai
+        from chargegrid_core.ai import LLMUnavailable
+        demo_ai._recent.clear()
+        calls = []
+
+        async def slow_complete(messages, tools, timeout=None, tool_choice='auto', **options):
+            calls.append(messages)
+            if len(calls) == 1:
+                return {'content': '', 'model': 'fake', 'usage': {},
+                        'tool_calls': [{'id': '1', 'name': 'search_stations', 'arguments': '{"available_only": true}'}]}
+            raise LLMUnavailable('O assistente demorou demais para responder.', status=504, code='ai_timeout')
+
+        api = DemoApi()
+        await api.login(DEMO_EMAIL, DEMO_PASSWORD)
+        app = ChatApp()
+        app.api = api
+        app.profile = await api.request('GET', 'me')
+        with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'test-key'}), \
+                patch.object(demo_ai, 'complete', slow_complete):
+            screen = await chat.build(app)
+            composer(screen).value = 'Postos livres agora?'
+            await send_button(screen).on_click(None)
+        reply = app.chat_messages[-1]
+        self.assertEqual(reply['role'], 'assistant')
+        self.assertEqual(reply.get('source'), 'ai')
+        self.assertIn('demorou mais que o permitido', reply['content'])
+        self.assertTrue(reply['actions'])  # buttons from the data already consulted
+        await api.close()
+
     async def test_demo_public_search_includes_partner_network(self):
         api = DemoApi()
         await api.login(DEMO_EMAIL, DEMO_PASSWORD)
