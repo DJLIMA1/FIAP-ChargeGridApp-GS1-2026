@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ...database import db_session
 from ...errors import fail
@@ -19,6 +19,10 @@ from ...service import (
 )
 
 router = APIRouter()
+
+
+def normalize_code(value):
+    return value.strip().upper()
 
 
 @router.get("/coupons")
@@ -56,7 +60,12 @@ def create_coupon(data: CouponInput, user=Depends(current_user), db=Depends(db_s
         fail("invalid_time", "A validade do cupom deve estar no futuro", 422)
     if data.station_id:
         owned(db, user, data.station_id)
-    obj = Coupon(operator_id=user.id, **data.model_dump())
+    # Drivers type codes by hand: store one canonical case and reject codes that
+    # differ only by case, which would otherwise be ambiguous at checkout.
+    code = normalize_code(data.code)
+    if db.scalar(select(Coupon.id).where(func.upper(Coupon.code) == code).limit(1)):
+        fail("coupon_exists", "Já existe um cupom com este código. Escolha outro.", 409)
+    obj = Coupon(operator_id=user.id, **{**data.model_dump(), "code": code})
     db.add(obj)
     db.flush()
     return row(obj)
