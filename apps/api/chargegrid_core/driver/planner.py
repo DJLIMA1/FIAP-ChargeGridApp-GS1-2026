@@ -810,7 +810,7 @@ def next_stop(vehicle: VehicleProfile, preferences: DriverPreferences, options: 
                           'message': stops[0]['reason']}
     else:
         recommendation = {'action': 'keep_driving', 'headline': 'Siga rodando: nenhuma recarga necessária',
-                          'message': f'A bateria cobre o restante do turno (até {plan["window"]["end"]}) '
+                          'message': f'A bateria cobre o período planejado (até {plan["window"]["end"]}) '
                                      f'com cerca de {km(range_km)} acima da reserva.'}
     if status['in_peak'] and recommendation['action'] != 'stop_now':
         recommendation['message'] += ' Agora é horário de pico estimado: melhor continuar rodando.'

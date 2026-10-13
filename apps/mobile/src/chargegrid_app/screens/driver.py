@@ -26,7 +26,12 @@ def _colors():
 
 def _dropdown(label, value, options):
     return ft.Dropdown(label=label, value=value, options=[ft.DropdownOption(key=k, text=t) for k, t in options],
-                       color=theme.TEXT_COLOR, bgcolor=theme.WHITE)
+                       color=theme.TEXT_COLOR, bgcolor=theme.WHITE, expand=True)
+
+
+def _wide(control):
+    """Dropdown ocupa a largura toda do cartão (Row + expand)."""
+    return ft.Row([control])
 
 
 def _heading(text):
@@ -109,8 +114,8 @@ async def build(app):
     shift_end = field('Fim do turno (HH:MM)', prefs.get('shift_end', '22:00'))
     earnings = _number_field('Ganho médio por hora rodando (R$)', prefs.get('earnings_per_hour', 38))
     speed = _number_field('Km rodados por hora', prefs.get('km_per_hour', 22))
-    reserve = _number_field('Reserva mínima de bateria (%)', prefs.get('reserve_percent', 15))
-    target = _number_field('Carregar no máximo até (%)', prefs.get('max_charge_percent', 80))
+    reserve = _number_field('Reserva mínima (%)', prefs.get('reserve_percent', 15))
+    target = _number_field('Carregar até (%)', prefs.get('max_charge_percent', 80))
     home = ft.Switch(label='Tenho carregador em casa', value=bool(prefs.get('home_charging', True)))
     home_price = _number_field('Tarifa em casa (R$/kWh)', prefs.get('home_price_per_kwh', 0.95))
     saved_meals = {meal.get('kind'): meal for meal in prefs.get('meals') or []}
@@ -124,7 +129,7 @@ async def build(app):
         flex = _dropdown('Flexibilidade', helpers.meal_flex(saved) if saved else default_flex, helpers.FLEX_CHOICES)
         meal_controls.append((kind, enabled, start, length, flex))
         meal_rows.append(ft.Column([enabled, ft.Row([ft.Container(start, expand=1), ft.Container(length, expand=1)]),
-                                    flex], spacing=8))
+                                    _wide(flex)], spacing=8))
 
     shift_summary = f"{prefs.get('shift_start', '10:00')}–{prefs.get('shift_end', '22:00')} · refeições e ganhos"
     shift_section, _ = disclosure_field(
@@ -234,10 +239,10 @@ async def build(app):
         ft.Row([pill('Estimativas'), pill('Sem dados oficiais da Uber/99')], wrap=True, spacing=6),
     ]
     car_card = card([
-        _heading('SEU CARRO'), model, vehicle_info, soc, vehicle_section,
+        _heading('SEU CARRO'), _wide(model), vehicle_info, soc, vehicle_section,
     ])
     actions = card([
-        _heading('PLANEJAMENTO'), mode, region, rain,
+        _heading('PLANEJAMENTO'), _wide(mode), region, rain,
         button('Planejar meu turno', app.action(plan_shift)),
         button('Próxima parada agora', app.action(next_stop), secondary=True),
         _small('O plano considera consumo, autonomia, picos estimados de demanda, refeições, potência, tarifa '
@@ -257,10 +262,10 @@ def _alert_row(alert):
                   spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
 
 
-def _station_actions(app, reserve_action, item, *, can_reserve):
+def _station_actions(app, reserve_action, item, *, can_reserve, emphasize=True):
     row = [button('Ver posto', app.link('stations', station_id=item['station_id']), secondary=True)]
     if can_reserve and item.get('connector_id') and item.get('available_now') is not False:
-        row.append(button('Reservar', reserve_action(item['connector_id'])))
+        row.append(button('Reservar', reserve_action(item['connector_id']), secondary=not emphasize))
     return ft.Row([ft.Container(control, expand=1) for control in row], spacing=8)
 
 
@@ -408,7 +413,7 @@ def next_stop_view(result, app, reserve_action):
                 ft.Text(item['station_name'], size=14, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
                 _small(f"{brl(item['cost_per_kwh_effective'])}/kWh efetivo · +{kwh(item['kwh'])} em "
                        f"{duration(item['minutes'])} · {brl(item['cost'])}{distance}"),
-                _station_actions(app, reserve_action, item, can_reserve=True),
+                _station_actions(app, reserve_action, item, can_reserve=True, emphasize=False),
             ], spacing=4), padding=ft.Padding.symmetric(vertical=6)))
     for alert in result.get('alerts') or ():
         if alert.get('level') in ('warning', 'error') or alert.get('code') == 'rain':
