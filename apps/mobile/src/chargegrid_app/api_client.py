@@ -5,6 +5,7 @@ from uuid import uuid4
 import httpx
 
 from .config import api_url, validate_api_url
+from .owner_api import OwnerApiMixin
 from .session import Session
 
 
@@ -14,7 +15,7 @@ class ApiError(Exception):
         self.status, self.code = status, code
 
 
-class ApiClient:
+class ApiClient(OwnerApiMixin):
     def __init__(self, base_url=None, transport=None):
         self.session = Session()
         self.http = httpx.AsyncClient(base_url=validate_api_url(base_url or api_url()) + '/', timeout=12, transport=transport, follow_redirects=False)
@@ -149,3 +150,33 @@ class ApiClient:
         self.last_session_id = None
         self.last_reservation_id = None
         await self.http.aclose()
+
+    async def download(self, path, params=None):
+        """GET autenticado que devolve o corpo bruto (exportações CSV/JSON)."""
+        if self.session.needs_refresh:
+            await self.refresh(self.session.access_token)
+        if not self.session.access_token:
+            raise ApiError('Entre novamente para continuar.', 401)
+        for attempt in range(2):
+            token = self.session.access_token
+            try:
+                response = await self.http.get(path.lstrip('/'), params=params,
+                                               headers={'Authorization': 'Bearer ' + token})
+            except httpx.TimeoutException as exc:
+                raise ApiError('O servidor demorou a gerar o arquivo. Tente um período menor.') from exc
+            except httpx.RequestError as exc:
+                raise ApiError('Não foi possível conectar com segurança. Verifique a rede.') from exc
+            if response.status_code == 401 and attempt == 0:
+                await self.refresh(token)
+                continue
+            if response.is_error or response.is_redirect:
+                try:
+                    error = response.json().get('error', {})
+                    message, code = error.get('message') or 'Não foi possível exportar.', error.get('code', 'invalid_request')
+                except (ValueError, AttributeError):
+                    message, code = 'O servidor não pôde gerar o arquivo.', 'server_error'
+                if response.status_code == 401:
+                    self.session.clear()
+                raise ApiError(message, response.status_code, code)
+            return response.content
+        raise ApiError('Entre novamente para continuar.', 401)
