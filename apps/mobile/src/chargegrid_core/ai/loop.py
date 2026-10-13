@@ -94,11 +94,12 @@ async def run_chat(complete, toolbox, history: list, *, system: str, max_rounds:
         try:
             response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
         except LLMUnavailable as exc:
-            if exc.code != "ai_bad_response" or retried:
+            remaining = budget_seconds - (clock() - started)
+            # Uma nova tentativa só cabe se ainda houver tempo útil (limite de 30 s da Vercel).
+            if exc.code != "ai_bad_response" or retried or remaining < MIN_ROUND_SECONDS:
                 raise
             retried = True
-            response = await _complete(complete, messages, tools, budget_seconds - (clock() - started),
-                                       "none" if final_round else "auto")
+            response = await _complete(complete, messages, tools, remaining, "none" if final_round else "auto")
         outcome.rounds += 1
         outcome.model = response.get("model") or outcome.model
         _add_usage(outcome.usage, response.get("usage"))

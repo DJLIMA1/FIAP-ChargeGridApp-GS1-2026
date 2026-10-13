@@ -418,3 +418,36 @@ def test_indicators_from_dashboard_analytics_feed_rules_and_writer():
     result, meta = run(owner_insights_from_indicators(ind, now=NOW, llm=writer))
     assert result["recommendations"] == [{"title": "T", "detail": "D", "impact": "high", "kind": "operations"}]
     assert "Dispositivo" in writer.seen[0]["messages"][1]["content"] or "P2" in writer.seen[0]["messages"][1]["content"]
+
+
+# --- revisão de integração (2026-10): regressões ------------------------------------
+
+@pytest.mark.parametrize("payload", [
+    {"choices": [{"message": "texto solto"}]},
+    {"choices": [{"message": {"content": "oi", "tool_calls": {"function": {"name": "x"}}}}]},
+    {"choices": [{"message": {"content": "oi", "tool_calls": ["lixo", None, {"function": "x"}]}}]},
+    {"choices": [{"message": {"content": "oi"}}], "usage": "muitos"},
+    {"choices": [{"message": {"content": "oi"}}], "usage": {"prompt_tokens": "abc", "completion_tokens": None,
+                                                           "cost": "NaN"}},
+    {"choices": "nenhuma"},
+    {"choices": [{"message": {"content": None, "tool_calls": [
+        {"id": 7, "function": {"name": "search_stations", "arguments": {"near_place": {1, 2}}}}]}}]},
+])
+def test_parse_completion_never_crashes_on_malformed_provider_payloads(payload):
+    try:
+        parsed = parse_completion(payload)
+    except LLMUnavailable:
+        return
+    assert isinstance(parsed["content"], str)
+    assert all(isinstance(call["arguments"], str) and isinstance(call["id"], str) for call in parsed["tool_calls"])
+    assert parsed["usage"]["prompt_tokens"] >= 0 and parsed["usage"]["cost"] == parsed["usage"]["cost"]  # não é NaN
+
+
+def test_loop_does_not_retry_bad_response_without_time_left():
+    ticks = iter([0.0, 0.0, 21.0, 21.0])
+    bad = LLMUnavailable("malformed", code="ai_bad_response")
+    script = Script(bad, response("tarde demais"))
+    with pytest.raises(LLMUnavailable):
+        run(run_chat(script, Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s",
+                     budget_seconds=22, clock=lambda: next(ticks)))
+    assert len(script.seen) == 1
