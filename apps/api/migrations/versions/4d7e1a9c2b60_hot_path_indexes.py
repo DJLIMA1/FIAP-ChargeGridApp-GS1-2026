@@ -1,13 +1,13 @@
 """Index hot read paths: device sync telemetry, session commands, history, coupons.
 
 Revision ID: 4d7e1a9c2b60
-Revises: 9c4a2b8e1170
+Revises: e7d3c1a95b42
 """
 
 from alembic import op
 
 revision = "4d7e1a9c2b60"
-down_revision = "9c4a2b8e1170"
+down_revision = "e7d3c1a95b42"
 branch_labels = None
 depends_on = None
 
