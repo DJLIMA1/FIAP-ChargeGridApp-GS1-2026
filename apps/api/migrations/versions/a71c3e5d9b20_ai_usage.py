@@ -1,7 +1,7 @@
 """Record AI assistant usage metadata (tokens, cost, latency) without content.
 
 Revision ID: a71c3e5d9b20
-Revises: e7d3c1a95b42
+Revises: a3f1c9d2e7b4
 """
 
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "a71c3e5d9b20"
-down_revision = "e7d3c1a95b42"
+down_revision = "a3f1c9d2e7b4"
 branch_labels = None
 depends_on = None
 
