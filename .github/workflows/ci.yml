@@ -57,6 +57,17 @@ jobs:
       - run: ruff check src tests
       - run: PYTHONPATH=src pytest tests
 
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: python tools/sync_core.py --check
+      - run: cd packages/chargegrid_core && python -m pytest tests
+
   qr-scanner:
     runs-on: ubuntu-latest
     defaults:
