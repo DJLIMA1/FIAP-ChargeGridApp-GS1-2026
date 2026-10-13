@@ -44,6 +44,8 @@ async def build(app, mode=None):
             button('Usar como motorista' if vendor else 'Usar como operador',
                    app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor')),secondary=True),
             ft.Text('A troca de modo mantém sua reserva ou recarga.',size=12,color=theme.GRAY_TEXT),
+            ft.Text('Com a mesma conta, acompanhe receita, ocupação e alertas dos seus postos no painel web '
+                    'do proprietário, com insights de IA.',size=12,color=theme.GRAY_TEXT),
         ])]
 
     settings = [

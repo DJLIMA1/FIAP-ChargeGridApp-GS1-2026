@@ -230,6 +230,13 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
                                     'reative o posto na gestão quando quiser disponibilizar seus pontos.',
                                     size=13,color=theme.WARNING))
 
+        controls.append(card([
+            ft.Text('DEPOIS DE PUBLICAR', size=11, weight=ft.FontWeight.BOLD, color=theme.ACCENT),
+            ft.Text('Motoristas encontram o ponto na busca, no Modo Motorista e no assistente com IA. '
+                    'Acompanhe receita, ocupação e alertas em Postos ou no painel web do proprietário, '
+                    'com a mesma conta.', size=12, color=theme.GRAY_TEXT),
+        ]))
+
         async def publish():
             # Point first, station second: a failed second request leaves the
             # station unpublished, not a public station with a disabled point.
