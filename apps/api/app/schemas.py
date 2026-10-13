@@ -22,12 +22,19 @@ class ClaimInput(Input):
     station_id: UUID | None = None
 
 
+class AmenityInput(Input):
+    kind: Literal["restaurante", "cafe", "banheiro", "shopping", "conveniencia"]
+    name: str = Field(default="", max_length=80)
+    distance_m: int | None = Field(default=None, ge=0, le=5000)
+
+
 class StationPatch(Input):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     address: str | None = Field(default=None, min_length=1, max_length=300)
     latitude: Decimal | None = Field(default=None, ge=-90, le=90)
     longitude: Decimal | None = Field(default=None, ge=-180, le=180)
     active: bool | None = None
+    amenities: list[AmenityInput] | None = Field(default=None, max_length=12)
 
 
 class ConnectorInput(Input):
