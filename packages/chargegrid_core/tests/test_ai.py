@@ -463,3 +463,19 @@ def test_loop_timeout_after_tools_degrades_to_actions_instead_of_error():
     assert outcome.suggested_actions[0] == {"type": "open_station", "station_id": "s1", "label": "Ver Paulista Hub"}
     with pytest.raises(LLMUnavailable):  # sem nenhum dado consultado, o erro continua honesto
         run(run_chat(Script(timeout), Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s"))
+
+
+def test_plan_driver_shift_lists_stations_around_the_driver():
+    class Nearby(DriverSource):
+        def list_stations(self, near=None, radius_km=None):
+            self.calls.append(("list", near, radius_km))
+            return STATIONS
+
+    source = Nearby()
+    origin = {"lat": -23.60, "lng": -46.66}
+    toolbox = Toolbox(source, now=datetime(2026, 10, 13, 10, 0, tzinfo=timezone.utc), origin=origin)
+    run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 30}))
+    assert source.calls[-1] == ("list", origin, 30.0)
+    run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 30, "near_place": "Paulista"}))
+    near = source.calls[-1][1]
+    assert source.calls[-1][2] == 30.0 and abs(near["lat"] + 23.5614) < 1e-6

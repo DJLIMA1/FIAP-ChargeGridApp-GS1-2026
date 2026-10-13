@@ -223,3 +223,16 @@ def test_driver_planner_is_rate_limited_per_user(factory, seed, monkeypatch):
     assert codes == [200, 200, 429]
     selected["id"] = seed["b"]  # limite é por usuário
     assert client.post("/v1/driver/plan", json={"soc_percent": 50}).status_code == 200
+
+
+def test_assistant_station_list_prefers_the_nearest_when_capped(factory, seed, monkeypatch):
+    from app.modules.ai import source as ai_source
+    monkeypatch.setattr(ai_source, "MAX_STATIONS", 2)
+    with factory.begin() as db:
+        for index, lat in enumerate((-23.70, -23.5614, -23.40, -23.5620)):
+            db.add(Station(owner_id=seed["owner"], name=f"Posto {index}", address="Rua", latitude=lat,
+                           longitude=-46.6559))
+    with factory() as db:
+        source = DbSource(db, db.get(Profile, seed["a"]))
+        names = [row["name"] for row in source.list_stations({"lat": -23.5614, "lng": -46.6559}, 30)]
+    assert names == ["Posto 1", "Posto 3"]

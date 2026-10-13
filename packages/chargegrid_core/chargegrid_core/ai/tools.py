@@ -24,12 +24,14 @@ from datetime import datetime, timedelta
 from . import driver as driver_slot
 from .estimates import EstimateError, estimate_charge
 from .insights import LOCAL_TZ, owner_indicators, owner_recommendations
+from .places import resolve_place
 from .schema import ToolArgumentError, parse_arguments, validate
 from .search import FILTER_SCHEMA, filters_from_tool
 from .stations import compact_station, filter_stations
 from .text import clean
 
 MAX_RESULT_CHARS = 3500
+DRIVER_RADIUS_KM = 30.0  # mesmo raio padrão de POST /v1/driver/plan
 SESSION_LABELS = {"starting": "aguardando equipamento", "charging": "em recarga", "stopping": "parando",
                   "completed": "concluída", "failed": "falhou", "interrupted": "interrompida"}
 RESERVATION_LABELS = {"pending_device": "aguardando confirmação do equipamento", "confirmed": "confirmada",
@@ -243,10 +245,16 @@ class Toolbox:
         if hasattr(self.source, "driver_stations"):
             stations = await _call(self.source.driver_stations) or []
         else:
-            stations = await _call(self.source.list_stations, near=None, radius_km=None) or []
+            # Postos ao redor de onde o motorista vai rodar (como POST /driver/plan), não os
+            # primeiros da tabela: com muitos postos, os próximos ficariam de fora do plano.
+            place = resolve_place(args.get("near_place"))
+            near = {"lat": place["lat"], "lng": place["lng"]} if place else self.origin
+            stations = await _call(self.source.list_stations, near=near,
+                                   radius_km=DRIVER_RADIUS_KM if near else None) or []
         saved = await _call(self.source.driver_profile) if hasattr(self.source, "driver_profile") else None
+        extra = {"origin": self.origin} if self.origin else {}
         try:
-            result = await _call(self._planner, args, stations, self.now, saved)
+            result = await _call(self._planner, args, stations, self.now, saved, **extra)
         except Exception:  # noqa: BLE001 - o planejador não pode derrubar o chat
             return {"error": "planejador do modo motorista indisponível no momento"}
         return result if isinstance(result, dict) else {"result": result}

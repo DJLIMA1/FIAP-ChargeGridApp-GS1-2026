@@ -8,7 +8,7 @@ import math
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from chargegrid_core.ai.stations import compact_point
 
@@ -40,6 +40,11 @@ class DbSource:
             dlng = radius_km / max(1.0, 111.0 * math.cos(math.radians(near["lat"])))
             query = query.where(Station.latitude.between(near["lat"] - dlat, near["lat"] + dlat),
                                 Station.longitude.between(near["lng"] - dlng, near["lng"] + dlng))
+            # Os MAX_STATIONS mais próximos (aproximação plana), não os primeiros por id.
+            scale = math.cos(math.radians(near["lat"]))
+            closeness = (func.power(Station.latitude - near["lat"], 2)
+                         + func.power((Station.longitude - near["lng"]) * scale, 2))
+            query = query.order_by(None).order_by(closeness, Station.id)
         return [station_row(self.db, obj) for obj in self.db.scalars(query.limit(MAX_STATIONS))]
 
     def get_station(self, station_id):
