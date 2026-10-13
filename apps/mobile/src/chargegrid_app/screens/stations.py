@@ -113,7 +113,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     address = field('Endereço para buscar',query)
     address.max_length = 300
-    latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',str(radius))
+    latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',f'{float(radius):g}'.replace('.',',') if isinstance(radius,(int,float)) else str(radius))
     search_mode = ft.Dropdown(label='Buscar por',value='address' if query or lat is None else 'coordinates',
                               options=[ft.DropdownOption(key='address',text='Endereço'),ft.DropdownOption(key='coordinates',text='Coordenadas')],
                               color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
@@ -124,9 +124,11 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if search_query:
             if demo:
                 from ..demo import DEMO_LOCATIONS
-                coordinates = geocode_demo_address(search_query,DEMO_LOCATIONS)
+                from ..services.driver_demo import DEMO_DRIVER_NETWORK
+                coordinates = geocode_demo_address(search_query,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
                 if not coordinates:
-                    raise ApiError('Na conta demo, busque Posto Demo Centro ou Vila Mariana, ou selecione Coordenadas. A busca não acessa a internet.')
+                    raise ApiError('Na conta demo, busque um local de exemplo (Praça da Sé, Av. Paulista, Congonhas, '
+                                   'Vila Madalena) ou selecione Coordenadas. A busca não acessa a internet.')
             else:
                 try:
                     coordinates = await geocode_address(search_query)

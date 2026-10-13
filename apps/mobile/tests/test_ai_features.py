@@ -25,7 +25,9 @@ def texts(screen):
 
 
 def by_tooltip(screen, tooltip):
-    return next(c.on_click for c in descendants(screen) if getattr(c, 'tooltip', None) == tooltip
+    """Action by tooltip, or by the visible label of an AI disclosure button."""
+    return next(c.on_click for c in descendants(screen)
+                if (getattr(c, 'tooltip', None) == tooltip or getattr(c, 'data', None) == ('ai-disclosure', tooltip))
                 and getattr(c, 'on_click', None))
 
 

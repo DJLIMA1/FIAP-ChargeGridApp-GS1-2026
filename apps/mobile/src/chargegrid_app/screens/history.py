@@ -21,10 +21,12 @@ def _summary(app, session, *, demo, events):
     details = [point_summary(session, 'Local da recarga'), session_card(session, demo=demo),
                ft.Text('Início: '+date_time(session.get('started_at')), size=12, color=theme.GRAY_TEXT),
                ft.Text('Fim: '+date_time(session.get('ended_at')), size=12, color=theme.GRAY_TEXT)]
+    insight = []
     if events:
         details.extend(event_disclosure(app, session['id']))
         if ai_supported(app) and session.get('status') in ('completed', 'interrupted'):
-            details.append(session_insight_control(app, session['id']))
+            # Visible on the card (not inside the details): the AI summary is one tap away.
+            insight.append(session_insight_control(app, session['id']))
     return card([
         ft.Row([status_chip(labels.get(session['status'], session['status']), SESSION_TONES.get(session['status'], 'SLATE')),
                 ft.Text(when, size=12, color=theme.GRAY_TEXT)],
@@ -40,6 +42,7 @@ def _summary(app, session, *, demo, events):
                        ft.Text(money(session.get('cost_estimate')), size=16,
                                weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR)], spacing=2, expand=True),
         ], spacing=12),
+        *insight,
         ft.ExpansionTile(title=ft.Text('Detalhes da sessão', size=13, color=theme.TEXT_COLOR),
         expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
                          controls=details, maintain_state=True, tile_padding=ft.Padding(left=0, right=0, top=0, bottom=0),

@@ -88,7 +88,7 @@ def _expandable(app, label, icon, loader):
             body.visible = not body.visible
             app.page.update()
             return
-        body.controls, body.visible = [_loading('Gerando…')], True
+        body.controls, body.visible = [_loading('Gerando análise… pode levar alguns segundos.')], True
         app.page.update()
         try:
             body.controls = await loader()
@@ -102,7 +102,8 @@ def _expandable(app, label, icon, loader):
     header = ft.TextButton(content=ft.Row([ft.Icon(icon, color=theme.RED, size=18),
                                            ft.Text(label, size=13, color=theme.TEXT_COLOR, weight=ft.FontWeight.BOLD)],
                                           spacing=6, tight=True),
-                           on_click=app.action(toggle), tooltip=label)
+                           # No tooltip: it would repeat the visible label over the loading text.
+                           on_click=app.action(toggle), data=('ai-disclosure', label))
     return ft.Column([header, body], spacing=4)
 
 

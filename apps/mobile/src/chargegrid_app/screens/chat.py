@@ -57,7 +57,8 @@ def _state(app):
         app.chat_draft = ''
     if not app.chat_messages:
         demo = ' Nesta conta, reservas, equipamentos e recargas são demonstrações.' if identity[1] else ''
-        ai = ' Pergunte sobre postos, custos, reservas ou seus gastos.' if getattr(app.api, 'ai_enabled', False) else ''
+        ai = (' Pergunte sobre postos, custos, reservas ou seus gastos, ou peça para planejar seu turno no '
+              'Modo Motorista.') if getattr(app.api, 'ai_enabled', False) else ''
         app.chat_messages.append({
             'role': 'assistant',
             'content': 'Olá! Posso orientar você nos próximos passos e consultar suas recargas e reservas.' + ai + demo,
@@ -383,6 +384,7 @@ async def build(app, question='', topic=None):
         send_button.disabled = True
         progress.visible = not ai_mode
         typing.visible = ai_mode
+        compact_chips()
         draw()
         app.page.update()
         try:
@@ -423,6 +425,7 @@ async def build(app, question='', topic=None):
                 send_button.disabled = False
                 progress.visible = False
                 typing.visible = False
+                compact_chips()
                 draw()
                 app.page.update()
         return True
@@ -440,8 +443,8 @@ async def build(app, question='', topic=None):
     if ai_mode:
         suggestions = (['Como foram meus postos este mês?', 'Como aumentar a receita dos meus postos?',
                         'Algum ponto meu está offline?'] if vendor else
-                       ['Postos rápidos perto da Paulista', 'Quanto gastei com recarga este mês?',
-                        'Quanto custa carregar de 20% a 80%?', 'Como iniciar uma recarga?'])
+                       ['Postos rápidos perto da Paulista', 'Planeje meu turno: estou com 30% de bateria',
+                        'Quanto gastei com recarga este mês?', 'Quanto custa carregar de 20% a 80%?'])
         if topic == 'reservations':
             suggestions = ['Minha reserva ainda está valendo?', 'Reservar um ponto perto de mim', *suggestions[:2]]
         elif topic == 'charging':
@@ -451,7 +454,16 @@ async def build(app, question='', topic=None):
                      border=ft.Border.all(1, theme.LIGHT_GRAY), border_radius=4, ink=True,
                      on_click=app.action(lambda label=label: send(label)))
         for label in suggestions
-    ], wrap=True, spacing=6, run_spacing=6)
+    ], spacing=6, run_spacing=6)
+
+    def compact_chips():
+        # Before the first question the suggestions wrap; afterwards they shrink to
+        # one scrollable line so the conversation keeps the vertical space.
+        started = any(message.get('role') == 'user' for message in messages)
+        chips.wrap = not started
+        chips.scroll = ft.ScrollMode.AUTO if started else None
+
+    compact_chips()
     contextual = []
     if question:
         suggested = str(question).strip()
