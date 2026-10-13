@@ -10,6 +10,7 @@ from ..ui.components import (
     brand,
     flat_button,
     labeled_field,
+    mark_input,
     text_link,
     title,
 )
@@ -108,8 +109,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
                 theme.set_dark(getattr(app, 'dark_mode', theme.is_dark()))
                 if message.visible:
                     message.visible = False
-                    field.border_color = theme.INPUT_BORDER
-                    field.focused_border_color = None
+                    mark_input(field)
                     app.page.update()
             return changed
 
@@ -119,8 +119,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         error = errors[id(control)]
         error.content.value = message
         error.visible = True
-        control.border_color = theme.ERROR
-        control.focused_border_color = theme.ERROR
+        mark_input(control, error=True)
         feedback.visible = False
         app.page.update()
         if isinstance(app.page, ft.Page):

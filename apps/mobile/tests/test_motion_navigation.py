@@ -11,6 +11,7 @@ from chargegrid_app.navigation import editable_controls, parent_route
 from chargegrid_app.screens import auth
 from chargegrid_app.session import Session
 from chargegrid_app.ui import motion
+from chargegrid_app.ui.components import INPUT_ERROR, input_border_color
 from test_behavior import HandlerApp, click, descendants
 
 
@@ -294,12 +295,12 @@ class AuthMotionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIs(shake.call_args.args[0], fields[1])
         errors = [c for c in descendants(screen) if isinstance(c, ft.Semantics) and c.live_region and c.visible]
         self.assertEqual([c.content.value for c in errors], ['Informe um e-mail válido.'])
-        self.assertEqual(fields[1].border_color, auth.theme.ERROR)
+        self.assertEqual(input_border_color(fields[1]), INPUT_ERROR)
         app.api.request.assert_not_called()
         fields[1].value = 'teste@example.com'
         await fields[1].on_change(None)
         self.assertFalse(errors[0].visible)
-        self.assertEqual(fields[1].border_color, auth.theme.INPUT_BORDER)
+        self.assertEqual(input_border_color(fields[1]), auth.theme.INPUT_BORDER)
 
     async def test_weak_password_from_server_marks_password_not_email(self):
         app = HandlerApp()
