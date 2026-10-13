@@ -8,7 +8,7 @@ from .charging import session_card
 
 async def build(app, station_id=None, offset=0, manage=False):
     demo = getattr(app.api,'is_demo',False) is True
-    demo_controls = [card([ft.Text('CONTA DEMO · HISTÓRICO SIMULADO',weight=ft.FontWeight.BOLD,color=theme.RED),
+    demo_controls = [card([ft.Text('CONTA DEMO · HISTÓRICO SIMULADO',weight=ft.FontWeight.BOLD,color=theme.ACCENT),
                            ft.Text('Sessões de exemplo e testes feitos nesta conta. Estes valores não são cobranças ou medições reais.',size=13,color=theme.GRAY_TEXT)])] if demo else []
     if manage and not app.profile.get('operator_enabled'):
         return ft.Column(demo_controls+[

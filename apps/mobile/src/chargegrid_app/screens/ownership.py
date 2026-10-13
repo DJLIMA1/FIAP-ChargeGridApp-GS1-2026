@@ -111,7 +111,7 @@ async def build(app, station_id=None):
             title('Adicionar equipamento simulado','Configure um ponto fictício nesta conta de demonstração.'),
             card([
                 ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
-                        size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+                        size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
                 ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local simulado',
                         size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
                 ft.Text(station.get('address','') if station else
@@ -129,7 +129,7 @@ async def build(app, station_id=None):
         title('Vincular tela', 'Seu ponto, na sua conta'),
         card([
             ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
-                    size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+                    size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local de recarga',
                     size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
             ft.Text(station.get('address','') if station else

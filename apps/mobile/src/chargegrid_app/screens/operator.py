@@ -337,7 +337,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         controls.insert(1,card([
-            ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text(f'Use {DEMO_PRESENCE_CODE} para testar a recarga no modo motorista. Nenhum dispositivo físico será acionado.',size=13,color=theme.GRAY_TEXT),
         ]))
     if connector:
@@ -353,7 +353,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
             active.value = False
             active.disabled = True
         maintenance = card([
-            ft.Text('MANUTENÇÃO SIMULADA' if is_demo else 'MANUTENÇÃO AVANÇADA',size=11,weight=ft.FontWeight.BOLD,color=theme.RED),
+            ft.Text('MANUTENÇÃO SIMULADA' if is_demo else 'MANUTENÇÃO AVANÇADA',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
             ft.Text('Todas estas ações são simulações locais. Nenhuma credencial ou conexão real será alterada.' if is_demo else
                     'Estas ações alteram a conexão do equipamento. Não são necessárias para mudar a tarifa.',size=12,color=theme.GRAY_TEXT),
             ft.Text('Provisionar gera uma credencial fictícia apenas para testar este fluxo.' if is_demo else

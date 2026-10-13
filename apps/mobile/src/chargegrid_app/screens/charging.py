@@ -177,7 +177,8 @@ def _review(draft):
             ('Limite de valor',money(body['max_cost']) if body.get('max_cost') else None),
             ('Tarifa',f"{money(point['price_per_kwh'])}/kWh" if point.get('price_per_kwh') is not None else None),
             ('Cupom',body.get('coupon_code'))]
-    controls = [ft.Text('RESUMO DA RECARGA',size=11,weight=ft.FontWeight.BOLD,color=theme.RED)]
+    # The review sheet is white in both themes: use the light-surface accent (AA).
+    controls = [ft.Text('RESUMO DA RECARGA',size=11,weight=ft.FontWeight.BOLD,color='#B91C24')]
     for label,value in rows:
         if value:
             controls.append(ft.Row([ft.Text(label,size=12,color='#62666B',width=104),
