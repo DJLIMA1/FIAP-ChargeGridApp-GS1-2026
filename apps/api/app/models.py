@@ -245,3 +245,10 @@ class DriverProfile(Base):
     vehicle: Mapped[dict] = mapped_column(JSONB, default=dict)
     preferences: Mapped[dict] = mapped_column(JSONB, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# Consultas agregadas do dashboard do proprietário (migração a3f1c9d2e7b4).
+Index("ix_charging_sessions_connector_ended", ChargingSession.connector_id, ChargingSession.ended_at)
+Index("ix_charging_sessions_connector_created", ChargingSession.connector_id, ChargingSession.created_at)
+Index("ix_reservations_connector_created", Reservation.connector_id, Reservation.created_at)
+Index("ix_telemetry_samples_session_captured", Telemetry.session_id, Telemetry.captured_at)

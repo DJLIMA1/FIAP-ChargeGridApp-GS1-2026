@@ -16,6 +16,9 @@ env/
 # Flet e arquivos locais legados
 src/.flet/
 apps/mobile/.flet/
+apps/dashboard/.flet/
+apps/dashboard/build/
+apps/dashboard/assets/
 ev_data.json
 apps/mobile/assets/app_config.json
 
