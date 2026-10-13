@@ -34,3 +34,17 @@ def km(value: float | None) -> str:
     if value is None:
         return "—"
     return (f"{float(value):.1f} km" if value < 10 else f"{round(float(value))} km").replace(".", ",")
+
+
+def percent(value: float | str | None, digits: int = 1) -> str:
+    """percent(42.25) -> '42,3%'; None -> '—' (sem dados)."""
+    if value is None or value == "":
+        return "—"
+    return f"{float(value):.{digits}f}%".replace(".", ",")
+
+
+def integer(value: float | int | str | None) -> str:
+    """integer(12345) -> '12.345'."""
+    if value is None or value == "":
+        return "—"
+    return f"{round(float(value)):,}".replace(",", ".")
