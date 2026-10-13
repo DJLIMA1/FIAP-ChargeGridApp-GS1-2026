@@ -72,6 +72,22 @@ def _decimal(value, places):
     return format(Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP), 'f')
 
 
+def _amenities(value):
+    from chargegrid_core.driver import AMENITY_KINDS
+    if not isinstance(value, list) or len(value) > 12:
+        _fail('Informe até 12 comodidades.')
+    result = []
+    for item in value:
+        if not isinstance(item, dict) or item.get('kind') not in AMENITY_KINDS or set(item) - {'kind', 'name', 'distance_m'}:
+            _fail('Comodidade inválida.')
+        distance = item.get('distance_m')
+        if distance is not None:
+            distance = int(_number(distance, 'a distância', 0, 5000, integer=True))
+        result.append({'kind': item['kind'], 'name': _text(item.get('name') or '', 'o nome', 80, required=False),
+                       'distance_m': distance})
+    return result
+
+
 def _fields(body, allowed):
     if set(body) - set(allowed):
         _fail('Este formulário contém campos não reconhecidos na demonstração.')
@@ -114,6 +130,11 @@ class DemoApi(OwnerApiMixin):
             self._make_point(station['id'], active=index == 0)
             if index == 0:
                 self._make_point(station['id'], online=False)
+                station['amenities'] = [{'kind': 'cafe', 'name': 'Café da Sé', 'distance_m': 60},
+                                        {'kind': 'banheiro', 'name': '', 'distance_m': None}]
+        # Modo Motorista: perfil salvo e rede parceira fictícia (criada no primeiro uso).
+        self._driver_profile = self._driver_updated_at = None
+        self._driver_network = False
         primary = next(iter(self._points.values()))
         self._coupons['demo-coupon-welcome'] = {
             'id': 'demo-coupon-welcome', 'operator_id': _USER, 'station_id': None,
@@ -313,14 +334,16 @@ class DemoApi(OwnerApiMixin):
     def _make_station(self, data, *, active=True):
         sid = self._id('station')
         station = {'id': sid, 'owner_id': _USER, 'name': data['name'], 'address': data['address'],
-                   'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active}
+                   'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
+                   'amenities': []}
         self._stations[sid] = station
         return station
 
-    def _make_point(self, station_id, *, active=True, online=True):
+    def _make_point(self, station_id, *, active=True, online=True, connector_type='Tipo 2', power_kw='7.200',
+                    price_per_kwh='1.5000'):
         pid = self._id('point')
         point = {'id': pid, 'station_id': station_id, 'public_code': 'DEMO-' + pid.rsplit('-', 1)[-1],
-                 'connector_type': 'Tipo 2', 'power_kw': '7.200', 'price_per_kwh': '1.5000',
+                 'connector_type': connector_type, 'power_kw': power_kw, 'price_per_kwh': price_per_kwh,
                  'max_duration_minutes': 120, 'active': active, 'control_version': 0, 'retired': False}
         self._points[pid] = point
         self._make_device(pid, online=online)
@@ -526,10 +549,13 @@ class DemoApi(OwnerApiMixin):
         if parts[0] == 'owner' or path == 'ai/owner-insights':
             from .demo_owner import owner_for
             return owner_for(self).route(method, path, params, body)
+        if parts[0] == 'driver':
+            from .services.driver_demo import driver_route
+            return driver_route(self, method, path, body)
         _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.', 'demo_route_not_supported', 404)
 
     def _station_fields(self, body, creating=False):
-        allowed = ('name', 'address', 'latitude', 'longitude') + (() if creating else ('active',))
+        allowed = ('name', 'address', 'latitude', 'longitude') + (() if creating else ('active', 'amenities'))
         _fields(body, allowed)
         if creating and not set(allowed).issubset(body):
             _fail('Informe nome, endereço e coordenadas do posto.')
@@ -540,6 +566,8 @@ class DemoApi(OwnerApiMixin):
             elif key in ('latitude', 'longitude'):
                 bound = 90 if key == 'latitude' else 180
                 result[key] = float(_number(value, key, -bound, bound))
+            elif key == 'amenities':
+                result[key] = _amenities(value)
             elif isinstance(value, bool):
                 result[key] = value
             else:

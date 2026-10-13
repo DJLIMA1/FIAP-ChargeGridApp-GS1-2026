@@ -51,6 +51,8 @@ class Station(Base):
         String(64), default=lambda: secrets.token_hex(32),
         server_default=text("replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')"),
     )
+    # Comodidades públicas do posto (restaurante, café...): [{"kind", "name", "distance_m"}].
+    amenities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     __table_args__ = (CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),)
 
 
@@ -233,6 +235,16 @@ class DeviceBoot(Base):
     boot_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     last_sequence: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DriverProfile(Base):
+    """Veículo e preferências do Modo Motorista (validados por chargegrid_core.driver)."""
+
+    __tablename__ = "driver_profiles"
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), primary_key=True)
+    vehicle: Mapped[dict] = mapped_column(JSONB, default=dict)
+    preferences: Mapped[dict] = mapped_column(JSONB, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 # Consultas agregadas do dashboard do proprietário (migração a3f1c9d2e7b4).

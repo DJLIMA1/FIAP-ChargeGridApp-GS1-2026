@@ -16,6 +16,7 @@ from .modules.auth.routes import router as auth_router
 from .modules.charging.routes import router as charging_router
 from .modules.coupons.routes import router as coupons_router
 from .modules.devices.routes import router as devices_router
+from .modules.driver.routes import router as driver_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
 from .modules.reservations.routes import router as reservations_router
@@ -26,7 +27,7 @@ app = FastAPI(title="ChargeGrid API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().cors_origins,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "PUT"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 app.include_router(auth_router, prefix="/v1")
@@ -39,6 +40,7 @@ for router in (
     ownership_router,
     coupons_router,
     owner_router,
+    driver_router,
 ):
     app.include_router(router, prefix="/v1")
 

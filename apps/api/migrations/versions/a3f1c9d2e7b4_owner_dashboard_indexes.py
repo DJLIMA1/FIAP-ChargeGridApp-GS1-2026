@@ -1,13 +1,13 @@
 """Indexes for owner dashboard aggregates (period filters and live telemetry).
 
 Revision ID: a3f1c9d2e7b4
-Revises: 9c4a2b8e1170
+Revises: e7d3c1a95b42
 """
 
 from alembic import op
 
 revision = "a3f1c9d2e7b4"
-down_revision = "9c4a2b8e1170"
+down_revision = "e7d3c1a95b42"
 branch_labels = None
 depends_on = None
 
