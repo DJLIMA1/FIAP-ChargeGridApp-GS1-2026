@@ -10,6 +10,8 @@ correspondente, simulando o Supabase que não existe na API local. Nunca use for
 """
 
 import argparse
+import functools
+import gzip
 import json
 import mimetypes
 import posixpath
@@ -21,6 +23,8 @@ from urllib.parse import urlsplit
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_SITE = ROOT_DIR / "apps" / "dashboard" / "build" / "vercel" / "public"
+# Como a Vercel, comprime texto e wasm (zip/png já são comprimidos).
+COMPRESSIBLE = (".js", ".mjs", ".wasm", ".json", ".html", ".otf", ".ttf", ".svg", ".bin", ".css")
 FORWARDED_HEADERS = ("authorization", "content-type", "idempotency-key", "accept")
 mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("text/javascript", ".mjs")
@@ -32,6 +36,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+@functools.lru_cache(maxsize=64)
+def compressed(path: Path, mtime: float) -> bytes:
+    return gzip.compress(path.read_bytes(), compresslevel=6)
 
 
 def make_handler(site: Path, api: str | None, login_tokens: dict):
@@ -51,8 +60,15 @@ def make_handler(site: Path, api: str | None, login_tokens: dict):
             if self.path.startswith("/v1/"):
                 return self.proxy()
             path = posixpath.normpath(urlsplit(self.path).path)
-            if not (site / path.lstrip("/")).exists():
-                self.path = "/index.html"  # fallback SPA, como o rewrite da Vercel
+            target = site / path.lstrip("/")
+            if not target.is_file() and not (target / "index.html").is_file():
+                self.path, target = "/index.html", site / "index.html"  # fallback SPA, como o rewrite da Vercel
+            elif target.is_dir():
+                target = target / "index.html"
+            if target.suffix in COMPRESSIBLE and "gzip" in self.headers.get("Accept-Encoding", ""):
+                body = compressed(target, target.stat().st_mtime)
+                return self.reply(200, body, [("Content-Type", self.guess_type(str(target))),
+                                              ("Content-Encoding", "gzip")])
             return super().do_GET()
 
         def do_HEAD(self):
