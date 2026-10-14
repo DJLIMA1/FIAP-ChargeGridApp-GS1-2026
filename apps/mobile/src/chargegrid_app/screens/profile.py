@@ -1,18 +1,42 @@
+import asyncio
+
 import flet as ft
 
 from ..api_client import ApiError
+from ..services import driver as helpers
+from ..services.driver_profile import save_vehicle
 from ..ui import theme
 from ..ui.components import button, card, field, title
+from ..ui.vehicle import VehiclePicker
+
+
+async def driver_profile(app):
+    """Perfil do motorista (carro); a conta continua acessível se ele não carregar."""
+    try:
+        data = await app.api.request('GET', 'driver/profile')
+    except ApiError:
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get('vehicle'), dict) else None
+
+
+def saved_vehicle(driver):
+    return driver['vehicle'] if driver and driver.get('saved') else None
+
+
+def vehicle_text(profile, driver):
+    vehicle = saved_vehicle(driver)
+    return helpers.vehicle_headline(vehicle) if vehicle else profile.get('vehicle_description')
 
 
 async def build(app, mode=None):
     demo = getattr(app.api, 'is_demo', False)
     if mode == 'password':
         return password_form(app)
-    profile = await app.api.request('GET','me')
+    # Conta e carro são independentes: buscados em paralelo.
+    profile, driver = await asyncio.gather(app.api.request('GET','me'), driver_profile(app))
     app.profile = profile
     if mode == 'edit':
-        return edit_form(app, profile)
+        return edit_form(app, profile, driver)
 
     email = (app.api.session.user or {}).get('email') or 'Não informado'
     account_label = 'Conta de demonstração' if demo else 'Conta de operador' if profile.get('account_type') == 'vendor' else 'Conta de motorista'
@@ -60,7 +84,7 @@ async def build(app, mode=None):
         title('Minha conta',account_label),
         ft.Container(ft.Column([
             info('Nome',profile.get('name')),info('E-mail',email),
-            info('Telefone',profile.get('phone')),info('Veículo',profile.get('vehicle_description')),
+            info('Telefone',profile.get('phone')),info('Carro elétrico',vehicle_text(profile,driver)),
         ],spacing=20),padding=ft.Padding(top=8,bottom=8)),
         button('Editar informações',app.link('profile',mode='edit'),secondary=True),
         *access,
@@ -70,25 +94,40 @@ async def build(app, mode=None):
     ],spacing=18,scroll=ft.ScrollMode.AUTO)
 
 
-def edit_form(app, profile):
-    name, phone, vehicle = field('Nome',profile.get('name') or ''),field('Telefone (opcional)',profile.get('phone') or ''),field('Veículo (opcional)',profile.get('vehicle_description') or '')
-    for control, limit in ((name,100),(phone,30),(vehicle,200)):
+def edit_form(app, profile, driver=None):
+    name, phone = field('Nome',profile.get('name') or ''),field('Telefone (opcional)',profile.get('phone') or '')
+    for control, limit in ((name,100),(phone,30)):
         control.max_length = limit
         control.width = None
         control.counter = ''
+    vehicle = saved_vehicle(driver)
+    picker = VehiclePicker(vehicle, (driver or {}).get('presets'), allow_later=vehicle is None,
+                           on_change=lambda _: app.page.update())
     async def save():
         if not name.value.strip():
             raise ApiError('Informe seu nome.')
-        if len(name.value.strip()) > 100 or len(phone.value.strip()) > 30 or len(vehicle.value.strip()) > 200:
+        if len(name.value.strip()) > 100 or len(phone.value.strip()) > 30:
             raise ApiError('Confira o tamanho dos campos informados.')
-        app.profile = await app.api.request('PATCH','me',{'name':name.value.strip(),'phone':phone.value.strip() or None,'vehicle_description':vehicle.value.strip() or None})
+        chosen = picker.read(strict=True)
+        description = helpers.vehicle_name(chosen) if chosen else profile.get('vehicle_description')
+        account = app.api.request('PATCH','me',{'name':name.value.strip(),'phone':phone.value.strip() or None,
+                                                'vehicle_description':description or None})
+        if chosen:
+            # Mesmo carro do Modo motorista; as preferências do turno são mantidas.
+            app.profile, _ = await asyncio.gather(account, save_vehicle(app.api, chosen, driver))
+        else:
+            app.profile = await account
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
         app.notice('Perfil atualizado.')
         await app.go('profile')
     return ft.Column([
         title('Editar informações','Altere os campos e salve para atualizar sua conta.'),
-        name,phone,vehicle,button('Salvar informações',app.action(save)),
+        name,phone,
+        card([ft.Text('Seu carro elétrico',size=14,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
+              ft.Text('Usado para estimar autonomia e planejar recargas no Modo motorista.',size=12,color=theme.GRAY_TEXT),
+              picker.control],border=ft.Border.all(1,theme.LIGHT_GRAY)),
+        button('Salvar informações',app.action(save)),
         button('Cancelar',app.link('profile'),secondary=True),
     ],spacing=16,scroll=ft.ScrollMode.AUTO)
 

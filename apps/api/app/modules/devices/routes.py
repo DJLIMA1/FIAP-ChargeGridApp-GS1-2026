@@ -68,7 +68,7 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, point.station_id)
     if reset_blocks_point(db, point.id):
-        fail("point_retired", "Escaneie o novo QR do ESP32 para criar outro ponto", 409)
+        fail("point_retired", "Escaneie o novo QR da tela do ponto para criar outro ponto", 409)
     if device_for(db, point):
         fail("device_exists", "Ponto já tem dispositivo; revogue ou rotacione")
     key = secrets.token_urlsafe(32)
@@ -83,7 +83,7 @@ def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
-        fail("reset_pending", "Aguarde o ESP32 confirmar a restauração", 409)
+        fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
     if obj.revoked:
         fail("device_revoked", "Provisione um novo dispositivo")
     key = secrets.token_urlsafe(32)
@@ -97,7 +97,7 @@ def revoke(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
-        fail("reset_pending", "Aguarde o ESP32 confirmar a restauração", 409)
+        fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
     obj.revoked = True
     obj.reconciled = False
     return {"revoked": True}
@@ -139,14 +139,14 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
     point = db.scalar(select(Connector).where(Connector.id == obj.connector_id).with_for_update())
     obj = db.scalar(select(Device).where(Device.id == obj.id).with_for_update())
     if obj.revoked:
-        fail("device_revoked", "Este ESP32 já foi desvinculado", 409)
+        fail("device_revoked", "Este equipamento já foi desvinculado", 409)
     existing = _reset_command(db, obj.id)
     if existing and existing.status in ("pending", "received") and existing.expires_at > now():
         return _reset_status(existing)
     if not online(obj) or obj.physical_state != "idle" or obj.connected:
-        fail("device_not_idle", "O ESP32 deve estar online e sem recarga para restaurar", 409)
+        fail("device_not_idle", "O equipamento deve estar online e sem recarga para restaurar", 409)
     if not _supports_factory_reset(obj.firmware_version):
-        fail("firmware_update_required", "Atualize o firmware do ESP32 antes de restaurar", 409)
+        fail("firmware_update_required", "Atualize o software do equipamento antes de restaurar", 409)
     if active_res(db, point.id) or active_session(db, point.id):
         fail("point_busy", "Encerre reservas e recargas antes de restaurar", 409)
     if not db.scalar(text("SELECT has_table_privilege(current_user, 'device_claims', 'INSERT')")):

@@ -1,5 +1,6 @@
 import asyncio
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
@@ -9,7 +10,17 @@ from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..ui import theme
 from ..ui.ai_features import ai_supported, owner_insights_control
-from ..ui.components import badge, button, card, date_time, field, money, title
+from ..ui.components import (
+    badge,
+    button,
+    card,
+    date_time,
+    disclosure_field,
+    field,
+    flat_button,
+    money,
+    title,
+)
 from ..ui.kpi import kpi_card, kpi_grid
 from . import onboarding as onboarding_screen
 from . import ownership
@@ -34,7 +45,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if not profile.get('operator_enabled'):
         return ft.Column([
             title('Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira tela',
-                  'Experimente a gestão de postos com dados fictícios.' if is_demo else 'Vincule o ESP32 à sua conta de operador'),
+                  'Experimente a gestão de postos com dados fictícios.' if is_demo else 'Vincule o equipamento à sua conta de operador'),
             card([ft.Icon(ft.Icons.QR_CODE_SCANNER, size=48, color=theme.RED),
                   ft.Text('Adicione um equipamento simulado para criar seu posto. Todo o processo acontece nesta demonstração.' if is_demo else
                           'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
@@ -63,7 +74,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     instructions = card([
         ft.Text('COMO FUNCIONA',size=15,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
         ft.Text('Adicione um equipamento fictício para experimentar a gestão.' if is_demo else
-                'O QR aparece no visor do ESP32 ainda sem dono.',size=13,color=theme.TEXT_COLOR),
+                'O QR aparece na tela do ponto ainda sem dono.',size=13,color=theme.TEXT_COLOR),
         ft.Text('1. Adicione um equipamento simulado.\n'
                 '2. Configure nome, endereço de exemplo e tarifa.\n'
                 '3. Revise, publique e teste a recarga simulada.' if is_demo else
@@ -188,23 +199,95 @@ async def station_form(app, station=None):
     if station:
         controls += [button('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',app.link('operator',station_id=station['id'],claim=True))]
         for connector in station['connectors']:
-            status = ('Tela restaurada' if connector.get('retired') else
-                      'Desativado' if not connector.get('active') else
-                      'Online' if connector.get('online') else 'Offline')
-            details = [ft.Text(f"{connector['public_code']} · {connector['connector_type']}",weight=ft.FontWeight.BOLD),
-                       ft.Text(status)]
+            status, color = _point_status(connector)
+            details = [ft.Row([ft.Text(connector['public_code'],size=17,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,
+                                       color=theme.TEXT_COLOR,expand=True),badge(status,color,width=112)],spacing=8),
+                       ft.Text(_point_line(connector),size=12,color=theme.GRAY_TEXT)]
             if is_demo:
                 from ..demo import DEMO_PRESENCE_CODE
-                details.append(ft.Text(f'Código de presença da demonstração: {DEMO_PRESENCE_CODE}',size=12,color=theme.GRAY_TEXT))
+                details.append(ft.Text(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.',size=12,color=theme.GRAY_TEXT))
             if not connector.get('active') and not connector.get('retired'):
                 shared = bool(station.get('active') or len(station['connectors']) > 1)
                 details.append(button('Revisar e ativar ponto',app.link('operator',station_id=station['id'],
                                       point_id=connector['id'],onboarding=True,step=2 if shared else 1,
                                       **({'existing_station':True} if shared else {}))))
-            details.append(button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],connector=connector),secondary=True))
-            controls.append(card(details))
+            details.append(button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],
+                                                                        connector={**connector,'station_name':station.get('name')}),secondary=True))
+            controls.append(card(ft.Column(details,spacing=8)))
     controls.append(button('Voltar à gestão',app.link('operator'),secondary=True))
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
+
+
+CONNECTOR_TYPES = ('Tipo 2', 'CCS2', 'CHAdeMO', 'GB/T')
+POWER_PRESETS = ('7.4', '11', '22', '50')
+_TYPE_ALIASES = {'tipo2': 'Tipo 2', 'type2': 'Tipo 2', 'typeii': 'Tipo 2', 'mennekes': 'Tipo 2',
+                 'ccs': 'CCS2', 'ccs2': 'CCS2', 'combo2': 'CCS2', 'ccstype2': 'CCS2', 'ccscombo2': 'CCS2',
+                 'chademo': 'CHAdeMO', 'gbt': 'GB/T', 'gbtac': 'GB/T', 'gbtdc': 'GB/T'}
+
+
+def _known_type(value):
+    return _TYPE_ALIASES.get(re.sub(r'[^a-z0-9]', '', str(value or '').lower()))
+
+
+def _decimal_text(value, places=None):
+    try:
+        number = Decimal(str(value).replace(',', '.'))
+    except (InvalidOperation, ValueError):
+        return str(value or '')
+    if places is not None and number == number.quantize(Decimal(1).scaleb(-places)):
+        number = number.quantize(Decimal(1).scaleb(-places))
+    else:
+        number = number.normalize()
+    return format(number, 'f').replace('.', ',')
+
+
+def _point_status(connector, device=None):
+    if connector.get('retired') or (device or {}).get('retired'):
+        return 'Desvinculado', theme.SLATE
+    if not connector.get('active', True):
+        return 'Desativado', theme.AMBER
+    online = (device or connector).get('online')
+    return ('Online', theme.GREEN) if online else ('Offline', theme.SLATE)
+
+
+def _point_line(connector):
+    parts = [connector.get('connector_type')]
+    if connector.get('power_kw') not in (None, ''):
+        parts.append(f"{_decimal_text(connector['power_kw'])} kW")
+    if connector.get('price_per_kwh') not in (None, ''):
+        parts.append(f"{money(connector['price_per_kwh'])}/kWh")
+    return ' · '.join(str(part) for part in parts if part)
+
+
+def _heading(text):
+    return ft.Text(text, size=11, weight=ft.FontWeight.BOLD, color=theme.ACCENT)
+
+
+def _chip(text, on_click):
+    return ft.TextButton(content=ft.Text(text, size=13, text_align=ft.TextAlign.CENTER), on_click=on_click,
+                         style=ft.ButtonStyle(padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+                                              shape=ft.RoundedRectangleBorder(radius=20)))
+
+
+def _chip_palette():
+    # Resolved while building: theme is a ContextVar that event handlers may not share.
+    return {'on': theme.RED, 'off': theme.LIGHT_GRAY, 'text': theme.TEXT_COLOR}
+
+
+def _paint_chips(chips, selected, palette):
+    for value, chip in chips.items():
+        on = value == selected
+        chip.style.bgcolor = palette['on'] if on else palette['off']
+        chip.style.side = ft.BorderSide(1, palette['on'] if on else palette['off'])
+        chip.content.color = '#FFFFFF' if on else palette['text']
+        chip.content.weight = ft.FontWeight.BOLD if on else ft.FontWeight.NORMAL
+
+
+def _action_row(label, description, control):
+    control.content.size = 13
+    return ft.Row([ft.Column([ft.Text(label, size=14, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
+                              ft.Text(description, size=12, color=theme.GRAY_TEXT)], spacing=2, expand=True),
+                   control], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 async def connector_form(app, station_id, connector=None, device_id=None):
@@ -222,19 +305,79 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         reset_state = await app.api.request('GET',f"devices/{linked_device['device_id']}/factory-reset")
     elif linked_device and linked_device.get('retired'):
         reset_state = {'status': 'applied'}
-    public, kind, power = field('Código público',connector.get('public_code','')),field('Tipo de conector',connector.get('connector_type','Type 2')),field('Potência kW',str(connector.get('power_kw','7.4')))
-    price, duration = field('Tarifa estimada por kWh',str(connector.get('price_per_kwh','1.00'))),field('Limite máximo min',str(connector.get('max_duration_minutes','60')))
-    active = ft.Switch(label='Ponto ativo',value=connector.get('active',True),visible=bool(connector))
+
+    # Form fields: the TextFields stay the source of truth for save().
+    public = field('Código público',connector.get('public_code',''))
+    kind = field('Tipo de conector',connector.get('connector_type','Tipo 2'))
+    power = field('Potência',_decimal_text(connector.get('power_kw','7.4')))
+    price = field('Tarifa',_decimal_text(connector.get('price_per_kwh','1.00'),2))
+    duration = field('Limite por recarga',str(connector.get('max_duration_minutes','60')))
+    power.suffix, price.prefix, price.suffix, duration.suffix = 'kW', 'R$ ', '/kWh', 'min'
+    for control in (power, price, duration):
+        control.keyboard_type = ft.KeyboardType.NUMBER
+    price.expand = duration.expand = True
+    active = ft.Switch(label='Disponível para motoristas',value=connector.get('active',True),visible=bool(connector),
+                       label_text_style=ft.TextStyle(size=15,color=theme.TEXT_COLOR),active_color=theme.RED)
+
+    palette = _chip_palette()
+    selected_type = _known_type(kind.value) or 'Outro'
+    kind.visible = selected_type == 'Outro'
+    def choose_type(value):
+        def handler(event=None):
+            nonlocal selected_type
+            selected_type = value
+            if value != 'Outro':
+                kind.value = value
+            elif _known_type(kind.value):
+                kind.value = ''
+            kind.visible = value == 'Outro'
+            kind.error_text = None
+            _paint_chips(type_chips, value, palette)
+            app.page.update()
+        return handler
+    type_chips = {value: _chip(value, choose_type(value)) for value in (*CONNECTOR_TYPES, 'Outro')}
+    _paint_chips(type_chips, selected_type, palette)
+
+    def power_preset():
+        try:
+            current = Decimal((power.value or '').strip().replace(',', '.'))
+        except (InvalidOperation, ValueError):
+            return None
+        return next((value for value in POWER_PRESETS if Decimal(value) == current), None)
+    def choose_power(value):
+        def handler(event=None):
+            power.value = _decimal_text(value)
+            power.error_text = None
+            _paint_chips(power_chips, value, palette)
+            app.page.update()
+        return handler
+    def typed_power(event=None):
+        _paint_chips(power_chips, power_preset(), palette)
+        app.page.update()
+    power_chips = {value: _chip(f'{_decimal_text(value)} kW', choose_power(value)) for value in POWER_PRESETS}
+    _paint_chips(power_chips, power_preset(), palette)
+    power.on_change = typed_power
+
     device = field('Dispositivo vinculado',linked_device['device_id'] if linked_device else '')
     device.read_only = True
     device.visible = bool(linked_device)
     device_status = ft.Text(
         ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else
-         ('Online' if linked_device.get('online') else 'Offline')+' · Último contato: '+date_time(linked_device.get('last_seen')))
-        if linked_device else 'Nenhum dispositivo simulado vinculado. Simule o provisionamento para continuar.' if is_demo else
-        'Nenhum dispositivo vinculado. Provisione para conectar o ESP32.',
-        size=12,color=theme.GRAY_TEXT,
+         'Último contato: '+date_time(linked_device.get('last_seen')))
+        if linked_device else 'Nenhum equipamento simulado vinculado.' if is_demo else
+        'Nenhum equipamento vinculado. Provisione uma credencial abaixo.',
+        size=13,color=theme.TEXT_COLOR,expand=True,
     )
+    status_label, status_color = _point_status(connector, linked_device)
+    status_badge = badge(status_label, status_color, width=112)
+    status_colors = {'Desvinculado': theme.SLATE, 'Desativado': theme.AMBER, 'Online': theme.GREEN, 'Offline': theme.SLATE}
+    def paint_status():
+        label = _point_status(connector, linked_device)[0]
+        color = status_colors[label]
+        status_badge.content.value = label
+        status_badge.bgcolor = color
+        status_badge.content.color = theme.on_color(color)
+
     def update_device(identifier, message):
         nonlocal linked_device
         linked_device = {'device_id':identifier,'retired':False} if identifier else None
@@ -243,18 +386,20 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         device.value = identifier
         device.visible = bool(identifier)
         device_status.value = message
-        provision_button.visible = not identifier
-        rotate_button.visible = revoke_button.visible = bool(identifier)
+        provision_row.visible = provision_button.visible = not identifier
+        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(identifier)
+        reset_box.visible = bool(identifier)
         reset_button.visible = bool(identifier)
-        reset_info.visible = bool(identifier)
+        reset_info.visible = False
         reset_info.value = reset_messages['not_requested']
+        paint_status()
         app.page.update()
     async def save():
         body = {'public_code':onboarding_screen._required(public,'código público',50),
                 'connector_type':onboarding_screen._required(kind,'tipo de conector',50),
                 'power_kw':onboarding_screen._number(power,'Potência',Decimal('0.001'),1000),
                 'price_per_kwh':onboarding_screen._number(price,'Tarifa',0,10000),
-                'max_duration_minutes':onboarding_screen._number(duration,'Tempo máximo',1,1440,integer=True)}
+                'max_duration_minutes':onboarding_screen._number(duration,'Limite',1,1440,integer=True)}
         if connector:
             body['active'] = active.value
         await app.api.request('PATCH' if connector else 'POST',f"connectors/{connector['id']}" if connector else f'stations/{station_id}/connectors',body)
@@ -263,26 +408,26 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         await app.go('operator',station_id=station_id)
     async def provision():
         result = await app.api.request('POST',f"connectors/{connector['id']}/device")
-        update_device(result['device_id'],'Dispositivo simulado provisionado. Nenhuma chave precisa ser instalada em um ESP32.' if is_demo else
-                      'Dispositivo provisionado. Configure a chave no ESP32 para conectar.')
+        update_device(result['device_id'],'Credencial simulada criada. Nada precisa ser instalado.' if is_demo else
+                      'Credencial criada. Configure a chave no equipamento para conectar.')
         show_key(app,result)
     async def rotate():
         if not device.value.strip():
             raise ApiError('Informe o ID do dispositivo.')
         result = await app.api.request('POST',f'devices/{device.value.strip()}/rotate-key')
-        device_status.value = 'Chave fictícia renovada nesta demonstração.' if is_demo else 'Chave renovada. Atualize a configuração do ESP32 para reconectar.'
+        device_status.value = 'Chave fictícia renovada nesta demonstração.' if is_demo else 'Chave renovada. Atualize a configuração do equipamento para reconectar.'
         app.page.update()
         show_key(app,result)
     async def revoke():
         if not device.value.strip():
             raise ApiError('Informe o ID do dispositivo.')
         await app.api.request('POST',f'devices/{device.value.strip()}/revoke')
-        update_device('','Dispositivo simulado revogado. Simule o provisionamento para criar outra credencial.' if is_demo else
-                      'Dispositivo revogado. Provisione novamente para conectar o ESP32.')
+        update_device('','Credencial simulada revogada. Simule outra quando quiser.' if is_demo else
+                      'Credencial revogada. Provisione outra para reconectar o equipamento.')
         app.notice('Revogação simulada concluída.' if is_demo else 'Dispositivo revogado; chave anterior recusada.')
     reset_messages = {
-        'not_requested': 'Remove o vínculo desta tela e preserva o Wi-Fi. O ponto antigo será desativado; histórico e recargas anteriores permanecem.',
-        'pending': 'Aguardando a tela confirmar a restauração. Mantenha o ESP32 ligado e conectado.',
+        'not_requested': 'Remove o vínculo e preserva o Wi-Fi. O ponto é desativado; o histórico fica.',
+        'pending': 'Aguardando a tela confirmar a restauração. Mantenha o equipamento ligado e conectado.',
         'received': 'A tela recebeu o comando. Aguarde a confirmação antes de desligá-la.',
         'applied': 'Restauração confirmada. O Wi-Fi foi preservado. Escaneie o novo QR para vincular a tela novamente.',
         'failed': 'A tela não conseguiu restaurar. Verifique se está livre e tente novamente.',
@@ -290,32 +435,35 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     }
     if is_demo:
         reset_messages.update({
-            'not_requested':'A restauração simulada desativa este ponto fictício e mantém seu histórico de demonstração.',
+            'not_requested':'Desativa este ponto fictício e mantém o histórico da demonstração.',
             'pending':'Aguardando a confirmação simulada da restauração.',
             'received':'O equipamento fictício recebeu o comando simulado.',
             'applied':'Restauração simulada confirmada. Adicione outro equipamento simulado para criar um novo vínculo.',
             'failed':'A restauração simulada falhou. Encerre reservas e recargas simuladas e tente novamente.',
             'expired':'O comando simulado expirou. Tente novamente nesta demonstração.',
         })
-    reset_info = ft.Text(reset_messages.get(reset_state.get('status'), reset_messages['not_requested']),
-                         size=12, color=theme.GRAY_TEXT)
+    initial_status = reset_state.get('status', 'not_requested')
+    reset_info = ft.Text(reset_messages.get(initial_status, reset_messages['not_requested']),
+                         size=12, color=theme.WARNING, visible=bool(linked_device) and initial_status != 'not_requested')
     def paint_reset(state):
         reset_state.clear()
         reset_state.update(state)
         status = state.get('status', 'not_requested')
         reset_info.value = reset_messages.get(status, reset_messages['not_requested'])
+        reset_info.visible = status != 'not_requested'
         reset_button.visible = status in ('not_requested', 'failed', 'expired') and not (linked_device or {}).get('retired')
         if status in ('pending', 'received', 'applied'):
             active.value = False
             active.disabled = True
-            rotate_button.visible = revoke_button.visible = False
+            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = False
         elif status in ('failed', 'expired'):
             active.disabled = False
-            rotate_button.visible = revoke_button.visible = True
+            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = True
         if status == 'applied':
             if linked_device:
                 linked_device['retired'] = True
             device_status.value = 'Desvinculado após restauração de fábrica'
+            paint_status()
         app.page.update()
     async def poll_reset():
         if not linked_device or reset_state.get('status') not in ('pending', 'received'):
@@ -337,59 +485,84 @@ async def connector_form(app, station_id, connector=None, device_id=None):
                 app.set_poll(poll_reset, 5)
         app.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('Simular restauração do equipamento?' if is_demo else 'Restaurar ESP32 de fábrica?'),
+            title=ft.Text('Simular restauração do equipamento?' if is_demo else 'Restaurar equipamento de fábrica?'),
             content=ft.Text('Esta ação altera apenas o ponto fictício desta demonstração. Ele será desativado e o histórico simulado será mantido. Nenhum dispositivo físico ou Wi-Fi será alterado.' if is_demo else
                             'O vínculo desta tela será removido e o Wi-Fi será preservado. O ponto atual sairá de operação, mas seu histórico será mantido. Faça isso somente com a tela online e sem reserva ou recarga. Depois, escaneie o novo QR para vincular a tela novamente.'),
             actions=[ft.TextButton('Cancelar', on_click=cancel),
-                     ft.TextButton('Simular restauração' if is_demo else 'Restaurar ESP32', on_click=app.action(confirm),
+                     ft.TextButton('Simular restauração' if is_demo else 'Restaurar', on_click=app.action(confirm),
                                    style=ft.ButtonStyle(color=theme.RED))],
         ))
-    controls = [title('Editar ponto' if connector else 'Novo ponto'),card(ft.Column([public,kind,power,price,duration,active],spacing=12)),ft.Text('Confira os dados e ative o ponto. O posto também precisa estar ativo para aparecer aos motoristas.',size=12,color=theme.GRAY_TEXT),button('Salvar ponto',app.action(save))]
+
+    # Header: what is being edited and its live state.
+    header = [ft.Row([ft.Column([ft.Text('EDITAR PONTO' if connector else 'NOVO PONTO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
+                                 ft.Text(connector.get('public_code') or 'Novo ponto',size=26,font_family='BarlowCondensed',
+                                         weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR)],spacing=0,expand=True)]
+                     + ([status_badge] if connector else []),spacing=8,vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+    if connector.get('station_name'):
+        header.append(ft.Row([ft.Icon(ft.Icons.PLACE_OUTLINED,size=16,color=theme.GRAY_TEXT),
+                              ft.Text(connector['station_name'],size=13,color=theme.GRAY_TEXT,expand=True)],spacing=6))
+    if connector:
+        header += [ft.Divider(height=8,color=theme.LIGHT_GRAY),
+                   ft.Row([ft.Icon(ft.Icons.ROUTER_OUTLINED,size=18,color=theme.GRAY_TEXT),device_status],spacing=8),
+                   reset_info]
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
-        controls.insert(1,card([
-            ft.Text('EQUIPAMENTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            ft.Text(f'Use {DEMO_PRESENCE_CODE} para testar a recarga no modo motorista. Nenhum dispositivo físico será acionado.',size=13,color=theme.GRAY_TEXT),
-        ]))
+        header.append(ft.Row([ft.Icon(ft.Icons.SCIENCE_OUTLINED,size=16,color=theme.GRAY_TEXT),
+                              ft.Text(f'Ponto simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
+                                      size=12,color=theme.GRAY_TEXT,expand=True)],spacing=8))
+
+    controls = [
+        card(ft.Column(header,spacing=6)),
+        card(ft.Column([_heading('CONECTOR'),
+                        ft.Row(list(type_chips.values()),wrap=True,spacing=8,run_spacing=8),kind,
+                        ft.Container(height=4),power,
+                        ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8)],spacing=10)),
+        card(ft.Column([_heading('PREÇO E TEMPO'),
+                        ft.Row([price,duration],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
+                        ft.Text('Tarifa estimada por kWh e tempo máximo de cada recarga.',size=12,color=theme.GRAY_TEXT)],spacing=10)),
+    ]
     if connector:
-        provision_button = button('Simular provisionamento' if is_demo else 'Provisionar dispositivo',app.action(provision))
-        provision_button.visible = not linked_device
-        rotate_button = button('Simular renovação de chave' if is_demo else 'Rotacionar chave',app.action(rotate),secondary=True)
-        revoke_button = button('Simular revogação' if is_demo else 'Revogar dispositivo',app.action(revoke),secondary=True)
-        rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
-        reset_button = button('Simular restauração' if is_demo else 'Restaurar ESP32 de fábrica',app.action(reset_device),secondary=True)
+        controls.append(card(ft.Column([_heading('DISPONIBILIDADE'),active,
+                                        ft.Text('O posto também precisa estar ativo para o ponto aparecer na busca.',
+                                                size=12,color=theme.GRAY_TEXT)],spacing=8)))
+    controls.append(card(ft.Column([_heading('IDENTIFICAÇÃO'),public,
+                                    ft.Text('Código exibido aos motoristas para encontrar este ponto.',size=12,color=theme.GRAY_TEXT)],spacing=10)))
+    controls.append(button('Salvar alterações' if connector else 'Salvar ponto',app.action(save)))
+    if connector:
+        provision_button = button('Provisionar',app.action(provision))
+        rotate_button = button('Rotacionar',app.action(rotate),secondary=True)
+        revoke_button = button('Revogar',app.action(revoke),secondary=True)
+        reset_button = flat_button('Restaurar',theme.RED,on_click=app.action(reset_device))
+        reset_button.content.size = 13
+        provision_row = _action_row('Nova credencial','Gera uma chave fictícia para testar o fluxo.' if is_demo else
+                                    'Gera a chave do equipamento; ela aparece uma única vez.',provision_button)
+        rotate_row = _action_row('Trocar chave','Troca a chave fictícia da demonstração.' if is_demo else
+                                 'Invalida a chave atual; o equipamento precisa da nova.',rotate_button)
+        revoke_row = _action_row('Desconectar','Desativa a credencial simulada.' if is_demo else
+                                 'Recusa a chave atual até nova credencial.',revoke_button)
+        reset_box = ft.Container(
+            _action_row('Restaurar de fábrica',reset_messages['not_requested'],reset_button),
+            bgcolor=ft.Colors.with_opacity(0.08,theme.RED),border=ft.Border.all(1,ft.Colors.with_opacity(0.45,theme.RED)),
+            border_radius=10,padding=12,margin=ft.Margin(left=0,right=0,top=6,bottom=0))
+        provision_row.visible = provision_button.visible = not linked_device
+        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
         reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
-        reset_info.visible = bool(linked_device)
+        reset_box.visible = bool(linked_device)
         if linked_device and (linked_device.get('retired') or reset_state.get('status') in ('pending', 'received', 'applied')):
             active.value = False
             active.disabled = True
-        maintenance = card([
-            ft.Text('MANUTENÇÃO SIMULADA' if is_demo else 'MANUTENÇÃO AVANÇADA',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            ft.Text('Todas estas ações são simulações locais. Nenhuma credencial ou conexão real será alterada.' if is_demo else
-                    'Estas ações alteram a conexão do equipamento. Não são necessárias para mudar a tarifa.',size=12,color=theme.GRAY_TEXT),
-            ft.Text('Provisionar gera uma credencial fictícia apenas para testar este fluxo.' if is_demo else
-                    'Provisionar cria uma credencial. Configure-a no ESP32; a chave aparece apenas uma vez.',size=12,color=theme.GRAY_TEXT),
-            provision_button,device,
-            ft.Text('Renovar troca apenas a chave fictícia da demonstração.' if is_demo else
-                    'Rotacionar invalida a chave atual. O ESP32 só reconecta após receber a nova chave.',size=12,color=theme.GRAY_TEXT),
-            rotate_button,
-            ft.Text('Revogar desativa a credencial simulada. Você pode simular outro provisionamento depois.' if is_demo else
-                    'Revogar desconecta o equipamento. Para reconectar, provisione e configure outra credencial.',size=12,color=theme.GRAY_TEXT),
-            revoke_button,ft.Divider(color=theme.LIGHT_GRAY),reset_button,
-        ],visible=False)
-
-        async def toggle_maintenance():
-            maintenance.visible = not maintenance.visible
-            maintenance_toggle.content.value = 'Ocultar manutenção avançada' if maintenance.visible else 'Mostrar manutenção avançada'
-            app.page.update()
-
-        maintenance_toggle = button('Mostrar manutenção avançada',app.action(toggle_maintenance),secondary=True)
-        controls += [card([ft.Text('Dispositivo simulado' if is_demo else 'Dispositivo ESP32',size=18),device_status,reset_info]),
-                     maintenance_toggle,maintenance]
+        maintenance, _summary = disclosure_field(
+            'Conexão do equipamento',
+            'Credencial e restauração simuladas' if is_demo else 'Credencial, chave e restauração',
+            [ft.Text('Ações apenas desta demonstração; nada real é alterado.' if is_demo else
+                     'Não é preciso mexer aqui para mudar tarifa ou disponibilidade.',size=12,color=theme.GRAY_TEXT),
+             device,provision_row,rotate_row,revoke_row,reset_box],
+            on_update=app.page.update)
+        controls.append(maintenance)
         if reset_state.get('status') in ('pending', 'received'):
             app.set_poll(poll_reset, 5)
-    controls += [button('Voltar ao posto',app.link('operator',station_id=station_id),secondary=True)]
-    return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
+    controls.append(button('Voltar ao posto',app.link('operator',station_id=station_id),secondary=True))
+    return ft.Column(controls,spacing=14,scroll=ft.ScrollMode.AUTO)
 
 
 def show_key(app, result):
@@ -399,5 +572,5 @@ def show_key(app, result):
     async def dismiss(e):
         secret.value = ''
         app.page.pop_dialog()
-    dialog = ft.AlertDialog(modal=True,title=ft.Text('Chave fictícia de demonstração' if is_demo else 'Chave exibida uma vez'),content=ft.Column([identifier,secret,ft.Text('Esta chave é simulada. Não a instale em um equipamento real.' if is_demo else 'Copie para a configuração do ESP32 agora. Não compartilhe. Ao fechar, a chave não será armazenada no app.')],tight=True),actions=[ft.TextButton('Fechar' if is_demo else 'Copiei, fechar',on_click=dismiss)])
+    dialog = ft.AlertDialog(modal=True,title=ft.Text('Chave fictícia de demonstração' if is_demo else 'Chave exibida uma vez'),content=ft.Column([identifier,secret,ft.Text('Esta chave é simulada. Não a instale em um equipamento real.' if is_demo else 'Copie para a configuração do equipamento agora. Não compartilhe. Ao fechar, a chave não será armazenada no app.')],tight=True),actions=[ft.TextButton('Fechar' if is_demo else 'Copiei, fechar',on_click=dismiss)])
     app.page.show_dialog(dialog)

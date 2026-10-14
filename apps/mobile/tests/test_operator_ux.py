@@ -78,9 +78,9 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(device.value,'known-device')
         self.assertEqual(app.api.request.await_args_list[0].args, ('GET','connectors/connector/device'))
         self.assertEqual(app.api.request.await_args_list[1].args, ('GET','devices/known-device/factory-reset'))
-        provision = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Provisionar dispositivo')
+        provision = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Provisionar')
         self.assertFalse(provision.visible)
-        await click(screen,'Revogar dispositivo')(None)
+        await click(screen,'Revogar')(None)
         self.assertFalse(device.visible)
         self.assertTrue(provision.visible)
 
@@ -89,7 +89,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = [ApiError('Ausente',404),{'device_id':'new-device','device_key':'test-only-secret'}]
         screen = await operator.connector_form(app,'station',{'id':'connector'})
         with patch('chargegrid_app.screens.operator.show_key') as show_key:
-            await click(screen,'Provisionar dispositivo')(None)
+            await click(screen,'Provisionar')(None)
             show_key.assert_called_once()
         device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label == 'Dispositivo vinculado')
         self.assertEqual(device.value,'new-device')
@@ -115,13 +115,13 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         ])
         app.api.request.side_effect = lambda *args, **kwargs: next(responses)
         screen = await operator.connector_form(app,'station',{'id':'connector','active':True})
-        await click(screen,'Restaurar ESP32 de fábrica')(None)
+        await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
-        self.assertEqual(dialog.title.value, 'Restaurar ESP32 de fábrica?')
+        self.assertEqual(dialog.title.value, 'Restaurar equipamento de fábrica?')
         self.assertEqual(app.api.request.await_count, 2)
         dialog.actions[0].on_click(None)
         self.assertEqual(app.api.request.await_count, 2)
-        await click(screen,'Restaurar ESP32 de fábrica')(None)
+        await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
         await dialog.actions[1].on_click(None)
         self.assertEqual(app.api.request.await_args.args,
@@ -130,4 +130,31 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Aguardando a tela', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
         await app.poll()
         self.assertIn('Restauração confirmada', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
-        self.assertFalse(next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Restaurar ESP32 de fábrica').visible)
+        self.assertFalse(next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Restaurar').visible)
+
+    async def test_connector_chips_keep_light_palette_and_fill_fields(self):
+        import contextvars
+
+        from chargegrid_app.ui import theme
+        app = HandlerApp()
+        app.api.request.side_effect = [ApiError('Ausente',404),{}]
+        token = theme._dark_enabled.set(False)
+        try:
+            screen = await operator.connector_form(app,'station',{'id':'connector','public_code':'CG-1','connector_type':'Type 2','power_kw':'7.200','price_per_kwh':'1.5000'})
+        finally:
+            theme._dark_enabled.reset(token)
+        fields = {item.label:item for item in descendants(screen) if isinstance(item,ft.TextField)}
+        self.assertEqual((fields['Potência'].value,fields['Tarifa'].value),('7,2','1,50'))
+        self.assertFalse(fields['Tipo de conector'].visible)
+        # Event handlers may run outside the build context (dark default).
+        contextvars.Context().run(click(screen,'Outro'))
+        self.assertTrue(fields['Tipo de conector'].visible)
+        self.assertEqual(fields['Tipo de conector'].value,'')
+        chip = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'CCS2')
+        self.assertEqual(chip.style.bgcolor,theme.LIGHT['LIGHT_GRAY'])
+        contextvars.Context().run(click(screen,'22 kW'))
+        self.assertEqual(fields['Potência'].value,'22')
+        click(screen,'CCS2')()
+        await click(screen,'Salvar alterações')(None)
+        body = app.api.request.await_args.args[2]
+        self.assertEqual((body['connector_type'],body['power_kw'],body['price_per_kwh']),('CCS2','22','1.50'))

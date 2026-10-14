@@ -274,7 +274,7 @@ class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
 
         from chargegrid_app.preferences import DriverProfileStore
         from chargegrid_app.screens import driver
-        from test_driver_mode import DriverApp, fields
+        from test_driver_mode import DriverApp, battery, fields
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'FLET_APP_STORAGE_DATA': directory}):
             DriverProfileStore().save({'vehicle': {'preset': 'byd_seal'}, 'preferences': {'shift_start': '06:00'},
                                        'soc_percent': 0})
@@ -284,7 +284,7 @@ class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
             app = DriverApp(SimpleNamespace(is_demo=False, request=offline, new_key=lambda: 'k'))
             screen = await driver.build(app)  # Used to fail the whole screen.
             form = fields(screen)
-            self.assertEqual(form['Bateria agora (%)'].value, '0')  # Was replaced by 60.
+            self.assertEqual(battery(screen).value, 0)  # Was replaced by 60.
             self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
             self.assertIn('Sem conexão', app.notices[0])
 

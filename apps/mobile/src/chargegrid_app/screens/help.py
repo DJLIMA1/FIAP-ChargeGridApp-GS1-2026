@@ -21,14 +21,14 @@ TOPICS = {
     'Parar ou resolver uma falha': (
         'Abra Minha recarga e toque em Solicitar parada. Aguarde a confirmação do equipamento; '
         'pedido enviado não significa parada física confirmada. Offline mostra os últimos dados recebidos. '
-        'Confira a rede do celular e do ESP32. Fechar o app, sair da conta ou trocar de modo não encerra '
+        'Confira a rede do celular e do equipamento. Fechar o app, sair da conta ou trocar de modo não encerra '
         'a sessão física. Não conecte este protótipo a redes de alta potência ou baterias de veículo.'
     ),
     'Criar posto e vincular ponto': (
-        'No modo operador, abra Postos e escaneie o QR de vinculação do ESP32 sem dono. '
+        'No modo operador, abra Postos e escaneie o QR de vinculação exibido na tela do ponto sem dono. '
         'Posto é o endereço; ponto é o equipamento instalado nele. Escolha um novo posto ou um existente, '
         'defina a tarifa e os limites, revise e publique. O QR de vinculação é privado: não o compartilhe. '
-        'Restaurar remove o vínculo e gera um novo QR, preservando o Wi-Fi no firmware atual.'
+        'Restaurar remove o vínculo e gera um novo QR, preservando o Wi-Fi do equipamento.'
     ),
     'Conta, senha e histórico': (
         'Em Conta você pode editar seus dados, alterar a senha e escolher o tema. Contas de operador '

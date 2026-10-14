@@ -35,23 +35,61 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = {**PROFILE,'phone':None}
         screen = profile.edit_form(app,PROFILE)
         fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
-        fields[0].value,fields[1].value,fields[2].value = ' Marina Silva ','',' Carro '
+        fields[0].value,fields[1].value = ' Marina Silva ',''
         await click(screen,'Salvar informações')(None)
-        app.api.request.assert_awaited_once_with('PATCH','me',{'name':'Marina Silva','phone':None,'vehicle_description':'Carro'})
+        # "Prefiro informar depois": the account keeps its description and no car is sent.
+        app.api.request.assert_awaited_once_with('PATCH','me',{'name':'Marina Silva','phone':None,
+                                                              'vehicle_description':'Veículo de exemplo'})
+        app.go.assert_awaited_once_with('profile')
+
+    async def test_profile_shows_saved_car_and_saves_it_with_existing_preferences(self):
+        driver = {'saved':True,'vehicle':{'preset':'byd_dolphin'},'preferences':{'shift_start':'06:00'},'presets':None}
+        app = HandlerApp()
+        app.api.session.user = {'email':'marina@example.com'}
+        app.logout = AsyncMock()
+        app.api.request.side_effect = lambda method,path,body=None,**kw: driver if path == 'driver/profile' else PROFILE
+        screen = await profile.build(app)
+        labels = [c.label for c in descendants(screen) if isinstance(c,ft.Semantics)]
+        self.assertIn('Carro elétrico: BYD Dolphin · ~321 km de autonomia',labels)
+        calls = []
+        async def request(method,path,body=None,**kwargs):
+            calls.append((method,path,body))
+            return driver if path == 'driver/profile' else PROFILE
+        app.api.request = request
+        screen = await profile.build(app,mode='edit')
+        self.assertEqual([c[1] for c in calls],['me','driver/profile'])  # fetched together
+        model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
+        self.assertEqual(model.value,'byd_dolphin')
+        self.assertNotIn('later',[option.key for option in model.options])  # a saved car is never "unset"
+        model.value = 'byd_seal'
+        calls.clear()
+        await click(screen,'Salvar informações')(None)
+        self.assertIn(('PUT','driver/profile',{'vehicle':{'preset':'byd_seal'},'preferences':{'shift_start':'06:00'}}),calls)
+        patch_body = next(body for method,path,body in calls if method == 'PATCH')
+        self.assertEqual(patch_body['vehicle_description'],'BYD Seal')
+        self.assertNotIn(('GET','driver/profile',None),calls)  # preferences reused from the screen
         app.go.assert_awaited_once_with('profile')
 
     async def test_invalid_edit_does_not_send_and_preserves_values(self):
-        for name,phone,vehicle in [('', '', ''),('N'*101,'',''),('Name','1'*31,''),('Name','','V'*201)]:
-            with self.subTest(name_length=len(name),phone_length=len(phone),vehicle_length=len(vehicle)):
+        for name,phone in [('', ''),('N'*101,''),('Name','1'*31)]:
+            with self.subTest(name_length=len(name),phone_length=len(phone)):
                 app = HandlerApp()
                 screen = profile.edit_form(app,PROFILE)
                 fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
-                for control,value in zip(fields,(name,phone,vehicle)):
-                    control.value = value
+                fields[0].value,fields[1].value = name,phone
                 with self.assertRaises(ApiError):
                     await click(screen,'Salvar informações')(None)
                 app.api.request.assert_not_called()
-                self.assertEqual([c.value for c in fields],[name,phone,vehicle])
+                self.assertEqual([c.value for c in fields[:2]],[name,phone])
+        app = HandlerApp()
+        screen = profile.edit_form(app,PROFILE)
+        model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
+        model.value = 'custom'
+        fields = {c.label: c for c in descendants(screen) if isinstance(c,ft.TextField)}
+        fields['Bateria útil (kWh)'].value = '900'
+        with self.assertRaises(ApiError):
+            await click(screen,'Salvar informações')(None)
+        app.api.request.assert_not_called()
 
     async def test_back_moves_between_wizard_steps_without_losing_context(self):
         data = {'step':3,'public_code':'POINT','reservation_id':'r','point_context':{'station_id':'s'}}

@@ -143,7 +143,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         screen = await charging.build(app,public_code='CG-ONE',point_context=CONTEXT)
         self.assertEqual(fields(screen)['Código temporário do posto'].value,DEMO_PRESENCE_CODE[2:])
         self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
-        self.assertIn('não é necessário um ESP32',texts(screen))
+        self.assertIn('não é necessário um equipamento real',texts(screen))
         screen = await next_charging_step(app,screen)
         screen = await next_charging_step(app,screen)
         await click(screen,'Solicitar início')(None)

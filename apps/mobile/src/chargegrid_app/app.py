@@ -17,6 +17,7 @@ from .navigation import (
     tab_entries,
 )
 from .preferences import Preferences
+from .services.driver_profile import apply_signup_vehicle
 from .ui import motion, theme
 from .ui.components import brand, button, title
 
@@ -501,6 +502,7 @@ class ChargeGridApp:
         self.reset_account_ui()
         self.reset_account_operations()
         self.profile = await self.api.request('GET','me')
+        await apply_signup_vehicle(self.api, self.profile)
         self.browsing_mode = 'vendor' if can_manage(self.profile) and not getattr(self.api,'is_demo',False) else 'consumer'
         destination = destination or ('operator' if self.browsing_mode == 'vendor' else 'home')
         await self.go(destination)

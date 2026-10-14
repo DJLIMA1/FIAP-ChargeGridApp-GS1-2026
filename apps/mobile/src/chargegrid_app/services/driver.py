@@ -1,5 +1,10 @@
 """Apoio puro (sem Flet) da tela Modo Motorista: formulário ↔ perfil e leitura do plano."""
-from chargegrid_core.driver import PRESETS, parse_hhmm
+from chargegrid_core.driver import (
+    PRESETS,
+    default_profile,
+    parse_hhmm,
+    vehicle_from_dict,
+)
 from chargegrid_core.formatting import brl, duration, km, kwh
 
 from ..api_client import ApiError
@@ -7,7 +12,7 @@ from ..api_client import ApiError
 MEALS = (('almoco', 'Almoço', '12:30', 60, '45'), ('jantar', 'Jantar', '20:00', 45, '30'),
          ('lanche', 'Lanche', '16:30', 20, '30'))
 FLEX_CHOICES = (('15', '±15 min'), ('30', '±30 min'), ('45', '±45 min'), ('60', '±1 h'), ('flex', 'Horário flexível'))
-MODES = (('full_shift', 'Turno completo (hoje ou amanhã)'), ('auto', 'Do horário atual até o fim do turno'))
+MODES = (('full_shift', 'Turno completo'), ('auto', 'Do agora até o fim do turno'))
 KIND_LABELS = {'rodando': 'Rodando', 'recarga': 'Recarga', 'refeicao_recarga': 'Refeição + recarga',
                'refeicao': 'Refeição', 'pausa': 'Pausa'}
 AMENITY_TEXT = {'restaurante': 'Restaurante', 'cafe': 'Café', 'banheiro': 'Banheiro', 'shopping': 'Shopping',
@@ -43,6 +48,78 @@ def vehicle_summary(vehicle):
     autonomy = round(float(battery) / float(consumption) * 100)
     return (f'Bateria útil {kwh(battery)} · consumo {kwh(consumption)}/100 km · '
             f'autonomia ~{autonomy} km (estimativa)')
+
+
+def vehicle_profile(vehicle):
+    """VehicleProfile do core, ou None se o carro estiver incompleto/inválido."""
+    try:
+        return vehicle_from_dict(vehicle) if vehicle else None
+    except (ValueError, TypeError):
+        return None
+
+
+def vehicle_name(vehicle):
+    profile = vehicle_profile(vehicle)
+    return profile.name if profile else None
+
+
+def range_km(vehicle, soc_percent=100):
+    """Autonomia estimada (km) com a bateria em ``soc_percent``."""
+    profile = vehicle_profile(vehicle)
+    return round(profile.range_km * max(0.0, float(soc_percent)) / 100) if profile else None
+
+
+def vehicle_headline(vehicle):
+    """'BYD Dolphin · ~321 km de autonomia' (estimativa do preset ou do carro informado)."""
+    profile = vehicle_profile(vehicle)
+    return f'{profile.name} · ~{round(profile.range_km)} km de autonomia' if profile else 'Carro não informado'
+
+
+def battery_line(vehicle, soc_percent, reserve_percent=15):
+    """Texto sob o controle de bateria: alcance agora e acima da reserva."""
+    total = range_km(vehicle, soc_percent)
+    if total is None:
+        return 'Escolha o seu carro para estimar a autonomia.'
+    spare = range_km(vehicle, max(0.0, float(soc_percent) - float(reserve_percent or 0)))
+    return f'≈ {total} km de autonomia agora · {spare} km acima da reserva de {float(reserve_percent):.0f}%'
+
+
+def default_preferences():
+    return default_profile()['preferences']
+
+
+def in_shift(preferences, now):
+    """True quando ``now`` (horário local) está dentro do turno, inclusive turnos que viram a noite."""
+    start = parse_hhmm(preferences.get('shift_start') or '10:00')
+    end = parse_hhmm(preferences.get('shift_end') or '22:00')
+    minute = now.hour * 60 + now.minute
+    return start <= minute < end if start < end else minute >= start or minute < end
+
+
+def auto_mode(preferences, now):
+    """Durante o turno planeja do agora até o fim; fora dele, o próximo turno completo."""
+    try:
+        return 'auto' if in_shift(preferences, now) else 'full_shift'
+    except (ValueError, TypeError):
+        return 'full_shift'
+
+
+def mode_line(mode, preferences):
+    start, end = preferences.get('shift_start') or '10:00', preferences.get('shift_end') or '22:00'
+    return f'Agora no turno: planejando até {end}' if mode == 'auto' else f'Turno completo {start}–{end}'
+
+
+def shift_summary(preferences):
+    """'10:00–22:00 · R$ 38/h · Almoço 12:30, Jantar 20:00' para o resumo recolhido."""
+    labels = {kind: label for kind, label, *_ in MEALS}
+    meals = [f"{labels.get(meal.get('kind'), meal.get('kind'))} {meal.get('start')}"
+             for meal in preferences.get('meals') or () if isinstance(meal, dict) and meal.get('enabled', True)]
+    earnings = preferences.get('earnings_per_hour')
+    parts = [f"{preferences.get('shift_start', '10:00')}–{preferences.get('shift_end', '22:00')}"]
+    if earnings is not None:
+        parts.append(f'{brl(earnings)}/h')
+    parts.append(', '.join(meals) if meals else 'sem refeições')
+    return ' · '.join(parts)
 
 
 def meal_flex(meal):

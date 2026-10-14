@@ -118,7 +118,7 @@ async def build(app, station_id=None):
                         'Depois de adicionar o equipamento, você define nome, endereço e tarifa de exemplo.',
                         size=13,color=theme.GRAY_TEXT),
                 ft.Text('O posto reúne os pontos no mesmo endereço. Este equipamento é inteiramente fictício: '
-                        'nenhuma câmera, QR físico ou ESP32 é necessário.',size=13,color=theme.GRAY_TEXT),
+                        'nenhuma câmera, QR físico ou carregador real é necessário.',size=13,color=theme.GRAY_TEXT),
             ]),
             button('Adicionar equipamento simulado',app.action(add_demo_equipment)),
             ft.Text('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma recarga simulada.',
@@ -139,7 +139,7 @@ async def build(app, station_id=None):
         ]),
         card([
             ft.Icon(ft.Icons.QR_CODE_SCANNER, size=42, color=theme.RED),
-            ft.Text('Aponte a câmera para o QR exibido no visor do ESP32.',
+            ft.Text('Aponte a câmera para o QR exibido na tela do ponto.',
                     color=theme.TEXT_COLOR),
             hint,
         ]),

@@ -142,7 +142,7 @@ def _local_answer(question, demo):
                 'Escolha um ponto demonstrativo disponível. Em Confirmar ponto, use ' + DEMO_PRESENCE_CODE +
                 ' (digite 12345). Continue para Definir limites, escolha tempo ou valor estimado e confira '
                 'Revisar recarga. Somente Solicitar início cria a sessão simulada. A confirmação e a energia '
-                'evoluem nesta conta; nenhum ESP32 é acionado.'),
+                'evoluem nesta conta; nenhum equipamento real é acionado.'),
             'Reservar para chegar depois': (
                 'Escolha um ponto demonstrativo disponível e toque em Reservar. Aguarde a confirmação '
                 'simulada e confira o prazo de 10 minutos em Minha reserva. Para iniciar, abra a reserva '

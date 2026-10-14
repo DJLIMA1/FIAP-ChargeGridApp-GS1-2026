@@ -379,7 +379,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             draft['furthest'] = 2
             await navigate(2)
         controls += [point_summary(context,'Ponto reservado' if reservation_id else 'Ponto selecionado'),
-                     ft.Text('Use #F12345 na conta demo; não é necessário um ESP32.' if demo else
+                     ft.Text('Use #F12345 na conta demo; não é necessário um equipamento real.' if demo else
                              'No local, leia os cinco números atuais após #F na tela do equipamento. O código muda periodicamente e é conferido pela API ao solicitar o início.',
                              size=13,color=theme.GRAY_TEXT),presence,button('Continuar',app.action(continue_code))]
         if not context:

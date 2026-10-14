@@ -54,7 +54,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = request
         screen = await operator.build(app)
         text = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item, ft.Text))
-        self.assertIn('O QR aparece no visor do ESP32 ainda sem dono.', text)
+        self.assertIn('O QR aparece na tela do ponto ainda sem dono.', text)
         self.assertIn('Defina nome, local e tarifa', text)
         await click(screen, 'Escanear QR da tela')(None)
         app.go.assert_awaited_once_with('operator', claim=True)

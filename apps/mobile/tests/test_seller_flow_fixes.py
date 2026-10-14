@@ -46,8 +46,8 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         ]
         screen = await operator.connector_form(app,'station',{'id':'point'})
         with patch('chargegrid_app.screens.operator.show_key'):
-            await click(screen,'Provisionar dispositivo')(None)
-        await click(screen,'Restaurar ESP32 de fábrica')(None)
+            await click(screen,'Provisionar')(None)
+        await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
         self.assertIn('Wi-Fi será preservado',dialog.content.value)
         await dialog.actions[1].on_click(None)
@@ -68,10 +68,10 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
             {'revoked':True}, {'device_id':'replacement','device_key':'test-only'}, {'status':'pending'},
         ]
         screen = await operator.connector_form(app,'station',{'id':'point'})
-        await click(screen,'Revogar dispositivo')(None)
+        await click(screen,'Revogar')(None)
         with patch('chargegrid_app.screens.operator.show_key'):
-            await click(screen,'Provisionar dispositivo')(None)
-        await click(screen,'Restaurar ESP32 de fábrica')(None)
+            await click(screen,'Provisionar')(None)
+        await click(screen,'Restaurar')(None)
         await app.page.show_dialog.call_args.args[0].actions[1].on_click(None)
         self.assertEqual(app.api.request.await_args.args,('POST','devices/replacement/factory-reset'))
         self.assertNotIn(('POST','devices/old-device/factory-reset'),[call.args for call in app.api.request.await_args_list])

@@ -46,6 +46,11 @@ def fields(control):
     return {item.label: item for item in descendants(control) if isinstance(item, (ft.TextField, ft.Dropdown))}
 
 
+def battery(control):
+    """The battery is a slider (the only question asked on every shift)."""
+    return next(item for item in descendants(control) if isinstance(item, ft.Slider) and item.data == 'soc')
+
+
 class DriverApp:
     def __init__(self, api):
         self.api = api
@@ -146,7 +151,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Estimativas', visible)
         form = fields(screen)
         self.assertEqual(form['Modelo do carro'].value, 'byd_dolphin')
-        form['Bateria agora (%)'].value = '45'
+        battery(screen).value = 45
         await click(screen, 'Planejar meu turno')(None)
         visible = texts(screen)
         for label in ('LUCRO LÍQUIDO ESTIMADO DO TURNO', 'LINHA DO TEMPO DO TURNO', 'BATERIA PROJETADA (SoC)',
@@ -154,7 +159,9 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(label, visible)
         self.assertTrue(any('vs. recarregar só quando a bateria fica baixa' in text for text in visible))
         plan = self.app.driver_state['plan']
-        self.assertEqual(plan['mode'], 'full_shift')
+        # 12h is inside the default 10:00–22:00 shift: the mode is inferred as "rest of the shift".
+        self.assertEqual(plan['mode'], 'auto')
+        self.assertEqual(plan['window']['end'], '22:00')
         await click(screen, 'Ver posto')(None)
         self.app.go.assert_awaited_with('stations', station_id=plan['stops'][0]['station_id'])
         saved = await self.api.request('GET', 'driver/profile')
@@ -168,7 +175,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_next_stop_offers_reservation_of_recommended_point(self):
         screen = await driver.build(self.app)
-        fields(screen)['Bateria agora (%)'].value = '16'
+        battery(screen).value = 16
         await click(screen, 'Próxima parada agora')(None)
         self.assertIn('PRÓXIMA PARADA AGORA', texts(screen))
         recommendation = self.app.driver_state['next']['recommendation']
@@ -181,7 +188,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_form_values_are_explained_before_any_request(self):
         screen = await driver.build(self.app)
         form = fields(screen)
-        for label, value in (('Bateria agora (%)', '140'), ('Início do turno (HH:MM)', '25:99'),
+        for label, value in (('Início do turno (HH:MM)', '25:99'),
                              ('Ganho médio por hora rodando (R$)', 'abc')):
             original = form[label].value
             form[label].value = value
@@ -211,8 +218,8 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
             form = fields(screen)
             self.assertEqual(form['Modelo do carro'].value, 'byd_seal')
             self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
-            self.assertEqual(form['Bateria agora (%)'].value, '70')
-            form['Bateria agora (%)'].value = '55'
+            self.assertEqual(battery(screen).value, 70)
+            battery(screen).value = 55
             await click(screen, 'Planejar meu turno')(None)
             self.assertIn(('PUT', 'driver/profile'), calls)
             self.assertIn(('POST', 'driver/plan'), calls)

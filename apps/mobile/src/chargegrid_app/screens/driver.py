@@ -2,23 +2,32 @@
 
 Todo cálculo vem da API (``/v1/driver/*``) ou, no modo demo, do mesmo motor
 ``chargegrid_core.driver`` executado localmente. Demanda é sempre estimativa.
+
+A tela pergunta só o que muda a cada turno (a bateria agora). O carro e o turno vêm do
+perfil, o modo sai do horário, o local da busca salva e o clima da API (Open-Meteo).
 """
+import asyncio
+from datetime import datetime
+
 import flet as ft
 
-from chargegrid_core.driver import PRESETS
 from chargegrid_core.formatting import brl, duration, km, kwh
 
 from ..api_client import ApiError
 from ..demo import DEMO_LOCATIONS
 from ..preferences import DriverProfileStore
 from ..services import driver as helpers
+from ..services.driver_demo import LOCAL_TZ
 from ..services.location import geocode_address, geocode_demo_address
+from ..services.search_location import SearchLocation
 from ..ui import motion, theme
-from ..ui.components import button, card, disclosure_field, field, pill, title
+from ..ui.components import button, card, disclosure_field, field, pill
+from ..ui.vehicle import VehiclePicker
 
 DEMO_REGION = 'Praça da Sé'
 RESULTS_KEY = 'driver-results'
 DEMAND_SOURCES = {'heuristica': 'horários típicos', 'open-meteo': 'clima', 'informado': 'informado por você'}
+HERO_COLORS = ('#D72B32', '#7E1419')
 
 
 def demand_source_text(source):
@@ -61,6 +70,72 @@ def _demo_locations():
     return tuple(DEMO_LOCATIONS) + tuple(DEMO_DRIVER_NETWORK)
 
 
+def _now(app, demo):
+    """Horário local do planejador (o mesmo fuso da API); a demo usa o relógio simulado."""
+    clock = getattr(app.api, '_now', None)
+    current = clock() if demo and callable(clock) else datetime.now(LOCAL_TZ)
+    return current.astimezone(LOCAL_TZ).replace(tzinfo=None)
+
+
+def _link(text, on_click):
+    return ft.TextButton(content=ft.Text(text, size=13, weight=ft.FontWeight.BOLD, color=theme.ACCENT),
+                         on_click=on_click, style=ft.ButtonStyle(padding=ft.Padding(left=8, right=8, top=6, bottom=6)))
+
+
+def _battery_color(level, reserve):
+    return theme.ERROR if level < reserve else theme.WARNING if level < reserve + 15 else theme.GREEN
+
+
+def _battery_icon(level):
+    steps = (ft.Icons.BATTERY_ALERT, ft.Icons.BATTERY_1_BAR, ft.Icons.BATTERY_2_BAR, ft.Icons.BATTERY_3_BAR,
+             ft.Icons.BATTERY_4_BAR, ft.Icons.BATTERY_5_BAR, ft.Icons.BATTERY_6_BAR, ft.Icons.BATTERY_FULL)
+    return steps[min(len(steps) - 1, int(level // (100 / len(steps))))]
+
+
+def hero(app):
+    demo = getattr(app.api, 'is_demo', False) is True
+    name = '' if demo else str((getattr(app, 'profile', None) or {}).get('name') or '').split(' ')[0]
+    white = '#FFFFFF'
+    tags = [pill(text, bg=ft.Colors.with_opacity(0.18, white), fg=white)
+            for text in ('Estimativas', 'Sem dados oficiais da Uber/99')]
+    return ft.Container(
+        ft.Column([
+            ft.Row([ft.Column([
+                ft.Text(f'Bom turno, {name}' if name else 'Bom turno', size=13, color=white),
+                ft.Text('Modo motorista', size=30, weight=ft.FontWeight.BOLD, color=white,
+                        font_family='BarlowCondensedBold'),
+                ft.Text('Rode nos picos, carregue nas horas fracas e junte a refeição com a recarga.',
+                        size=13, color=white),
+            ], spacing=2, expand=True), ft.Icon(ft.Icons.LOCAL_TAXI_OUTLINED, size=40, color=white)],
+                vertical_alignment=ft.CrossAxisAlignment.START),
+            ft.Row(tags, wrap=True, spacing=6, run_spacing=6),
+        ], spacing=10),
+        gradient=ft.LinearGradient(begin=ft.Alignment(-1, -1), end=ft.Alignment(1, 1), colors=list(HERO_COLORS)),
+        border_radius=16, padding=18)
+
+
+async def _remote_profile(app, demo):
+    try:
+        return await app.api.request('GET', 'driver/profile')
+    except ApiError as error:
+        # Without network the screen still opens from the profile saved on
+        # this device; only planning itself needs the API.
+        if error.status != 0 or demo:
+            raise
+        app.notice('Sem conexão: usando o perfil salvo neste aparelho.')
+        return {'saved': False}
+
+
+async def _live_soc(app):
+    """Bateria lida da recarga em andamento (quando o ponto informa o SoC)."""
+    try:
+        session = await app.api.request('GET', 'charging-sessions/current')
+    except Exception:  # noqa: BLE001 - leitura opcional: o motorista ajusta a bateria
+        return None
+    soc = session.get('soc_percent') if isinstance(session, dict) else None
+    return float(soc) if isinstance(soc, (int, float)) and 0 <= soc <= 100 else None
+
+
 async def build(app):
     demo = getattr(app.api, 'is_demo', False) is True
     state = getattr(app, 'driver_state', None)
@@ -69,65 +144,95 @@ async def build(app):
         app.driver_state = state
     store = DriverProfileStore()
     local = None if demo else store.load()
-    try:
-        remote = await app.api.request('GET', 'driver/profile')
-    except ApiError as error:
-        # Without network the screen still opens from the profile saved on
-        # this device; only planning itself needs the API.
-        if error.status != 0 or demo:
-            raise
-        remote = {'saved': False}
-        app.notice('Sem conexão: usando o perfil salvo neste aparelho.')
+    remote, live_soc = await asyncio.gather(_remote_profile(app, demo), _live_soc(app))
     profile = remote if remote.get('saved') or not local else {**remote, **local}
     vehicle = dict(profile.get('vehicle') or {})
     prefs = dict(profile.get('preferences') or {})
-    presets = remote.get('presets') or [p.to_dict() for p in PRESETS.values()]
+    has_car = bool(remote.get('saved') or local)
+    # Primeira vez: o turno ainda é o padrão e nunca foi planejado neste aparelho.
+    first_time = not demo and not local and (not remote.get('saved') or prefs == helpers.default_preferences())
 
-    # --- carro -----------------------------------------------------------------------
-    preset_key = vehicle.get('preset') if vehicle.get('preset') in {p['key'] for p in presets} else 'custom'
-    model = _dropdown('Modelo do carro', preset_key,
-                      [(p['key'], p['name']) for p in presets] + [('custom', 'Outro (personalizado)')])
-    by_key = {p['key']: p for p in presets}
-    base = by_key.get(preset_key, {})
-    battery = _number_field('Bateria útil (kWh)', vehicle.get('usable_battery_kwh') or base.get('usable_battery_kwh'))
-    consumption = _number_field('Consumo (kWh/100 km)',
-                                vehicle.get('consumption_kwh_per_100km') or base.get('consumption_kwh_per_100km'))
-    vehicle_info = _small(helpers.vehicle_summary(vehicle | {'preset': preset_key}))
-    # 0 % is a real reading: only a missing value falls back to the next source.
-    soc_value = next((value for value in (state.get('soc'), (local or {}).get('soc_percent')) if value is not None), 60)
-    soc = _number_field('Bateria agora (%)', soc_value)
+    # --- carro (do perfil) -----------------------------------------------------------------
+    car_title = ft.Text(helpers.vehicle_headline(vehicle) if has_car else 'Qual é o seu carro?', size=16,
+                        weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR)
+    car_note = _small('Do seu perfil · usado em todos os planos' if has_car else
+                      'Escolha uma vez: fica salvo no seu perfil.')
 
-    async def preset_changed(event=None):
-        chosen = by_key.get(model.value)
+    def car_changed(chosen):
         if chosen:
-            battery.value = str(chosen['usable_battery_kwh']).replace('.', ',')
-            consumption.value = str(chosen['consumption_kwh_per_100km']).replace('.', ',')
-        vehicle_info.value = helpers.vehicle_summary(current_vehicle(strict=False))
+            car_title.value = helpers.vehicle_headline(chosen)
+        refresh_battery()
         app.page.update()
-    model.on_select = preset_changed
 
-    def current_vehicle(strict=True):
+    picker = VehiclePicker(vehicle, remote.get('presets'), on_change=car_changed)
+    picker_box = ft.Column([picker.control], visible=not has_car)
+
+    async def toggle_picker(event=None):
+        picker_box.visible = not picker_box.visible
+        swap.content.value = 'Fechar' if picker_box.visible else 'Trocar'
+        app.page.update()
+    swap = _link('Trocar', toggle_picker)
+    swap.visible = has_car
+    car_card = card([
+        ft.Row([ft.Container(ft.Icon(ft.Icons.ELECTRIC_CAR_OUTLINED, size=24, color=theme.ACCENT),
+                             bgcolor=theme.LIGHT_GRAY, border_radius=10, padding=8),
+                ft.Column([car_title, car_note], spacing=1, expand=True), swap],
+               spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        picker_box,
+    ], border=ft.Border.all(1, theme.LIGHT_GRAY))
+
+    # --- bateria agora: a única pergunta de cada turno -------------------------------------
+    # 0 % is a real reading: only a missing value falls back to the next source.
+    soc_value = next((value for value in (state.get('soc'), live_soc, (local or {}).get('soc_percent'))
+                      if value is not None), 60)
+    soc_value = round(max(0, min(100, float(soc_value))))
+    soc = ft.Slider(value=soc_value, min=0, max=100, divisions=100, data='soc',
+                    active_color=theme.RED, inactive_color=theme.LIGHT_GRAY, thumb_color=theme.RED)
+    readout = ft.Text(f'{soc_value}%', size=44, weight=ft.FontWeight.BOLD, font_family='BarlowCondensedBold')
+    battery_icon = ft.Icon(_battery_icon(soc_value), size=34)
+    range_text = ft.Text('', size=13, color=theme.TEXT_COLOR)
+    soc_source = _small('Lida da sua recarga em andamento.' if live_soc is not None and state.get('soc') is None
+                        else 'Arraste para a carga que o painel do carro mostra agora.')
+
+    def reserve_level():
         try:
-            data = {'usable_battery_kwh': helpers.number(battery.value, 'a bateria útil (kWh)', 5, 250),
-                    'consumption_kwh_per_100km': helpers.number(consumption.value, 'o consumo (kWh/100 km)', 5, 60)}
+            return helpers.number(reserve.value, 'a reserva', 5, 50)
         except ApiError:
-            if strict:
-                raise
-            data = {}
-        chosen = by_key.get(model.value)
-        if chosen:
-            data['preset'] = chosen['key']
-            if data and abs(data['usable_battery_kwh'] - chosen['usable_battery_kwh']) < 1e-6 and \
-                    abs(data['consumption_kwh_per_100km'] - chosen['consumption_kwh_per_100km']) < 1e-6:
-                data = {'preset': chosen['key']}
-        else:
-            data.update(preset='custom', name='Meu carro')
-        return data
+            return float(prefs.get('reserve_percent', 15))
 
-    vehicle_section, _ = disclosure_field('Ajustar bateria e consumo', 'Use se o seu carro gasta diferente da média.',
-                                          [battery, consumption], on_update=lambda: app.page.update())
+    def refresh_battery():
+        level = round(float(soc.value or 0))
+        color = _battery_color(level, reserve_level())
+        readout.value, readout.color = f'{level}%', color
+        battery_icon.icon, battery_icon.color = _battery_icon(level), color
+        range_text.value = helpers.battery_line(picker.read(strict=False), level, reserve_level())
 
-    # --- turno, ganhos e refeições -------------------------------------------------------
+    async def soc_changed(event=None):
+        state['soc'] = round(float(soc.value or 0))
+        refresh_battery()
+        app.page.update()
+
+    async def step(delta):
+        soc.value = max(0, min(100, round(float(soc.value or 0)) + delta))
+        await soc_changed()
+    soc.on_change = soc_changed
+
+    def stepper(icon, delta, label):
+        async def clicked(event=None):
+            await step(delta)
+        return ft.IconButton(icon=icon, on_click=clicked, tooltip=label, icon_color=theme.TEXT_COLOR,
+                             style=ft.ButtonStyle(bgcolor=theme.LIGHT_GRAY))
+
+    battery_card = card([
+        _heading('BATERIA AGORA'),
+        ft.Row([battery_icon, readout, ft.Container(expand=True),
+                stepper(ft.Icons.REMOVE, -1, 'Menos 1%'), stepper(ft.Icons.ADD, 1, 'Mais 1%')],
+               spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Semantics(label='Bateria agora (%)', content=soc),
+        range_text, soc_source,
+    ], border=ft.Border.all(1, theme.LIGHT_GRAY))
+
+    # --- turno, ganhos e refeições (do perfil; aberto só na primeira vez) --------------------
     shift_start = field('Início do turno (HH:MM)', prefs.get('shift_start', '10:00'))
     shift_end = field('Fim do turno (HH:MM)', prefs.get('shift_end', '22:00'))
     earnings = _number_field('Ganho médio por hora rodando (R$)', prefs.get('earnings_per_hour', 38))
@@ -149,18 +254,70 @@ async def build(app):
         meal_rows.append(ft.Column([enabled, ft.Row([ft.Container(start, expand=1), ft.Container(length, expand=1)]),
                                     _wide(flex)], spacing=8))
 
-    shift_summary = f"{prefs.get('shift_start', '10:00')}–{prefs.get('shift_end', '22:00')} · refeições e ganhos"
     shift_section, _ = disclosure_field(
-        'Turno, ganhos e refeições', shift_summary,
+        'Turno, ganhos e refeições',
+        helpers.shift_summary(prefs) + ('' if first_time else ' · do seu perfil'),
         [ft.Row([ft.Container(shift_start, expand=1), ft.Container(shift_end, expand=1)]), earnings, speed,
          ft.Row([ft.Container(reserve, expand=1), ft.Container(target, expand=1)]), home, home_price,
          _small('Refeições: o planejador tenta parar para comer num posto com restaurante ou café, '
                 'recarregando enquanto você come.'), *meal_rows],
-        expanded=not demo and not remote.get('saved') and not local, on_update=lambda: app.page.update())
+        expanded=first_time, on_update=lambda: app.page.update())
+    reserve.on_change = soc_changed
 
-    mode = _dropdown('O que planejar', state.get('mode') or ('full_shift' if demo else 'auto'), helpers.MODES)
-    region = field('Onde você está (bairro ou endereço, opcional)', state.get('region', DEMO_REGION if demo else ''))
-    rain = ft.Checkbox(label='Está chovendo agora', value=bool(state.get('rain')))
+    # --- o que o app já sabe (modo, local, clima), cada um com um ajuste opcional ----------------
+    now = _now(app, demo)
+    mode = _dropdown('O que planejar', state.get('mode') if state.get('mode_manual') else
+                     helpers.auto_mode(prefs, now), helpers.MODES)
+    user = getattr(getattr(app.api, 'session', None), 'user', None) or {}
+    account = (getattr(app, 'profile', None) or {}).get('id') or (user.get('id') if isinstance(user, dict) else None)
+    saved_search = None if demo or not account else SearchLocation(account).load()
+    region = field('Bairro ou endereço', state.get('region', DEMO_REGION if demo else ''))
+    rain = ft.Checkbox(label='Está chovendo agora (usar se a previsão errar)', value=bool(state.get('rain')))
+    mode_text, place_text, weather_text = (ft.Text('', size=13, color=theme.TEXT_COLOR, expand=True) for _ in range(3))
+
+    def place():
+        text = (region.value or '').strip()
+        if text:
+            return f'Perto de {text}'
+        if saved_search:
+            return f"Perto de {saved_search['query'] or 'sua busca salva'} (busca salva)"
+        return 'Sem local: considera todos os postos ativos'
+
+    def refresh_context():
+        mode_text.value = helpers.mode_line(mode.value, prefs)
+        place_text.value = place()
+        located = bool((region.value or '').strip() or saved_search)
+        weather_text.value = ('Chuva informada por você' if rain.value else
+                              'Demonstração: clima não consultado' if demo else
+                              'Clima ao vivo (Open-Meteo) entra no plano' if located else
+                              'Sem local, sem clima: usa horários típicos')
+
+    async def context_changed(event=None):
+        if event is not None and event.control is mode:
+            state.update(mode=mode.value, mode_manual=True)
+        refresh_context()
+        app.page.update()
+    mode.on_select = context_changed
+    region.on_change = rain.on_change = context_changed
+
+    def context_row(icon, text, action, controls):
+        box = ft.Column(controls, spacing=8, visible=False)
+
+        async def toggle(event=None):
+            box.visible = not box.visible
+            app.page.update()
+        return ft.Column([ft.Row([ft.Icon(icon, size=20, color=theme.GRAY_TEXT), text, _link(action, toggle)],
+                                 spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER), box], spacing=4)
+
+    context_card = card([
+        _heading('O APP JÁ CONSIDERA'),
+        context_row(ft.Icons.SCHEDULE, mode_text, 'Mudar', [_wide(mode)]),
+        context_row(ft.Icons.PLACE_OUTLINED, place_text, 'Mudar local',
+                    [region, _small('Sem GPS: use um bairro, endereço ou a busca salva em Postos.')]),
+        context_row(ft.Icons.CLOUD_OUTLINED, weather_text, 'Ajustar', [rain]),
+    ], border=ft.Border.all(1, theme.LIGHT_GRAY))
+    refresh_context()
+    refresh_battery()
 
     def collect_profile():
         meals = [helpers.build_meal(kind, enabled.value, start.value, length.value, flex.value)
@@ -176,13 +333,16 @@ async def build(app):
             'home_price_per_kwh': helpers.number(home_price.value, 'a tarifa em casa (R$/kWh)', 0, 10),
             'meals': meals,
         }
-        return {'vehicle': current_vehicle(), 'preferences': preferences}
+        chosen = picker.read(strict=True)
+        if chosen is None:
+            raise ApiError('Escolha o seu carro para planejar.')
+        return {'vehicle': chosen, 'preferences': preferences}
 
     async def locate():
         text = (region.value or '').strip()
         state['region'] = text
         if not text:
-            return None
+            return (saved_search['lat'], saved_search['lng']) if saved_search else None
         if state.get('region_cache', (None,))[0] == text:
             return state['region_cache'][1]
         found = geocode_demo_address(text, _demo_locations()) if demo else None
@@ -199,8 +359,12 @@ async def build(app):
     async def request_body():
         profile = collect_profile()
         level = helpers.number(soc.value, 'a bateria agora (%)', 0, 100)
-        state.update(soc=level, mode=mode.value, rain=bool(rain.value))
-        body = {'soc_percent': level, **profile, 'context': {'rain': bool(rain.value)}}
+        prefs.update(profile['preferences'])
+        if not state.get('mode_manual'):
+            # O turno pode ter mudado no formulário: o modo segue o horário.
+            mode.value = helpers.auto_mode(profile['preferences'], _now(app, demo))
+        state.update(soc=level, rain=bool(rain.value))
+        body = {'soc_percent': level, **profile, 'context': {'rain': True} if rain.value else {}}
         position = await locate()
         if position:
             body.update(lat=position[0], lng=position[1])
@@ -216,6 +380,10 @@ async def build(app):
             if error.status == 422:
                 raise
             # Sem rede: o perfil fica no aparelho e o plano usa os dados enviados.
+        # O carro agora está no perfil: some o seletor, fica o resumo.
+        car_title.value = helpers.vehicle_headline(profile['vehicle'])
+        car_note.value = 'Do seu perfil · usado em todos os planos'
+        picker_box.visible, swap.visible, swap.content.value = False, True, 'Trocar'
 
     results = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                         key=ft.ScrollKey(RESULTS_KEY))
@@ -233,20 +401,20 @@ async def build(app):
         await show()
 
     def reserve_action(connector_id):
-        async def reserve():
+        async def reserve_point():
             key = state.setdefault('reserve_keys', {}).setdefault(connector_id, app.api.new_key())
             await app.api.request('POST', 'reservations', {'connector_id': connector_id}, key=key)
             state['reserve_keys'].pop(connector_id, None)
             await app.go('reservations')
-        return app.action(reserve)
+        return app.action(reserve_point)
+
+    def result_controls():
+        return [*(next_stop_view(state['next'], app, reserve_action) if state.get('next') else []),
+                *(plan_view(state['plan'], app, reserve_action) if state.get('plan') else [])]
 
     async def show():
-        controls = []
-        if state.get('next'):
-            controls.extend(next_stop_view(state['next'], app, reserve_action))
-        if state.get('plan'):
-            controls.extend(plan_view(state['plan'], app, reserve_action))
-        results.controls = controls
+        refresh_context()
+        results.controls = result_controls()
         app.page.update()
         # The answer appears below the form: bring it into view instead of
         # leaving the user wondering whether the button worked.
@@ -256,25 +424,17 @@ async def build(app):
             pass  # Not mounted (tests) or no client: the results are still rendered.
 
     if state.get('plan') or state.get('next'):
-        results.controls = [*(next_stop_view(state['next'], app, reserve_action) if state.get('next') else []),
-                            *(plan_view(state['plan'], app, reserve_action) if state.get('plan') else [])]
+        results.controls = result_controls()
 
-    header = [
-        title('Modo motorista', 'Planeje recargas no seu turno de app: rode nos picos, carregue nas horas fracas.'),
-        ft.Row([pill('Estimativas'), pill('Sem dados oficiais da Uber/99')], wrap=True, spacing=6),
-    ]
-    car_card = card([
-        _heading('SEU CARRO'), _wide(model), vehicle_info, soc, vehicle_section,
-    ])
-    actions = card([
-        _heading('PLANEJAMENTO'), _wide(mode), region, rain,
+    actions = ft.Column([
         button('Planejar meu turno', app.action(plan_shift)),
         button('Próxima parada agora', app.action(next_stop), secondary=True),
-        _small('O plano considera consumo, autonomia, picos estimados de demanda, refeições, potência, tarifa '
-               'e ocupação dos postos.'),
-    ])
-    screen = ft.Column([*header, car_card, shift_section, actions, results], spacing=12, expand=True,
-                       scroll=ft.ScrollMode.AUTO, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        _small('Consideramos consumo, autonomia, picos estimados, refeições, potência, tarifa e ocupação dos postos.',
+               text_align=ft.TextAlign.CENTER),
+    ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    screen = ft.Column([hero(app), car_card, battery_card, context_card, shift_section, actions, results],
+                       spacing=12, expand=True, scroll=ft.ScrollMode.AUTO,
+                       horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     return screen
 
 

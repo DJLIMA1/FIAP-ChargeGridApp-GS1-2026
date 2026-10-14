@@ -470,7 +470,7 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Dados da demonstração', self.app.chat_messages[-1]['content'])
             await click(screen, 'Iniciar uma recarga')(None)
             self.assertIn('#F12345', self.app.chat_messages[-1]['content'])
-            self.assertIn('nenhum ESP32', self.app.chat_messages[-1]['content'])
+            self.assertIn('nenhum equipamento real', self.app.chat_messages[-1]['content'])
             await demo.close()
 
 

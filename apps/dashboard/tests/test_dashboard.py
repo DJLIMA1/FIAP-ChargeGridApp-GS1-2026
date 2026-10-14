@@ -147,7 +147,7 @@ class DemoDashboardTests(unittest.IsolatedAsyncioTestCase):
         content = await self.open('stations', station_id=station['id'])
         self.assertIn('Editar posto', content)  # formulário reaproveitado do app
         content = await self.open('stations', station_id=station['id'], connector_id=point['id'], connector=point)
-        self.assertIn('Salvar ponto', content)
+        self.assertIn('Salvar alterações', content)
         await self.dash.go('operator', claim=True)
         self.assertEqual(self.dash.state.section, 'stations')
 

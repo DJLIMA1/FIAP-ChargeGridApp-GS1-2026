@@ -114,7 +114,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = station
         screen = await onboarding.build(app,'station','point',step=3)
         self.assertIn('Offline simulado',texts(screen))
-        self.assertNotIn('O ESP32 ainda não está conectado',texts(screen))
+        self.assertNotIn('O equipamento ainda não está conectado',texts(screen))
         await click(screen,'Publicar ponto')(None)
         self.assertIn('Ponto simulado publicado',app.notices[-1])
         self.assertIn(DEMO_PRESENCE_CODE,app.notices[-1])
@@ -128,11 +128,10 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
             {'device_id':'demo-device','device_key':'DEMO-KEY-NOT-REAL'},
         ]
         screen = await operator.connector_form(app,'station',station_fixture()['connectors'][0])
-        self.assertIn('MANUTENÇÃO SIMULADA',texts(screen))
+        self.assertIn('Credencial e restauração simuladas',texts(screen))
         self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
-        self.assertNotIn('Configure-a no ESP32',texts(screen))
-        await click(screen,'Mostrar manutenção avançada')(None)
-        await click(screen,'Simular renovação de chave')(None)
+        self.assertNotIn('ESP32',texts(screen))
+        await click(screen,'Rotacionar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
         self.assertEqual(dialog.title.value,'Chave fictícia de demonstração')
         self.assertIn('Não a instale em um equipamento real',texts(dialog.content))
@@ -145,7 +144,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
             {'device_id':'demo-device','online':True},{'status':'not_requested'},{'status':'applied'},
         ]
         screen = await operator.connector_form(app,'station',station_fixture()['connectors'][0])
-        await click(screen,'Simular restauração')(None)
+        await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
         self.assertIn('Nenhum dispositivo físico ou Wi-Fi será alterado',dialog.content.value)
         await dialog.actions[1].on_click(None)

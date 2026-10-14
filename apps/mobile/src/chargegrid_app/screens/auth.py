@@ -4,16 +4,20 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..config import demo_enabled
+from ..preferences import PendingVehicleStore
+from ..services.driver_profile import save_vehicle
 from ..ui import motion, theme
 from ..ui.components import (
     BRAND_PROMISE,
     brand,
+    card,
     flat_button,
     labeled_field,
     mark_input,
     text_link,
     title,
 )
+from ..ui.vehicle import VehiclePicker
 
 
 def auth_button(text, action, *, secondary=False):
@@ -48,7 +52,7 @@ def back_link(app):
     )
 
 
-def account_selector(app, selection):
+def account_selector(app, selection, on_select=None):
     options = []
     semantics = []
 
@@ -64,6 +68,8 @@ def account_selector(app, selection):
                 option.content.weight = ft.FontWeight.BOLD if active else ft.FontWeight.NORMAL
                 option.style.bgcolor = theme.RED if active else theme.WHITE
                 accessible.selected = active
+            if on_select:
+                on_select(value)
             app.page.update()
         return changed
 
@@ -93,6 +99,22 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
     email.autocorrect = False
     password.autocorrect = False
     feedback = ft.Text('', size=13, color=theme.ERROR, visible=False)
+
+    async def submit_from_vehicle(event=None):
+        await app.action(submit)(event)
+
+    # Só motoristas: o carro escolhido aqui alimenta o Modo motorista e nunca é perguntado de novo.
+    picker = VehiclePicker(allow_later=True, label='Modelo (opcional)', on_change=lambda _: app.page.update(),
+                           on_submit=submit_from_vehicle)
+    vehicle_section = card([
+        ft.Text('Seu carro elétrico', size=14, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
+        ft.Text('Opcional. Usamos para estimar autonomia e planejar suas recargas.', size=12, color=theme.GRAY_TEXT),
+        picker.control,
+    ], border=ft.Border.all(1, theme.LIGHT_GRAY), visible=selection['value'] == 'consumer')
+
+    def selection_changed(value):
+        vehicle_section.visible = value == 'consumer'
+
     submit_button = None
     submitting = False
     errors = {}
@@ -173,6 +195,13 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         if validation_message:
             await show_invalid(invalid_field, validation_message)
             return
+        vehicle = None
+        if mode == 'register' and selection['value'] == 'consumer':
+            try:
+                vehicle = picker.read(strict=True)
+            except ApiError as exc:
+                show_feedback(str(exc))
+                return
 
         submitting = True
         show_feedback(
@@ -205,7 +234,17 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
                 if result.get('access_token') and result.get('refresh_token'):
                     app.api.session.update(result)
                     await app.signed_in()
-                elif result.get('requires_email_confirmation'):
+                    if vehicle:
+                        try:
+                            await save_vehicle(app.api, vehicle)
+                        except ApiError:
+                            # Never blocks the new account: retried on the next sign-in.
+                            PendingVehicleStore().save(address, vehicle)
+                    return
+                if vehicle:
+                    # Waits on this device until the first sign-in of this e-mail (after confirmation).
+                    PendingVehicleStore().save(address, vehicle)
+                if result.get('requires_email_confirmation'):
                     await app.go('auth', mode='verify', email_value=address)
                 else:
                     await app.go('auth', email_value=address)
@@ -280,11 +319,12 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         controls = [
             back_link(app),
             title('Criar conta', 'Escolha como você vai usar o ChargeGrid.'),
-            account_selector(app, selection),
+            account_selector(app, selection, on_select=selection_changed),
             ft.Text('Operadores vinculam seus equipamentos pelo QR fornecido com o ponto.', size=12, color=theme.GRAY_TEXT),
             name_field,
             email_field,
             password_field,
+            vehicle_section,
             submit_button,
             feedback,
         ]

@@ -222,8 +222,8 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
                   badge(connection, theme.GREEN if point.get('online') else theme.SLATE, width=116)]),
         ]
         if not point.get('online'):
-            controls.append(ft.Text('Este equipamento está offline na simulação. Nenhuma conexão com ESP32 físico é necessária.' if is_demo else
-                                    'O ESP32 ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
+            controls.append(ft.Text('Este equipamento está offline na simulação. Nenhum equipamento físico precisa estar conectado.' if is_demo else
+                                    'O equipamento ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
                                     size=13, color=theme.WARNING))
         if existing_station and not station.get('active'):
             controls.append(ft.Text('Este posto está desativado. Publicar o ponto mantém o posto desativado; '
