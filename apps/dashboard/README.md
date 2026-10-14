@@ -62,28 +62,81 @@ cd apps/dashboard && ../../.venv/bin/python -m pytest tests -q
 ../../.venv/bin/ruff check .
 ```
 
-## Publicar como site estático (não publicado)
+## Site estático (Vercel, sem servidor Python)
 
-`flet build web` gera um site estático (Python roda no navegador via Pyodide). Como o código é
-compartilhado com `apps/mobile/src`, monte um diretório de build com tudo lado a lado:
+`flet build web` gera um site estático: o Python roda **no navegador** (Pyodide 3.14, empacotado junto,
+sem CDN). Não há processo Python no servidor; a Vercel só serve arquivos e faz proxy da API.
+
+### Gerar o build
+
+Na raiz do repositório, com o venv do app (Flet 1.0 e Flutter 3.44.8 em cache):
 
 ```bash
-rm -rf /tmp/cg-dashboard-web && mkdir -p /tmp/cg-dashboard-web/src
-cp -R apps/dashboard/main.py apps/dashboard/pyproject.toml apps/dashboard/chargegrid_dashboard /tmp/cg-dashboard-web/
-cp -R apps/mobile/src/chargegrid_app apps/mobile/src/chargegrid_core /tmp/cg-dashboard-web/src/
-rm -f /tmp/cg-dashboard-web/src/chargegrid_app/services/demo_ai.py  # prévia de IA local, nunca publicar
-cp -R apps/mobile/assets /tmp/cg-dashboard-web/assets
-cd /tmp/cg-dashboard-web && flet build web --base-url /painel/ --route-url-strategy hash
-# saída em build/web → qualquer hospedagem estática (Vercel, GitHub Pages, S3)
+.venv/bin/python tools/build_dashboard_web.py
 ```
 
-Antes de publicar:
+O script (`tools/build_dashboard_web.py`):
 
-- Configure a URL pública da API (`CHARGEGRID_API_URL` não existe no navegador; use
-  `assets/app_config.json` com `{"api_url": "https://.../v1"}`, lido por `chargegrid_app.config`;
-  `tools/configure_mobile.py` gera esse arquivo para o app).
-- Inclua a origem do site em `CORS_ORIGINS` da API.
-- **Risco**: o `ApiClient` usa `httpx`, que no Pyodide precisa de transporte compatível com `fetch`.
-  Valide o build; se falhar, publique o dashboard como app Flet servido (`flet run --web`/contêiner
-  com `ft.run(..., view=None)`) — a forma usada e testada neste protótipo.
-- Nunca habilite `CHARGEGRID_ENABLE_DEMO` em produção nem empacote `.env`.
+1. monta `apps/dashboard/build/web-src` com `main.py`, `chargegrid_dashboard/`, `src/chargegrid_app`,
+   `src/chargegrid_core` e só os assets do painel (fontes Barlow, ícone, marca, `figma/`);
+   **remove `demo_ai.py`** (prévia de IA que fala com o OpenRouter), `.env*` e `app_config.json`;
+2. grava `dashboard_config.json` na raiz do pacote Python com `{"demo": true}` — só o build do dashboard
+   liga a conta demo; o APK do app continua com a demo desligada;
+3. roda `flet build web --base-url / --route-url-strategy hash --no-cdn` (≈ 40 s com cache);
+4. confere o `assets/app/app.zip`: falha se encontrar `demo_ai`, `.env`, `OPENROUTER_API_KEY`,
+   `sk-or-`, `DATABASE_URL=` ou se faltar `dashboard_config.json`;
+5. prepara **`apps/dashboard/build/vercel/`**: `vercel.json` (cópia de `apps/dashboard/vercel.json`) +
+   `public/` (o site, sem símbolos de depuração). Um vínculo `.vercel/` existente é preservado.
+
+Opções: `--no-demo` (sem o botão "Entrar na conta demo"), `--api-url https://.../v1` (API em outra
+origem; exige CORS), `--cdn` (Pyodide/CanvasKit de CDNs, site menor), `--stage-only`.
+
+### Publicar
+
+```bash
+cd apps/dashboard/build/vercel
+vercel --prod        # na primeira vez, crie/vincule um projeto próprio (ex.: chargegrid-painel)
+```
+
+O `vercel.json` não tem build (`buildCommand` vazio, `outputDirectory: public`) e:
+
+- reescreve **`/v1/*` → `https://chargegrid-api-preview-djlima1s-projects.vercel.app/v1/*`**: no navegador,
+  o `ApiClient` usa a mesma origem (`<window.location.origin>/v1`), então não há CORS;
+- devolve `index.html` para rotas desconhecidas (fallback SPA);
+- `Cache-Control: no-cache` (revalida por ETag) para `index.html`, `main.dart.js`, `flutter_bootstrap.js`,
+  `python*.js` e `assets/app/app.zip` (o código Python muda a cada deploy); 7 dias para `pyodide/`,
+  `canvaskit/`, `.wasm` e fontes (versões fixadas pelo `flet==1.0.0`).
+
+Para trocar a API, edite o `destination` do rewrite (ou gere com `--api-url`).
+
+### Como funciona no navegador
+
+- **HTTP**: `httpx` não abre sockets no Pyodide. Quando `sys.platform == "emscripten"`, o `ApiClient`
+  usa `chargegrid_app.web_transport.PyodideFetchTransport` (`pyodide.http.pyfetch`), com tempo-limite,
+  `redirect: "error"` (equivale a `follow_redirects=False`) e erros de rede viram as mesmas mensagens do app.
+  Exportação CSV/JSON (`download()`) usa o mesmo transporte e baixa o arquivo pelo navegador.
+- **URL da API**: `chargegrid_app.config.api_url()` no navegador usa `<origem>/v1`; `dashboard_config.json`
+  pode trazer `"api_url"` (relativa como `/v1` ou absoluta). Fora do navegador nada muda.
+- **Demo**: `demo_enabled()` é verdadeiro com `CHARGEGRID_ENABLE_DEMO=1` **ou** com `{"demo": true}` no
+  pacote do dashboard. Os insights IA da demo usam o exemplo local (sem chave no site); os da conta real
+  vão pela API (`POST /v1/ai/owner-insights`).
+- Tamanho: ≈ 56 MB no disco; a primeira visita baixa ≈ 32 MB (≈ 14 MB com compressão gzip/brotli).
+
+### Testar localmente como na Vercel
+
+```bash
+# só a demo (sem API)
+.venv/bin/python tools/serve_dashboard_web.py --port 8650
+# com a API local real (veja tools/live_contract_check): /v1 vai para o uvicorn local e
+# owner@live.test (qualquer senha) recebe o token local de teste, simulando o Supabase
+.venv/bin/python tools/serve_dashboard_web.py --port 8650 --api http://127.0.0.1:8651 \
+  --login-tokens /tmp/tokens.json
+```
+
+O servidor serve `apps/dashboard/build/vercel/public` com gzip e fallback SPA e só aceita API em localhost.
+
+Medido em Chrome headless, cache vazio, até a tela de login: ≈ 3,4 s local; ≈ 5,3 s em 50 Mbit/s;
+≈ 13 s em 12 Mbit/s (4G). Login demo, visão geral, postos, sessões, exportação CSV, cupons e insights
+funcionaram, assim como o fluxo pela API local real.
+
+Nunca publique `.env`, nem habilite a demo em builds do app.

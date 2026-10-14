@@ -289,3 +289,33 @@ class AuthScreenTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Recuperar senha', texts(dash.root))
             await dash.api.close()
 
+
+
+class PublishedBuildTests(unittest.IsolatedAsyncioTestCase):
+    """O site estático liga a demo pelo dashboard_config.json empacotado (sem variável de ambiente)."""
+
+    async def asyncTearDown(self):
+        from chargegrid_app import config
+        config.set_build_options()
+
+    async def run_main(self, config_text):
+        import tempfile
+        from pathlib import Path
+
+        from chargegrid_dashboard import app as dashboard_app
+        page = FakePage()
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'CHARGEGRID_ENABLE_DEMO': '0'}):
+            path = Path(folder) / 'dashboard_config.json'
+            if config_text is not None:
+                path.write_text(config_text)
+            with patch.object(dashboard_app, 'BUILD_CONFIG_FILE', path), \
+                    patch.object(dashboard_app, 'dashboard_preferences', MemoryPreferences), \
+                    patch.object(ft, 'SemanticsService', side_effect=RuntimeError):
+                await dashboard_app.main(page)
+                return texts(page.controls[0])
+
+    async def test_packaged_config_enables_public_demo(self):
+        self.assertIn('Entrar na conta demo', await self.run_main('{"demo": true}'))
+
+    async def test_without_packaged_config_demo_stays_off(self):
+        self.assertNotIn('Entrar na conta demo', await self.run_main(None))

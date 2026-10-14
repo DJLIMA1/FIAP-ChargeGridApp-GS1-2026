@@ -15,7 +15,7 @@ from pathlib import Path
 import flet as ft
 
 from chargegrid_app.api_client import ApiClient, ApiError
-from chargegrid_app.config import demo_enabled
+from chargegrid_app.config import demo_enabled, load_build_options
 from chargegrid_app.navigation import can_manage
 from chargegrid_app.preferences import Preferences
 from chargegrid_app.screens import auth
@@ -31,6 +31,9 @@ _PACKAGED_ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 # empacotado pode trazer uma cópia em apps/dashboard/assets.
 ASSETS_DIR = str(_PACKAGED_ASSETS if _PACKAGED_ASSETS.is_dir()
                  else Path(__file__).resolve().parents[2] / 'mobile' / 'assets')
+# Gerado só pelo build web publicado (tools/build_dashboard_web.py): {"demo": true}
+# libera a conta demo para a banca; "api_url" opcional (padrão: <origem>/v1).
+BUILD_CONFIG_FILE = Path(__file__).resolve().parents[1] / 'dashboard_config.json'
 logger = logging.getLogger('chargegrid_dashboard')
 ICONS = {
     'overview': (ft.Icons.DASHBOARD_OUTLINED, ft.Icons.DASHBOARD),
@@ -526,6 +529,7 @@ class DashboardApp:
 
 
 async def main(page: ft.Page):
+    load_build_options(BUILD_CONFIG_FILE)
     dashboard = DashboardApp(page)
     try:
         semantics = ft.SemanticsService()

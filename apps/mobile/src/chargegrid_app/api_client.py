@@ -4,9 +4,10 @@ from uuid import uuid4
 
 import httpx
 
-from .config import api_url, validate_api_url
+from .config import api_url, running_in_browser, validate_api_url
 from .owner_api import OwnerApiMixin
 from .session import Session
+from .web_transport import PyodideFetchTransport
 
 
 class ApiError(Exception):
@@ -21,6 +22,9 @@ class ApiClient(OwnerApiMixin):
 
     def __init__(self, base_url=None, transport=None):
         self.session = Session()
+        if transport is None and running_in_browser():
+            # Pyodide (flet build web) não abre sockets: usa o fetch do navegador.
+            transport = PyodideFetchTransport()
         self.http = httpx.AsyncClient(base_url=validate_api_url(base_url or api_url()) + '/', timeout=12, transport=transport, follow_redirects=False)
         self.refresh_lock = asyncio.Lock()
         self.operation_keys = {}
