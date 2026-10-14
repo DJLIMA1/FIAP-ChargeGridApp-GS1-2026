@@ -19,11 +19,11 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         render.start()
         self.addCleanup(render.stop)
 
-    async def test_sign_in_presents_the_three_differentials(self):
+    async def test_sign_in_stays_clean_without_differential_list(self):
         screen = await auth.build(FakeApp([]), mode='login')
         visible = ' '.join(str(value) for value in text_values(screen))
         for differential in ('Modo Motorista', 'Assistente com IA', 'Painel web'):
-            self.assertIn(differential, visible)
+            self.assertNotIn(differential, visible)
 
     async def test_home_greets_demo_role_and_offers_driver_mode_and_assistant(self):
         app = HomeApp()
