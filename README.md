@@ -10,7 +10,7 @@ Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, dashboard web,
 
 `Flet` · `FastAPI` · `PostgreSQL` · `ESP32-S3` · `LVGL` · `OpenRouter`
 
-[Diferenciais](#diferenciais-desta-versão) · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
+[Diferenciais](#diferenciais-desta-versão) · **[Dashboard online](https://chargegrid-painel.vercel.app)** · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
 
 </div>
 
@@ -44,7 +44,7 @@ Na experiência atual, o motorista compara pontos por conector, disponibilidade,
 | --- | --- | --- |
 | **Modo Motorista** | Para motoristas de app com carro elétrico: monta o turno decidindo quando, onde e quanto recarregar, evitando parar nos picos estimados de corridas e juntando a refeição com a recarga em postos com restaurante ou café. Mostra lucro líquido estimado, linha do tempo, bateria projetada e a "próxima parada agora", com reserva direto do plano. | Início → **Planejar meu turno** · [documentação](docs/modo-motorista.md) |
 | **Assistente com IA** | Chat que consulta postos, estimativas, reserva, recargas e o plano do turno por ferramentas **somente leitura**; sugere botões que abrem as telas normais (reservar continua exigindo confirmação). Também há **busca em linguagem natural** na aba Recarga e **resumo inteligente** de cada recarga no Histórico. | Aba **Chat** · [documentação](docs/ia-openrouter.md) |
-| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/dashboard`](apps/dashboard/README.md) |
+| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/dashboard`](apps/dashboard/README.md) · [online](https://chargegrid-painel.vercel.app) (entre na conta demo) |
 
 Sem a chave do OpenRouter, nada quebra: o chat responde com orientações locais, e a busca, o resumo e os insights usam regras determinísticas (`model = chargegrid-regras`). Demanda de corridas, consumo e custos são **estimativas**; não há dados oficiais da Uber/99.
 
