@@ -42,6 +42,8 @@ O APK 0.3.6 (build 20) está em `builds/chargegrid-0.3.6.apk` (SHA-256 `acf10489
 
 O APK 0.3.7 (build 21) está em `builds/chargegrid-0.3.7.apk` (SHA-256 `2ead67549d4365ef41fd277d6633ac4e11c9508c0228cd9c080fbbe94546bcc4`). A tela de início mostra `#F` fixo e recebe apenas os cinco números; o usuário não precisa informar o identificador interno do ponto. Esta versão requer a atualização correspondente da API para permitir o início direto somente pelo código temporário.
 
+O APK 0.4.0 (build 23) está em `builds/chargegrid-0.4.0.apk` (SHA-256 `943c1363388579d58d35630fafa1b5d703180ff9e237f04e38c0c5f44a8460e1`). Inclui Modo Motorista, assistente com IA (OpenRouter via API), busca em linguagem natural, resumo IA no histórico e as correções da auditoria de outubro de 2026. Usa o alias da API apontado para o deployment de 13/10/2026, com o banco migrado até `b8e4f2a6c913`.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
