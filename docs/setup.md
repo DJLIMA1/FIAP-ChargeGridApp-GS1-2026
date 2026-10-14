@@ -44,6 +44,8 @@ O APK 0.3.7 (build 21) está em `builds/chargegrid-0.3.7.apk` (SHA-256 `2ead6754
 
 O APK 0.4.0 (build 23) está em `builds/chargegrid-0.4.0.apk` (SHA-256 `943c1363388579d58d35630fafa1b5d703180ff9e237f04e38c0c5f44a8460e1`). Inclui Modo Motorista, assistente com IA (OpenRouter via API), busca em linguagem natural, resumo IA no histórico e as correções da auditoria de outubro de 2026. Usa o alias da API apontado para o deployment de 13/10/2026, com o banco migrado até `b8e4f2a6c913`.
 
+O APK 0.4.1 (build 24) está em `builds/chargegrid-0.4.1.apk` (SHA-256 `e7e2ab37c1d07f56942d30d492008b4e3008641a5f036fc9ada36c9f3a2550fc`). Traz o carro no cadastro e no perfil, o Modo Motorista redesenhado (só pergunta a bateria atual), a nova tela de edição do ponto e textos sem referência ao hardware. O `pyproject.toml` fixa `jni_flutter` 1.0.3 porque a 1.0.4 é incompatível com o `jni` 1.0.x usado pelos plugins do Flet.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:

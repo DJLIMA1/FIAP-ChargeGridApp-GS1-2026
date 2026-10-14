@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.4.0"
+version = "0.4.1"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,7 +22,7 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 23
+build_number = 24
 permissions = ["camera"]
 
 [tool.flet.dev_packages]
@@ -52,3 +52,7 @@ ignore = ["E701", "E702"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["chargegrid_app", "chargegrid_core", "test_behavior"]
+
+# jni_flutter 1.0.4 expects jni ^1.1.0 while the Flet plugins resolve jni 1.0.x.
+[tool.flet.flutter.pubspec.dependency_overrides]
+jni_flutter = "1.0.3"
