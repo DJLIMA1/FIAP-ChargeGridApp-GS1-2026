@@ -10,7 +10,7 @@ Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, dashboard web,
 
 `Flet` · `FastAPI` · `PostgreSQL` · `ESP32-S3` · `LVGL` · `OpenRouter`
 
-[Diferenciais](#diferenciais-desta-versão) · **[Dashboard online](https://chargegrid-painel.vercel.app)** · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
+[Diferenciais](#diferenciais-desta-versão) · **[Painel do vendedor online](https://chargegrid-painel.vercel.app)** · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
 
 </div>
 
@@ -27,7 +27,7 @@ Este `main` documenta a fundação integrada com app, API e painel físico. A br
 | Componente | Função | Código |
 | --- | --- | --- |
 | Aplicativo | Cadastro/login, busca de postos (também em linguagem natural), reserva, recarga em etapas, histórico com resumo inteligente, **Modo Motorista**, chat com **assistente de IA** e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
-| Dashboard web | Painel do proprietário: KPIs, gráficos, mapa de calor, alertas, postos/tarifas/comodidades, sessões e exportação CSV/JSON, cupons e **Insights IA**, reaproveitando os componentes do app | [`apps/dashboard/`](apps/dashboard/) |
+| Painel do vendedor (web) | Painel oficial em React, exclusivo para vendedores: KPIs, gráficos, mapa de calor, status ao vivo dos pontos, alertas, estações/tarifas/comodidades, sessões e exportação CSV/JSON, cupons e **Insights IA** | [`apps/owner-web/`](apps/owner-web/) (a versão Flet anterior segue em [`apps/dashboard/`](apps/dashboard/)) |
 | API | Autenticação, autorização, regras de reserva/recarga, comandos para dispositivos, Modo Motorista, indicadores do dono e rotas de IA | [`apps/api/`](apps/api/) |
 | Núcleo compartilhado | Regras puras usadas por app, dashboard e API: planejador do turno, indicadores, formatação pt-BR e o laço de IA com ferramentas somente leitura | [`packages/chargegrid_core/`](packages/chargegrid_core/) |
 | Banco | Perfis, postos, pontos, reservas, sessões, dispositivos, comandos e telemetria | [`apps/api/migrations/`](apps/api/migrations/) |
@@ -44,7 +44,7 @@ Na experiência atual, o motorista compara pontos por conector, disponibilidade,
 | --- | --- | --- |
 | **Modo Motorista** | Para motoristas de app com carro elétrico: monta o turno decidindo quando, onde e quanto recarregar, evitando parar nos picos estimados de corridas e juntando a refeição com a recarga em postos com restaurante ou café. Mostra lucro líquido estimado, linha do tempo, bateria projetada e a "próxima parada agora", com reserva direto do plano. | Início → **Planejar meu turno** · [documentação](docs/modo-motorista.md) |
 | **Assistente com IA** | Chat que consulta postos, estimativas, reserva, recargas e o plano do turno por ferramentas **somente leitura**; sugere botões que abrem as telas normais (reservar continua exigindo confirmação). Também há **busca em linguagem natural** na aba Recarga e **resumo inteligente** de cada recarga no Histórico. | Aba **Chat** · [documentação](docs/ia-openrouter.md) |
-| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/dashboard`](apps/dashboard/README.md) · [online](https://chargegrid-painel.vercel.app) (entre na conta demo) |
+| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/owner-web`](apps/owner-web/README.md) · [painel do vendedor online](https://chargegrid-painel.vercel.app) (entre com uma conta de vendedor) |
 
 Sem a chave do OpenRouter, nada quebra: o chat responde com orientações locais, e a busca, o resumo e os insights usam regras determinísticas (`model = chargegrid-regras`). Demanda de corridas, consumo e custos são **estimativas**; não há dados oficiais da Uber/99.
 
@@ -81,7 +81,7 @@ As capturas do app e do dashboard foram feitas em 13/10/2026 na **conta demo da 
 ```mermaid
 flowchart LR
     App[App Flet] -->|HTTPS + JWT| API[API FastAPI]
-    Dash[Dashboard web Flet] -->|HTTPS + JWT| API
+    Dash[Painel do vendedor React] -->|HTTPS + JWT| API
     ESP[ESP32 ou simulador] <-->|HTTPS + chave individual + ACK| API
     API -->|validação JWT| Auth[Supabase Auth]
     API <-->|transações SQL| DB[(PostgreSQL)]
@@ -149,7 +149,10 @@ pio run -d firmware/esp32 -e waveshare_panel_ui
 # App (abra http://127.0.0.1:8855 e toque em "Entrar na conta demo")
 PYTHONPATH=apps/mobile/src .venv/bin/python tools/preview_mobile_flows.py
 
-# Dashboard do proprietário (abra http://localhost:8610 e entre na conta demo)
+# Painel do vendedor em React com dados fictícios (abra http://localhost:5199/?mock_login=1)
+cd apps/owner-web && npm ci && npm run dev:mock
+
+# Prévia Flet anterior do dashboard (abra http://localhost:8610 e entre na conta demo)
 CHARGEGRID_ENABLE_DEMO=1 .venv/bin/flet run --web -p 8610 apps/dashboard/main.py
 ```
 
@@ -196,7 +199,7 @@ As escolhas, consequências e o **diagrama do circuito funcional da bancada** es
 | Firmware e painel | [README do firmware](firmware/esp32/README.md) · [Validação do painel](docs/waveshare-panel.md) |
 | Modo Motorista | [Planejamento do turno](docs/modo-motorista.md) |
 | IA (chat, busca, resumos, insights) | [IA com OpenRouter](docs/ia-openrouter.md) |
-| Dashboard do proprietário | [README do dashboard](apps/dashboard/README.md) |
+| Painel do vendedor | [README do painel React](apps/owner-web/README.md) · [prévia Flet anterior](apps/dashboard/README.md) |
 | Qualidade e segurança | [Auditoria de QA](docs/qa-auditoria-2026-10.md) · [Revisão de integração](docs/revisao-integracao-2026-10.md) |
 | Demonstração | [Roteiro de 5 minutos e demonstração integrada](docs/demo.md) |
 
