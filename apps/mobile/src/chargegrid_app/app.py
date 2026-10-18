@@ -330,7 +330,8 @@ class ChargeGridApp:
         authenticated = bool(self.api.session.access_token) and route != 'auth'
         if authenticated:
             nav = (design.bottom_nav(self, tab_entries(self.browsing_mode), active_tab(route, data, self.browsing_mode))
-                   if nav_visible(route, data) else ft.Container(height=0))
+                   if nav_visible(route, data) and getattr(self, 'hide_nav_for_route', None) != route
+                   else ft.Container(height=0))
             header = design.app_header(self)
             content = ft.SafeArea(ft.Column([
                 header, self.freshness,

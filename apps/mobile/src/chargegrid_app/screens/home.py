@@ -192,6 +192,7 @@ def _feature_rows(app):
 
 
 async def build(app, **_):
+    app.hide_nav_for_route = None
     demo = getattr(app.api, 'is_demo', False) is True
 
     async def snapshot():
@@ -305,6 +306,8 @@ async def build_vendor(app, empty=False, **_):
 
     profile, stations = await snapshot()
     app.profile = profile
+    # A referência esconde a barra inferior no estado vazio (primeira tela a configurar).
+    app.hide_nav_for_route = 'home' if empty or not stations else None
     if empty or not stations:  # ``empty``: simula vendedor sem estações (captura/teste)
         return _vendor_empty(app, demo)
 

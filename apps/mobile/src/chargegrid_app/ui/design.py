@@ -177,13 +177,13 @@ def progress_bar(total, current):
         ft.Row([ft.Container(height=3, expand=True, border_radius=2,
                              bgcolor=theme.BTN_PRIMARY if index < current else theme.SEGMENT_OFF)
                 for index in range(total)], spacing=6),
-        padding=ft.Padding(left=3, right=3, top=0, bottom=0))
+        padding=ft.Padding(left=0, right=0, top=0, bottom=0))
 
 
 def page_title(title, on_back=None, *, center=False, size=18, trailing=None):
     """Linha de título: ``<`` (se ``on_back``) + título em negrito."""
     chevron = ft.Container(
-        ft.Icon(ft.Icons.CHEVRON_LEFT, size=26, color=theme.TEXT_COLOR),
+        ft.Icon(ft.Icons.ARROW_BACK_IOS_NEW, size=round((14.7 if center else size) * (0.95 if size >= 21 else 0.72)), color=theme.TEXT_COLOR),
         on_click=on_back, width=34, height=34, ink=False, tooltip='Voltar',
         alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=-4, top=0, right=0, bottom=0)) if on_back else None
     heading = txt(title, 14.7 if center else size, 'regular' if center else 'bold', expand=True,
@@ -283,7 +283,7 @@ def radio_option(title, subtitle=None, *, selected=False, on_click=None, icon=No
                     selected=selected)
 
 
-def segmented(options, value, on_change=None, *, height=36, radius=4):
+def segmented(options, value, on_change=None, *, height=37.5, radius=4):
     """Alternância segmentada (Ativa/Inativa, Por tempo/Por valor). ``options``: ``[(valor, rótulo)]``."""
     def make(option):
         key, text = option
@@ -300,8 +300,8 @@ def segmented(options, value, on_change=None, *, height=36, radius=4):
             expand=True, height=height - 2, alignment=ft.Alignment(0, 0), on_click=click, ink=False,
             bgcolor=theme.BTN_PRIMARY if active else None, border_radius=max(radius - 1, 0))
     return ft.Container(ft.Row([make(option) for option in options], spacing=0), height=height, border_radius=radius,
-                        border=ft.Border.all(1, '#6B6B6B' if theme.is_dark() else theme.BORDER_SOFT),
-                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS, bgcolor=theme.INPUT_BG)
+                        border=ft.Border.all(1, '#414141' if theme.is_dark() else theme.BORDER_SOFT),
+                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS, bgcolor=None)
 
 
 def chip_option(text, *, selected=False, on_click=None, width=None):
@@ -326,6 +326,9 @@ def info_card(title, lines=(), *, icon=None):
 # ---------------------------------------------------------------- botões
 def _button(text, on_click, bg, fg, *, icon=None, height=48, expand=False, disabled=False, border=None,
             size=14.5, weight='semibold'):
+    if disabled and theme.is_dark() and bg == theme.BTN_PRIMARY:
+        # Referência: botão desabilitado é um bloco escuro com texto cinza, não um branco translúcido.
+        bg, fg = '#1C1C1C', '#7A7A7A'
     content = [txt(text, size, weight, fg, text_align=ft.TextAlign.CENTER)]
     if icon is not None:
         content.insert(0, ft.Icon(icon, size=22, color=fg))
@@ -333,7 +336,7 @@ def _button(text, on_click, bg, fg, *, icon=None, height=48, expand=False, disab
         ft.Row(content, spacing=10, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=bg, border_radius=RADIUS_BTN, padding=ft.Padding(left=16, right=16, top=0, bottom=0), height=height,
         alignment=ft.Alignment(0, 0), on_click=None if disabled else on_click, ink=not disabled, expand=expand,
-        opacity=0.45 if disabled else 1, border=border, animate_opacity=motion.duration(120), tooltip=None)
+        opacity=0.45 if disabled and bg != '#1C1C1C' else 1, border=border, animate_opacity=motion.duration(120), tooltip=None)
 
 
 def primary_button(text, on_click=None, *, icon=None, height=48, expand=False, disabled=False, size=14.5,
@@ -369,9 +372,11 @@ def warning_box(text, *, icon=ft.Icons.INFO_OUTLINE):
     """Caixa de aviso avermelhada com ícone de informação."""
     return ft.Container(
         ft.Row([ft.Icon(icon, size=22, color=theme.RED),
-                txt(text, 12, 'regular', theme.TEXT_COLOR if theme.is_dark() else theme.ERROR, expand=True)],
-               spacing=10.5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        bgcolor=theme.WARN_BG, border_radius=RADIUS_CARD, padding=ft.Padding(left=52, right=48, top=33, bottom=33))
+                txt(text, 12, 'regular', theme.TEXT_COLOR if theme.is_dark() else theme.ERROR, width=232)],
+               spacing=10.5, vertical_alignment=ft.CrossAxisAlignment.CENTER, tight=True,
+               alignment=ft.MainAxisAlignment.CENTER),
+        bgcolor=theme.WARN_BG, border_radius=RADIUS_CARD, padding=ft.Padding(left=24, right=24, top=33, bottom=33),
+        alignment=ft.Alignment(0, 0))
 
 
 def success_state(title, subtitle=None, *, icon=ft.Icons.CHECK, size=120):

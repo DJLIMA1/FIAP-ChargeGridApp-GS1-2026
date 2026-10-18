@@ -133,7 +133,7 @@ class DesignKitTests(unittest.TestCase):
     def test_buttons_follow_reference_colors(self):
         primary, secondary, danger = (design.primary_button('A'), design.secondary_button('B'), design.danger_button('C'))
         self.assertEqual((primary.bgcolor, secondary.bgcolor, danger.bgcolor),
-                         ('#FFFFFF', '#2B2B2B', '#D72B32'))
+                         ('#FFFFFF', '#252525', '#D72B32'))
         self.assertEqual(design.primary_button('A', disabled=True).on_click, None)
 
     def test_list_row_variants(self):
