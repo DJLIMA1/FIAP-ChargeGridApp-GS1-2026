@@ -43,6 +43,11 @@ ICONS = {
     'insights': (ft.Icons.AUTO_AWESOME_OUTLINED, ft.Icons.AUTO_AWESOME),
 }
 FONTS = {
+    'Inter': '/Inter-Regular.ttf',
+    'InterMedium': '/Inter-Medium.ttf',
+    'InterSemiBold': '/Inter-SemiBold.ttf',
+    'InterBold': '/Inter-Bold.ttf',
+    'BarlowCondensedMedium': '/BarlowCondensed-Medium.ttf',
     'Barlow': '/Barlow-Regular.ttf',
     'BarlowMedium': '/Barlow-Medium.ttf',
     'BarlowSemiBold': '/Barlow-SemiBold.ttf',

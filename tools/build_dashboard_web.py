@@ -35,6 +35,7 @@ CONFIG_NAME = "dashboard_config.json"
 ASSETS = (
     "Barlow-Regular.ttf", "Barlow-Medium.ttf", "Barlow-SemiBold.ttf",
     "BarlowCondensed-Bold.ttf", "BarlowCondensed-Medium.ttf", "BarlowCondensed-SemiBold.ttf",
+    "Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf",
     "icon.png", "brand_mark.svg", "figma",
 )
 # Prévia local de IA (fala direto com o OpenRouter) e arquivos locais nunca vão para o site.

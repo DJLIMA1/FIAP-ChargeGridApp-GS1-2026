@@ -219,7 +219,7 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(action.height)
         self.assertGreaterEqual(action.style.padding.top,14)
         self.assertEqual(action.content.size,16)
-        self.assertEqual(action.style.bgcolor,home.theme.RED)
+        self.assertEqual(action.style.bgcolor,home.theme.BTN_PRIMARY)
         with patch.object(section,'update'):
             await section.on_size_change(SimpleNamespace(width=320))
         self.assertIsNone(action.height)

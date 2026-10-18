@@ -2,18 +2,18 @@ import flet as ft
 
 from . import motion, theme
 
-# Inputs keep a white fill in both themes, so their outline colours are fixed
-# light-surface tokens (AA against white), not the theme-dependent accents.
-INPUT_FOCUS = '#205EA8'
+# Input outlines follow the active theme (dark reference: dark fill, grey
+# outline, white focus ring; light theme: white fill, AA outlines).
+INPUT_FOCUS = '#205EA8'  # kept for importers; the live value is theme.FOCUS
 INPUT_ERROR = '#B91C24'
 
 
 def input_border(color=None, *, underline=False, error=False):
     """Per-state input border (Flet 1.0 API replacing border_color & co.)."""
     rest = INPUT_ERROR if error else (color or theme.INPUT_BORDER)
-    focus = INPUT_ERROR if error else INPUT_FOCUS
+    focus = rest if error else (theme.FOCUS if not theme.is_dark() else '#FFFFFF')
     kind = ft.UnderlineInputBorder if underline else ft.OutlineInputBorder
-    options = {} if underline else {'border_radius': 8}
+    options = {} if underline else {'border_radius': 12}
     return {
         ft.ControlState.DEFAULT: kind(side=ft.BorderSide(1, rest), **options),
         ft.ControlState.FOCUSED: kind(side=ft.BorderSide(2, focus), **options),
@@ -37,11 +37,11 @@ def labeled_field(label, value="", hint="", password=False, on_change=None, on_b
     """Campo de texto com rótulo acima."""
     return ft.Column(
         [
-            ft.Text(label, size=14, color=theme.GRAY_TEXT),
+            ft.Text(label, size=14, color=theme.GRAY_TEXT, font_family='InterMedium'),
             ft.TextField(
                 value=value,
                 hint_text=hint,
-                hint_style=ft.TextStyle(color='#62666B'),
+                hint_style=ft.TextStyle(color=theme.GRAY_TEXT, font_family='Inter'),
                 password=password,
                 can_reveal_password=password,
                 # Intrinsic height follows system text scaling.
@@ -64,14 +64,14 @@ def labeled_field(label, value="", hint="", password=False, on_change=None, on_b
     )
 
 def card(content, height=None, padding=16, **kwargs):
-    """Cartão branco com cantos arredondados."""
+    """Cartão (superfície do tema; #1A1A1A no escuro) com cantos arredondados."""
     inner = ft.Column(content, spacing=6, tight=True) if isinstance(content, list) else content
     if isinstance(inner, ft.Column):
         inner.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     return ft.Container(
         content=inner,
-        bgcolor=theme.WHITE,
-        border_radius=12,
+        bgcolor=theme.CARD,
+        border_radius=16,
         padding=padding,
         height=height,
         **kwargs,
@@ -104,7 +104,7 @@ def disclosure_field(label, summary, controls, *, expanded=False, on_toggle=None
                    padding=14,border=ft.Border.all(1,theme.LIGHT_GRAY))
     return section,summary_text
 
-def flat_button(text, bg, fg='#FFFFFF', on_click=None, bold=True, height=48, radius=4, expand=None, border=None):
+def flat_button(text, bg, fg='#FFFFFF', on_click=None, bold=True, height=48, radius=12, expand=None, border=None):
     """Keyboard-accessible Material action that grows with wrapped/scaled text.
 
     ``height`` remains the requested baseline size; vertical padding provides
@@ -115,8 +115,7 @@ def flat_button(text, bg, fg='#FFFFFF', on_click=None, bold=True, height=48, rad
             text,
             color=fg,
             size=16,
-            font_family="BarlowSemiBold" if bold else "Barlow",
-            weight=ft.FontWeight.BOLD if bold else ft.FontWeight.NORMAL,
+            font_family="InterSemiBold" if bold else "Inter",
             text_align=ft.TextAlign.CENTER,
         ),
         style=ft.ButtonStyle(
@@ -184,7 +183,7 @@ def field(label, value="", password=False):
     # Filled Material labels stay inside the white input instead of crossing
     # the dark card edge, where an outlined floating label loses contrast.
     control.border = input_border(underline=True)
-    control.label_style = ft.TextStyle(color='#767676', size=14)
+    control.label_style = ft.TextStyle(color=theme.GRAY_TEXT, size=14)
     # Let Flutter allocate space for multi-line validation errors. A fixed
     # height clips error_text below the input on narrow phones.
     control.height = None
@@ -193,14 +192,15 @@ def field(label, value="", password=False):
 
 
 def title(text, subtitle=""):
-    controls = [ft.Text(text, size=24, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR,font_family="BarlowCondensed")]
+    controls = [ft.Text(text, size=22, color=theme.TEXT_COLOR, font_family="InterBold")]
     if subtitle:
         controls.append(ft.Text(subtitle, size=13, color=theme.GRAY_TEXT))
     return ft.Column(controls,spacing=2)
 
 
 def button(text, action, secondary=False):
-    return flat_button(text, theme.LIGHT_GRAY if secondary else theme.RED, fg=theme.TEXT_COLOR if secondary else "#FFFFFF", on_click=action)
+    return flat_button(text, theme.BTN_SECONDARY if secondary else theme.BTN_PRIMARY,
+                       fg=theme.BTN_SECONDARY_FG if secondary else theme.BTN_PRIMARY_FG, on_click=action)
 
 
 def text_link(text, action):

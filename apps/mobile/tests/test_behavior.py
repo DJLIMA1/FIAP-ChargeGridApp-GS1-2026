@@ -145,7 +145,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app.signed_in.assert_awaited_once_with()
 
     async def test_signed_in_vendor_can_onboard_without_manual_approval(self):
-        for approved, expected in [(False, 'operator'), (True, 'operator')]:
+        for approved, expected in [(False, 'home'), (True, 'home')]:
             app = SimpleNamespace(api=SimpleNamespace(request=AsyncMock(return_value={
                 'account_type': 'vendor', 'operator_enabled': approved})), go=AsyncMock(),
                 reset_account_ui=Mock(),reset_account_operations=Mock())
@@ -164,7 +164,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
             theme.set_dark(True)
             await asyncio.sleep(0)
             return theme.BG_COLOR
-        self.assertEqual(await asyncio.gather(light_user(), dark_user()), ['#F2F2F3', '#131313'])
+        self.assertEqual(await asyncio.gather(light_user(), dark_user()), ['#F2F2F3', '#1F1F1F'])
 
     async def test_charge_completed_poll_rebuilds_actions(self):
         app = HandlerApp()

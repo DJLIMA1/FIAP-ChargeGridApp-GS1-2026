@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -13,13 +15,15 @@ from .navigation import (
     can_manage,
     editable_controls,
     form_route,
+    nav_visible,
     parent_route,
+    screen_params,
     tab_entries,
 )
 from .preferences import Preferences
 from .services.driver_profile import apply_signup_vehicle
-from .ui import motion, theme
-from .ui.components import brand, button, title
+from .ui import design, motion, theme
+from .ui.components import button, title
 
 ASSETS_DIR = str(Path(__file__).resolve().parents[2] / 'assets')
 POLL_BACKOFF_MAX = 60
@@ -72,6 +76,11 @@ class ChargeGridApp:
         page.bgcolor = theme.BG_COLOR
         page.theme_mode = ft.ThemeMode.DARK if self.dark_mode else ft.ThemeMode.LIGHT
         page.fonts = {
+            'Inter': '/Inter-Regular.ttf',
+            'InterMedium': '/Inter-Medium.ttf',
+            'InterSemiBold': '/Inter-SemiBold.ttf',
+            'InterBold': '/Inter-Bold.ttf',
+            'BarlowCondensedMedium': '/BarlowCondensed-Medium.ttf',
             'Barlow': '/Barlow-Regular.ttf',
             'BarlowMedium': '/Barlow-Medium.ttf',
             'BarlowSemiBold': '/Barlow-SemiBold.ttf',
@@ -291,7 +300,7 @@ class ChargeGridApp:
         task = asyncio.current_task()
         self.tasks.add(task)
         try:
-            body = await SCREENS[route](self, **data)
+            body = await SCREENS[route](self, **screen_params(data))
         except ApiError as exc:
             if exc.status == 401 and not self.api.session.access_token and route != 'auth':
                 await self.go('auth')
@@ -316,55 +325,19 @@ class ChargeGridApp:
         self.page.theme_mode = ft.ThemeMode.DARK if theme.is_dark() else ft.ThemeMode.LIGHT
         # STANDARD density keeps 48 px touch targets on web/desktop builds too
         # (Flutter defaults those platforms to COMPACT, shrinking buttons by 8 px).
-        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Barlow',
+        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Inter',
                                    visual_density=ft.VisualDensity.STANDARD)
         authenticated = bool(self.api.session.access_token) and route != 'auth'
-        nav = []
         if authenticated:
-            entries = tab_entries(self.browsing_mode)
-            icons = {'home':'nav-home.svg','stations':'nav-stations-active.svg','operator':'nav-stations-active.svg',
-                     'coupons':'nav-coupons.svg','history':'nav-history.svg','profile':'nav-profile.svg'}
-            items = []
-            for name, label, parameters in entries:
-                active = name == active_tab(route, data, self.browsing_mode)
-                symbol = {
-                    'home': ft.Icons.HOME if active else ft.Icons.HOME_OUTLINED,
-                    'stations': ft.Icons.BOLT if active else ft.Icons.BOLT_OUTLINED,
-                    'profile': ft.Icons.PERSON if active else ft.Icons.PERSON_OUTLINED,
-                    'chat': ft.Icons.CHAT_BUBBLE if active else ft.Icons.CHAT_BUBBLE_OUTLINE,
-                }.get(name)
-                tab = ft.TextButton(content=ft.Column([
-                    (ft.Icon(symbol,size=24,color=theme.ACCENT if active else theme.GRAY_TEXT) if symbol else
-                     ft.Image(src='/figma/'+icons[name],width=22,height=22,fit=ft.BoxFit.CONTAIN,
-                              color=theme.ACCENT if active else theme.GRAY_TEXT,exclude_from_semantics=True)
-                     ),
-                    ft.Text(label,size=11,font_family='BarlowCondensedSemiBold',color=theme.ACCENT if active else theme.GRAY_TEXT,
-                            text_align=ft.TextAlign.CENTER),
-                ],horizontal_alignment=ft.CrossAxisAlignment.CENTER,alignment=ft.MainAxisAlignment.CENTER,spacing=4,tight=True),
-                    on_click=self.link(name, **parameters), tooltip=label,
-                    style=ft.ButtonStyle(padding=8, shape=ft.RoundedRectangleBorder(radius=8),
-                                         overlay_color=theme.LIGHT_GRAY,
-                                         side={ft.ControlState.FOCUSED:ft.BorderSide(2,theme.FOCUS)}))
-                items.append(ft.Semantics(content=tab, selected=active, expand=True))
-            nav = [ft.Container(ft.Row(items,spacing=0),padding=ft.Padding.symmetric(vertical=4),bgcolor=theme.NAV_BG)]
-
-        if authenticated:
-            back_button = [ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=theme.TEXT_COLOR,
-                                        tooltip='Voltar', on_click=self.back)] if parent_route(route, data, self.browsing_mode) else []
-            wordmark = brand(compact=True)
-            wordmark.expand = True
-            header = ft.Container(
-                ft.Row([
-                    ft.Row([*back_button,wordmark],spacing=5,expand=True),
-                    ft.TextButton('Sair',on_click=self.action(self.logout),
-                                  style=ft.ButtonStyle(color=theme.TEXT_COLOR,padding=8)),
-                ],alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                padding=ft.Padding(left=20,right=12,top=8,bottom=8),bgcolor=theme.BG_COLOR,
-            )
-            demo_notice = [ft.Container(ft.Text('DEMONSTRAÇÃO · dados e equipamentos simulados',size=11,
-                                                color=theme.TEXT_COLOR,text_align=ft.TextAlign.CENTER),
-                                       padding=ft.Padding(left=12,right=12,top=7,bottom=7),bgcolor=theme.LIGHT_GRAY)] if getattr(self.api,'is_demo',False) else []
-            content = ft.SafeArea(ft.Column([header,*demo_notice,self.freshness,ft.Container(body,padding=ft.Padding(left=20,right=20,top=22,bottom=22),expand=True),*nav],expand=True,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),expand=True)
+            nav = (design.bottom_nav(self, tab_entries(self.browsing_mode), active_tab(route, data, self.browsing_mode))
+                   if nav_visible(route, data) else ft.Container(height=0))
+            header = design.app_header(self)
+            content = ft.SafeArea(ft.Column([
+                header, self.freshness,
+                ft.Container(body, padding=ft.Padding(left=design.GUTTER, right=design.GUTTER, top=26, bottom=16),
+                             expand=True),
+                nav,
+            ], expand=True, spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH), expand=True)
         else:
             content = ft.SafeArea(
                 ft.Container(
@@ -504,7 +477,7 @@ class ChargeGridApp:
         self.profile = await self.api.request('GET','me')
         await apply_signup_vehicle(self.api, self.profile)
         self.browsing_mode = 'vendor' if can_manage(self.profile) and not getattr(self.api,'is_demo',False) else 'consumer'
-        destination = destination or ('operator' if self.browsing_mode == 'vendor' else 'home')
+        destination = destination or 'home'
         await self.go(destination)
 
     async def login(self, email, password):
@@ -553,7 +526,7 @@ class ChargeGridApp:
             return
         if await self.prepare_navigation():
             self.browsing_mode = mode
-            await self.go('operator' if mode == 'vendor' else 'home')
+            await self.go('home')
 
     async def logout(self):
         if not await self.prepare_navigation():
@@ -601,9 +574,67 @@ class ChargeGridApp:
         await self.go('auth')
 
 
+def _capture_params(raw):
+    """``{"step": "3", "x": "true"}`` -> typed values (ints/bools/JSON) for the screenshot harness."""
+    try:
+        values = json.loads(raw or '{}')
+    except ValueError:
+        return {}
+    result = {}
+    for key, value in (values if isinstance(values, dict) else {}).items():
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                pass
+        result[str(key)] = value
+    return result
+
+
+async def capture_boot(app):
+    """Screenshot harness hook (tools/screen_capture.py): demo account straight to a route.
+
+    Only active when ``CHARGEGRID_CAPTURE_ROUTE`` is set AND the demo is enabled.
+    ``CHARGEGRID_CAPTURE_MODE`` consumer|vendor, ``CHARGEGRID_CAPTURE_PARAMS`` JSON object,
+    ``CHARGEGRID_CAPTURE_THEME`` dark|light. A param value ``@first_station`` becomes the first
+    station id and ``@first_connector`` the first connector id of the demo account.
+    """
+    route = os.getenv('CHARGEGRID_CAPTURE_ROUTE')
+    if not route or not demo_enabled():
+        return False
+    from .demo import DEMO_EMAIL, DEMO_PASSWORD
+    await app.login(DEMO_EMAIL, DEMO_PASSWORD)
+    app.profile = await app.api.request('GET', 'me')
+    app.browsing_mode = 'vendor' if os.getenv('CHARGEGRID_CAPTURE_MODE') == 'vendor' else 'consumer'
+    app.dark_mode = os.getenv('CHARGEGRID_CAPTURE_THEME', 'dark') != 'light'
+    theme.set_dark(app.dark_mode)
+    params = _capture_params(os.getenv('CHARGEGRID_CAPTURE_PARAMS'))
+    if '@first_station' in params.values() or '@first_connector' in params.values():
+        stations = (await app.api.request('GET', 'operator/stations'))
+        stations = stations.get('stations', stations) if isinstance(stations, dict) else stations
+        station = (stations or [{}])[0]
+        connector = ((station.get('connectors') or [{}]) or [{}])[0]
+        params = {key: (station.get('id') if value == '@first_station' else
+                        connector.get('id') if value == '@first_connector' else value)
+                  for key, value in params.items()}
+    await app.go(route, **params)
+    return True
+
+
 async def main(page: ft.Page):
     if page.platform in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS):
         await page.set_allowed_device_orientations([ft.DeviceOrientation.PORTRAIT_UP])
     app = ChargeGridApp(page)
     await app.configure_motion()
-    await app.go('auth')
+    try:
+        booted = await capture_boot(app)
+    except Exception:  # harness only: show the error on screen instead of hanging on the splash
+        import traceback
+        detail = traceback.format_exc()
+        print(detail, flush=True)
+        page.controls.clear()
+        page.add(ft.SafeArea(ft.Text('Erro na captura:\n' + detail[-1800:], size=9, color='#FF6B6B', selectable=True)))
+        page.update()
+        return
+    if not booted:
+        await app.go('auth')

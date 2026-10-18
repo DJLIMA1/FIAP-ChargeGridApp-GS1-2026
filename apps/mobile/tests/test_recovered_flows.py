@@ -96,9 +96,9 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_vendor_tabs_have_scoped_history_and_coupons(self):
         entries = tab_entries('vendor')
+        self.assertEqual([label for _, label, _ in entries], ['Início', 'Estações', 'Histórico', 'Chat', 'Conta'])
         self.assertIn(('history', 'Histórico', {'manage': True}), entries)
-        self.assertIn(('coupons', 'Cupons', {'manage': True}), entries)
-        self.assertNotIn('home', [route for route, _, _ in entries])
+        self.assertEqual(entries[0][0], 'home')
         self.assertEqual(active_tab('charging', {}, 'consumer'), 'stations')
         self.assertEqual(active_tab('coupons', {}, 'vendor'), 'profile')
         self.assertIsNone(parent_route('operator', {}, 'vendor'))
@@ -155,7 +155,7 @@ class PollAndModeTests(unittest.IsolatedAsyncioTestCase):
         self.app.go.assert_not_called()
         self.app.prepare_navigation.return_value = True
         await self.app.switch_mode('vendor')
-        self.app.go.assert_awaited_once_with('operator')
+        self.app.go.assert_awaited_once_with('home')
         self.assertEqual(self.client.session.access_token, 'session')
         self.assertEqual(self.app.profile['account_type'], 'vendor')
         self.client.request.assert_not_called()

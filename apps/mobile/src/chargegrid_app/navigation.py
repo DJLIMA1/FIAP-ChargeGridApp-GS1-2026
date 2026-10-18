@@ -1,19 +1,53 @@
 from .screens import (
     auth,
+    booking,
     charging,
     chat,
     coupons,
+    design_gallery,
     driver,
     history,
     home,
+    notifications,
     operator,
+    payout,
     profile,
     reservations,
+    station_admin,
     stations,
+    tariffs,
+    wallet,
 )
 
-SCREENS = {module.__name__.split('.')[-1]: module.build for module in (auth,home,stations,reservations,charging,history,profile,operator,coupons,chat,driver)}
+
+async def home_entry(app, **data):
+    """``home`` serves both modes: vendors get ``home.build_vendor`` when it exists."""
+    if getattr(app, 'browsing_mode', 'consumer') == 'vendor':
+        vendor = getattr(home, 'build_vendor', None)
+        return await (vendor or operator.build)(app, **data)
+    return await home.build(app, **data)
+
+
+SCREENS = {module.__name__.split('.')[-1]: module.build for module in (
+    auth, home, stations, reservations, charging, history, profile, operator, coupons, chat, driver,
+    notifications, wallet, payout, booking, tariffs, station_admin, design_gallery)}
+SCREENS['home'] = home_entry
 TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
+# Routes that follow the wizard/back contract documented in ui/design.py.
+FLOW_ROUTES = ('booking', 'wallet', 'payout', 'tariffs', 'station_admin', 'notifications')
+
+
+def nav_visible(route, data):
+    """Bottom tab bar visibility: ``nav=False`` in the route params hides it (the reference hides it in
+    the vendor station/point registration wizard, i.e. ``operator`` with ``onboarding``/``claim``)."""
+    if 'nav' in data:
+        return bool(data['nav'])
+    return not (route == 'operator' and (data.get('onboarding') or data.get('claim')))
+
+
+def screen_params(data):
+    """Route params minus shell-only keys (``nav``) before calling ``build``."""
+    return {key: value for key, value in data.items() if key != 'nav'}
 
 
 def can_manage(profile):
@@ -22,16 +56,24 @@ def can_manage(profile):
 
 def tab_entries(mode):
     if mode == 'vendor':
-        return [('operator', 'Postos', {}), ('history', 'Histórico', {'manage': True}),
-                ('coupons', 'Cupons', {'manage': True}), ('chat', 'Chat', {}), ('profile', 'Conta', {})]
+        return [('home', 'Início', {}), ('operator', 'Estações', {}), ('history', 'Histórico', {'manage': True}),
+                ('chat', 'Chat', {}), ('profile', 'Conta', {})]
     return [(route, label, {}) for route, label in TABS]
 
 
 def active_tab(route, data, mode):
     if route == 'driver':
         return 'home'
-    if route in ('stations', 'reservations', 'charging'):
+    if route in ('stations', 'reservations', 'charging', 'booking'):
         return 'stations' if mode != 'vendor' else None
+    if route == 'wallet':
+        return 'profile'
+    if route == 'payout':
+        return 'home'
+    if route in ('tariffs', 'station_admin'):
+        return 'operator'
+    if route == 'notifications':
+        return None
     if route == 'profile' or (route == 'coupons' and not data.get('manage')):
         return 'profile'
     return route
@@ -43,6 +85,8 @@ def parent_route(route, data, mode='consumer'):
         return ('auth', {}) if data.get('mode', 'login') != 'login' else None
     if route == 'home':
         return None
+    if route in FLOW_ROUTES:
+        return _flow_parent(route, data, mode)
     if route == 'operator':
         if data.get('onboarding'):
             step = int(data.get('step', 1))
@@ -77,7 +121,37 @@ def parent_route(route, data, mode='consumer'):
         return 'stations', {key:value for key,value in data.items() if key != 'station_id'}
     if route in ('charging', 'reservations'):
         return 'stations', {}
-    return ('operator' if mode == 'vendor' else 'home'), {}
+    return 'home', {}
+
+
+def _flow_parent(route, data, mode):
+    """Back contract of the redesigned routes (see ui/design.py)."""
+    try:
+        step = int(data.get('step') or 1)
+    except (TypeError, ValueError):
+        step = 1
+    if step > 1 and route in ('booking', 'wallet', 'payout', 'tariffs'):
+        return route, {**data, 'step': step - 1}
+    origin = data.get('origin')
+    if origin and origin in SCREENS and origin != route:
+        return origin, {}
+    if route == 'notifications':
+        return 'home', {}
+    if route == 'booking':
+        sid = data.get('station_id')
+        return 'stations', {'station_id': sid} if sid else {}
+    if route == 'wallet':
+        return 'profile', {}
+    if route == 'payout':
+        return 'home', {}
+    if route == 'tariffs':
+        sid = data.get('station_id')
+        return ('station_admin', {'station_id': sid}) if sid else ('home', {})
+    # station_admin
+    sid = data.get('station_id')
+    if data.get('page') and sid:
+        return 'station_admin', {'station_id': sid}
+    return 'operator', {}
 
 
 def editable_controls(control):

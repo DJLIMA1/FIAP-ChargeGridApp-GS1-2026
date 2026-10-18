@@ -1,7 +1,7 @@
 """
 Paleta de cores e constantes visuais do ChargeGrid.
 
-Suporta os temas claro (padrão) e escuro. Como o resto do app importa as
+Suporta os temas escuro (padrão; é o design de referência) e claro. Como o resto do app importa as
 cores como `import theme` e acessa `theme.WHITE`, `theme.BG_COLOR` etc.,
 usamos um `__getattr__` de módulo (PEP 562): cada acesso a `theme.NOME`
 é resolvido dinamicamente contra a paleta ativa no momento, então
@@ -30,27 +30,66 @@ LIGHT = {
     "BLUE": "#205EA8",         # Sincronização em andamento
     "SLATE": "#58626F",        # Estado indisponível sem erro
     "WARNING": "#9A5300",      # Texto de aviso (AA sobre superfícies claras)
+    # --- tokens do design de referência (ver ui/design.py) ---
+    "CARD": "#FFFFFF",         # cartões / linhas de lista
+    "TILE": "#E7E8EA",         # quadrado de ícone secundário
+    "TILE_FG": "#1D1F20",
+    "ICON_TILE": "#1D1F20",    # quadrado de ícone "branco" da referência
+    "ICON_TILE_FG": "#FFFFFF",
+    "SEGMENT_OFF": "#D5D6D9",  # segmento inativo da barra de etapas
+    "BORDER": "#1D1F20",       # contorno do item selecionado
+    "BORDER_SOFT": "#D5D6D9",
+    "BTN_PRIMARY": "#1D1F20",  # botão primário (invertido em relação ao tema)
+    "BTN_PRIMARY_FG": "#FFFFFF",
+    "BTN_SECONDARY": "#E1E2E3",
+    "BTN_SECONDARY_FG": "#1D1F20",
+    "WARN_BG": "#FBE9EA",
+    "NAV_INACTIVE": "#6B6F75",
+    "NAV_ACTIVE": "#1D1F20",
+    "SUCCESS": "#2E7D32",
+    "ON_PRIMARY": "#FFFFFF",
 }
 
+# Tema escuro = o design de referência (amostrado dos PNGs):
+# fundo #1F1F1F, cartões/campos #1A1A1A, barra inferior #191919,
+# quadrado de ícone secundário #2B2B2B, segmento inativo #343434,
+# aviso #2D1D20, vermelho #D72B32, botão primário branco com texto preto.
 DARK = {
     "NAV_BG": "#191919",
-    "INPUT_BG": "#FFFFFF",
-    "INPUT_TEXT": "#1D1F20",
-    "INPUT_BORDER": "#6B6B6B",
-    "BG_COLOR": "#131313",
+    "INPUT_BG": "#1A1A1A",
+    "INPUT_TEXT": "#FFFFFF",
+    "INPUT_BORDER": "#3A3A3A",
+    "BG_COLOR": "#1F1F1F",
     "RED": "#D72B32",
     "ACCENT": "#FF858A",
     "FOCUS": "#9DC8FF",
     "ERROR": "#FF858A",
-    "WHITE": "#1F1F1F",
+    "WHITE": "#1A1A1A",        # superfície de cartão (nome histórico do token)
     "TEXT_COLOR": "#FFFFFF",
-    "GRAY_TEXT": "#ADB3BA",
-    "LIGHT_GRAY": "#2A2A2A",
+    "GRAY_TEXT": "#ADADAD",
+    "LIGHT_GRAY": "#2B2B2B",
     "GREEN": "#34C759",        # Indicadores de sucesso / disponibilidade
     "AMBER": "#9A5300",
     "BLUE": "#205EA8",
     "SLATE": "#58626F",
     "WARNING": "#F5B76B",      # Âmbar legível (AA) sobre superfícies escuras
+    "CARD": "#1A1A1A",
+    "TILE": "#2B2B2B",
+    "TILE_FG": "#FFFFFF",
+    "ICON_TILE": "#FFFFFF",
+    "ICON_TILE_FG": "#000000",
+    "SEGMENT_OFF": "#343434",
+    "BORDER": "#FFFFFF",
+    "BORDER_SOFT": "#3A3A3A",
+    "BTN_PRIMARY": "#FFFFFF",
+    "BTN_PRIMARY_FG": "#000000",
+    "BTN_SECONDARY": "#2B2B2B",
+    "BTN_SECONDARY_FG": "#FFFFFF",
+    "WARN_BG": "#2D1D20",
+    "NAV_INACTIVE": "#7F7F7F",
+    "NAV_ACTIVE": "#FFFFFF",
+    "SUCCESS": "#34C759",
+    "ON_PRIMARY": "#000000",
 }
 
 _dark_enabled = ContextVar('chargegrid_dark_mode', default=True)

@@ -64,7 +64,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(isolated.session.access_token)
             self.assertEqual(isolated._profile, {})
             await isolated.login(DEMO_EMAIL, DEMO_PASSWORD)
-            self.assertEqual((await isolated.request('GET', 'me'))['name'], 'Conta demonstração')
+            self.assertEqual((await isolated.request('GET', 'me'))['name'], 'João Pedro Sousa')
             await isolated.close()
 
     async def test_instances_and_response_snapshots_are_isolated(self):
@@ -76,7 +76,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
             snapshot['items'][0]['name'] = 'External mutation'
             self.assertEqual((await self.client.request('GET', f"stations/{self.station['id']}"))['name'], self.station['name'])
             await self.client.request('PATCH', 'me', {'name': 'Private local edit'})
-            self.assertEqual((await other.request('GET', 'me'))['name'], 'Conta demonstração')
+            self.assertEqual((await other.request('GET', 'me'))['name'], 'João Pedro Sousa')
             await self.client.request('POST', 'ownership/claim', {'token': DEMO_CLAIM_TOKEN})
             own = await self.client.request('GET', 'operator/stations')
             other_rows = await other.request('GET', 'operator/stations')

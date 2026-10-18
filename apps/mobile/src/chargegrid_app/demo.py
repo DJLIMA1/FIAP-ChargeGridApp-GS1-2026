@@ -128,8 +128,8 @@ class DemoApi(OwnerApiMixin):
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
-        self._profile = {'id': _USER, 'name': 'Conta demonstração', 'account_type': 'vendor',
-                         'operator_enabled': True, 'phone': None, 'vehicle_description': 'Veículo simulado',
+        self._profile = {'id': _USER, 'name': 'João Pedro Sousa', 'account_type': 'vendor',
+                         'operator_enabled': True, 'phone': '(11) 91234-5678', 'vehicle_description': 'Veículo simulado',
                          'created_at': self._iso()}
         for index, location in enumerate(DEMO_LOCATIONS):
             station = self._make_station(dict(location), active=index == 0)
