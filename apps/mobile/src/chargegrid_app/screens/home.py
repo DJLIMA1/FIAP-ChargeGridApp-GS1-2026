@@ -107,7 +107,7 @@ def _ring_scene(kind, content, height):
 
 
 def _car_scene():
-    return _ring_scene('car', ft.Container(design.car_image(width=265), left=39, top=0), 210)
+    return _ring_scene('car', ft.Container(design.car_image(width=265), left=39, top=4), 210)
 
 
 def _totem_scene():
@@ -139,19 +139,26 @@ def _area(address):
     return area(address)
 
 
-def _station_row(station, on_click, *, carded=True):
+def _station_row(station, on_click, *, carded=True, right=None, subtitle=None):
     """Linha de estação da referência: tile branco com pino, nome, endereço, preço e ">"."""
     texts = ft.Column([design.txt(station.get('name') or 'Estação', 14, 'semibold', max_lines=1,
                                   overflow=ft.TextOverflow.ELLIPSIS),
-                       design.txt(_area(station.get('address')), 11, 'regular', theme.GRAY_TEXT, max_lines=1,
-                                  overflow=ft.TextOverflow.ELLIPSIS)],
+                       design.txt(subtitle if subtitle is not None else _area(station.get('address')), 11, 'regular',
+                                  theme.GRAY_TEXT, max_lines=2 if subtitle and '\n' in subtitle else 1, overflow=ft.TextOverflow.ELLIPSIS)],
                       spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)
-    row = ft.Row([design.icon_tile(None, size=56), texts,
-                  design.txt(_row_price(station), 13, 'bold'),
-                  ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR)],
-                 spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    chevron = ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR)
+    price = right if right is not None else design.txt(_row_price(station), 13, 'bold')
     if carded:
-        return ft.Container(row, padding=ft.Padding(left=13, right=10, top=15, bottom=15), on_click=on_click,
+        tail = ft.Row([price, chevron], spacing=18.5,
+                      vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    else:
+        tail = ft.Row([price,
+                       ft.Container(chevron, margin=ft.Margin(left=0, top=0, right=-6, bottom=0))], spacing=6,
+                      vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    row = ft.Row([design.icon_tile(None, size=56), texts, tail],
+                 spacing=9.5, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    if carded:
+        return ft.Container(row, padding=ft.Padding(left=13, right=7, top=15, bottom=15), on_click=on_click,
                             ink=True, border_radius=design.RADIUS_CARD, bgcolor=theme.CARD)
     return ft.Container(row, padding=ft.Padding(left=0, right=0, top=0, bottom=0), on_click=on_click, ink=True,
                         border_radius=design.RADIUS_CARD)
@@ -203,7 +210,7 @@ async def build(app, **_):
     balance_card = design.card_box(
         ft.Row([
             ft.Column([design.txt('SALDO DISPONÍVEL', 11, 'regular', style=ft.TextStyle(letter_spacing=1.0)),
-                       balance_text], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                       balance_text], spacing=1, expand=True, alignment=ft.MainAxisAlignment.CENTER),
             _balance_tile(ft.Icons.RECEIPT_OUTLINED, app.link('wallet', page='statement'), 'Extrato'),
             _balance_tile(ft.Icons.ADD, app.link('wallet', page='add', step=1), 'Adicionar saldo'),
         ], spacing=13, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -252,12 +259,14 @@ async def build(app, **_):
                                         weight='bold')
 
     controls = [
-        _spaced(_greeting(app, demo), top=0),
-        _spaced(balance_card, top=-9),
-        _spaced(_car_scene(), top=27),
-        _spaced(design.txt('Perto de Você', 15, 'bold'), top=-8, bottom=-2),
+        _spaced(_greeting(app, demo), top=1.5),
+        _spaced(balance_card, top=-8.5),
+        _spaced(_car_scene(), top=27.5),
+        _spaced(design.txt('Perto de Você', 15, 'bold'), top=-8, bottom=-1),
         rows,
-        _spaced(find_button, top=-1),
+        _spaced(find_button, top=0),
+        # extras abaixo da dobra: o primeiro só aparece depois da navegação inferior
+        ft.Container(height=20),
         active_card,
         *_feature_rows(app),
     ]
@@ -285,7 +294,7 @@ async def build(app, **_):
     return ft.ListView(controls, spacing=16, expand=True, padding=0)
 
 
-async def build_vendor(app, **_):
+async def build_vendor(app, empty=False, **_):
     """Início do vendedor: saldo a receber, totem, "Suas estações" e atalho para o chat."""
     demo = getattr(app.api, 'is_demo', False) is True
 
@@ -296,14 +305,14 @@ async def build_vendor(app, **_):
 
     profile, stations = await snapshot()
     app.profile = profile
-    if not stations:
+    if empty or not stations:  # ``empty``: simula vendedor sem estações (captura/teste)
         return _vendor_empty(app, demo)
 
     payout = await _amount('payout', 'available', app)
     amount = design.num(_vendor_money(payout), 28)
     balance = ft.Container(
         ft.Row([ft.Column([design.txt('SALDO A RECEBER', 11, 'regular', style=ft.TextStyle(letter_spacing=1.0)),
-                           amount], spacing=2, expand=True),
+                           amount], spacing=0, expand=True),
                 ft.Container(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR),
                              margin=ft.Margin(left=0, top=0, right=8, bottom=0))],
                vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -316,15 +325,16 @@ async def build_vendor(app, **_):
                          exclude_from_semantics=True),
                 design.txt('Fale com o ChatBot', 15.6, 'regular', theme.BTN_PRIMARY_FG)],
                spacing=14, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        padding=ft.Padding(left=0, right=20, top=0, bottom=0),
         bgcolor=theme.BTN_PRIMARY, border_radius=design.RADIUS_BTN, height=39, on_click=app.link('chat'), ink=True,
         alignment=ft.Alignment(0, 0))
     controls = [
-        _spaced(_greeting(app, demo), top=0),
-        _spaced(balance, top=6),
+        _spaced(_greeting(app, demo), top=1.5),
+        _spaced(balance, top=7.5),
         _spaced(_totem_scene(), top=28),
         _spaced(design.txt('Suas estações', 15, 'bold'), top=-7, bottom=14),
         rows,
-        _spaced(chat, top=2),
+        _spaced(chat, top=14),
     ]
 
     async def update():
@@ -356,15 +366,15 @@ def _vendor_empty(app, demo):
                        11.5, 'bold', style=ft.TextStyle(height=1.8)),
             ft.Container(design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas '
                                     'quando você publicar.', 11.4, 'regular', style=ft.TextStyle(height=1.8)),
-                         margin=ft.Margin(left=0, top=9, right=0, bottom=0)),
-        ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        padding=ft.Padding(left=14, right=14, top=20, bottom=26))
+                         margin=ft.Margin(left=0, top=10, right=0, bottom=0)),
+        ], spacing=14, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        padding=ft.Padding(left=14, right=14, top=21.5, bottom=23))
     controls = [
         _spaced(_greeting(app, demo), top=0),
-        _spaced(_totem_scene(), top=6),
+        _spaced(_totem_scene(), top=9.5),
         _spaced(design.txt('Configure sua primeira tela', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
-                top=19, bottom=23),
+                top=17, bottom=23),
         card,
-        _spaced(design.primary_button('Escanear QR Code', scan, height=49, size=14.5, weight='regular'), top=-3),
+        _spaced(design.primary_button('Escanear QR Code', scan, height=49, size=14.5, weight='regular'), top=0),
     ]
     return ft.ListView(controls, spacing=16, expand=True, padding=0)

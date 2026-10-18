@@ -10,6 +10,7 @@ import flet as ft
 
 from ..services import tariffs as svc
 from ..ui import design, theme
+from .station_admin import heading
 
 PAGES = {
     'rotation': ('Tarifa de rotatividade', 'Cobre a ocupação prolongada da vaga\napós o tempo de tolerância.'),
@@ -17,6 +18,7 @@ PAGES = {
     'peak': ('Tarifa em horário de pico', 'Defina quando a energia tem\nmaior procura na sua região.'),
 }
 FIELD_GAP = 15
+SPACER = {'rotation': 16, 'demand': 20, 'peak': 8}  # a referência varia o respiro por tela
 
 
 async def _station(app, station_id):
@@ -47,9 +49,9 @@ def _per_kwh(value):
     return f'{svc.fmt_money(value)}/kWh'
 
 
-def _example_card(title, *controls):
-    return design.card_box(ft.Column([design.txt(title, 13, 'bold'), *controls], spacing=12),
-                           padding=ft.Padding(left=15, right=15, top=14, bottom=12), radius=18)
+def _example_card(title, *controls, spacing=12, padding=(14, 12)):
+    return design.card_box(ft.Column([design.txt(title, 13, 'bold'), *controls], spacing=spacing),
+                           padding=ft.Padding(left=15, right=15, top=padding[0], bottom=padding[1]), radius=18)
 
 
 def _description(text):
@@ -87,15 +89,15 @@ def overview(app, sid, base, rules):
         ft.Row([
             ft.Column([
                 design.txt('Tarifa base', 13.5, 'regular', theme.GRAY_TEXT),
-                ft.Row([design.txt(svc.fmt_money(base) if base is not None else '—', 26, 'bold'),
-                        ft.Container(design.txt('/ kWh', 13, 'regular', theme.GRAY_TEXT),
-                                     margin=ft.Margin(left=6, top=8, right=0, bottom=0))],
+                ft.Row([design.txt(svc.fmt_money(base) if base is not None else '—', 26, 'semibold'),
+                        ft.Container(design.txt('/ kWh', 11.5, 'regular', theme.GRAY_TEXT),
+                                     margin=ft.Margin(left=7, top=12, right=0, bottom=0))],
                        spacing=0, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ], spacing=2, expand=True),
+            ], spacing=9, expand=True),
             ft.Container(pill, width=70, height=27, border_radius=6, alignment=ft.Alignment(0, 0),
                          bgcolor='#3B8B5A' if active else '#4A4A4A'),
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.Padding(left=15, right=20, top=15, bottom=15), radius=18)
+        padding=ft.Padding(left=15, right=31, top=15, bottom=16), radius=18)
     def entry(title, key, icon):
         return ft.Container(
             ft.Row([design.icon_tile(icon, size=49, dark=True, icon_size=26), design.txt(title, 13, 'semibold', expand=True),
@@ -105,8 +107,8 @@ def overview(app, sid, base, rules):
     rows = [entry('Tarifa de rotatividade', 'rotation', ft.Icons.ACCESS_TIME),
             entry('Tarifa por demanda', 'demand', ft.Icons.TRENDING_UP),
             entry('Tarifa em horário de pico', 'peak', ft.Icons.WB_SUNNY_OUTLINED)]
-    return design.page(base_card, ft.Container(height=0), *rows, title='Tarifas dinâmicas', on_back=app.back, gap=17,
-                       title_size=22, gutter=0)
+    return design.page(heading(app, 'Tarifas dinâmicas'), ft.Container(base_card, margin=ft.Margin(left=0, top=10, right=0, bottom=17)),
+                       *rows, gap=17)
 
 
 def _back_to_list(app, sid):
@@ -124,7 +126,7 @@ def _form_page(app, sid, key, fields, example, enabled, collect):
 
     def draw_status():
         status_slot.content = design.segmented([(True, 'Ativa'), (False, 'Inativa')], state['enabled'], set_status,
-                                               height=37)
+                                               height=37.5)
         _refresh(status_slot)
 
     def set_status(value):
@@ -145,14 +147,18 @@ def _form_page(app, sid, key, fields, example, enabled, collect):
         app.notice('Regra salva.')
         await _back_to_list(app, sid)()
 
-    footer = [ft.Column([design.label('Status', strong=False), status_slot], spacing=2), message,
-              design.primary_button('Salvar regra', save, height=46, weight='bold')]
-    return design.page(_description(description), ft.Container(height=-2 if False else 0, margin=ft.Margin(left=0, top=-4, right=0, bottom=0)), *fields, example,
-                       title=title, on_back=_back_to_list(app, sid), footer=footer, gap=FIELD_GAP, title_size=22, gutter=4)
+    footer = [ft.Column([design.label('Status', strong=False), status_slot], spacing=4), message,
+              ft.Container(design.primary_button('Salvar regra', save, height=46, weight='bold'),
+                           margin=ft.Margin(left=0, top=4, right=0, bottom={'rotation': 3, 'demand': 4, 'peak': 5}.get(key, 3)))]
+    return design.page(heading(app, title, _back_to_list(app, sid)),
+                       ft.Container(_description(description), margin=ft.Margin(left=0, top=-6, right=0, bottom=0)),
+                       ft.Container(height=0, margin=ft.Margin(left=0, top=SPACER.get(key, 16), right=0, bottom=0)),
+                       *fields, example, footer=footer, gap=FIELD_GAP, gutter=4)
 
 
 def _field(label, value, example_update=None, **kw):
     box = design.labeled_input(label, value, **kw)
+    box.controls[0] = design.txt(label, 11, 'bold')
     box.spacing = 14
     field = box.controls[1]
     if example_update:
@@ -167,7 +173,8 @@ def rotation_page(app, sid, base, store, rules):
     amount_box, amount = _field('Valor adicional por intervalo', svc.fmt_money(rule['amount']))
     line1 = design.txt('', 12.5, 'regular', theme.GRAY_TEXT)
     line2 = design.txt('', 12.5, 'bold')
-    example = _example_card('Exemplo', line1, line2)
+    example = _example_card('Exemplo', line1, ft.Container(line2, margin=ft.Margin(left=0, top=4.5, right=0, bottom=0)),
+                            spacing=5, padding=(12, 16.5))
 
     def values():
         return (svc.parse_minutes(after.value), svc.parse_minutes(every.value), svc.parse_decimal(amount.value))
@@ -252,7 +259,7 @@ def peak_page(app, sid, base, store, rules):
         ft.Column([ft.Row([sun, design.txt('Dias selecionados', 13.5, 'regular', theme.GRAY_TEXT), ft.Container(expand=True),
                            calendar], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                    ft.Container(days_text, margin=ft.Margin(left=0, top=6, right=0, bottom=0))], spacing=10),
-        padding=ft.Padding(left=16, right=16, top=16, bottom=22), radius=18)
+        padding=ft.Padding(left=16, right=16, top=16, bottom=17), radius=18)
 
     def collect(enabled):
         begin, finish, value = svc.parse_time(start.value), svc.parse_time(end.value), svc.parse_decimal(extra.value)

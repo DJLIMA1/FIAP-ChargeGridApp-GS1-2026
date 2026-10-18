@@ -21,7 +21,7 @@ def notification_card(item):
     head = ft.Row([
         ft.Container(glyph, width=28, alignment=ft.Alignment(-1, -1)),
         ft.Column([design.txt(item['title'], 12.6, 'bold'),
-                   design.txt(item['subtitle'], 10.5, 'regular', theme.GRAY_TEXT)], spacing=4.5, expand=True),
+                   design.txt(item['subtitle'], 10.5, 'regular', theme.GRAY_TEXT)], spacing=6, expand=True),
     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
     return design.card_box(
         ft.Column([head, ft.Container(design.txt(item['detail'], 11.3, 'regular'),
@@ -33,7 +33,7 @@ async def build(app, **_):
     items = await service.collect(app)
     body = []
     for heading, group in service.grouped(items):
-        body.append(ft.Container(design.txt(heading, 14.5, 'bold'), margin=ft.Margin(left=0, top=12, right=0, bottom=0)))
+        body.append(ft.Container(design.txt(heading, 14.5, 'bold'), margin=ft.Margin(left=0, top=14, right=0, bottom=0)))
         body.extend(notification_card(item) for item in group)
     if not body:
         body.append(design.txt('Nenhuma notificação por enquanto.', 13, 'regular', theme.GRAY_TEXT))

@@ -242,13 +242,13 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             listing = next(c for c in descendants(app.scene.content) if isinstance(c, ft.ListView))
             for turn, label in enumerate(('Resumo da última recarga', 'Ajuda com limites', 'Reservar'), start=1):
                 with self.subTest(question=label):
-                    old_rows = list(listing.controls)
+                    old_rows = list(listing.controls[:-1])  # last control = suggestion chips
                     old_ids = [c._i for c in old_rows]
                     connection.messages.clear()
                     await click(app.scene.content, label)(None)
-                    self.assertEqual(len(listing.controls), 1 + turn * 2)
+                    self.assertEqual(len(listing.controls), 2 + turn * 2)
                     self.assertEqual([c._i for c in listing.controls[:len(old_rows)]], old_ids)
-                    self.assertTrue(all(a is b for a, b in zip(old_rows, listing.controls)))
+                    self.assertTrue(all(a is b for a, b in zip(old_rows, listing.controls[:-1])))
                     self.assertTrue(all(session.index.get(c._i) is c for c in listing.controls))
                     labels = list(wire_labels(connection.messages))
                     self.assertEqual(len(labels), 2)
@@ -311,7 +311,7 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(composer(second).value, '')
         self.app.api.is_demo = True
         demo = await chat.build(self.app)
-        self.assertIn('demonstrações', texts(demo))
+        self.assertIn('Oi! Sou o assistente da ChargeGrid', texts(demo))
         self.assertEqual(len(self.app.chat_messages), 1)
 
     async def test_last_session_reads_real_history_and_snapshot_price_without_paid_claims(self):

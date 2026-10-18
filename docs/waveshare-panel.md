@@ -96,7 +96,7 @@ A pedido do proprietário, a placa foi restaurada diretamente antes da correçã
 
 ## Redesign do totem (tema de referência)
 
-As telas seguem o design de referência do totem (2:1, escalado em 0,4 e centralizado na faixa de 400 px do painel 800 × 480): fundo escuro em degradê com marca e estado de conexão (ponto verde/âmbar) no topo, ou fundo vermelho/âmbar com a ilustração do carregador.
+As telas seguem o design de referência do totem (2:1; as posições verticais são esticadas em 1,2 para preencher os 800 × 480 do painel, sem faixas vazias): fundo escuro em degradê com marca e estado de conexão (ponto verde/âmbar) no topo, ou fundo vermelho/âmbar com a ilustração do carregador.
 
 | Estado do firmware | Tela |
 | --- | --- |
@@ -106,6 +106,6 @@ As telas seguem o design de referência do totem (2:1, escalado em 0,4 e central
 | Ponto com dono, online, mas desativado pelo responsável (`connectorActive=false`) | Âmbar **Estamos em manutenção** |
 | `reserved` / `charging` / `stopped` / preparação | Mesmo tema escuro: prazo no cartão de destaque, métricas + **Encerrar**, mensagem de despedida |
 
-Tela de configuração Wi-Fi (segurar o logo 5 s) usa o mesmo fundo; **Salvar e conectar** é o botão branco principal. O pool do LVGL subiu para 64 KB (`LV_MEM_SIZE` em `platformio.ini`; a UI usa ~47 KB). Títulos usam Montserrat SemiBold 32/40/52 (`src/panel_font_title_*.c`, subconjunto ASCII + acentos, gerado com `lv_font_conv --bpp 4 --no-compress`); o raio da ilustração é o bitmap alpha `src/panel_font_pump_bolt.c` (o nome casa com o glob de `tools/validate_firmware.py`). Cores de fundo/degradê usam valores exatos de RGB565 para não mudar de matiz entre as faixas.
+Tela de configuração Wi-Fi (segurar o logo 5 s) usa o mesmo fundo; **Salvar e conectar** é o botão branco principal. O pool do LVGL subiu para 64 KB (`LV_MEM_SIZE` em `platformio.ini`; a UI usa ~47 KB). A tipografia é Barlow Condensed (OFL, `include/panel_font_barlow_OFL.txt`; TTFs em `apps/mobile/assets/`), o rosto condensado do design: Bold para marca, títulos, código e números (`panel_font_brand_30/34`, `title_48`, `alert_68`, `code_72`) e Medium para o texto (`panel_font_body_14/17/19/22`, U+0020–U+00FF e U+2022; o 17 inclui o ● do DejaVu para campos de senha). Todas geradas com `lv_font_conv --bpp 4 --no-compress`; o raio da ilustração é o bitmap alpha `src/panel_font_pump_bolt.c` (o nome casa com o glob de `tools/validate_firmware.py`). Cores de fundo/degradê usam valores exatos de RGB565 para não mudar de matiz entre as faixas.
 
 Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `python firmware/esp32/preview/render.py --output tmp/panel-preview [--reference <pasta com 1.jpg..4.jpg>]` gera `totem-*.png` (800 × 480) e comparações com o design.

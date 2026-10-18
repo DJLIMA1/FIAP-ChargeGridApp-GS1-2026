@@ -58,12 +58,11 @@ def _state(app):
     if not hasattr(app, 'chat_draft'):
         app.chat_draft = ''
     if not app.chat_messages:
-        demo = ' Nesta conta, reservas, equipamentos e recargas são demonstrações.' if identity[1] else ''
         ai = (' Pergunte sobre postos, custos, reservas ou seus gastos, ou peça para planejar seu turno no '
               'Modo Motorista.') if getattr(app.api, 'ai_enabled', False) else ''
         app.chat_messages.append({
             'role': 'assistant',
-            'content': 'Olá! Posso orientar você nos próximos passos e consultar suas recargas e reservas.' + ai + demo,
+            'content': 'Oi! Sou o assistente da ChargeGrid. Posso ajudar com recarga, pagamento ou um resumo da sua conta.' + ai,
             'actions': [], 'intro': True,
         })
     return identity, app.chat_messages
@@ -293,23 +292,32 @@ def _typing_indicator():
                         content=ft.Row([bubble], spacing=0), visible=False)
 
 
-async def build(app, question='', topic=None):
+async def build(app, question='', topic=None, seed_demo=False, **_):
     identity, messages = _state(app)
+    if seed_demo and len(messages) == 1:  # capture/demo helper: the reference conversation
+        messages.append({'role': 'user', 'content': 'Quero um resumo da minha última recarga.', 'actions': []})
+        messages.append({'role': 'assistant', 'actions': [], 'content':
+                         'Última recarga: Marginal Pinheiros, 12 de agosto — 32,4 kWh por R$ 68,04, pago via Pix.'})
     ai_mode = bool(getattr(app.api, 'ai_enabled', False))
     # Flet follows content on the client after layout. An off-screen bubble's
     # size event cannot reliably tell Python when the list is ready to scroll.
     chat_list = ft.ListView(expand=True, auto_scroll=True, auto_scroll_animation=0,
                             build_controls_on_demand=False,
-                            spacing=12, padding=ft.Padding(top=4, bottom=12))
+                            spacing=10, padding=ft.Padding(top=6, bottom=12))
     composer = design.input_field(app.chat_draft, 'Digite sua mensagem')
-    composer.height = 51
+    composer.height = None
+    composer.dense = False
     composer.fill_color = theme.BG_COLOR
     composer.color = composer.cursor_color = theme.TEXT_COLOR
-    composer.text_style = ft.TextStyle(size=13.5, font_family=CHAT_FONT, color=theme.TEXT_COLOR)
-    composer.hint_style = ft.TextStyle(color=theme.TEXT_COLOR, size=13.5, font_family=CHAT_FONT)
-    composer.border = ft.OutlineInputBorder(side=ft.BorderSide(1, theme.TEXT_COLOR), border_radius=4)
+    composer.text_style = ft.TextStyle(size=13, font_family=CHAT_FONT, color=theme.TEXT_COLOR)
+    composer.hint_style = ft.TextStyle(color=theme.TEXT_COLOR, size=13, font_family=CHAT_FONT)
+    composer.border = ft.OutlineInputBorder(side=ft.BorderSide(0, ft.Colors.TRANSPARENT), border_radius=4)
+    composer.border_color = ft.Colors.TRANSPARENT
+    composer.focused_border_color = ft.Colors.TRANSPARENT
+    box = ft.Container(composer, height=51, expand=True, border=ft.Border.all(1, theme.TEXT_COLOR), border_radius=4,
+                       alignment=ft.Alignment(-1, 0))
     composer.border_radius = 4
-    composer.content_padding = ft.Padding(left=15, right=12, top=0, bottom=0)
+    composer.content_padding = ft.Padding(left=9.5, right=12, top=0, bottom=0)
     composer.counter = ''
     composer.max_length = MAX_QUESTION_LENGTH
     composer.expand = True
@@ -318,7 +326,7 @@ async def build(app, question='', topic=None):
     progress = ft.Text('Consultando os dados da sua conta…', color=theme.GRAY_TEXT, size=12, visible=False)
     typing = _typing_indicator()
     send_button = ft.IconButton(icon=ft.Icons.NEAR_ME_OUTLINED, icon_color='#FFFFFF', bgcolor=theme.RED,
-                               tooltip='Enviar mensagem', width=44, height=51, icon_size=19,
+                               tooltip='Enviar mensagem', width=44, height=51, icon_size=17,
                                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=4),
                                                     padding=ft.Padding(0, 0, 0, 0)))
 
@@ -330,11 +338,11 @@ async def build(app, question='', topic=None):
             return
         # Messages are immutable once added. Append new rows while preserving
         # the existing control IDs, accessible text and navigation actions.
-        for index in range(len(chat_list.controls), len(messages)):
+        for index in range(len(chat_list.controls) - 1, len(messages)):  # last control = suggestion chips
             message = messages[index]
             user = message['role'] == 'user'
-            content = [ft.Text(message['content'], color='#FFFFFF' if user else theme.TEXT_COLOR, size=13.5,
-                               font_family=CHAT_FONT, style=ft.TextStyle(height=1.2),
+            content = [ft.Text(message['content'], color='#FFFFFF' if user else theme.TEXT_COLOR, size=12.5,
+                               font_family=CHAT_FONT, style=ft.TextStyle(height=1.28),
                                semantics_label=('Você: ' if user else 'Assistente: ') + message['content'])]
             if message.get('note'):
                 content.append(ft.Text(message['note'], color=theme.GRAY_TEXT, size=11, italic=True, font_family=CHAT_FONT))
@@ -359,17 +367,18 @@ async def build(app, question='', topic=None):
             bubble = ft.Container(ft.Column(content, spacing=10, tight=True),
                                   bgcolor=theme.RED if user else ASSISTANT_BACKGROUND,
                                   border=ft.Border.all(1, '#8E1A1F' if user else BUBBLE_BORDER),
-                                  padding=ft.Padding(left=15, right=15, top=15, bottom=15) if not user else
+                                  padding=ft.Padding(left=15, right=15, top=12, bottom=12) if not user else
                                   ft.Padding(left=13, right=13, top=11, bottom=11),
                                   expand=7, expand_loose=True)
             spacer = ft.Container(expand=2 if not user else 1)
-            chat_list.controls.append(ft.Row([spacer, bubble] if user else [bubble, spacer], spacing=0,
-                                             vertical_alignment=ft.CrossAxisAlignment.START))
+            chat_list.controls.insert(index, ft.Row([spacer, bubble] if user else [bubble, spacer], spacing=0,
+                                                    vertical_alignment=ft.CrossAxisAlignment.START))
 
     def changed(event=None):
         if current():
             app.chat_draft = composer.value or ''
             composer.error_text = None
+            box.height = 51
 
     async def send(value=None, retry=False):
         if not current() or getattr(app, '_chat_pending', None) is not None:
@@ -378,10 +387,12 @@ async def build(app, question='', topic=None):
         text = (raw or '').strip()
         if not text:
             composer.error_text = 'Escreva uma pergunta antes de enviar.'
+            box.height = None
             app.page.update()
             return
         if len(text) > MAX_QUESTION_LENGTH:
             composer.error_text = f'Use até {MAX_QUESTION_LENGTH} caracteres por mensagem.'
+            box.height = None
             app.page.update()
             return
         original_draft = composer.value or ''
@@ -444,8 +455,10 @@ async def build(app, question='', topic=None):
     submit = app.action(send)
     composer.on_submit = send_button.on_click = submit
     vendor = getattr(app, 'browsing_mode', 'consumer') == 'vendor' or topic == 'vendor'
-    suggestions = (['Última recarga dos meus postos', 'Criar posto e vincular ponto', 'Tempo, valor e cupons'] if vendor else
-                   ['Resumo da última recarga', 'Iniciar uma recarga', 'Reservar', 'Ajuda com limites'])
+    suggestions = (['Resumo da última recarga', 'Ajuda com pagamento', 'Última recarga dos meus postos',
+                    'Criar posto e vincular ponto', 'Tempo, valor e cupons'] if vendor else
+                   ['Resumo da última recarga', 'Ajuda com pagamento', 'Iniciar uma recarga', 'Reservar',
+                    'Ajuda com limites'])
     if topic == 'reservations':
         suggestions = ['Minha reserva', 'Reservar', *suggestions[:2]]
     elif topic == 'charging':
@@ -460,7 +473,7 @@ async def build(app, question='', topic=None):
         elif topic == 'charging':
             suggestions = ['Como está minha recarga?', 'Resumo da última recarga', 'Parar ou resolver uma falha']
     chips = ft.Row([
-        ft.Container(ft.Text(label, size=11.5, color=theme.TEXT_COLOR, font_family='BarlowSemiBold'),
+        ft.Container(ft.Text(label, size=10.6, color=theme.TEXT_COLOR, font_family='BarlowSemiBold'),
                      padding=ft.Padding.symmetric(horizontal=8, vertical=8), ink=True,
                      on_click=app.action(lambda label=label: send(label)))
         for label in suggestions
@@ -472,8 +485,12 @@ async def build(app, question='', topic=None):
         started = any(message.get('role') == 'user' for message in messages)
         chips.wrap = not started
         chips.scroll = ft.ScrollMode.AUTO if started else None
+        # A conversa em andamento mostra só as duas primeiras sugestões (como na referência).
+        for index, chip in enumerate(chips.controls):
+            chip.visible = not (started and index >= 2)
 
     compact_chips()
+    chat_list.controls.append(ft.Container(chips, margin=ft.Margin(left=0, top=-8, right=0, bottom=0)))
     contextual = []
     if question:
         suggested = str(question).strip()
@@ -486,10 +503,10 @@ async def build(app, question='', topic=None):
     # unmounted conversation. All sends use the already-mounted interaction.
     draw()
     composer_row = ft.Container(
-        ft.Row([composer, send_button], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Row([box, send_button], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         margin=ft.Margin(left=-4, top=0, right=-4, bottom=0))
     return ft.Column([
-        chat_list, typing, *contextual, chips, progress,
+        chat_list, typing, *contextual, progress,
         *([ft.Text('IA com dados da sua conta. ' + AI_DISCLAIMER, size=10, color=theme.GRAY_TEXT, font_family=CHAT_FONT)] if ai_mode else []),
         ft.Container(composer_row, padding=ft.Padding(left=0, right=0, top=0, bottom=4)),
     ], expand=True, spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

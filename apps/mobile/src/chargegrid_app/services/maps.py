@@ -23,6 +23,11 @@ _TILE_CACHE_AGE = 7 * 24 * 60 * 60
 STATION_MAP_RATIO = 563 / 389
 # Reference redesign: the finder/detail map is a wide 362 x 158 card.
 WIDE_MAP_RATIO = 362 / 158
+DETAIL_MAP_RATIO = 357 / 158  # the detail frame is 5 pt wider on the right
+# The reference demo map is one tall raster with both stations (pin + callout) baked in;
+# each frame shows a different vertical window of it. Value = vertical Alignment of the cover crop.
+DEMO_CROPS = {'marginal': 1.46716, 'villa': 0.253828}  # top offset in frame heights (reference frames)
+_RASTER_FRAMES = 3.9357  # raster height / frame height in the reference
 VARIANT_PIN = {'list': '#039F25', 'detail': '#1D3355'}
 # The composed map travels to the client as a data URI on every render. JPEG
 # q85 is ~70 % smaller than the PNG (≈138 KB vs 461 KB for 720×497 tiles).
@@ -203,7 +208,7 @@ def _draw_station_pin(draw, x, y, radius=26, available=True, color=None):
 
 
 def _map_frame(backdrop, attribution, *, width=320, callout=None, on_layout=None, ratio=STATION_MAP_RATIO,
-               radius=18, callout_pos=(.455, .367, .295)):
+               radius=18, callout_pos=(.455, .367, .295), show_credit=True):
     """One responsive visual shell for every map, including explicit fallbacks."""
     height = width / ratio
     is_osm = 'OpenStreetMap' in attribution
@@ -215,7 +220,8 @@ def _map_frame(backdrop, attribution, *, width=320, callout=None, on_layout=None
     layers = [ft.Container(backdrop,left=0,right=0,top=0,bottom=0,alignment=ft.Alignment(0,0))]
     if callout is not None:
         layers.append(callout)
-    layers.append(credit)
+    if show_credit:
+        layers.append(credit)
     stack = ft.Stack(layers,height=height)
     frame = ft.Container(stack,height=height,bgcolor='#E9EDEF',border_radius=radius,
                          clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
@@ -247,7 +253,7 @@ def _map_frame(backdrop, attribution, *, width=320, callout=None, on_layout=None
     return frame
 
 
-async def station_map_widget(stations, on_select, *, offline=False, width=320, reference=None, variant=None):
+async def station_map_widget(stations, on_select, *, offline=False, width=320, reference=None, variant=None, crop=None):
     """Map with an honest selected-station callout, no inferred GPS/distance.
 
     ``variant`` 'list' (green pin, "Disponível" chip) or 'detail' (navy pin, "N vagas" chip)
@@ -256,7 +262,7 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
     import asyncio
 
     wide = variant in VARIANT_PIN
-    ratio = WIDE_MAP_RATIO if wide else STATION_MAP_RATIO
+    ratio = (DETAIL_MAP_RATIO if variant == 'detail' else WIDE_MAP_RATIO) if wide else STATION_MAP_RATIO
     height = width / ratio
 
     positioned = []
@@ -274,6 +280,26 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
                                         ft.Text(text,size=13,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER)],
                                        spacing=10,horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                             height=180,bgcolor=theme.WHITE,border_radius=12,padding=24,alignment=ft.Alignment(0,0))
+    if offline and crop in DEMO_CROPS and variant in VARIANT_PIN:
+        # Demo: the raster already carries the pin and callout, so show just the matching window.
+        keyword = 'marginal' if crop == 'marginal' else 'villa lobos'
+        station_id = next((item['id'] for item,_,_ in positioned if keyword in str(item.get('name','')).lower()),
+                          positioned[0][0]['id'])
+        raster = ft.Image(src='/design/map_villa_lobos.jpg',fit=ft.BoxFit.FILL,left=0,
+                          semantics_label='Mapa da demonstração com o posto selecionado.')
+        backdrop = ft.Stack([raster],width=width,height=height)
+
+        def place(map_width):
+            frame_height = map_width / ratio
+            raster.width = map_width
+            raster.height = frame_height * _RASTER_FRAMES
+            raster.top = -frame_height * DEMO_CROPS[crop]
+            backdrop.width = map_width
+        place(width)
+        frame = _map_frame(backdrop,'Demo',width=width,ratio=ratio,radius=16,show_credit=False,on_layout=place)
+        frame.on_click = on_select(station_id)
+        frame.ink = True
+        return frame
     selected,lat,lng = next((item for item in positioned if item[0]['free_points']),positioned[0])
     markers = [(item_lat,item_lng,'⚡' if item['free_points'] else '⛔') for item,item_lat,item_lng in positioned]
     if reference is not None:
@@ -313,14 +339,14 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
     status = f"{count} {'vaga' if count == 1 else 'vagas'}" if count else selected['status']
     if variant == 'list' and count:
         status = 'Disponível'
-    name_text = ft.Text(selected.get('name') or 'Posto sem nome',size=8.5 if wide else 11.5,weight=ft.FontWeight.BOLD,
+    name_text = ft.Text(selected.get('name') or 'Posto sem nome',size=9.3 if wide else 11.5,weight=ft.FontWeight.BOLD,
                         font_family='InterBold' if wide else 'BarlowSemiBold',color='#101828' if wide else '#1D2835',
                         max_lines=2,overflow=ft.TextOverflow.ELLIPSIS)
     if variant == 'list':
         chip_bg,chip_fg = ('#05A02B','#FFFFFF') if count else ('#E7EBEF','#58626F')
     else:
         chip_bg,chip_fg = ('#BAD4FB','#1E4FA3') if count else ('#E7EBEF','#58626F')
-    status_text = ft.Text(status,size=6.8 if wide else 11,weight=ft.FontWeight.BOLD if not wide else None,
+    status_text = ft.Text(status,size=7 if wide else 11,weight=ft.FontWeight.BOLD if not wide else None,
                           font_family='InterMedium' if wide else None,color=chip_fg if wide else ('#205EA8' if count else '#58626F'))
     badge = ft.Container(status_text,bgcolor=chip_bg if wide else ('#D5E6FF' if count else '#E7EBEF'),
                          border_radius=12,padding=ft.Padding.symmetric(horizontal=8,vertical=1 if wide else 2))
@@ -334,12 +360,12 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
         if price is not None:
             parts.append(f"{brl(price)}/kWh")
         if parts:
-            details.append(ft.Text(' - '.join(parts),size=7.4,font_family='Inter',color='#3F4654'))
+            details.append(ft.Text(' - '.join(parts),size=8.2,font_family='Inter',color='#3F4654'))
     elif price is not None:
         details.append(ft.Text(f"Desde {brl(price)}/kWh",size=11,color='#58626F'))
     selected_action = on_select(selected['id'])
     callout = ft.Container(ft.Semantics(
-                           content=ft.Column(details,spacing=5 if wide else 4,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                           content=ft.Column(details,spacing=3 if wide else 4,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                            container=True,button=True,label='Ver pontos em '+(selected.get('name') or 'posto'),
                            on_tap=selected_action),
                            bgcolor='#FFFFFF',border_radius=10 if wide else 12,padding=ft.Padding(left=8,right=6,top=9,bottom=9) if wide else 10,

@@ -49,12 +49,13 @@ def balance_card(app):
                            style=ft.TextStyle(letter_spacing=1.4)),
                    design.money_text(wallet.balance(app), 28)], spacing=1),
         bgcolor=theme.CARD, border_radius=design.RADIUS_CARD, padding=ft.Padding(left=16, right=16, top=15, bottom=13),
-        alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=0, top=-8, right=0, bottom=0))
+        alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=0, top=-9, right=0, bottom=0))
 
 
-def leave_button(app):
-    """Em Meu saldo "Sair" é voltar à Conta."""
-    return design.primary_button('Sair', app.link('profile'), height=48, expand=False)
+def leave_button(app, lower=0):
+    """Em Meu saldo "Sair" é voltar à Conta (``lower``: pt de ajuste fino da posição, referência varia por tela)."""
+    button = design.primary_button('Sair', app.link('profile'), height=48, expand=False)
+    return ft.Container(button, margin=ft.Margin(left=0, top=0, right=0, bottom=-lower)) if lower else button
 
 
 def _pix_tile(size=44):
@@ -64,23 +65,23 @@ def _pix_tile(size=44):
 def _menu_row(title, subtitle, icon, on_click):
     """Linha sem cartão da referência (tile escuro 40, subtítulo 9,6 para caber em uma linha)."""
     return ft.Container(
-        ft.Row([design.icon_tile(icon, size=40, dark=True, icon_size=22),
+        ft.Row([design.icon_tile(icon, size=34, dark=True, icon_size=20),
                 ft.Column([design.txt(title, 13.5, 'bold'), design.txt(subtitle, 9.6, 'regular', theme.GRAY_TEXT)],
                           spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER),
                 ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT)],
                spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.Padding(left=15, right=14, top=12, bottom=12), on_click=on_click, ink=True,
+        padding=ft.Padding(left=15, right=14, top=13, bottom=13), on_click=on_click, ink=True,
         border_radius=design.RADIUS_CARD)
 
 
 def home(app):
     return design.page(
         balance_card(app),
-        _menu_row('Extrato', 'Verificar transferências para seu Saldo ChargeGrid', ft.Icons.RECEIPT_LONG,
+        _menu_row('Extrato', 'Verificar transferências para seu Saldo ChargeGrid', ft.Icons.RECEIPT,
                  app.link('wallet', page='statement')),
-        _menu_row('Adicionar ao Saldo', 'Fazer transferência para seu Saldo ChargeGrid', ft.Icons.WALLET,
-                 app.link('wallet', page='add', step=1)),
-        title='Meu saldo', title_size=15, on_back=app.back, footer=leave_button(app))
+        ft.Container(_menu_row('Adicionar ao Saldo', 'Fazer transferência para seu Saldo ChargeGrid', ft.Icons.WALLET,
+                               app.link('wallet', page='add', step=1)), margin=ft.Margin(left=0, top=2.5, right=0, bottom=0)),
+        title='Meu saldo', title_size=15, on_back=app.back, footer=leave_button(app, 2))
 
 
 def statement(app):
@@ -99,7 +100,8 @@ def statement(app):
     if not rows:
         rows.append(design.txt('Nenhuma transferência ainda.', 12, 'regular', theme.GRAY_TEXT))
     return design.page(
-        balance_card(app), ft.Container(height=2), design.txt('Transferências', 15, 'bold'), *rows,
+        balance_card(app), ft.Container(height=2), design.txt('Transferências', 15, 'bold'),
+        ft.Container(ft.Column(rows, spacing=16), margin=ft.Margin(left=0, top=-1, right=0, bottom=0)),
         title='Extrato', title_size=15, on_back=app.back, footer=leave_button(app))
 
 
@@ -110,7 +112,7 @@ def add_amount(app, amount=None):
         hint_style=ft.TextStyle(color='#999999', size=14.5, font_family=design.FONT),
         text_style=ft.TextStyle(size=14.5, font_family=design.FONT, color='#1F1F1F'),
         border=ft.NoInputBorder(), height=62,
-        content_padding=ft.Padding(left=17, right=16, top=19, bottom=19))
+        content_padding=ft.Padding(left=17, right=16, top=22, bottom=16))
     box = ft.Container(field, bgcolor='#FFFFFF', border_radius=design.RADIUS_BTN + 2, height=62,
                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
     error = design.txt('', 11.5, 'regular', theme.RED, visible=False)
@@ -123,9 +125,10 @@ def add_amount(app, amount=None):
             return
         await app.go('wallet', page='add', step=2, amount=str(value))
     return design.page(
-        balance_card(app), ft.Container(height=2), design.txt('Escolher o valor', 15, 'bold'), box, error,
+        balance_card(app), ft.Container(height=2), design.txt('Escolher o valor', 15, 'bold'),
+        ft.Container(box, margin=ft.Margin(left=0, top=-1, right=0, bottom=0)), error,
         design.danger_button('Prosseguir para o pagamento', proceed, height=48),
-        title='Adicionar ao Saldo', title_size=15, on_back=app.back, footer=leave_button(app))
+        title='Adicionar ao Saldo', title_size=15, on_back=app.back, footer=leave_button(app, -4))
 
 
 def _wide(button, lower=12):
@@ -135,7 +138,7 @@ def _wide(button, lower=12):
 
 def method(app, amount, selected='pix'):
     holder = {'value': selected}
-    column = ft.Column(spacing=17)
+    column = ft.Column(spacing=16)
 
     def render():
         column.controls = [
@@ -152,8 +155,8 @@ def method(app, amount, selected='pix'):
     async def go_on(event):
         await app.go('wallet', page='add', step=3, amount=amount, method=holder['value'])
     return design.page(
-        ft.Container(column, margin=ft.Margin(left=0, top=-3, right=0, bottom=0)), title='Método de Pagamento', title_size=17.5, on_back=app.back, gutter=5,
-        footer=_wide(design.primary_button('Continuar', go_on, height=55, size=16, weight='bold')))
+        ft.Container(column, margin=ft.Margin(left=0, top=-8, right=0, bottom=0)), title='Método de Pagamento', title_size=17.5, on_back=app.back, gutter=5,
+        footer=_wide(design.primary_button('Continuar', go_on, height=55, size=16, weight='bold'), 14))
 
 
 def _method_card(title, icon, selected, on_click):
@@ -219,23 +222,24 @@ def _copy_button(on_click):
         bgcolor=theme.BTN_SECONDARY, border_radius=design.RADIUS_BTN, height=46, on_click=on_click, ink=True)
 
 
-def _secure_note():
-    return ft.Row([ft.Icon(ft.Icons.GPP_GOOD_OUTLINED, size=21, color=theme.SUCCESS),
-                   design.txt('Pagamento seguro e criptografado', 12, 'regular', theme.GRAY_TEXT)],
-                  spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+def _secure_note(spacing=12, shift=-3):
+    row = ft.Row([ft.Icon(ft.Icons.GPP_GOOD_OUTLINED, size=21, color=theme.SUCCESS),
+                  design.txt('Pagamento seguro e criptografado', 12, 'regular', theme.GRAY_TEXT)],
+                 spacing=spacing, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    return ft.Container(row, margin=ft.Margin(left=shift, top=0, right=0, bottom=0))
 
 
 def _card_field(label, hint, *, password=False, keyboard=None):
     """Campo de demonstração (rótulo + caixa escura arredondada). Nada digitado é lido, enviado ou guardado."""
     field = ft.TextField(
         hint_text=hint, password=password, can_reveal_password=False, keyboard_type=keyboard, filled=False,
-        color=theme.INPUT_TEXT, cursor_color=theme.INPUT_TEXT, border=ft.NoInputBorder(), height=45,
+        color=theme.INPUT_TEXT, cursor_color=theme.INPUT_TEXT, border=ft.NoInputBorder(), height=44,
         hint_style=ft.TextStyle(color=theme.GRAY_TEXT, size=12.1, font_family=design.FONT),
         text_style=ft.TextStyle(size=12.1, font_family=design.FONT, color=theme.INPUT_TEXT),
         content_padding=ft.Padding(left=13, right=13, top=13, bottom=13))
-    box = ft.Container(field, bgcolor=theme.INPUT_BG, border_radius=design.RADIUS_BTN + 2, height=45,
+    box = ft.Container(field, bgcolor=theme.INPUT_BG, border_radius=design.RADIUS_BTN + 2, height=44,
                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
-    return ft.Column([design.label(label), box], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    return ft.Column([design.label(label), box], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 
 def pay_card(app, amount):
@@ -249,24 +253,24 @@ def pay_card(app, amount):
     expiry = _card_field('Validade', 'MM/AA')
     cvv = _card_field('CVV', '•••', password=True, keyboard=ft.KeyboardType.NUMBER)
     return design.page(
-        ft.Container(height=0), number, name,
+        ft.Container(number, margin=ft.Margin(left=0, top=12, right=0, bottom=0)), name,
         ft.Row([ft.Column([expiry], expand=True), ft.Column([cvv], expand=True)], spacing=34),
-        title='Efetuar Pagamento', title_size=17.5, on_back=app.back, gap=14, gutter=4,
-        footer=[_secure_note(), _wide(design.primary_button('Efetuar Pagamento', pay, height=55, size=16, weight='bold'),
+        title='Efetuar Pagamento', title_size=17.5, on_back=app.back, gap=16, gutter=4,
+        footer=[_secure_note(7, -4), _wide(design.primary_button('Efetuar Pagamento', pay, height=55, size=16, weight='bold'),
                                       8)])
 
 
 def success(app):
     return design.page(
-        ft.Container(height=117),
+        ft.Container(height=120.5),
         design.txt('Valor adicionado ao Saldo!', 19, 'bold', text_align=ft.TextAlign.CENTER),
-        ft.Container(height=66),
+        ft.Container(height=67),
         ft.Row([ft.Container(ft.Icon(ft.Icons.CHECK_ROUNDED, size=130, color='#FFFFFF'), width=167, height=167,
                              border_radius=84, bgcolor='#3EBF80', alignment=ft.Alignment(0, 0))],
                alignment=ft.MainAxisAlignment.CENTER),
-        ft.Container(height=72),
-        ft.Column([design.secondary_button('Verificar Saldo', app.link('wallet'), height=46, size=13, weight='semibold'),
-                   design.primary_button('Voltar ao início', app.link('home'), height=46, size=13, weight='semibold')],
+        ft.Container(height=69),
+        ft.Column([design.secondary_button('Verificar Saldo', app.link('wallet'), height=46, size=12.7, weight='bold'),
+                   design.primary_button('Voltar ao início', app.link('home'), height=46, size=12.7, weight='bold')],
                   spacing=16, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
         title=None, gap=0, gutter=6)
 

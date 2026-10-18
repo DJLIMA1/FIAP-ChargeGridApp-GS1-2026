@@ -101,7 +101,7 @@ async def balance_text(app, vendor):
 def _row(title_text, subtitle, icon, on_click, trailing=None, chevron=True):
     return ft.Container(design.list_row(title_text, subtitle, on_click=on_click, icon=icon, tile=34, dark_tile=True,
                                         plain=True, trailing=trailing, chevron=chevron),
-                        padding=ft.Padding(left=5, right=5, top=7, bottom=7))
+                        padding=ft.Padding(left=5, right=5, top=7.5, bottom=7.5))
 
 
 async def build(app, mode=None, **_):
@@ -143,7 +143,7 @@ async def build(app, mode=None, **_):
         bgcolor=theme.INPUT_BG, border_radius=design.RADIUS_CARD, padding=ft.Padding(left=12, right=12, top=16, bottom=16))
 
     money_row = _row('Minha Carteira' if vendor else 'Meu saldo', await balance_text(app, vendor),
-                     ft.Icons.ACCOUNT_BALANCE_WALLET, app.link('payout' if vendor else 'wallet'))
+                     ft.Icons.CREDIT_CARD, app.link('payout' if vendor else 'wallet'))
     rows = [money_row,
             _row('Perfil', 'Editar informações do usuário', ft.Icons.EDIT, app.link('profile', mode='edit'))]
 
@@ -172,8 +172,10 @@ async def build(app, mode=None, **_):
                                 text_align=ft.TextAlign.CENTER))
     sair = design.primary_button('Sair', app.action(app.logout), height=48, size=15)
     # Na referência o botão do operador fica 10 pt mais baixo que o do motorista.
-    footer = [*notes, ft.Container(sair, margin=ft.Margin(left=0, top=0, right=0, bottom=-10 if vendor else 0))]
-    return design.page(identity, *rows, *extras, title='Conta', title_size=16, gap=14, footer=footer)
+    footer = [ft.Container(sair, margin=ft.Margin(left=0, top=0, right=0, bottom=-10 if vendor else 0))]
+    heading = ft.Container(design.page_title('Conta', size=15), margin=ft.Margin(left=0, top=3.5, right=0, bottom=1.5))
+    # Extras ficam abaixo da dobra: a primeira tela mostra só o conteúdo da referência.
+    return design.page(heading, identity, *rows, ft.Container(height=400), *extras, *notes, gap=14, footer=footer)
 
 
 def edit_form(app, profile, driver=None):
@@ -216,12 +218,13 @@ def edit_form(app, profile, driver=None):
         *[ft.Container(design.labeled(text, control, 14), padding=ft.Padding(left=0, right=8, top=0, bottom=0),
                        margin=ft.Margin(left=0, top=13 if text == 'Nome' else 0, right=0, bottom=0))
           for text, control in (('Nome', name), ('E-mail', mail), ('Telefone', phone), ('Chave Pix', pix))],
-        ft.Container(height=4),
+        ft.Container(height=420),  # carro e botão ficam abaixo da dobra; a referência mostra só os campos
         design.section_label('Meu carro'),
         design.txt('Usado para estimar autonomia e planejar recargas no Modo motorista.', 11, 'regular', theme.GRAY_TEXT),
         picker.control,
-        title='Perfil', on_back=getattr(app, 'back', None) or app.link('profile'), gap=16,
-        footer=design.primary_button('Salvar informações', app.action(save), height=48, size=16))
+        design.primary_button('Salvar informações', app.action(save), height=48, size=16),
+        ft.Container(height=8),
+        title='Perfil', on_back=getattr(app, 'back', None) or app.link('profile'), gap=16, title_size=22)
 
 
 def password_form(app):

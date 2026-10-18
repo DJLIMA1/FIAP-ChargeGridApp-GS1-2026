@@ -6,7 +6,7 @@ from ..services import payout as service
 from ..ui import design, theme
 from ..ui.components import money
 
-TOP = 14
+TOP = 16
 TITLE = 22.6
 AMBER = '#F5B73A'
 SUCCESS_DISC = '#143C29'
@@ -38,8 +38,8 @@ async def _load_revenue(app):
 def _balance_card(app):
     return design.card_box(ft.Column([
         design.txt('Saldo disponível para resgate', 11.5, 'regular', theme.GRAY_TEXT),
-        ft.Container(design.txt(money(service.available(app)), 33, 'bold'), margin=ft.Margin(0, 8, 0, 0)),
-    ], spacing=0), padding=ft.Padding(left=16, right=16, top=23, bottom=22), margin=ft.Margin(0, TOP, 0, 0))
+        ft.Container(design.txt(money(service.available(app)), 33, 'bold'), margin=ft.Margin(0, 11, 0, 0)),
+    ], spacing=0), padding=ft.Padding(left=16, right=16, top=22, bottom=19), margin=ft.Margin(3, TOP, 9, 0))
 
 
 def _movement_row(item):
@@ -52,11 +52,11 @@ def _movement_row(item):
         tile,
         ft.Column([design.txt(item['title'], 13, 'semibold'),
                    design.txt(item['subtitle'], 10, 'regular', theme.GRAY_TEXT)],
-                  spacing=3, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                  spacing=1.5, expand=True, alignment=ft.MainAxisAlignment.CENTER),
         design.txt(f'{sign} {money(abs(amount))}', 12, 'bold',
                    theme.SUCCESS if amount >= 0 and not theme.is_dark() else None),
     ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    return design.card_box(row, padding=ft.Padding(left=15, right=16, top=17, bottom=17))
+    return design.card_box(row, padding=ft.Padding(left=15, right=16, top=17, bottom=17), margin=ft.Margin(3, 0, 5, 0))
 
 
 def _row(title, subtitle, icon, on_click=None, trailing=None):
@@ -64,9 +64,9 @@ def _row(title, subtitle, icon, on_click=None, trailing=None):
                         border_radius=8, alignment=ft.Alignment(0, 0))
     right = trailing if trailing is not None else ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT)
     row = ft.Row([tile, ft.Column([design.txt(title, 13, 'semibold'), design.txt(subtitle, 10, 'regular', theme.GRAY_TEXT)],
-                                  spacing=3, expand=True, alignment=ft.MainAxisAlignment.CENTER), right],
+                                  spacing=1.5, expand=True, alignment=ft.MainAxisAlignment.CENTER), right],
                  spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    return design.card_box(row, padding=ft.Padding(left=15, right=16, top=17, bottom=17), on_click=on_click)
+    return design.card_box(row, padding=ft.Padding(left=15, right=16, top=17, bottom=17), on_click=on_click, margin=ft.Margin(3, 0, 5, 0))
 
 
 async def _wallet(app):
@@ -77,18 +77,19 @@ async def _wallet(app):
     can_redeem = service.available(app) > 0
     return design.page(
         _balance_card(app),
-        ft.Container(design.section_label('Movimentações'), margin=ft.Margin(0, 21, 0, -2)),
+        ft.Container(design.section_label('Movimentações'), margin=ft.Margin(3, 22, 0, -2)),
         *rows,
         title='Minha Carteira', on_back=app.back, gap=16, title_size=TITLE,
-        footer=design.primary_button('Resgatar saldo', app.link('payout', step=2), height=46, expand=True, size=13, weight='bold',
-                                     disabled=not can_redeem))
+        footer=ft.Container(design.primary_button('Resgatar saldo', app.link('payout', step=2), height=46, expand=True,
+                                                  size=13, weight='bold', disabled=not can_redeem),
+                            margin=ft.Margin(3, 0, 9, -11)))
 
 
 async def _choose(app):
     await _load_revenue(app)
     return design.page(
         _balance_card(app),
-        ft.Container(design.section_label('Escolha a modalidade'), margin=ft.Margin(0, 21, 0, -2)),
+        ft.Container(design.section_label('Escolha a modalidade'), margin=ft.Margin(3, 22, 0, -2)),
         _row('Receber agora', 'Antecipação com taxa de 2%', ft.Icons.BOLT_OUTLINED,
              app.link('payout', step=3, mode='now')),
         _row('Receber na sexta-feira', 'Sem taxa de antecipação', ft.Icons.CALENDAR_TODAY_OUTLINED,
@@ -122,22 +123,22 @@ async def _confirm(app, mode):
     demo = service.is_demo(app)
     card = design.card_box(ft.Column([
         _line('Valor bruto' if now else 'Saldo para resgate', money(values['gross'])),
-        ft.Container(height=3),
+        ft.Container(height=2),
         _line('Taxa de antecipação • 2%' if now else 'Taxa de antecipação',
               f"– {money(values['fee'])}" if now else money(values['fee'])),
-        ft.Container(height=12),
+        ft.Container(height=19),
         ft.Divider(height=1, thickness=1, color=theme.BORDER_SOFT),
-        ft.Container(height=10),
+        ft.Container(height=8.5),
         design.txt('Você recebe', 12.5, 'regular', theme.GRAY_TEXT),
-        design.txt(money(values['net']), 30, 'bold'),
-    ], spacing=7), padding=ft.Padding(left=15, right=15, top=21, bottom=19))
+        ft.Container(design.txt(money(values['net']), 30, 'bold'), margin=ft.Margin(0, 1.5, 0, 0)),
+    ], spacing=6), padding=ft.Padding(left=15, right=15, top=25, bottom=19))
     name = ft.Row([design.txt('Banco Inter - final 0378' if demo else 'Conta cadastrada', 13.5, 'semibold'),
                    *([ft.Icon(ft.Icons.CHECK, size=20, color=SUCCESS_CHECK)] if demo else [])], spacing=6)
     dest = design.card_box(ft.Row([
         ft.Column([name, design.txt('Conta cadastrada' if demo else 'Dados bancários do seu cadastro', 10.5, 'regular',
                                     theme.GRAY_TEXT)], spacing=12, expand=True),
         ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.GRAY_TEXT)], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.Padding(left=15, right=14, top=22, bottom=22))
+        padding=ft.Padding(left=15, right=14, top=17.5, bottom=20.5))
     disabled = values['gross'] <= 0
 
     async def confirm(event):
@@ -149,12 +150,12 @@ async def _confirm(app, mode):
         await app.go('payout', step=4, mode=mode)
 
     return design.page(
-        ft.Container(card, margin=ft.Margin(0, TOP, 0, 0)),
-        ft.Container(design.section_label('Conta de destino'), margin=ft.Margin(0, 24, 0, -4)),
-        dest,
+        ft.Container(card, margin=ft.Margin(5, TOP, 7, 0)),
+        ft.Container(design.section_label('Conta de destino'), margin=ft.Margin(5, 22.5, 0, -4)),
+        ft.Container(dest, margin=ft.Margin(5, 0, 7, 0)),
         ft.Container(design.primary_button('Confirmar resgate (com taxa)' if now else 'Confirmar resgate (sem taxa)',
                                            confirm, height=46, expand=True, disabled=disabled, size=13, weight='bold'),
-                     margin=ft.Margin(0, -4 if now else 12, 0, 0)),
+                     margin=ft.Margin(5, 0 if now else 25, 7, 0)),
         title='Resgate agora' if now else 'Receber na sexta-feira', on_back=app.back, gap=16, title_size=TITLE)
 
 
@@ -173,7 +174,7 @@ async def _result(app, params):
         info = last
     finished = info['status'] == 'Concluído'
     color = SUCCESS_CHECK if finished else AMBER
-    disc = ft.Container(ft.Icon(ft.Icons.CHECK, size=64, color=SUCCESS_CHECK), width=124, height=124, border_radius=62,
+    disc = ft.Container(ft.Icon(ft.Icons.CHECK, size=82, color=SUCCESS_CHECK), width=124, height=124, border_radius=62,
                         bgcolor=SUCCESS_DISC, alignment=ft.Alignment(0, 0))
     details = design.card_box(ft.Column([
         _detail_row('Destino', info['destination']),
@@ -183,7 +184,7 @@ async def _result(app, params):
     heading = design.txt('Resgate concluído' if finished else 'Solicitação registrada', TITLE, 'bold',
                          text_align=ft.TextAlign.CENTER)
     return design.page(
-        ft.Container(heading, margin=ft.Margin(0, 0, 0, 7)),
+        ft.Container(heading, margin=ft.Margin(0, 2, 22 if not finished else 0, 6)),
         ft.Column([disc, ft.Column([
             design.txt('Resgate Concluído' if finished else 'Solicitação recebida', 19, 'bold',
                        text_align=ft.TextAlign.CENTER),
@@ -191,10 +192,10 @@ async def _result(app, params):
                        11.5, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER)], spacing=15,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER)],
             spacing=17, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Container(details, margin=ft.Margin(3, 15, 3, 0)),
+        ft.Container(details, margin=ft.Margin(6, 15, 6, 0)),
         gap=24,
         footer=ft.Container(design.primary_button('Voltar à carteira', app.link('payout'), height=46, expand=True,
-                                                  size=13, weight='bold'), margin=ft.Margin(3, 0, 3, 0)))
+                                                  size=13, weight='bold'), margin=ft.Margin(6, 0, 6, -10)))
 
 
 async def build(app, **params):

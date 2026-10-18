@@ -54,12 +54,13 @@ def main():
         ppm.unlink()
     if args.reference:
         for index, name in NAMES.items():
-            ref = Image.open(args.reference / f"{index}.jpg").convert("RGB").resize((800, 400), Image.LANCZOS)
+            ref = Image.open(args.reference / f"{index}.jpg").convert("RGB").resize((800, 480), Image.LANCZOS)
             mine = Image.open(out / f"{name}.png").convert("RGB")
-            # The design is 2:1; the panel is 5:3, so the UI sits in a 400 px band (UI_Y = 40).
-            sheet = Image.new("RGB", (800, 400 + 480 + 12), (255, 255, 255))
+            # The design is 2:1; the panel is 5:3: the UI stretches its vertical positions by 1.2
+            # to fill 800x480, so the reference is shown stretched the same way.
+            sheet = Image.new("RGB", (800, 480 + 480 + 12), (255, 255, 255))
             sheet.paste(ref, (0, 0))
-            sheet.paste(mine, (0, 412))
+            sheet.paste(mine, (0, 492))
             sheet.save(out / f"compare-{index}.png")
     print(f"Frames: {out}")
 

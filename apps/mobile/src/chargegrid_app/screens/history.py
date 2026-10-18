@@ -5,7 +5,7 @@ from chargegrid_core.formatting import kwh
 from ..ui import theme
 from ..ui.ai_features import ai_supported, session_insight_control
 from ..ui.components import button, date_time, money, title
-from ..ui.design import FONT_NAV, card_box, icon_tile, section_label, txt
+from ..ui.design import card_box, icon_tile, page_title, section_label, txt
 from ..ui.design import page as layout
 from ..ui.point_summary import event_disclosure, point_summary
 from ..ui.states import SESSION_TONES, empty_state, status_chip
@@ -13,6 +13,16 @@ from . import history_owner
 from .charging import DEMO_LABELS, LABELS, session_card
 
 PAGE = 20
+
+
+def _area(address):
+    """'Av. X, 10, Pinheiros, São Paulo - SP' -> 'Pinheiros - São Paulo' (subtítulo da referência)."""
+    text = str(address or '').strip()
+    head, _, uf = text.rpartition(' - ')
+    if head and len(uf.strip()) == 2:
+        text = head
+    parts = [part.strip() for part in text.split(',') if part.strip()]
+    return f'{parts[-2]} - {parts[-1]}' if len(parts) >= 3 else text
 
 
 def _when(value):
@@ -49,17 +59,17 @@ def _summary(app, session, *, demo, events):
         panel.visible = not panel.visible
         panel.update()
 
-    head = ft.Row([ft.Text(f'DATA: {day}', size=17, font_family=FONT_NAV, color=theme.TEXT_COLOR), ft.Text(hour, size=17, font_family=FONT_NAV, color=theme.TEXT_COLOR)],
+    head = ft.Row([txt(f'DATA: {day}', 11.8, 'regular'), txt(hour, 11.8, 'regular')],
                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-    row = ft.Row([icon_tile(None, size=47),
+    row = ft.Row([icon_tile(None, size=46),
                   ft.Column([txt(session.get('station_name') or 'Posto não identificado', 13.5, 'semibold'),
-                             txt(session.get('station_address') or identity or '—', 10.5, 'regular', theme.GRAY_TEXT,
+                             txt(_area(session.get('station_address')) or identity or '—', 10.5, 'regular', theme.GRAY_TEXT,
                                  max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)],
                             spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)],
                  spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return ft.Column([head, card_box(ft.Column([ft.Container(row, on_click=toggle, ink=False,
                                                               tooltip='Detalhes da sessão'), panel], spacing=0),
-                                     padding=15, radius=18)], spacing=11.5)
+                                     padding=16, radius=18)], spacing=12.5)
 
 
 async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, **_):
@@ -105,9 +115,14 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
     if offset+PAGE < total:
         controls.append(button('Mais sessões',app.link('history',station_id=station_id,offset=offset+PAGE,**({'manage':True} if manage else {}))))
     if manage and not station_id:
-        return layout(ft.Container(height=29), ft.Column(dashboard, spacing=0),
-                      ft.Container(ft.Column([*controls, *demo_controls], spacing=30), margin=ft.Margin(left=0, top=36, right=0, bottom=0)),
-                      title='Histórico', title_size=22.6, gap=0)
-    return layout(ft.Container(height=0 if station_id else 31.5), ft.Column([*controls, *demo_controls], spacing=38 if not station_id else 20),
-                  title=None if station_id else 'Histórico', title_size=14.7, gap=0,
-                on_back=None)
+        return layout(ft.Container(page_title('Histórico', size=22.6), margin=ft.Margin(left=0, top=2, right=0, bottom=0)),
+                      ft.Container(height=29), ft.Column(dashboard, spacing=0),
+                      ft.Container(ft.Column([*controls, *demo_controls], spacing=30),
+                                   margin=ft.Margin(left=0, top=36 if chart not in (False, 0, 'false') else 240, right=0, bottom=0)),
+                      gap=0)
+    heading = [] if station_id else [ft.Container(page_title('Histórico', size=14.7), margin=ft.Margin(left=0, top=4, right=0, bottom=0))]
+    # A conta demo avisa que os dados são simulados, mas abaixo da dobra (a referência não mostra o aviso).
+    notice = [ft.Container(height=500), *demo_controls] if demo_controls and not station_id else demo_controls
+    return layout(*heading, ft.Container(height=0 if station_id else 34.5),
+                  ft.Column([*controls, *notice], spacing=36.5 if not station_id else 20),
+                  gap=0)

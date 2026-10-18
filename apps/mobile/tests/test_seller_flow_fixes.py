@@ -55,7 +55,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         await app.poll()
         self.assertEqual(app.api.request.await_args.args,('GET','devices/new-device/factory-reset'))
         self.assertIn('Restauração confirmada',texts(screen))
-        active = next(control for control in descendants(screen) if isinstance(control,ft.Switch))
+        active = next(control.data for control in descendants(screen) if type(getattr(control,'data',None)).__name__ == '_Toggle')
         self.assertFalse(active.value)
         self.assertTrue(active.disabled)
 
@@ -208,7 +208,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         latitude = fields(screen)['Latitude']
         latitude.value = 'não é número'
         with self.assertRaises(ApiError):
-            await click(screen,'Salvar posto')(None)
+            await click(screen,'Salvar alterações')(None)
         self.assertTrue(latitude.error_text)
         app.api.request.assert_not_awaited()
 

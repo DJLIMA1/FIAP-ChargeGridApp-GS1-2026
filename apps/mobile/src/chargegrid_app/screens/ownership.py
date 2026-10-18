@@ -3,7 +3,7 @@ import flet as ft
 from ..api_client import ApiError
 from ..services.ownership import claim_token
 from ..ui import design, theme
-from .setup_ui import cta, setup_field, status_card
+from .setup_ui import cta, setup_field, setup_title, status_card
 
 
 def _intro_card(destination, paragraphs):
@@ -21,8 +21,8 @@ def _intro_card(destination, paragraphs):
         margin=ft.Margin(left=0, top=-7, right=0, bottom=0))
 
 
-async def build(app, station_id=None, **_):
-    is_demo = bool(getattr(app.api,'is_demo',False))
+async def build(app, station_id=None, show_real=False, **_):
+    is_demo = bool(getattr(app.api,'is_demo',False)) and not show_real
     station = await app.api.request('GET',f'stations/{station_id}') if station_id else None
     credential_box = setup_field('Código privado do QR', hint='Código privado do QR', rest_bg='#313131',
                                  text_size=13.6)
@@ -132,6 +132,7 @@ async def build(app, station_id=None, **_):
             await claim()
 
         return design.page(
+            setup_title(app, 'Vincular Tela'),
             _intro_card(destination, [
                 'Adicione um equipamento simulado a esta conta de demonstração.',
                 'Depois informe nome, endereço e tarifa. ' + (
@@ -142,14 +143,15 @@ async def build(app, station_id=None, **_):
             design.txt('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma '
                        'recarga simulada.', 12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER),
             cta('Voltar', back, primary=False),
-            title='Vincular Tela', on_back=getattr(app, "back", None), center_title=True, gap=16)
+            gap=16)
     return design.page(
+        setup_title(app, 'Vincular Tela'),
         _intro_card(destination, [
-            'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
+            'A tela sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
             'Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.']),
         camera_button, preview, cancel_camera, hint,
         ft.Container(height=25),
         design.txt('Inserir o Código Privado do QR', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
         credential_box,
         cta('Vincular ponto à minha conta', app.action(claim)),
-        title='Vincular Tela', on_back=getattr(app, "back", None), center_title=True, gap=16)
+        gap=16)

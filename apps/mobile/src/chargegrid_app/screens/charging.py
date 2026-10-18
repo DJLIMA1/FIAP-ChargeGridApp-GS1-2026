@@ -218,8 +218,10 @@ def _review(draft):
     return d.card_box(ft.Column(controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=18)
 
 
-async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False, planning_intent=None, station_search=None, **_):
+async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False, planning_intent=None, station_search=None, demo_seed=None, **_):
     demo = getattr(app.api,'is_demo',False) is True
+    from .reservations import seed_demo
+    await seed_demo(app, demo_seed)
     draft = getattr(app,'charging_draft',None)
     if draft and draft.get('owner') != _owner(app):
         app.charging_draft = draft = None

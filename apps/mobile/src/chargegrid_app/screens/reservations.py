@@ -32,6 +32,20 @@ def when_text(value):
         return f'Horário: -- {DIVIDER} Data: --'
 
 
+def street_line(address):
+    """``Av. X, 123, Bairro, Cidade - UF`` -> ``Av. X, 123`` (a referência mostra só rua e número)."""
+    parts = [item.strip() for item in str(address or '').split(',')]
+    return ', '.join(parts[:2])
+
+
+def area_line(address):
+    """``Av. X, 123, Pinheiros, São Paulo - SP`` -> ``Pinheiros - São Paulo``; ``None`` se não der para derivar."""
+    parts = [item.strip() for item in str(address or '').split(',')]
+    if len(parts) < 4:
+        return None
+    return f"{parts[2]} - {parts[3].split(' - ')[0].strip()}"
+
+
 def maps_url(address):
     return 'https://www.google.com/maps/dir/?api=1&destination=' + quote(str(address or ''))
 
@@ -51,15 +65,19 @@ def _stage(percent, live=None):
     red = '#D72B32'
     arcs = cv.Canvas([
         # brilho sob o carro (meia elipse preenchida)
-        cv.Arc(55, 100, 245, 70, 0, 3.14159, True, ft.Paint(color=ft.Colors.with_opacity(0.22, red),
-                                                          style=ft.PaintingStyle.FILL)),
+        cv.Arc(55, 100, 245, 70, 0, 3.14159, True, ft.Paint(
+            style=ft.PaintingStyle.FILL,
+            gradient=ft.PaintLinearGradient((0, 135), (0, 170), [ft.Colors.with_opacity(0.0, red),
+                                                                 ft.Colors.with_opacity(0.30, red)]))),
+        cv.Arc(55, 100, 245, 70, 0, 3.14159, False, ft.Paint(color=ft.Colors.with_opacity(0.16, red), stroke_width=7,
+                                                           style=ft.PaintingStyle.STROKE)),
         cv.Arc(55, 100, 245, 70, 0, 3.14159, False, ft.Paint(color=red, stroke_width=2.4,
                                                            style=ft.PaintingStyle.STROKE)),
         cv.Arc(1, 76, 360, 123, 0, 3.14159, False, ft.Paint(color=ft.Colors.with_opacity(0.78, red),
                                                            stroke_width=2.4, style=ft.PaintingStyle.STROKE)),
     ], width=362, height=200)
     car = ft.Container(d.car_image(width=236), left=58.5, top=19)
-    stage = ft.Stack([arcs, car], width=362, height=200)
+    stage = ft.Container(ft.Stack([arcs, car], width=362, height=200), margin=ft.Margin(0, 0, 0, -3.5))
     shown = d.txt(percent, 25, 'semibold', text_align=ft.TextAlign.CENTER)
     if live is not None:
         live['percent'] = shown
@@ -79,14 +97,25 @@ def _value_row(name, value, live=None, key=None):
                         padding=ft.Padding(left=16, right=16, top=0, bottom=0))
 
 
+def _route_icon(size=19):
+    """Ícone "rota" da referência (dois pontos ligados por uma curva), desenhado em canvas."""
+    line = ft.Paint(color=theme.TEXT_COLOR, stroke_width=2, style=ft.PaintingStyle.STROKE,
+                    stroke_cap=ft.StrokeCap.ROUND)
+    k = size / 24
+    path = cv.Path([cv.Path.MoveTo(8.2 * k, 6.2 * k), cv.Path.CubicTo(15.5 * k, 5.5 * k, 15.5 * k, 9.5 * k, 11.5 * k, 11.5 * k),
+                    cv.Path.CubicTo(7.5 * k, 13.5 * k, 8 * k, 18.5 * k, 16.4 * k, 18.4 * k)], paint=line)
+    return cv.Canvas([cv.Circle(5 * k, 5.5 * k, 2.4 * k, line), cv.Circle(19 * k, 18.5 * k, 2.4 * k, line), path],
+                     width=size, height=size)
+
+
 def _maps_row(app, address):
     async def open_maps(event=None):
         launcher = ft.UrlLauncher()
         await launcher.launch_url(maps_url(address))
     return ft.Container(
-        ft.Row([ft.Icon(ft.Icons.ROUTE, size=22, color=theme.TEXT_COLOR),
+        ft.Row([_route_icon(),
                 d.txt('Abrir rota no Google Maps', 12.7, 'semibold', expand=True),
-                ft.Icon(ft.Icons.OPEN_IN_NEW, size=20, color=theme.GRAY_TEXT)], spacing=14,
+                ft.Icon(ft.Icons.OPEN_IN_NEW, size=20, color=theme.GRAY_TEXT)], spacing=12,
                vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor='#272727', border_radius=d.RADIUS_BTN, height=43, padding=ft.Padding(left=17, right=13, top=0, bottom=0),
         margin=ft.Margin(6, 0, 6, 0), on_click=open_maps, ink=True,
@@ -98,7 +127,7 @@ def recharge_detail(app, title, *, when, address, percent, cost, power, remainin
     """Layout de "Recarga Agendada" / "Recarga em andamento" (estacao_16.1 / 16.2)."""
     head = ft.Column([d.page_title(title, on_back, size=17.6),
                       ft.Container(d.txt(when, 14.3, 'regular'), padding=ft.Padding(6, 0, 0, 0)),
-                      ft.Container(d.txt(address or '', 14.3, 'regular'), padding=ft.Padding(7, 0, 0, 5))],
+                      ft.Container(d.txt(street_line(address), 14.3, 'regular'), padding=ft.Padding(7, 0, 0, 5))],
                      spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     left = d.txt(remaining, 11.6, 'bold')
     if live is not None:
@@ -109,36 +138,62 @@ def recharge_detail(app, title, *, when, address, percent, cost, power, remainin
     notes = [d.txt(status, 11, 'regular', theme.GRAY_TEXT)] if status else []
     rows = ft.Column([_value_row('Custo estimado', cost, live, 'cost'), _value_row('Potência atual', power, live, 'power')],
                      spacing=16.5)
-    body = [head, *_stage(percent, live), ft.Container(height=4), rows, ft.Container(height=14),
+    body = [head, *_stage(percent, live), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
             track, _maps_row(app, address),
             ft.Container(action, margin=ft.Margin(6, 0, 6, 0)),
             *[ft.Container(item, margin=ft.Margin(6, 0, 6, 0)) for item in secondary],
             *notes, *extra]
-    return ft.Column(body, spacing=14, scroll=ft.ScrollMode.AUTO, expand=True,
+    return ft.Column(body, spacing=16.5, scroll=ft.ScrollMode.AUTO, expand=True,
                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 
 def station_tile_row(name, subtitle, on_click):
     return ft.Row([d.icon_tile(None, size=46),
-                   ft.Column([d.txt(name, 12.2, 'semibold'), d.txt(subtitle, 10, 'regular', theme.GRAY_TEXT)],
+                   ft.Column([d.txt(name, 13.6, 'semibold'), d.txt(subtitle, 10.2, 'regular', theme.GRAY_TEXT)],
                              spacing=3, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                   ft.Container(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR),
-                                alignment=ft.Alignment(0, -1), margin=ft.Margin(0, 0, -4, 0))],
+                   ft.Container(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR), height=46,
+                                alignment=ft.Alignment(0, -1), margin=ft.Margin(0, -8, -4, 0))],
                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 def _recharge_card(when, address, name, subtitle, on_click):
     return ft.Container(
-        ft.Column([d.txt(when, 10.7, 'regular'), d.txt(address or '', 10.7, 'regular'),
-                   ft.Container(station_tile_row(name, subtitle, on_click), margin=ft.Margin(0, 6, 0, 0))],
+        ft.Column([d.txt(when, 9.3, 'regular'), d.txt(street_line(address), 9.3, 'regular'),
+                   ft.Container(station_tile_row(name, subtitle, on_click), margin=ft.Margin(0, 11.5, 0, 0))],
                   spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        bgcolor=theme.CARD, border_radius=24, padding=ft.Padding(left=15, right=15, top=17, bottom=15),
-        on_click=on_click, ink=True, margin=ft.Margin(0, 0, -2, 0))
+        bgcolor=theme.CARD, border_radius=24, padding=ft.Padding(left=15, right=15, top=12.5, bottom=17.5),
+        on_click=on_click, ink=True, margin=ft.Margin(0, 0, -2, -2))
+
+
+async def seed_demo(app, kind):
+    """Capture/demo helper: ``demo_seed='res'|'session'`` creates a simulated reservation (and session) once.
+
+    Only honoured for the demo backend; harmless (no-op) everywhere else and when the param is absent.
+    """
+    if kind not in ('res', 'session') or getattr(app.api, 'is_demo', False) is not True:
+        return
+    import asyncio
+    current = await app.api.request('GET', 'reservations/current')
+    if not current or current.get('status') not in ('pending_device', 'confirmed'):
+        stations = await app.api.request('GET', 'stations', params={'limit': 5, 'offset': 0})
+        point = next((c for s in stations['items'] for c in s['connectors'] if c.get('available')), None)
+        if not point:
+            return
+        await app.api.request('POST', 'reservations', {'connector_id': point['id']}, key='seed-res')
+        await asyncio.sleep(2)
+        current = await app.api.request('GET', 'reservations/current')
+    if kind == 'session' and not await app.api.request('GET', 'charging-sessions/current'):
+        point = (current or {}).get('connector') or {}
+        await app.api.request('POST', 'charging-sessions', {
+            'presence_code': '#F12345', 'public_code': point.get('public_code') or (current or {}).get('public_code'),
+            'reservation_id': current['id'], 'max_duration_minutes': 30}, key='seed-ses')
+        await asyncio.sleep(4)
 
 
 # ---------------------------------------------------------------- telas
-async def build(app, detail=False, **_):
+async def build(app, detail=False, demo_seed=None, **_):
     demo = getattr(app.api, 'is_demo', False) is True
+    await seed_demo(app, demo_seed)
     if detail:
         return await _detail(app, demo)
     reservation = await app.api.request('GET', 'reservations/current')
@@ -170,7 +225,7 @@ async def build(app, detail=False, **_):
         upcoming.append(_recharge_card(
             when_text(reservation.get('expires_at') or reservation.get('created_at')),
             reservation.get('station_address'), reservation.get('station_name') or 'Posto reservado',
-            labels.get(reservation['status'], reservation['status']),
+            area_line(reservation.get('station_address')) or labels.get(reservation['status'], reservation['status']),
             app.link('reservations', detail=True)))
     if session:
         from .charging import DEMO_LABELS as SESSION_DEMO
@@ -179,14 +234,16 @@ async def build(app, detail=False, **_):
         running.append(_recharge_card(
             when_text(session.get('started_at') or session.get('created_at')),
             session.get('station_address'), session.get('station_name') or 'Posto',
-            session_labels.get(session['status'], session['status']),
+            area_line(session.get('station_address')) or session_labels.get(session['status'], session['status']),
             app.link('charging', session_id=session['id'])))
-    body = [d.txt('Minhas recargas', 18.5, 'bold'), ft.Container(height=0.5),
+    body = [d.txt('Minhas recargas', 18.5, 'bold'), ft.Container(height=3.5),
             d.txt('Próximas', 14.6, 'bold'), *upcoming,
             d.txt('Em andamento', 14.6, 'bold'), *running]
-    footer = ft.Container(btn('Buscar mais estações', app.link('stations'), 'danger'),
-                          margin=ft.Margin(8, 0, 8, -6))
-    return d.page(*body, footer=footer, gap=14.5)
+    search = ft.Container(btn('Buscar mais estações', app.link('stations'), 'danger'), margin=ft.Margin(8, 0, 3, -6))
+    if upcoming or running:
+        # Com recargas listadas a referência não prende o botão à barra: ele segue o conteúdo.
+        return d.page(*body, ft.Container(height=234), search, gap=14.5)
+    return d.page(*body, footer=ft.Container(search.content, margin=ft.Margin(8, 0, 8, -6)), gap=14.5)
 
 
 async def _detail(app, demo):
@@ -238,5 +295,5 @@ async def _detail(app, demo):
     return recharge_detail(
         app, 'Recarga Agendada', when=when_text(reservation.get('expires_at') or reservation.get('created_at')),
         address=reservation.get('station_address'), percent='-%', cost='-', power='- kW', remaining='- minutos',
-        action=arrive or cancel_button or ft.Container(), on_back=app.link('reservations'), status=status_line,
-        secondary=[cancel_button] if arrive and cancel_button else (), extra=extra)
+        action=cancel_button or arrive or ft.Container(), on_back=app.link('reservations'), status=status_line,
+        secondary=[arrive] if arrive and cancel_button else (), extra=extra)

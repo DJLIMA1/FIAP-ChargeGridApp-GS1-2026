@@ -7,16 +7,17 @@
 extern "C" {
 #endif
 
-extern const lv_font_t chargegrid_montserrat_14;
-extern const lv_font_t chargegrid_montserrat_16;
-extern const lv_font_t chargegrid_montserrat_18;
-extern const lv_font_t chargegrid_montserrat_20;
-extern const lv_font_t chargegrid_montserrat_24;
-extern const lv_font_t chargegrid_montserrat_28;
-/* Montserrat SemiBold, ASCII + acentos do português: títulos das telas. */
-extern const lv_font_t chargegrid_title_32;
-extern const lv_font_t chargegrid_title_40;
-extern const lv_font_t chargegrid_title_52;
+/* Barlow Condensed (OFL), o rosto condensado do design de referência.
+   Bold: marca, títulos, código e números. Medium: texto corrido (U+0020-U+00FF e U+2022). */
+extern const lv_font_t chargegrid_brand_30;
+extern const lv_font_t chargegrid_brand_34;
+extern const lv_font_t chargegrid_title_48;
+extern const lv_font_t chargegrid_alert_68;
+extern const lv_font_t chargegrid_code_72;
+extern const lv_font_t chargegrid_body_14;
+extern const lv_font_t chargegrid_body_17;
+extern const lv_font_t chargegrid_body_19;
+extern const lv_font_t chargegrid_body_22;
 
 extern const lv_img_dsc_t chargegrid_pump_bolt;
 

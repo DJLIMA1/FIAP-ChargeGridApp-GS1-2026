@@ -99,6 +99,17 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AssertionError):  # desabilitado: sem ação até escolher um conector
             tap(screen, 'Continuar')
 
+    async def test_capture_presets_open_selected_and_unselected_states(self):
+        picked = await self.screen(1, pick=1)  # estado da referência «estacao_5»: CCS2 marcado, Continuar ativo
+        self.assertTrue(callable(tap(picked, 'Continuar')))
+        self.app.booking = None
+        none = await self.screen(4, power='none')  # «estacao_10»: nenhuma potência marcada
+        self.assertIn('Até 60 kW', texts(none))
+        self.assertIsNone(self.app.booking['power'])
+        review = await self.screen(6)  # potência sem escolha cai na máxima; pagamento no saldo
+        self.assertIn('Revisar Dados', texts(review))
+        self.assertIn('Até 60 kW', texts(review))
+
     async def test_reserve_with_balance_creates_reservation_and_debits(self):
         before = wallet.balance(self.app)
         screen = await self.screen(1)
@@ -109,7 +120,8 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         self.app.booking['minutes_text'] = '30'
         screen = await self.screen(6)
         self.assertIn('Confirmar Recarga', texts(screen))
-        self.assertTrue(any(t.startswith('Inclui taxa de reserva') for t in texts(screen)))
+        self.assertFalse(any('taxa de reserva' in t for t in texts(screen)))  # sem linha extra (igual à referência)
+        self.assertEqual(wallet.balance(self.app), before)
         await tap(screen, 'Confirmar Recarga')()
         self.assertEqual(self.app.go.await_args.args[0], 'booking')
         self.assertEqual(self.app.go.await_args.kwargs['step'], 8)
@@ -118,6 +130,7 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         current = await self.app.api.request('GET', 'reservations/current')
         self.assertEqual(current['id'], result['id'])
         self.assertEqual(wallet.balance(self.app), before - Decimal(result['paid']))
+        self.assertGreater(Decimal(result['paid']), rules.total(0, False))  # total inclui a taxa de reserva
         done = await self.screen(8)
         self.assertIn('Reserva confirmada', texts(done))
         await tap(done, 'Cancelar Recarga')()

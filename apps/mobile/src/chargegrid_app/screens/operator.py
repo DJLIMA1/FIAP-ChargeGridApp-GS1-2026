@@ -8,19 +8,14 @@ from ..services.location import geocode_address
 from ..ui import design, theme
 from ..ui.ai_features import ai_supported, owner_insights_control
 from ..ui.components import (
-    badge,
-    button,
-    card,
     date_time,
-    disclosure_field,
-    field,
-    flat_button,
     money,
     title,
 )
 from . import onboarding as onboarding_screen
 from . import ownership
-from .station_admin import chatbot_button, menu_row
+from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title
+from .station_admin import chatbot_button, menu_row, station_code
 
 
 def _plural(count, one, many):
@@ -28,14 +23,15 @@ def _plural(count, one, many):
 
 
 async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None,
-                claim=False, onboarding=False, point_id=None, step=1, existing_station=False):
+                claim=False, onboarding=False, point_id=None, step=1, existing_station=False, edited=False,
+                show_real=False, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
     profile = await app.api.request('GET','me')
     app.profile = profile
     if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
         return title('Gestão de postos','Entre com uma conta de operador para vincular equipamentos.')
     if claim:
-        return await ownership.build(app, station_id=station_id)
+        return await ownership.build(app, station_id=station_id, show_real=show_real)
     if onboarding:
         return await onboarding_screen.build(app, station_id=station_id, point_id=point_id,
                                              step=step, existing_station=existing_station)
@@ -58,12 +54,23 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         if connector_id == 'new':
             return await ownership.build(app, station_id=station_id)
         connector = connector or app.data.get('connector')
+        if not connector and station_id:
+            owner = await app.api.request('GET',f'stations/{station_id}')
+            found = next((item for item in owner.get('connectors') or [] if item.get('id') == connector_id),None)
+            connector = {**found,'station_name':owner.get('name')} if found else None
         return await connector_form(app,station_id,connector,device_id)
     if station_id == 'new':
         return await station_form(app)
     if station_id:
         station = await app.api.request('GET',f'stations/{station_id}')
-        return await station_form(app,station)
+        code = None
+        try:
+            listing = await app.api.request('GET','operator/stations',params={'limit':100,'offset':0})
+            if isinstance(listing,dict) and isinstance(listing.get('items'),list):
+                code = station_code(listing['items'],station_id)
+        except ApiError:
+            pass
+        return await station_form(app,station,edited=edited,code=code)
     return await station_list(app, offset, is_demo)
 
 
@@ -97,9 +104,9 @@ async def station_list(app, offset, is_demo):
     result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': offset})
     stations = result['items']
     add_label = 'Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela'
-    rows = [menu_row(station['name'], _station_state(station), '/design/nav_station_fill.svg',
+    rows = [menu_row(station['name'], _station_state(station), '/design/icon_station_charge.svg',
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
-    body = [ft.Container(height=7)]
+    body = [ft.Container(height=8)]
     if rows:
         body.append(ft.Column(rows, spacing=22))
     else:
@@ -117,7 +124,7 @@ async def station_list(app, offset, is_demo):
         body.append(text_button('Mais postos', app.link('operator', offset=offset + 100), primary=False))
     if offset:
         body.append(text_button('Postos anteriores', app.link('operator', offset=max(0, offset - 100)), primary=False))
-    body += [ft.Container(height=16), chatbot_button(app, 38), ft.Container(height=4),
+    body += [ft.Container(height=16), chatbot_button(app, 38), ft.Container(height=560),  # opções extras: abaixo da 1ª tela
              design.section_label('Mais opções'),
              *([menu_row(add_label, 'Novo equipamento ou outro ponto em um posto', ft.Icons.QR_CODE_SCANNER,
                          app.link('operator', claim=True))] if rows else []),
@@ -128,12 +135,53 @@ async def station_list(app, offset, is_demo):
     return design.page(*body, title='Suas Estações', title_size=22, gap=16)
 
 
-async def station_form(app, station=None):
+class _Toggle:
+    """Ativa/Inativa segmentado com ``.value`` booleano (substitui o Switch dos formulários antigos)."""
+
+    def __init__(self, app, value=True, height=37.5):
+        self.app, self.value, self.disabled, self.height = app, bool(value), False, height
+        self.holder = ft.Container(data=self)
+        self.draw()
+
+    def draw(self):
+        self.holder.content = design.segmented([('on', 'Ativa'), ('off', 'Inativa')], 'on' if self.value else 'off',
+                                               self.choose, height=self.height)
+        self.holder.opacity = 0.5 if self.disabled else 1
+
+    async def choose(self, key):
+        if self.disabled:
+            return
+        self.value = key == 'on'
+        self.draw()
+        self.app.page.update()
+
+
+def _status_pill(label, color):
+    return ft.Container(design.txt(label, 10.5, 'bold', theme.on_color(color), text_align=ft.TextAlign.CENTER),
+                        bgcolor=color, border_radius=6, padding=ft.Padding(left=8, right=8, top=4, bottom=4))
+
+
+async def station_form(app, station=None, edited=False, code=None):
+    """Editar/criar posto no visual da referência (``Configurar Estação``): campos escuros rotulados,
+    Ativa/Inativa segmentado, botão branco. Coordenadas, pontos e atalhos ficam abaixo da primeira tela."""
     is_demo = bool(getattr(app.api,'is_demo',False))
     station = station or {}
-    name, address = field('Nome do posto',station.get('name','')),field('Endereço',station.get('address',''))
-    latitude, longitude = field('Latitude',str(station.get('latitude',''))),field('Longitude',str(station.get('longitude','')))
-    active = ft.Switch(label='Posto ativo',value=station.get('active',True),visible=bool(station))
+    editing = bool(station)
+    gap, height = (3.5, 42.5) if edited else (14, FIELD_HEIGHT)
+    name_box = setup_field('Nome da estação', station.get('name',''), 'Ex.: Posto Centro', gap=gap, edited=edited,
+                           height=height)
+    address_box = setup_field('Endereço', station.get('address',''), 'Rua, número, bairro, cidade e estado',
+                              gap=gap, edited=edited, height=height)
+    ident_box = setup_field('Identificador', code or station_code([station], station.get('id')) if editing else '',
+                            read_only=True, gap=gap, height=height)
+    ident_box.visible = editing and not edited
+    latitude_box = setup_field('Latitude', str(station.get('latitude','')), keyboard=ft.KeyboardType.NUMBER, gap=14, height=FIELD_HEIGHT)
+    longitude_box = setup_field('Longitude', str(station.get('longitude','')), keyboard=ft.KeyboardType.NUMBER, gap=14,
+                                height=FIELD_HEIGHT)
+    name, address, latitude, longitude = (box.controls[1] for box in (name_box, address_box, latitude_box, longitude_box))
+    toggle = _Toggle(app, False if edited else station.get('active', True))
+    status_box = ft.Column([design.label('Status', strong=False), toggle.holder], spacing=4,
+                           horizontal_alignment=ft.CrossAxisAlignment.STRETCH, visible=editing)
     async def locate():
         if is_demo:
             latitude.value,longitude.value = '-23.55','-46.63'
@@ -153,36 +201,43 @@ async def station_form(app, station=None):
                 'latitude':onboarding_screen._number(latitude,'Latitude',-90,90),
                 'longitude':onboarding_screen._number(longitude,'Longitude',-180,180)}
         if station:
-            body['active'] = active.value
+            body['active'] = toggle.value
         result = await app.api.request('PATCH' if station else 'POST',f"stations/{station['id']}" if station else 'stations',body)
         if hasattr(app,'mark_saved'):
             app.mark_saved()
-        await app.go('operator',station_id=result['id'])
-    controls = [title('Editar posto' if station else 'Novo posto',
-                      'O posto reúne os pontos instalados no mesmo endereço.'),
-                card(ft.Column([name,address,button('Usar localização de exemplo' if is_demo else 'Localizar endereço',app.action(locate),secondary=True),latitude,longitude,active],spacing=12)),
-                ft.Text('Nome, endereço e disponibilidade do posto valem para todos os seus pontos.',size=12,color=theme.GRAY_TEXT),
-                button('Salvar posto',app.action(save))]
+        await app.go('operator',station_id=result['id'],nav=False)
+    controls = [setup_title(app, 'Configurar Estação', bottom=3.25 if edited else 2.25),
+                ft.Column([name_box, address_box, ident_box], spacing=16.5 if edited else 15.5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                status_box,
+                cta('Salvar alterações' if editing else 'Salvar posto', app.action(save), weight='semibold', height=47.5),
+                ft.Container(height=450),  # coordenadas, pontos e atalhos: abaixo da primeira tela (referência)
+                design.section_label('Localização'),
+                ft.Column([latitude_box, longitude_box], spacing=14),
+                cta('Usar localização de exemplo' if is_demo else 'Localizar endereço',app.action(locate),primary=False,weight='semibold'),
+                design.txt('Nome, endereço e disponibilidade do posto valem para todos os seus pontos.', 11.5, 'regular',
+                           theme.GRAY_TEXT)]
     if station:
-        controls += [button('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',app.link('operator',station_id=station['id'],claim=True))]
+        controls += [ft.Container(height=4), design.section_label('Pontos de recarga')]
         for connector in station['connectors']:
             status, color = _point_status(connector)
-            details = [ft.Row([ft.Text(connector['public_code'],size=17,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,
-                                       color=theme.TEXT_COLOR,expand=True),badge(status,color,width=112)],spacing=8),
-                       ft.Text(_point_line(connector),size=12,color=theme.GRAY_TEXT)]
+            row = design.list_row(connector['public_code'], _point_line(connector), tile=44, dark_tile=True,
+                                  icon='/design/icon_station_charge.svg', trailing=_status_pill(status, color),
+                                  on_click=app.link('operator',station_id=station['id'],connector_id=connector['id'],
+                                                    connector={**connector,'station_name':station.get('name')},nav=False))
+            details = [row]
             if is_demo:
                 from ..demo import DEMO_PRESENCE_CODE
-                details.append(ft.Text(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.',size=12,color=theme.GRAY_TEXT))
+                details.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
             if not connector.get('active') and not connector.get('retired'):
                 shared = bool(station.get('active') or len(station['connectors']) > 1)
-                details.append(button('Revisar e ativar ponto',app.link('operator',station_id=station['id'],
-                                      point_id=connector['id'],onboarding=True,step=2 if shared else 1,
-                                      **({'existing_station':True} if shared else {}))))
-            details.append(button('Editar ponto / dispositivo',app.link('operator',station_id=station['id'],connector_id=connector['id'],
-                                                                        connector={**connector,'station_name':station.get('name')}),secondary=True))
-            controls.append(card(ft.Column(details,spacing=8)))
-    controls.append(button('Voltar à gestão',app.link('operator'),secondary=True))
-    return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO)
+                details.append(cta('Revisar e ativar ponto',app.link('operator',station_id=station['id'],
+                                   point_id=connector['id'],onboarding=True,step=2 if shared else 1,
+                                   **({'existing_station':True} if shared else {})),weight='semibold'))
+            controls.append(ft.Column(details, spacing=8))
+        controls.append(cta('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',
+                            app.link('operator',station_id=station['id'],claim=True),primary=False,weight='semibold'))
+    controls.append(cta('Voltar à gestão',app.link('operator'),primary=False,weight='semibold'))
+    return design.page(*controls, gap=16)
 
 
 CONNECTOR_TYPES = ('Tipo 2', 'CCS2', 'CHAdeMO', 'GB/T')
@@ -226,35 +281,44 @@ def _point_line(connector):
     return ' · '.join(str(part) for part in parts if part)
 
 
-def _heading(text):
-    return ft.Text(text, size=11, weight=ft.FontWeight.BOLD, color=theme.ACCENT)
-
-
-def _chip(text, on_click):
-    return ft.TextButton(content=ft.Text(text, size=13, text_align=ft.TextAlign.CENTER), on_click=on_click,
-                         style=ft.ButtonStyle(padding=ft.Padding(left=14, right=14, top=10, bottom=10),
-                                              shape=ft.RoundedRectangleBorder(radius=20)))
+def _chip(text, selected=False, on_click=None, width=None):
+    return design.chip_option(text, selected=selected, on_click=on_click, width=width or max(66, len(text) * 9 + 34))
 
 
 def _chip_palette():
     # Resolved while building: theme is a ContextVar that event handlers may not share.
-    return {'on': theme.RED, 'off': theme.LIGHT_GRAY, 'text': theme.TEXT_COLOR}
+    return {'on': theme.BTN_PRIMARY, 'on_fg': theme.BTN_PRIMARY_FG, 'off': theme.CARD, 'off_fg': theme.TEXT_COLOR}
 
 
 def _paint_chips(chips, selected, palette):
     for value, chip in chips.items():
         on = value == selected
-        chip.style.bgcolor = palette['on'] if on else palette['off']
-        chip.style.side = ft.BorderSide(1, palette['on'] if on else palette['off'])
-        chip.content.color = '#FFFFFF' if on else palette['text']
-        chip.content.weight = ft.FontWeight.BOLD if on else ft.FontWeight.NORMAL
+        chip.bgcolor = palette['on'] if on else palette['off']
+        chip.content.color = palette['on_fg'] if on else palette['off_fg']
+        chip.content.font_family = design.FONT_BOLD if on else design.FONT_MEDIUM
 
 
-def _action_row(label, description, control):
-    control.content.size = 13
-    return ft.Row([ft.Column([ft.Text(label, size=14, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
-                              ft.Text(description, size=12, color=theme.GRAY_TEXT)], spacing=2, expand=True),
+def _mini_button(text, on_click, kind='secondary'):
+    """Botão compacto (texto como conteúdo direto): primário branco, secundário escuro ou perigo vermelho."""
+    colors = {'primary': (theme.BTN_PRIMARY, theme.BTN_PRIMARY_FG), 'secondary': (theme.BTN_SECONDARY, theme.BTN_SECONDARY_FG),
+              'danger': (theme.RED, '#FFFFFF')}
+    bg, fg = colors[kind]
+    return ft.Container(design.txt(text, 12.5, 'semibold', fg, text_align=ft.TextAlign.CENTER), bgcolor=bg,
+                        border_radius=design.RADIUS_BTN, padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+                        alignment=ft.Alignment(0, 0), on_click=on_click, ink=True)
+
+
+def _action_row(icon, label, description, control):
+    """Linha de equipamento: tile branco + título/descrição + botão compacto."""
+    return ft.Row([design.icon_tile(icon, size=40),
+                   ft.Column([design.txt(label, 13, 'semibold'), design.txt(description, 10.5, 'regular', theme.GRAY_TEXT)],
+                             spacing=2, expand=True),
                    control], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+
+def _set_visible(box, visible):
+    box.visible = visible
+    box.controls[1].visible = visible
 
 
 async def connector_form(app, station_id, connector=None, device_id=None):
@@ -274,21 +338,27 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         reset_state = {'status': 'applied'}
 
     # Form fields: the TextFields stay the source of truth for save().
-    public = field('Código público',connector.get('public_code',''))
-    kind = field('Tipo de conector',connector.get('connector_type','Tipo 2'))
-    power = field('Potência',_decimal_text(connector.get('power_kw','7.4')))
-    price = field('Tarifa',_decimal_text(connector.get('price_per_kwh','1.00'),2))
-    duration = field('Limite por recarga',str(connector.get('max_duration_minutes','60')))
-    power.suffix, price.prefix, price.suffix, duration.suffix = 'kW', 'R$ ', '/kWh', 'min'
-    for control in (power, price, duration):
-        control.keyboard_type = ft.KeyboardType.NUMBER
-    price.expand = duration.expand = True
-    active = ft.Switch(label='Disponível para motoristas',value=connector.get('active',True),visible=bool(connector),
-                       label_text_style=ft.TextStyle(size=15,color=theme.TEXT_COLOR),active_color=theme.RED)
+    gap = 14
+    public_box = setup_field('Código público', connector.get('public_code',''), gap=gap, height=FIELD_HEIGHT)
+    kind_box = setup_field('Tipo de conector', connector.get('connector_type','Tipo 2'), gap=gap, height=FIELD_HEIGHT)
+    power_box = setup_field('Potência', _decimal_text(connector.get('power_kw','7.4')), keyboard=ft.KeyboardType.NUMBER,
+                            gap=gap, height=FIELD_HEIGHT, suffix='kW')
+    price_box = setup_field('Tarifa', _decimal_text(connector.get('price_per_kwh','1.00'),2), keyboard=ft.KeyboardType.NUMBER,
+                            gap=gap, height=FIELD_HEIGHT, prefix='R$ ', suffix='/kWh')
+    duration_box = setup_field('Limite por recarga', str(connector.get('max_duration_minutes','60')),
+                               keyboard=ft.KeyboardType.NUMBER, gap=gap, height=FIELD_HEIGHT, suffix='min')
+    device_box = setup_field('Dispositivo vinculado', linked_device['device_id'] if linked_device else '', read_only=True,
+                             gap=gap, height=FIELD_HEIGHT)
+    public, kind, power, price, duration, device = (box.controls[1] for box in
+                                                    (public_box, kind_box, power_box, price_box, duration_box, device_box))
+    price_box.expand = duration_box.expand = True
+    active = _Toggle(app, connector.get('active',True))
+    active_box = ft.Column([design.label('Disponível para motoristas', strong=False), active.holder], spacing=4,
+                           horizontal_alignment=ft.CrossAxisAlignment.STRETCH, visible=bool(connector))
 
     palette = _chip_palette()
     selected_type = _known_type(kind.value) or 'Outro'
-    kind.visible = selected_type == 'Outro'
+    _set_visible(kind_box, selected_type == 'Outro')
     def choose_type(value):
         def handler(event=None):
             nonlocal selected_type
@@ -297,12 +367,12 @@ async def connector_form(app, station_id, connector=None, device_id=None):
                 kind.value = value
             elif _known_type(kind.value):
                 kind.value = ''
-            kind.visible = value == 'Outro'
+            _set_visible(kind_box, value == 'Outro')
             kind.error_text = None
             _paint_chips(type_chips, value, palette)
             app.page.update()
         return handler
-    type_chips = {value: _chip(value, choose_type(value)) for value in (*CONNECTOR_TYPES, 'Outro')}
+    type_chips = {value: _chip(value, on_click=choose_type(value)) for value in (*CONNECTOR_TYPES, 'Outro')}
     _paint_chips(type_chips, selected_type, palette)
 
     def power_preset():
@@ -321,22 +391,20 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     def typed_power(event=None):
         _paint_chips(power_chips, power_preset(), palette)
         app.page.update()
-    power_chips = {value: _chip(f'{_decimal_text(value)} kW', choose_power(value)) for value in POWER_PRESETS}
+    power_chips = {value: _chip(f'{_decimal_text(value)} kW', on_click=choose_power(value)) for value in POWER_PRESETS}
     _paint_chips(power_chips, power_preset(), palette)
     power.on_change = typed_power
 
-    device = field('Dispositivo vinculado',linked_device['device_id'] if linked_device else '')
-    device.read_only = True
-    device.visible = bool(linked_device)
+    _set_visible(device_box, bool(linked_device))
     device_status = ft.Text(
         ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else
          'Último contato: '+date_time(linked_device.get('last_seen')))
         if linked_device else 'Nenhum equipamento simulado vinculado.' if is_demo else
         'Nenhum equipamento vinculado. Provisione uma credencial abaixo.',
-        size=13,color=theme.TEXT_COLOR,expand=True,
+        size=13,color=theme.TEXT_COLOR,expand=True,font_family=design.FONT,
     )
     status_label, status_color = _point_status(connector, linked_device)
-    status_badge = badge(status_label, status_color, width=112)
+    status_badge = _status_pill(status_label, status_color)
     status_colors = {'Desvinculado': theme.SLATE, 'Desativado': theme.AMBER, 'Online': theme.GREEN, 'Offline': theme.SLATE}
     def paint_status():
         label = _point_status(connector, linked_device)[0]
@@ -351,7 +419,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         reset_state.clear()
         reset_state['status'] = 'not_requested'
         device.value = identifier
-        device.visible = bool(identifier)
+        _set_visible(device_box, bool(identifier))
         device_status.value = message
         provision_row.visible = provision_button.visible = not identifier
         rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(identifier)
@@ -420,11 +488,12 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         reset_info.visible = status != 'not_requested'
         reset_button.visible = status in ('not_requested', 'failed', 'expired') and not (linked_device or {}).get('retired')
         if status in ('pending', 'received', 'applied'):
-            active.value = False
-            active.disabled = True
+            active.value, active.disabled = False, True
+            active.draw()
             rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = False
         elif status in ('failed', 'expired'):
             active.disabled = False
+            active.draw()
             rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = True
         if status == 'applied':
             if linked_device:
@@ -461,75 +530,71 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         ))
 
     # Header: what is being edited and its live state.
-    header = [ft.Row([ft.Column([ft.Text('EDITAR PONTO' if connector else 'NOVO PONTO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-                                 ft.Text(connector.get('public_code') or 'Novo ponto',size=26,font_family='BarlowCondensed',
-                                         weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR)],spacing=0,expand=True)]
-                     + ([status_badge] if connector else []),spacing=8,vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+    header = [ft.Row([ft.Column([design.num(connector.get('public_code') or 'Novo ponto', 26)], spacing=0, expand=True)]
+                     + ([status_badge] if connector else []), spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
     if connector.get('station_name'):
         header.append(ft.Row([ft.Icon(ft.Icons.PLACE_OUTLINED,size=16,color=theme.GRAY_TEXT),
-                              ft.Text(connector['station_name'],size=13,color=theme.GRAY_TEXT,expand=True)],spacing=6))
+                              design.txt(connector['station_name'], 13, 'regular', theme.GRAY_TEXT, expand=True)],spacing=6))
     if connector:
-        header += [ft.Divider(height=8,color=theme.LIGHT_GRAY),
-                   ft.Row([ft.Icon(ft.Icons.ROUTER_OUTLINED,size=18,color=theme.GRAY_TEXT),device_status],spacing=8),
+        header += [ft.Row([ft.Icon(ft.Icons.ROUTER_OUTLINED,size=18,color=theme.GRAY_TEXT),device_status],spacing=8),
                    reset_info]
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         header.append(ft.Row([ft.Icon(ft.Icons.SCIENCE_OUTLINED,size=16,color=theme.GRAY_TEXT),
-                              ft.Text(f'Ponto simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
-                                      size=12,color=theme.GRAY_TEXT,expand=True)],spacing=8))
+                              design.txt(f'Ponto simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
+                                         12, 'regular', theme.GRAY_TEXT, expand=True)],spacing=8))
 
+    note = lambda text: design.txt(text, 11.5, 'regular', theme.GRAY_TEXT)  # noqa: E731
     controls = [
-        card(ft.Column(header,spacing=6)),
-        card(ft.Column([_heading('CONECTOR'),
-                        ft.Row(list(type_chips.values()),wrap=True,spacing=8,run_spacing=8),kind,
-                        ft.Container(height=4),power,
-                        ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8)],spacing=10)),
-        card(ft.Column([_heading('PREÇO E TEMPO'),
-                        ft.Row([price,duration],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
-                        ft.Text('Tarifa estimada por kWh e tempo máximo de cada recarga.',size=12,color=theme.GRAY_TEXT)],spacing=10)),
+        setup_title(app, 'Editar ponto' if connector else 'Novo ponto', on_back=app.link('operator',station_id=station_id),
+                    bottom=2.25),
+        design.card_box(ft.Column(header,spacing=8)),
+        design.section_label('Conector'),
+        ft.Row(list(type_chips.values()),wrap=True,spacing=8,run_spacing=8),
+        kind_box,
+        power_box,
+        ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8),
+        design.section_label('Preço e tempo'),
+        ft.Row([price_box,duration_box],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
+        note('Tarifa estimada por kWh e tempo máximo de cada recarga.'),
     ]
     if connector:
-        controls.append(card(ft.Column([_heading('DISPONIBILIDADE'),active,
-                                        ft.Text('O posto também precisa estar ativo para o ponto aparecer na busca.',
-                                                size=12,color=theme.GRAY_TEXT)],spacing=8)))
-    controls.append(card(ft.Column([_heading('IDENTIFICAÇÃO'),public,
-                                    ft.Text('Código exibido aos motoristas para encontrar este ponto.',size=12,color=theme.GRAY_TEXT)],spacing=10)))
-    controls.append(button('Salvar alterações' if connector else 'Salvar ponto',app.action(save)))
+        controls += [active_box, note('O posto também precisa estar ativo para o ponto aparecer na busca.')]
+    controls += [design.section_label('Identificação'), public_box,
+                 note('Código exibido aos motoristas para encontrar este ponto.'),
+                 cta('Salvar alterações' if connector else 'Salvar ponto',app.action(save),weight='semibold')]
     if connector:
-        provision_button = button('Provisionar',app.action(provision))
-        rotate_button = button('Rotacionar',app.action(rotate),secondary=True)
-        revoke_button = button('Revogar',app.action(revoke),secondary=True)
-        reset_button = flat_button('Restaurar',theme.RED,on_click=app.action(reset_device))
-        reset_button.content.size = 13
-        provision_row = _action_row('Nova credencial','Gera uma chave fictícia para testar o fluxo.' if is_demo else
+        provision_button = _mini_button('Provisionar',app.action(provision),'primary')
+        rotate_button = _mini_button('Rotacionar',app.action(rotate))
+        revoke_button = _mini_button('Revogar',app.action(revoke))
+        reset_button = _mini_button('Restaurar',app.action(reset_device),'danger')
+        provision_row = _action_row(ft.Icons.KEY_OUTLINED,'Nova credencial','Gera uma chave fictícia para testar o fluxo.' if is_demo else
                                     'Gera a chave do equipamento; ela aparece uma única vez.',provision_button)
-        rotate_row = _action_row('Trocar chave','Troca a chave fictícia da demonstração.' if is_demo else
+        rotate_row = _action_row(ft.Icons.SYNC,'Trocar chave','Troca a chave fictícia da demonstração.' if is_demo else
                                  'Invalida a chave atual; o equipamento precisa da nova.',rotate_button)
-        revoke_row = _action_row('Desconectar','Desativa a credencial simulada.' if is_demo else
+        revoke_row = _action_row(ft.Icons.LINK_OFF,'Desconectar','Desativa a credencial simulada.' if is_demo else
                                  'Recusa a chave atual até nova credencial.',revoke_button)
         reset_box = ft.Container(
-            _action_row('Restaurar de fábrica',reset_messages['not_requested'],reset_button),
-            bgcolor=ft.Colors.with_opacity(0.08,theme.RED),border=ft.Border.all(1,ft.Colors.with_opacity(0.45,theme.RED)),
-            border_radius=10,padding=12,margin=ft.Margin(left=0,right=0,top=6,bottom=0))
+            _action_row(ft.Icons.RESTORE,'Restaurar de fábrica',reset_messages['not_requested'],reset_button),
+            bgcolor=theme.WARN_BG,border=ft.Border.all(1,ft.Colors.with_opacity(0.45,theme.RED)),
+            border_radius=design.RADIUS_CARD,padding=14)
         provision_row.visible = provision_button.visible = not linked_device
         rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
         reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
         reset_box.visible = bool(linked_device)
         if linked_device and (linked_device.get('retired') or reset_state.get('status') in ('pending', 'received', 'applied')):
-            active.value = False
-            active.disabled = True
-        maintenance, _summary = disclosure_field(
-            'Conexão do equipamento',
-            'Credencial e restauração simuladas' if is_demo else 'Credencial, chave e restauração',
-            [ft.Text('Ações apenas desta demonstração; nada real é alterado.' if is_demo else
-                     'Não é preciso mexer aqui para mudar tarifa ou disponibilidade.',size=12,color=theme.GRAY_TEXT),
-             device,provision_row,rotate_row,revoke_row,reset_box],
-            on_update=app.page.update)
-        controls.append(maintenance)
+            active.value, active.disabled = False, True
+            active.draw()
+        controls += [
+            design.section_label('Conexão do equipamento'),
+            note('Credencial e restauração simuladas' if is_demo else 'Credencial, chave e restauração'),
+            note('Ações apenas desta demonstração; nada real é alterado.' if is_demo else
+                 'Não é preciso mexer aqui para mudar tarifa ou disponibilidade.'),
+            device_box,provision_row,rotate_row,revoke_row,reset_box]
         if reset_state.get('status') in ('pending', 'received'):
             app.set_poll(poll_reset, 5)
-    controls.append(button('Voltar ao posto',app.link('operator',station_id=station_id),secondary=True))
-    return ft.Column(controls,spacing=14,scroll=ft.ScrollMode.AUTO)
+    controls.append(cta('Voltar ao posto',app.link('operator',station_id=station_id),primary=False,weight='semibold'))
+    return design.page(*controls, gap=16)
 
 
 def show_key(app, result):

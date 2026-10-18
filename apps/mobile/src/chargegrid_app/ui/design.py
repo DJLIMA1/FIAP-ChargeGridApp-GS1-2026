@@ -464,7 +464,7 @@ def app_header(app):
     """Cabeçalho: logo (-> home) à esquerda; sino com ponto vermelho e avatar à direita."""
     bell = ft.Container(
         ft.Stack([ft.Icon(ft.Icons.NOTIFICATIONS_NONE, size=24, color='#FFFFFF' if theme.is_dark() else theme.TEXT_COLOR),
-                  ft.Container(width=6, height=6, border_radius=3, bgcolor='#D94141', right=3, top=1)],
+                  ft.Container(width=6, height=6, border_radius=3, bgcolor='#D94141', right=5, top=3)],
                  width=30, height=30),
         on_click=app.link('notifications'), tooltip='Notificações', width=36, height=36, alignment=ft.Alignment(0, 0),
         margin=ft.Margin(left=0, top=6, right=0, bottom=0))
@@ -485,7 +485,7 @@ def bottom_nav(app, entries, active):
         icon = ft.Image(src=f'{ASSET_DIR}{key}{"_fill" if on else ""}.svg', width=21, height=21, color=color,
                         fit=ft.BoxFit.CONTAIN, exclude_from_semantics=True)
         tab = ft.TextButton(
-            content=ft.Column([icon, ft.Text(text, size=11, font_family=FONT_NAV, color=color,
+            content=ft.Column([icon, ft.Text(text, size=11, font_family=FONT_NAV, color=theme.NAV_INACTIVE,
                                              text_align=ft.TextAlign.CENTER)],
                               horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=3, tight=True),
             on_click=app.link(name, **parameters), tooltip=text,

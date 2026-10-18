@@ -12,7 +12,7 @@ from ..api_client import ApiError
 from ..services.location import geocode_address
 from ..ui import design, theme
 from ..ui.components import money
-from .setup_ui import cta, setup_field, status_card
+from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title, status_card
 
 
 def _number(control, label, minimum, maximum, *, integer=False):
@@ -114,7 +114,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         items.append(design.txt('O posto é o local com endereço; este ponto é o equipamento de recarga. '
                                 'Salve cada etapa e publique quando estiver pronto.', 11, 'regular',
                                 theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER))
-        screen = design.page(*items, title='Configurar Estação', on_back=getattr(app, "back", None), center_title=True, gap=16)
+        screen = design.page(setup_title(app, 'Configurar Estação', bottom=2.25), *items, gap=16)
         return screen
 
     if step == 1 and existing_station:
@@ -124,11 +124,12 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         return finish(controls)
 
     if step == 1:
-        name_box = setup_field('Nome da estação', station.get('name', ''), 'Ex.: Posto Centro')
-        address_box = setup_field('Endereço', station.get('address', ''), 'Rua, número, bairro, cidade e estado')
+        name_box = setup_field('Nome da estação', station.get('name', ''), 'Ex.: Posto Centro', gap=14, height=FIELD_HEIGHT)
+        address_box = setup_field('Endereço', station.get('address', ''), 'Rua, número, bairro, cidade e estado', gap=14,
+                                   height=FIELD_HEIGHT)
         latitude_box = setup_field('Latitude', str(station.get('latitude', '')), keyboard=ft.KeyboardType.NUMBER)
         longitude_box = setup_field('Longitude', str(station.get('longitude', '')), keyboard=ft.KeyboardType.NUMBER)
-        ident_box = setup_field('Identificador', point.get('public_code', ''), read_only=True)
+        ident_box = setup_field('Identificador', point.get('public_code', ''), read_only=True, gap=14, height=FIELD_HEIGHT)
         name, address, latitude, longitude = (box.controls[1] for box in
                                               (name_box, address_box, latitude_box, longitude_box))
 

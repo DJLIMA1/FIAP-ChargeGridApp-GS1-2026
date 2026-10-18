@@ -72,7 +72,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'device_id':'known-device','online':True,'last_seen':None}
         screen = await operator.connector_form(app,'station',{'id':'connector'},device_id='stale-navigation-id')
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label == 'Dispositivo vinculado')
+        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
         self.assertTrue(device.read_only)
         self.assertTrue(device.visible)
         self.assertEqual(device.value,'known-device')
@@ -91,7 +91,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         with patch('chargegrid_app.screens.operator.show_key') as show_key:
             await click(screen,'Provisionar')(None)
             show_key.assert_called_once()
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label == 'Dispositivo vinculado')
+        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
         self.assertEqual(device.value,'new-device')
         self.assertTrue(device.visible)
         texts = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text))
@@ -143,7 +143,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
             screen = await operator.connector_form(app,'station',{'id':'connector','public_code':'CG-1','connector_type':'Type 2','power_kw':'7.200','price_per_kwh':'1.5000'})
         finally:
             theme._dark_enabled.reset(token)
-        fields = {item.label:item for item in descendants(screen) if isinstance(item,ft.TextField)}
+        fields = {(item.label or item.data):item for item in descendants(screen) if isinstance(item,ft.TextField)}
         self.assertEqual((fields['Potência'].value,fields['Tarifa'].value),('7,2','1,50'))
         self.assertFalse(fields['Tipo de conector'].visible)
         # Event handlers may run outside the build context (dark default).
@@ -151,7 +151,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(fields['Tipo de conector'].visible)
         self.assertEqual(fields['Tipo de conector'].value,'')
         chip = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'CCS2')
-        self.assertEqual(chip.style.bgcolor,theme.LIGHT['LIGHT_GRAY'])
+        self.assertEqual(chip.bgcolor,theme.LIGHT['CARD'])
         contextvars.Context().run(click(screen,'22 kW'))
         self.assertEqual(fields['Potência'].value,'22')
         click(screen,'CCS2')()

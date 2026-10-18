@@ -64,7 +64,7 @@ def _connector_groups(station):
         elif free == total:
             sub = f'{free} conector livre' if total == 1 else f'{free} conectores livres'
         else:
-            sub = f"{free} de {total} {'conector livre' if free == 1 else 'conectores livres'}"
+            sub = f"{free} de {total} conectores livre{'' if free == 1 else 's'}"
         rows.append((f'{kind} - {power} kW', sub))
     return rows
 
@@ -82,7 +82,8 @@ def _number(value):
 
 
 async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, offset=0,
-                connector_type=None, available_only=False, max_price_per_kwh=None, sort='default', planning_intent=None):
+                connector_type=None, available_only=False, max_price_per_kwh=None, sort='default', planning_intent=None,
+                typed_query=''):
     intention = deepcopy(planning_intent) if planning_intent else {}
     route_state = dict(lat=lat,lng=lng,radius=radius,query=query,connector_type=connector_type,
                        available_only=available_only,max_price_per_kwh=max_price_per_kwh,sort=sort,planning_intent=intention)
@@ -260,23 +261,27 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     refresh_saved()
     if station_id:
         first = stations[0]
-        station_heading = ft.Column([D.txt(first['name'],25,'bold'),D.txt(_street(first['address']),13.5,'regular',theme.GRAY_TEXT)],spacing=8)
+        station_heading = ft.Column([D.txt(first['name'],21.5,'bold'),D.txt(_street(first['address']),11.5,'regular',theme.GRAY_TEXT)],spacing=5)
         amenities = [amenity for amenity in first.get('amenities') or [] if isinstance(amenity,dict)]
         amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
-        group_rows = [D.list_row(group_title,group_sub,chevron=False,tile=40)
+        group_rows = [ft.Container(ft.Row([D.icon_tile(None,size=42),
+                                           ft.Column([D.txt(group_title,14,'semibold'),D.txt(group_sub,11,'regular',theme.GRAY_TEXT)],
+                                                     spacing=3,expand=True,alignment=ft.MainAxisAlignment.CENTER)],
+                                          spacing=8,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                   bgcolor=theme.CARD,border_radius=D.RADIUS_CARD,padding=ft.Padding(left=11,right=11,top=12,bottom=12))
                       for group_title,group_sub in _connector_groups(first)]
-        route_row = ft.Container(ft.Row([ft.Icon(ft.Icons.ALT_ROUTE,size=20,color=theme.TEXT_COLOR),
+        route_row = ft.Container(ft.Row([ft.Icon(ft.Icons.TIMELINE,size=20,color=theme.TEXT_COLOR),
                                          D.txt('Abrir rota no Google Maps',14,'semibold',expand=True),
                                          ft.Icon(ft.Icons.OPEN_IN_NEW,size=20,color=theme.GRAY_TEXT)],
                                         spacing=12,vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                  bgcolor=theme.CARD,border_radius=D.RADIUS_BTN,height=43,
                                  padding=ft.Padding(left=17,right=14,top=0,bottom=0),url=_map_url(first),ink=True)
-        controls = [D.txt('Detalhes da estação',19,'bold'),
-                    ft.Container(height=0),
-                    ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=10)),
-                    D.section_label('Conectores'),*group_rows,
-                    ft.Container(height=14),route_row,
+        controls = [ft.Container(D.txt('Detalhes da estação',19,'bold'),margin=ft.Margin(left=0,top=2,right=0,bottom=0)),
+                    ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=16)),
+                    D.section_label('Conectores'),ft.Column(group_rows,spacing=16.5),
+                    ft.Container(height=6.5),route_row,
                     D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1),height=55,size=16),
+                    ft.Container(height=40),  # o restante fica abaixo da dobra, como na referência
                     *amenity_row,
                     card(ft.Row([
                         ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,color=theme.RED,size=23),
@@ -329,11 +334,11 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if summary:
             extras.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
         controls = []
-    typed = {'text':''}
+    typed = {'text':str(typed_query or '')}  # typed_query: texto já digitado na busca (captura/atalhos)
     map_preview = ft.Container(visible=False)
     map_signature = None
     map_section = ft.Column(controls=[map_preview],visible=False,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
-    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-(40 if not station_id else 50))
+    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-(40 if not station_id else 45))
     map_ratio = 362/158
     async def resize_map_section(event):
         nonlocal map_width
@@ -346,6 +351,13 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         if not text:
             return items
         return [item for item in items if text in _fold(item.get('name')) or text in _fold(item.get('address'))]
+
+    def demo_crop(records):
+        # Reference demo map: Marginal Pinheiros by default, Villa Lobos when it is the searched/opened station.
+        first = _fold(records[0].get('name')) if records else ''
+        if (station_id or typed['text'].strip()) and first == 'villa lobos':
+            return 'villa'
+        return 'marginal' if first in ('villa lobos','marginal pinheiros') else None
 
     async def refresh_map(items, initial=False):
         nonlocal map_signature
@@ -363,13 +375,13 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 record['distance_km'] = float(metadata['distance_km'])
             records.append(record)
         signature = [{key:record.get(key) for key in ('id','name','latitude','longitude','free_points','status','price','distance_km')}
-                     for record in records]
+                     for record in records] + [demo_crop(records)]
         if signature == map_signature:
             return
         if items:
             def draw():
                 return station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
-                                          offline=demo,width=map_width,variant='detail' if station_id else 'list',
+                                          offline=demo,crop=demo_crop(records),width=map_width,variant='detail' if station_id else 'list',
                                           reference=(lat,lng) if lat is not None and lng is not None else None)
             if initial:
                 # The list is usable before the map tiles arrive.
@@ -384,20 +396,21 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     await refresh_map(stations, initial=True)
     result_count = ft.Text(size=12,color=theme.GRAY_TEXT,visible=not bool(station_id))
-    listing = ft.Column(spacing=12 if not station_id else 10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    listing = ft.Column(spacing=16 if not station_id else 10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     if station_id:
-        controls.insert(map_slot_index,map_section)
+        controls.insert(map_slot_index-1,map_section)
         controls.append(listing)
     list_heading = D.txt('Perto de Você',15,'bold')
     page_head = D.txt('Encontre uma estação',15,'bold')
+    page_head_box = ft.Container(page_head,margin=ft.Margin(left=0,top=2,right=0,bottom=0))
     search_box = ft.TextField(
         hint_text='Buscar por endereço ou estação', hint_style=ft.TextStyle(size=11,color=theme.GRAY_TEXT,font_family=D.FONT),
-        text_style=ft.TextStyle(size=11,color=theme.INPUT_TEXT,font_family=D.FONT), border=ft.NoInputBorder(),
+        text_style=ft.TextStyle(size=11,color=theme.GRAY_TEXT,font_family=D.FONT), border=ft.NoInputBorder(),
         cursor_color=theme.INPUT_TEXT, content_padding=ft.Padding(left=0,right=12,top=0,bottom=0), expand=True,
-        text_size=11, capitalization=ft.TextCapitalization.WORDS)
-    search_field = ft.Container(ft.Row([ft.Icon(ft.Icons.SEARCH,size=22,color=theme.GRAY_TEXT),search_box],spacing=12,
+        text_size=11, capitalization=ft.TextCapitalization.WORDS, value=typed['text'])
+    search_field = ft.Container(ft.Row([ft.Icon(ft.Icons.SEARCH,size=22,color=theme.GRAY_TEXT),search_box],spacing=10,
                                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                bgcolor=theme.INPUT_BG,border_radius=12,height=47,padding=ft.Padding(left=16,right=0,top=0,bottom=0))
+                                bgcolor=theme.INPUT_BG,border_radius=12,height=47,padding=ft.Padding(left=13.5,right=0,top=0,bottom=0))
     def station_cards(stations):
         items = []
         for station in (stations if station_id else typed_matches(stations)):
@@ -421,8 +434,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 subtitle = _area(station['address'])
                 if intention and chosen:
                     subtitle += '\n'+estimate_text(chosen,**intent_limits(chosen,intention))
-                items.append(D.list_row(station['name'],subtitle,trailing=right,
-                                        on_click=app.link('stations',station_id=station['id'],**route_state)))
+                from .home import _station_row
+                items.append(_station_row(station,app.link('stations',station_id=station['id'],**route_state),
+                                          right=right,subtitle=subtitle))
                 continue
             matching_points = station['connectors']
             if connector_type or available_only or max_price_per_kwh is not None:
@@ -494,17 +508,23 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         searching = bool(typed['text'].strip())
         shown_items = typed_matches(current_stations)
         list_heading.value = 'Resultados Encontrados' if searching else 'Perto de Você'
-        page_head.visible = not searching
+        page_head_box.visible = not searching
         empty_state.visible = not shown_items
         if searching and not shown_items:
             empty_state.value = 'Nenhum posto com esse nome. Toque em buscar no teclado para procurar este endereço.'
         elif not shown_items:
             empty_state.value = ('Nenhum posto nesta página. Volte para a página anterior.'
                                  if offset and total else 'Nenhum posto encontrado para esta busca.')
-        head = [page_head,search_field]
+        head = [page_head_box,
+                ft.Container(search_field,margin=ft.Margin(left=0,top=5 if searching else -1,right=0,bottom=0))]
         top = [] if searching else [map_section,ft.Container(height=4)]
         bottom = [map_section] if searching and shown_items else []
-        body.controls = [*head,*top,list_heading,listing,empty_state,*bottom,result_count,pagination,*extras]
+        # Filtros, busca por IA e contagem ficam abaixo da dobra: o primeiro ecrã segue a referência.
+        rows = len(shown_items)
+        used = 95 + 24 + 63 + (16 + 158 if shown_items else 0) + 40 + rows * 101
+        fold = ft.Container(height=max(0,800 - used))
+        body.controls = [*head,*top,ft.Container(list_heading,margin=ft.Margin(left=0,top=-2 if searching else 0,right=0,bottom=0)),
+                         listing,empty_state,*bottom,fold,result_count,pagination,*extras]
 
     async def typing(event):
         typed['text'] = search_box.value or ''
@@ -558,5 +578,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     column = ft.Column(controls,scroll=ft.ScrollMode.AUTO,spacing=15 if not station_id else 14,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     if station_id:
         # The reference detail frame uses a slightly wider side margin (25 pt).
-        return ft.Column([ft.Container(column,padding=ft.Padding(left=5,right=5,top=0,bottom=0),expand=True)],expand=True)
+        # The map is 357 pt wide (5 pt wider on the right); everything else keeps the 25/25 pt margins.
+        column.controls = [item if item is map_section else ft.Container(item,margin=ft.Margin(left=0,top=0,right=5,bottom=0))
+                           for item in column.controls]
+        return ft.Column([ft.Container(column,padding=ft.Padding(left=5,right=0,top=0,bottom=0),expand=True)],expand=True)
     return column

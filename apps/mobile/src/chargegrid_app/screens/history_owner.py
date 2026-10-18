@@ -95,18 +95,19 @@ async def _series(app, days):
 
 
 def _row_card(content, on_click=None):
-    return card_box(content, padding=ft.Padding(left=15, right=12, top=0, bottom=0), radius=12, on_click=on_click,
+    return card_box(content, padding=ft.Padding(left=15, right=12, top=4, bottom=0), radius=12, on_click=on_click,
                     height=39.5, alignment=ft.Alignment(-1, 0))
 
 
 def _chat_button(app):
     return ft.Container(ft.Row([ft.Image(src='/design/nav_chat.svg', width=20, height=20, color=theme.BTN_PRIMARY_FG, exclude_from_semantics=True),
-                                txt('Fale com o ChatBot', 17, 'regular', theme.BTN_PRIMARY_FG)],
+                                txt('Fale com o ChatBot', 15.7, 'regular', theme.BTN_PRIMARY_FG)],
                                spacing=12, alignment=ft.MainAxisAlignment.CENTER),
-                        bgcolor=theme.BTN_PRIMARY, border_radius=12, height=39, on_click=app.link('chat'), ink=True)
+                        padding=ft.Padding(left=0, right=22, top=0, bottom=0),
+                        bgcolor=theme.BTN_PRIMARY, border_radius=12, height=38, on_click=app.link('chat'), ink=True)
 
 
-def _stat(caption, value, *, align=ft.CrossAxisAlignment.START, size=21.5):
+def _stat(caption, value, *, align=ft.CrossAxisAlignment.START, size=22.6):
     return ft.Column([txt(caption, 10.7, 'regular', theme.GRAY_TEXT), txt(value, size, 'bold')], spacing=7.5,
                      horizontal_alignment=align)
 
@@ -130,10 +131,10 @@ async def dashboard(app, *, chart=True):
                          alignment=ft.MainAxisAlignment.SPACE_BETWEEN), app.link('history', manage=True, page='energy')),
         ft.Container(height=36),
         card_box(ft.Column([
-            ft.Row([ft.Column([txt('Recargas', 9.7, 'regular', theme.GRAY_TEXT), txt(kpis['sessions'], 17.2, 'bold')],
+            ft.Row([ft.Column([txt('Recargas', 9.7, 'regular', theme.GRAY_TEXT), ft.Container(txt(kpis['sessions'], 17.2, 'bold'), margin=ft.Margin(0, -2, 0, 0))],
                               spacing=1.5),
                     ft.Column([txt('Ticket médio', 9.7, 'regular', theme.GRAY_TEXT),
-                               txt(brl(kpis['average_ticket'] or 0), 17.2, 'bold')], spacing=1.5,
+                               ft.Container(txt(brl(kpis['average_ticket'] or 0), 17.2, 'bold'), margin=ft.Margin(0, -2, 0, 0))], spacing=1.5,
                               horizontal_alignment=ft.CrossAxisAlignment.END)],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Container(height=1, bgcolor=theme.BORDER_SOFT, margin=ft.Margin(left=0, top=12, right=0, bottom=19)),
@@ -175,23 +176,23 @@ async def energy_page(app, *, days=7):
         delta = [txt(('↑ ' if up else '↓ ') + _int_text(abs(change), 1) + '%', 11, 'semibold', GREEN if up else theme.RED)]
     label = next(text for value, text in PERIODS if value == days)
     selector = ft.PopupMenuButton(
-        content=card_box(ft.Row([txt(label, 11.6, 'bold'), ft.Icon(ft.Icons.CALENDAR_TODAY_OUTLINED, size=19,
+        content=card_box(ft.Row([txt(label, 12.5, 'bold'), ft.Icon(ft.Icons.CALENDAR_TODAY_OUTLINED, size=19,
                                                                   color=theme.TEXT_COLOR)],
                                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                         padding=ft.Padding(left=18, right=18, top=0, bottom=0), radius=14, height=44.5,
+                         padding=ft.Padding(left=18, right=18, top=0, bottom=0), radius=14, height=45,
                          alignment=ft.Alignment(-1, 0)),
         tooltip='Escolher período',
         items=[ft.PopupMenuItem(content=text, on_click=app.link('history', manage=True, page='energy', days=value))
                for value, text in PERIODS])
     controls = [
-        ft.Container(height=31),
+        ft.Container(height=32.5),
         selector,
-        ft.Container(height=40),
+        ft.Container(height=41),
         ft.Row([ft.Container(ft.Column([txt('Energia total', 10.7, 'regular', theme.GRAY_TEXT),
-                                        txt(kwh_short(total), 21.5, 'bold'), *delta], spacing=5.5), expand=True),
+                                        txt(kwh_short(total), 22.6, 'bold'), *delta], spacing=5.5), expand=True),
                 ft.Container(ft.Column([txt('Pico de consumo', 10.7, 'regular', theme.GRAY_TEXT),
-                                        txt(kwh_short(peak), 21.5, 'bold'),
+                                        txt(kwh_short(peak), 22.6, 'bold'),
                                         txt(peak_day, 11, 'semibold', GREEN)], spacing=5.5), width=112)],
                vertical_alignment=ft.CrossAxisAlignment.START),
         ft.Container(height=38),
@@ -201,9 +202,9 @@ async def energy_page(app, *, days=7):
         ft.Container(height=32),
         _chat_button(app),
     ]
-    back = ft.Container(ft.Icon(ft.Icons.ARROW_BACK_IOS_NEW, size=19, color=theme.TEXT_COLOR), width=34, height=34,
+    back = ft.Container(ft.Icon(ft.Icons.KEYBOARD_ARROW_LEFT, size=34, color=theme.TEXT_COLOR), width=28, height=34,
                         on_click=app.link('history', manage=True), tooltip='Voltar', alignment=ft.Alignment(-1, 0),
-                        margin=ft.Margin(left=-2, top=0, right=0, bottom=0))
-    head = ft.Row([back, txt('Consumo de energia', 22.6, 'bold', expand=True)], spacing=6,
+                        margin=ft.Margin(left=-9, top=0, right=0, bottom=0))
+    head = ft.Row([back, txt('Consumo de energia', 22.6, 'bold', expand=True)], spacing=3,
                   vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return page(head, *controls, gap=0)
