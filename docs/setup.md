@@ -46,6 +46,8 @@ O APK 0.4.0 (build 23) está em `builds/chargegrid-0.4.0.apk` (SHA-256 `943c1363
 
 O APK 0.4.1 (build 24) está em `builds/chargegrid-0.4.1.apk` (SHA-256 `e7e2ab37c1d07f56942d30d492008b4e3008641a5f036fc9ada36c9f3a2550fc`). Traz o carro no cadastro e no perfil, o Modo Motorista redesenhado (só pergunta a bateria atual), a nova tela de edição do ponto e textos sem referência ao hardware. O `pyproject.toml` fixa `jni_flutter` 1.0.3 porque a 1.0.4 é incompatível com o `jni` 1.0.x usado pelos plugins do Flet.
 
+O APK 0.5.0 (build 25) está em `builds/chargegrid-0.5.0.apk` (SHA-256 `fc2ab8dfcdf852ab3c04e383289c9fa2383f780285de5e4395ef92303c27955b`). Traz o redesign completo do app conforme o design de referência da equipe (consumidor e vendedor): novo tema escuro, cabeçalho e barra inferior, fluxo de recarga com pagamento simulado, saldo, carteira e resgate do vendedor, tarifas dinâmicas e limite de bateria. Saldo, pagamentos, resgate e tarifas dinâmicas são simulados no aparelho; nenhum valor real é movimentado. O `pyproject.toml` também fixa `shared_preferences_android` 2.4.28 pelo mesmo motivo do `jni_flutter`.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
