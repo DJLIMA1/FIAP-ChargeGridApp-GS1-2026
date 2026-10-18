@@ -134,11 +134,16 @@ def _row_price(station):
     return f'{money(price)}/kWh' if price is not None else _station_status(station)[0]
 
 
+def _area(address):
+    from .stations import _area as area
+    return area(address)
+
+
 def _station_row(station, on_click, *, carded=True):
     """Linha de estação da referência: tile branco com pino, nome, endereço, preço e ">"."""
     texts = ft.Column([design.txt(station.get('name') or 'Estação', 14, 'semibold', max_lines=1,
                                   overflow=ft.TextOverflow.ELLIPSIS),
-                       design.txt(station.get('address') or '', 11, 'regular', theme.GRAY_TEXT, max_lines=1,
+                       design.txt(_area(station.get('address')), 11, 'regular', theme.GRAY_TEXT, max_lines=1,
                                   overflow=ft.TextOverflow.ELLIPSIS)],
                       spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)
     row = ft.Row([design.icon_tile(None, size=56), texts,

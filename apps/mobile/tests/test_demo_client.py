@@ -29,7 +29,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.clock = Clock()
         self.client = DemoApi(clock=self.clock, start_at=datetime(2026, 9, 27, 15, tzinfo=timezone.utc))
         await self.client.login(DEMO_EMAIL, DEMO_PASSWORD)
-        self.station = (await self.client.request('GET', 'stations'))['items'][0]
+        self.station = (await self.client.request('GET', 'operator/stations'))['items'][0]
         self.point = next(p for p in self.station['connectors'] if p['available'])
 
     async def asyncTearDown(self):
@@ -105,7 +105,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.clock.advance(6)
         charging = await self.client.request('GET', f"charging-sessions/{started['id']}")
         self.assertEqual(charging['status'], 'charging')
-        self.assertEqual(charging['energy_wh'], '10.000')
+        self.assertEqual(charging['energy_wh'], '83.333')
         for _ in range(10):
             self.assertEqual(await self.client.request('GET', 'charging-sessions/current'), charging)
 
@@ -131,7 +131,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(next(p for p in points if p['id'] == self.point['id'])['available'])
 
     async def test_cost_limit_discount_and_snapshot_are_clock_based(self):
-        session = await self.start(max_cost='0.0300', coupon_code='DEMO10', max_duration_minutes=30)
+        session = await self.start(max_cost='0.1000', coupon_code='DEMO10', max_duration_minutes=30)
         self.clock.advance(3)
         active = await self.client.request('GET', f"charging-sessions/{session['id']}")
         self.assertGreater(Decimal(active['energy_wh']), 0)
@@ -140,12 +140,12 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         final = await self.client.request('GET', f"charging-sessions/{session['id']}")
         self.assertEqual(final['status'], 'completed')
         self.assertEqual(final['end_reason'], 'cost_limit')
-        self.assertLessEqual(Decimal(final['cost_estimate']), Decimal('0.0300'))
-        self.assertAlmostEqual(float(final['energy_wh']), float(Decimal('0.0300') / Decimal('1.35') * 1000), places=2)
+        self.assertLessEqual(Decimal(final['cost_estimate']), Decimal('0.1000'))
+        self.assertAlmostEqual(float(final['energy_wh']), float(Decimal('0.1000') / Decimal('1.701') * 1000), places=2)
         self.assertEqual(final['discount_percent'], 10)
         await self.client.request('PATCH', f"connectors/{self.point['id']}", {'price_per_kwh': '10'})
         history = await self.client.request('GET', f"charging-sessions/{session['id']}")
-        self.assertEqual(history['price_per_kwh'], '1.5000')
+        self.assertEqual(history['price_per_kwh'], '1.8900')
         self.assertEqual(history['connector']['price_per_kwh'], '10.0000')
         self.assertEqual(history['cost_estimate'], final['cost_estimate'])
 
@@ -154,21 +154,21 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.clock.advance(1000)
         final = await self.client.request('GET', f"charging-sessions/{session['id']}")
         self.assertEqual(final['end_reason'], 'duration_limit')
-        self.assertEqual(final['energy_wh'], '120.000')
-        self.assertEqual(final['cost_estimate'], '0.1800')
+        self.assertEqual(final['energy_wh'], '1000.000')
+        self.assertEqual(final['cost_estimate'], '1.8900')
         self.assertIsNone(await self.client.request('GET', 'charging-sessions/current'))
         self.client.clear_operation('charging-sessions')
         another = await self.start(max_duration_minutes=2)
         self.clock.advance(6)
         active = await self.client.request('GET', f"charging-sessions/{another['id']}")
-        self.assertEqual(active['energy_wh'], '10.000')
+        self.assertEqual(active['energy_wh'], '83.333')
         stopping = await self.client.request('POST', f"charging-sessions/{another['id']}/stop", key='stop')
         self.assertEqual(stopping['status'], 'stopping')
         self.clock.advance(10)
         stopped = await self.client.request('GET', f"charging-sessions/{another['id']}")
         self.assertEqual(stopped['status'], 'completed')
         self.assertEqual(stopped['end_reason'], 'requested')
-        self.assertEqual(stopped['energy_wh'], '12.000')
+        self.assertEqual(stopped['energy_wh'], '100.000')
         self.clock.advance(100)
         self.assertEqual(await self.client.request('GET', f"charging-sessions/{another['id']}"), stopped)
 
@@ -252,7 +252,9 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         await self.assert_error('PATCH', f"connectors/{self.point['id']}", body={'active': True}, code='point_retired')
 
     async def test_coupon_scope_expiry_partial_edits_and_discount(self):
-        draft = next(s for s in (await self.client.request('GET', 'operator/stations'))['items'] if not s['active'])
+        claim = await self.client.request('POST', 'ownership/claim', {'token': self.client.new_claim_token()})
+        draft = await self.client.request('GET', f"stations/{claim['station_id']}")
+        self.assertFalse(draft['active'])
         future = (datetime(2026, 9, 27, 15, tzinfo=timezone.utc) + timedelta(seconds=10)).isoformat()
         coupon = await self.client.request('POST', 'coupons', {'code': 'DRAFT50', 'description': 'Só rascunho',
                        'station_id': draft['id'], 'discount_percent': 50, 'valid_until': future})
@@ -269,8 +271,8 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(coupon['id'], [c['id'] for c in all_owned['items']])
 
     async def test_history_summary_context_pagination_and_geographic_filter(self):
-        history = await self.client.request('GET', 'operator/charging-sessions', params={'limit': 1, 'offset': 1})
-        self.assertEqual(history['total'], 2)
+        history = await self.client.request('GET', 'operator/charging-sessions', params={'limit': 1, 'offset': 0})
+        self.assertEqual(history['total'], 1)
         self.assertEqual(len(history['items']), 1)
         record = history['items'][0]
         self.assertEqual(record['station_id'], self.station['id'])
@@ -279,7 +281,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         summary = await self.client.request('GET', 'me/summary')
         self.assertEqual(summary['sessions_count'], 2)
         self.assertEqual(summary['energy_wh'], '4800.000')
-        nearby = await self.client.request('GET', 'stations', params={'lat': -23.5505, 'lng': -46.6333, 'radius_km': 1})
+        nearby = await self.client.request('GET', 'stations', params={'lat': -23.5467, 'lng': -46.7224, 'radius_km': 1})
         distant = await self.client.request('GET', 'stations', params={'lat': 0, 'lng': 0, 'radius_km': 1})
         self.assertEqual(nearby['total'], 1)
         self.assertEqual(distant['total'], 0)

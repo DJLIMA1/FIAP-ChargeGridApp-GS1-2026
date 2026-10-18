@@ -44,6 +44,12 @@ def _area(address):
     return f'{parts[-2]} - {parts[-1]}' if len(parts) >= 3 else text
 
 
+def _street(address):
+    """'Av. X, 10, Pinheiros, São Paulo - SP' -> 'Av. X, 10' (reference detail line)."""
+    parts = [part.strip() for part in str(address or '').split(',') if part.strip()]
+    return ', '.join(parts[:2]) if len(parts) >= 4 else str(address or '')
+
+
 def _connector_groups(station):
     """Group points by connector type + nominal power: [(title, subtitle)]."""
     groups = {}
@@ -171,8 +177,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 from ..services.driver_demo import DEMO_DRIVER_NETWORK
                 coordinates = geocode_demo_address(search_query,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
                 if not coordinates:
-                    raise ApiError('Na conta demo, busque um local de exemplo (Praça da Sé, Av. Paulista, Congonhas, '
-                                   'Vila Madalena) ou selecione Coordenadas. A busca não acessa a internet.')
+                    raise ApiError('Na conta demo, busque um local de exemplo (Villa Lobos, Marginal Pinheiros, Av. Paulista, '
+                                   'Congonhas) ou selecione Coordenadas. A busca não acessa a internet.')
             else:
                 try:
                     coordinates = await geocode_address(search_query)
@@ -254,7 +260,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     refresh_saved()
     if station_id:
         first = stations[0]
-        station_heading = ft.Column([D.txt(first['name'],25,'bold'),D.txt(first['address'],13.5,'regular',theme.GRAY_TEXT)],spacing=8)
+        station_heading = ft.Column([D.txt(first['name'],25,'bold'),D.txt(_street(first['address']),13.5,'regular',theme.GRAY_TEXT)],spacing=8)
         amenities = [amenity for amenity in first.get('amenities') or [] if isinstance(amenity,dict)]
         amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
         group_rows = [D.list_row(group_title,group_sub,chevron=False,tile=40)

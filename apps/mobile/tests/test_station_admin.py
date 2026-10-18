@@ -45,7 +45,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Fale com o ChatBot', copy)
         self.assertIn('Gerenciar cupons', copy)
         self.assertIn('Adicionar equipamento simulado', copy)
-        await press(screen, 'Posto Demo Centro')(None)
+        await press(screen, 'Marginal Pinheiros')(None)
         self.assertEqual(app.go.await_args.args[0], 'station_admin')
         await press(screen, 'Adicionar equipamento simulado')(None)
         app.go.assert_awaited_with('operator', claim=True)

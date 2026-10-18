@@ -464,9 +464,9 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             instant[0] += 100
             completed = await demo.request('GET', f"charging-sessions/{created['id']}")
             screen = await ask_guide(self.app, 'Resumo da última recarga')
-            self.assertIn('0.120 kWh', self.app.chat_messages[-1]['content'])
-            self.assertIn('R$ 0,18', self.app.chat_messages[-1]['content'])
-            self.assertEqual(completed['energy_wh'], '120.000')
+            self.assertIn('1.000 kWh', self.app.chat_messages[-1]['content'])
+            self.assertIn('R$ 1,89', self.app.chat_messages[-1]['content'])
+            self.assertEqual(completed['energy_wh'], '1000.000')
             self.assertIn('Dados da demonstração', self.app.chat_messages[-1]['content'])
             await click(screen, 'Iniciar uma recarga')(None)
             self.assertIn('#F12345', self.app.chat_messages[-1]['content'])

@@ -18,6 +18,11 @@ POWER_MAX_DEFAULT = 80
 POWER_MIN = 1
 
 
+def _street(address):
+    from .stations import _street as street
+    return street(address)
+
+
 def station_code(stations, station_id):
     """Identificador exibido (``CG-001``): posição da estação na lista do vendedor."""
     for index, item in enumerate(stations or [], 1):
@@ -104,14 +109,14 @@ async def build(app, station_id=None, page=None, **params):
 def _main_page(app, station, code):
     sid = station['id']
     points = _live_points(station)
-    power_line = ' - '.join(f"{point.get('connector_type')}: {_power_text(point.get('power_kw'))} kW"
-                            for point in points) or 'Nenhum conector vinculado'
+    power_line = ' - '.join(dict.fromkeys(f"{point.get('connector_type')}: {_power_text(point.get('power_kw'))} kW"
+                                          for point in points)) or 'Nenhum conector vinculado'
     go = lambda page: app.link('station_admin', station_id=sid, page=page)  # noqa: E731
     return design.page(
         heading(app, station.get('name') or 'Estação'),
         ft.Container(height=10),
         ft.Column([design.txt(f'Estação {code}', 16, 'bold'),
-                   design.txt(station.get('address') or '', 11, 'regular', theme.GRAY_TEXT)], spacing=9),
+                   design.txt(_street(station.get('address')), 11, 'regular', theme.GRAY_TEXT)], spacing=9),
         ft.Container(height=18),
         ft.Column([
             menu_row('Dados da estação', 'Endereço, nome e status', ft.Icons.EDIT_OUTLINED, go('data')),

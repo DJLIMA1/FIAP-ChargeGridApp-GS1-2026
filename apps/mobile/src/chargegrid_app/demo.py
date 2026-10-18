@@ -23,11 +23,21 @@ DEMO_PASSWORD = 'demo1234'
 DEMO_PRESENCE_CODE = '#F12345'
 DEMO_CLAIM_TOKEN = 'DEMO-CLAIM-' + '0' * 32
 DEMO_LOCATIONS = (
-    {'name': 'Posto Demo Centro', 'address': 'Praça da Sé, São Paulo - SP',
-     'latitude': -23.5505, 'longitude': -46.6333},
-    {'name': 'Posto Demo Vila Mariana', 'address': 'Rua Vergueiro, Vila Mariana, São Paulo - SP',
-     'latitude': -23.5895, 'longitude': -46.6345},
+    {'name': 'Villa Lobos', 'address': 'Av. Prof Fonseca Rodrigues, 4777, Pinheiros, São Paulo - SP',
+     'latitude': -23.5467, 'longitude': -46.7224},
+    {'name': 'Marginal Pinheiros', 'address': 'Av. das Nações Unidas, 4777, Pinheiros, São Paulo - SP',
+     'latitude': -23.5613, 'longitude': -46.6996},
+    {'name': 'Villa Olímpia', 'address': 'Rua Olimpíadas, 205, Vila Olímpia, São Paulo - SP',
+     'latitude': -23.5955, 'longitude': -46.6857},
 )
+# (conector, potência kW, preço R$/kWh, online) por posto; a conta demo é dona só da Marginal Pinheiros.
+_DEMO_POINTS = (
+    (('CCS2', '60.000', '1.8900', True), ('CCS2', '60.000', '1.8900', False),
+     ('Tipo 2', '22.000', '1.8900', True), ('Tipo 2', '22.000', '1.8900', True)),
+    (('CCS2', '60.000', '1.8900', True), ('Tipo 2', '22.000', '1.8900', True), ('Tipo 2', '22.000', '1.8900', False)),
+    (('CCS2', '50.000', '2.0900', True), ('Tipo 2', '22.000', '2.0900', True)),
+)
+_DEMO_OWNED = (1,)
 
 _USER = 'demo-user'
 _RES_ACTIVE = {'pending_device', 'confirmed', 'cancelling'}
@@ -132,32 +142,35 @@ class DemoApi(OwnerApiMixin):
                          'operator_enabled': True, 'phone': '(11) 91234-5678', 'vehicle_description': 'Veículo simulado',
                          'created_at': self._iso()}
         for index, location in enumerate(DEMO_LOCATIONS):
-            station = self._make_station(dict(location), active=index == 0)
-            self._make_point(station['id'], active=index == 0)
+            station = self._make_station(dict(location), active=True)
+            if index not in _DEMO_OWNED:
+                station['owner_id'] = 'demo-network'
+            for kind, power, price, online in _DEMO_POINTS[index]:
+                self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price, online=online)
             if index == 0:
-                self._make_point(station['id'], online=False)
-                station['amenities'] = [{'kind': 'cafe', 'name': 'Café da Sé', 'distance_m': 60},
+                station['amenities'] = [{'kind': 'cafe', 'name': 'Café do Parque', 'distance_m': 60},
                                         {'kind': 'banheiro', 'name': '', 'distance_m': None}]
         # Modo Motorista: perfil salvo e rede parceira fictícia (criada no primeiro uso).
         self._driver_profile = self._driver_updated_at = None
         self._driver_network = False
-        primary = next(iter(self._points.values()))
+        stations = list(self._stations.values())
         self._coupons['demo-coupon-welcome'] = {
             'id': 'demo-coupon-welcome', 'operator_id': _USER, 'station_id': None,
             'code': 'DEMO10', 'description': '10% de desconto na recarga simulada',
             'discount_percent': 10, 'valid_until': self._iso(30 * 86400), 'active': True,
         }
         for index in range(2):
+            primary = next(p for p in self._points.values() if p['station_id'] == stations[index]['id'] and p['active'])
             sid = self._id('session')
             ended = -(index + 1) * 3600
             self._sessions[sid] = {
                 'id': sid, 'user_id': _USER, 'connector_id': primary['id'], 'reservation_id': None,
                 'status': 'completed', 'created_at': self._iso(ended - 1201),
                 'started_at': self._iso(ended - 1200), 'ended_at': self._iso(ended),
-                'max_duration_minutes': 20, 'max_cost': None, 'price_per_kwh': '1.5000',
+                'max_duration_minutes': 20, 'max_cost': None, 'price_per_kwh': '1.8900',
                 'discount_percent': 0, 'energy_wh': '2400.000', 'soc_percent': '24.00',
                 'source': 'simulated', 'last_measurement_at': self._iso(ended),
-                'cost_estimate': '3.6000', 'end_reason': 'duration_limit',
+                'cost_estimate': '4.5360', 'end_reason': 'duration_limit',
             }
 
     def _id(self, kind):

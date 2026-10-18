@@ -199,7 +199,7 @@ class DemoCouponTests(unittest.IsolatedAsyncioTestCase):
     async def test_coupon_code_is_case_insensitive(self):
         api = DemoApi()
         await api.login(DEMO_EMAIL, DEMO_PASSWORD)
-        stations = await api.request('GET', 'stations')
+        stations = await api.request('GET', 'operator/stations')
         point = next(p for s in stations['items'] for p in s['connectors'] if p['available'])
         session = await api.request('POST', 'charging-sessions', {
             'public_code': point['public_code'], 'presence_code': DEMO_PRESENCE_CODE,
@@ -345,7 +345,7 @@ class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
         screen = await operator.build(app)
         copy = texts(screen)
         self.assertIn('Suas Estações', copy)
-        self.assertIn('Posto Demo Centro', copy)
+        self.assertIn('Marginal Pinheiros', copy)
         self.assertIn('Online - Conectores livres', copy)
         self.assertNotIn('1 pontos', copy)
         await app.api.close()

@@ -90,7 +90,7 @@ class DemoDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.dash.view.poll_seconds, 30)
 
     async def test_every_section_builds_without_errors(self):
-        expected = {'stations': 'Posto Demo Centro', 'sessions': 'Sessões de recarga', 'coupons': 'DEMO10',
+        expected = {'stations': 'Marginal Pinheiros', 'sessions': 'Sessões de recarga', 'coupons': 'DEMO10',
                     'insights': 'Gerar recomendações'}
         for section, marker in expected.items():
             content = await self.open(section)

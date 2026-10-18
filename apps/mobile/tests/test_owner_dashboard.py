@@ -100,7 +100,7 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         overview = await self.client.owner_overview(params)
         kpis = overview['kpis']
         self.assertGreater(kpis['sessions'], 50)
-        self.assertEqual((kpis['points'], kpis['points_online'], kpis['uptime_percent']), (2, 1, '50.0'))
+        self.assertEqual((kpis['points'], kpis['points_online'], kpis['uptime_percent']), (3, 2, '66.7'))
         series = await self.client.owner_timeseries({**params, 'granularity': 'day'})
         self.assertEqual(sum(series['series']['sessions']), kpis['sessions'])
         # Cada balde é arredondado a centavos; a soma pode diferir por arredondamento.
@@ -122,9 +122,9 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         await other.close()
 
     async def test_tables_filter_search_paginate_and_export(self):
-        page = await self.client.owner_sessions({'limit': 5, 'q': 'demo-2'})
+        page = await self.client.owner_sessions({'limit': 5, 'q': 'demo-11'})
         self.assertEqual(len(page['items']), 5)
-        self.assertTrue(all(item['public_code'] == 'DEMO-2' for item in page['items']))
+        self.assertTrue(all(item['public_code'] == 'DEMO-11' for item in page['items']))
         self.assertNotIn('user_id', page['items'][0])
         failed = await self.client.owner_sessions({'status': 'failed', 'limit': 100})
         self.assertTrue(all(item['status'] == 'failed' for item in failed['items']))
@@ -146,8 +146,9 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ApiError) as raised:
             await self.client.owner_overview({'from': START.isoformat(), 'to': (START - timedelta(days=1)).isoformat()})
         self.assertEqual(raised.exception.code, 'invalid_period')
-        stations = (await self.client.request('GET', 'operator/stations'))['items']
-        inactive = next(s for s in stations if not s['active'])
+        claim = await self.client.request('POST', 'ownership/claim', {'token': self.client.new_claim_token()})
+        inactive = await self.client.request('GET', f"stations/{claim['station_id']}")
+        self.assertFalse(inactive['active'])
         scoped = await self.client.owner_overview({'station_id': inactive['id']})
         self.assertEqual(scoped['kpis']['sessions'], 0)
         self.client._profile['operator_enabled'] = False
@@ -159,14 +160,14 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         alerts = (await self.client.owner_alerts())['items']
         self.assertEqual({alert['kind'] for alert in alerts}, {'device_offline', 'command_failed'})
         live = (await self.client.owner_live())['items']
-        self.assertEqual([item['availability_status'] for item in live], ['available', 'offline', 'disabled'])
+        self.assertEqual([item['availability_status'] for item in live], ['available', 'available', 'offline'])
         before = (await self.client.owner_overview({'to': (START + timedelta(hours=2)).isoformat()}))['kpis']
-        await self.client.request('POST', 'charging-sessions', {'presence_code': '#F12345', 'public_code': 'DEMO-2',
+        await self.client.request('POST', 'charging-sessions', {'presence_code': '#F12345', 'public_code': 'DEMO-11',
                                                                 'max_duration_minutes': 5}, key='k')
         self.clock.value = 3
-        charging = next(item for item in (await self.client.owner_live())['items'] if item['public_code'] == 'DEMO-2')
+        charging = next(item for item in (await self.client.owner_live())['items'] if item['public_code'] == 'DEMO-11')
         self.assertEqual(charging['availability_status'], 'charging')
-        self.assertEqual(charging['session']['power_w'], '7200')
+        self.assertEqual(charging['session']['power_w'], '60000')
         self.clock.value = 400
         after = (await self.client.owner_overview({'to': (START + timedelta(hours=2)).isoformat()}))['kpis']
         self.assertEqual(after['sessions'], before['sessions'] + 1)

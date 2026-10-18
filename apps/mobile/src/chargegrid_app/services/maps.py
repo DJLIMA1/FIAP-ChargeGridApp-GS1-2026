@@ -282,9 +282,9 @@ async def station_map_widget(stations, on_select, *, offline=False, width=320, r
     if offline:
         # This bundled vector extract is specific to the public demo fixture.
         # Never place another location on its fixed geographic marker.
-        if abs(lat-(-23.5505)) < 0.000001 and abs(lng-(-46.6333)) < 0.000001 and reference is None and selected['free_points']:
-            backdrop = ft.Image(src='maps/demo-centro.png',width=width,height=height,fit=ft.BoxFit.COVER,
-                                semantics_label='Mapa da Praça da Sé, com o posto de exemplo da demonstração.')
+        if abs(lat-(-23.5467)) < 0.000001 and abs(lng-(-46.7224)) < 0.000001 and reference is None and selected['free_points']:
+            backdrop = ft.Image(src='/design/map_villa_lobos.jpg',width=width,height=height,fit=ft.BoxFit.COVER,
+                                semantics_label='Mapa do Parque Villa-Lobos, com o posto de exemplo da demonstração.')
             attribution = 'Demo · © OpenStreetMap contributors'
         else:
             backdrop = _schematic_map(lat,lng,markers,height=height,center_glyph=None)

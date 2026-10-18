@@ -177,7 +177,7 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
             if len(calls) == 1:
                 return {'content': '', 'model': 'fake', 'usage': {},
                         'tool_calls': [{'id': '1', 'name': 'search_stations', 'arguments': '{"available_only": true}'}]}
-            return {'content': 'O Posto Demo Centro tem ponto livre. Reserve pelo botão.', 'model': 'fake',
+            return {'content': 'O Villa Lobos tem ponto livre. Reserve pelo botão.', 'model': 'fake',
                     'usage': {}, 'tool_calls': []}
 
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'test-key'}), \
@@ -189,7 +189,7 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tools_used'], ['search_stations'])
         tool_data = json.loads(calls[1][-1]['content'])
         # A rede parceira fictícia também aparece na busca da demo.
-        self.assertIn('Posto Demo Centro', [station['name'] for station in tool_data['stations']])
+        self.assertIn('Villa Lobos', [station['name'] for station in tool_data['stations']])
         self.assertIn('demonstração', calls[0][0]['content'])
         self.assertEqual([a['type'] for a in result['suggested_actions']], ['open_station', 'reserve'])
 

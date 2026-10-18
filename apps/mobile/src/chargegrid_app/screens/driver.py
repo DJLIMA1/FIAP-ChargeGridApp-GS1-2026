@@ -24,7 +24,7 @@ from ..ui import motion, theme
 from ..ui.components import button, card, disclosure_field, field, pill
 from ..ui.vehicle import VehiclePicker
 
-DEMO_REGION = 'Praça da Sé'
+DEMO_REGION = 'Villa Lobos'
 RESULTS_KEY = 'driver-results'
 DEMAND_SOURCES = {'heuristica': 'horários típicos', 'open-meteo': 'clima', 'informado': 'informado por você'}
 HERO_COLORS = ('#D72B32', '#7E1419')

@@ -39,8 +39,10 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             await app.api.login(DEMO_EMAIL,DEMO_PASSWORD)
             app.profile = await app.api.request('GET','me')
             screen = await stations.build(app)
-            await click(screen,'Ver pontos')(None)
-            screen = await stations.build(app,**app.go.call_args.kwargs)
+            self.assertIn('Villa Lobos',texts(screen))
+            first_station = (await app.api.request('GET','stations'))['items'][0]
+            screen = await stations.build(app,station_id=first_station['id'])
+            self.assertIn('Reservar estação',texts(screen))
             await click(screen,'Reservar para chegar')(None)
             reservation_screen = await reservations.build(app,detail=True)
             self.assertIn('Aguardando confirmação simulada',texts(reservation_screen))
@@ -80,7 +82,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             kinds = [event['kind'] for event in await app.api.request('GET',f'charging-sessions/{session_id}/events')]
             self.assertEqual(kinds,['start_requested','start_applied','stop_requested','ended'])
             history_screen = await history.build(app)
-            self.assertIn('Posto Demo Centro',texts(history_screen))
+            self.assertIn('Villa Lobos',texts(history_screen))
             self.assertIn('HISTÓRICO SIMULADO',texts(history_screen))
             self.assertIsNone(await app.api.request('GET','charging-sessions/current'))
             await app.api.close()
@@ -213,7 +215,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
 
 class DemoGeocodingTests(unittest.TestCase):
     def test_fixture_match_normalizes_accents_and_case(self):
-        self.assertEqual(geocode_demo_address('  PRACA DA SE  ',DEMO_LOCATIONS),
+        self.assertEqual(geocode_demo_address('  VILLA   LOBOS  ',DEMO_LOCATIONS),
                          (float(DEMO_LOCATIONS[0]['latitude']),float(DEMO_LOCATIONS[0]['longitude'])))
 
     def test_ambiguous_or_unknown_location_is_not_guessed(self):

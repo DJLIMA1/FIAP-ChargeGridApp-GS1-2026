@@ -52,7 +52,7 @@ class PlanningTests(unittest.TestCase):
         records = [{**STATION,'latitude':0,'longitude':0,'connectors':[
             {**POINT,'connector_type':'Tipo 2'},
             {**POINT,'id':'offline','connector_type':'CCS2','available':False,'price_per_kwh':'0.1'}]}]
-        for params in ({}, {'connector_type':'TYPE-2','available_only':True},
+        for params in ({}, {'connector_type':'chademo','available_only':True},
                        {'connector_type':'CCS','max_price_per_kwh':'0.5'},
                        {'sort':'distance','lat':0,'lng':0}, {'sort':'price'}):
             with self.subTest(params=params):
@@ -134,8 +134,8 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
         values = list(api._stations.values())
         values[1]['active'] = True
         points = list(api._points.values())
-        points[0].update(connector_type='Tipo 2',price_per_kwh='4')
-        result = await api.request('GET','stations',params={'connector_type':'TYPE-2','available_only':True,'sort':'price','limit':1})
+        points[0].update(connector_type='CHAdeMO',price_per_kwh='4')
+        result = await api.request('GET','stations',params={'connector_type':'chademo','available_only':True,'sort':'price','limit':1})
         self.assertEqual(result['items'][0]['discovery']['point']['id'],points[0]['id'])
         self.assertEqual(result['total'],1)
         for params in ({'sort':'distance'},{'max_price_per_kwh':'NaN'},{'available_only':'maybe'},{'radius_km':0}):
