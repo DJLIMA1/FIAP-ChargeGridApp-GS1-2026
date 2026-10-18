@@ -611,7 +611,7 @@ async def capture_boot(app):
     params = _capture_params(os.getenv('CHARGEGRID_CAPTURE_PARAMS'))
     if '@first_station' in params.values() or '@first_connector' in params.values():
         stations = (await app.api.request('GET', 'operator/stations'))
-        stations = stations.get('stations', stations) if isinstance(stations, dict) else stations
+        stations = (stations.get('items') or stations.get('stations') or []) if isinstance(stations, dict) else stations
         station = (stations or [{}])[0]
         connector = ((station.get('connectors') or [{}]) or [{}])[0]
         params = {key: (station.get('id') if value == '@first_station' else

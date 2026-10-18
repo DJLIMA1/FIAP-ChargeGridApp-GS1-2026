@@ -28,7 +28,9 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
         app.logout = AsyncMock()
         app.switch_mode = AsyncMock()
         screen = await profile.build(app)
-        await click(screen, 'Usar como operador')(None)
+        row = next(c for c in descendants(screen) if getattr(c, 'on_click', None)
+                   and any(isinstance(t, ft.Text) and t.value == 'Usar como operador' for t in descendants(c)))
+        await row.on_click(None)
         app.switch_mode.assert_awaited_once_with('vendor')
 
     async def test_fields_have_space_for_validation_messages(self):
@@ -99,7 +101,7 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([label for _, label, _ in entries], ['Início', 'Estações', 'Histórico', 'Chat', 'Conta'])
         self.assertIn(('history', 'Histórico', {'manage': True}), entries)
         self.assertEqual(entries[0][0], 'home')
-        self.assertEqual(active_tab('charging', {}, 'consumer'), 'stations')
+        self.assertEqual(active_tab('charging', {}, 'consumer'), 'reservations')
         self.assertEqual(active_tab('coupons', {}, 'vendor'), 'profile')
         self.assertIsNone(parent_route('operator', {}, 'vendor'))
         self.assertEqual(parent_route('profile', {'mode': 'password'}, 'vendor'), ('profile', {}))

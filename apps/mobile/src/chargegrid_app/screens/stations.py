@@ -1,4 +1,5 @@
 import math
+import unicodedata
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
@@ -8,13 +9,14 @@ from ..api_client import ApiError
 from ..services.discovery import discover
 from ..services.driver import amenity_label
 from ..services.location import geocode_address, geocode_demo_address
-from ..services.maps import STATION_MAP_RATIO, station_map_widget
+from ..services.maps import station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..services.search_location import SearchLocation
+from ..ui import design as D
 from ..ui import theme
 from ..ui.ai_features import ai_search_card, ai_supported
 from ..ui.availability import point_status, station_map_record
-from ..ui.components import badge, button, card, field, money, pill, title
+from ..ui.components import badge, button, card, field, money, pill
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
@@ -26,6 +28,47 @@ def _available(station, point):
             and not point.get('retired') and point.get('online') is not False
             and point.get('available') is True
             and point.get('availability_status') in (None, 'available'))
+
+
+def _fold(text):
+    return unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower().strip()
+
+
+def _area(address):
+    """'Av. X, 10, Pinheiros, São Paulo - SP' -> 'Pinheiros - São Paulo' (reference subtitle)."""
+    text = str(address or '').strip()
+    head, _, uf = text.rpartition(' - ')
+    if head and len(uf.strip()) == 2:
+        text = head
+    parts = [part.strip() for part in text.split(',') if part.strip()]
+    return f'{parts[-2]} - {parts[-1]}' if len(parts) >= 3 else text
+
+
+def _connector_groups(station):
+    """Group points by connector type + nominal power: [(title, subtitle)]."""
+    groups = {}
+    for point in station.get('connectors') or []:
+        key = (str(point.get('connector_type') or ''), _number(point.get('power_kw') or 0))
+        total, free = groups.get(key, (0, 0))
+        groups[key] = (total + 1, free + (1 if _available(station, point) else 0))
+    rows = []
+    for (kind, power), (total, free) in groups.items():
+        if free == 0:
+            sub = 'Nenhum conector livre'
+        elif free == total:
+            sub = f'{free} conector livre' if total == 1 else f'{free} conectores livres'
+        else:
+            sub = f"{free} de {total} {'conector livre' if free == 1 else 'conectores livres'}"
+        rows.append((f'{kind} - {power} kW', sub))
+    return rows
+
+
+def _map_url(station):
+    try:
+        return f"https://www.google.com/maps/dir/?api=1&destination={float(station['latitude'])},{float(station['longitude'])}"
+    except (KeyError, TypeError, ValueError):
+        from urllib.parse import quote
+        return 'https://www.google.com/maps/search/?api=1&query=' + quote(str(station.get('address') or station.get('name') or ''))
 
 
 def _number(value):
@@ -210,16 +253,33 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     refresh_saved()
     if station_id:
-        station_heading = title(stations[0]['name'],stations[0]['address'])
-        amenities = [amenity for amenity in stations[0].get('amenities') or [] if isinstance(amenity,dict)]
+        first = stations[0]
+        station_heading = ft.Column([D.txt(first['name'],25,'bold'),D.txt(first['address'],13.5,'regular',theme.GRAY_TEXT)],spacing=8)
+        amenities = [amenity for amenity in first.get('amenities') or [] if isinstance(amenity,dict)]
         amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
-        controls = [station_heading,*amenity_row,
+        group_rows = [D.list_row(group_title,group_sub,chevron=False,tile=40)
+                      for group_title,group_sub in _connector_groups(first)]
+        route_row = ft.Container(ft.Row([ft.Icon(ft.Icons.ALT_ROUTE,size=20,color=theme.TEXT_COLOR),
+                                         D.txt('Abrir rota no Google Maps',14,'semibold',expand=True),
+                                         ft.Icon(ft.Icons.OPEN_IN_NEW,size=20,color=theme.GRAY_TEXT)],
+                                        spacing=12,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                 bgcolor=theme.CARD,border_radius=D.RADIUS_BTN,height=43,
+                                 padding=ft.Padding(left=17,right=14,top=0,bottom=0),url=_map_url(first),ink=True)
+        controls = [D.txt('Detalhes da estação',19,'bold'),
+                    ft.Container(height=0),
+                    ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=10)),
+                    D.section_label('Conectores'),*group_rows,
+                    ft.Container(height=14),route_row,
+                    D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1),height=55,size=16),
+                    *amenity_row,
                     card(ft.Row([
                         ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,color=theme.RED,size=23),
                         ft.Text('Para iniciar, você precisa estar no ponto. Leia o código #F atual na tela do equipamento; ele muda periodicamente.',
                                 size=13,color=theme.TEXT_COLOR,expand=True),
                     ],spacing=12),padding=14),
                     ft.Text('Pontos de recarga',size=20,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')]
+        # The reference puts the map right under the title.
+        map_slot_index = 2
     else:
         search_controls = [search_mode,address,coordinates,reach,button('Buscar',app.action(search)),
                            ft.Text('Sem endereço, mostramos todos os postos. O raio é aplicado à localização informada.',size=12,color=theme.GRAY_TEXT)]
@@ -258,31 +318,32 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             summary.append('menor tarifa' if sort == 'price' else 'proximidade da busca')
         if intention:
             summary.append(f"tenho {intention['minutes']} min" if intention['mode'] == 'time' else f"até {money(intention['max_cost'])}")
-        controls = [title('Encontrar postos','Compare tarifa, conector e potência. A confirmação vem do ponto.'),filters_section,search_section]
-        if ai_supported(app):
-            controls.insert(1,ai_search_card(app,lat=lat,lng=lng))
+        extras = [ai_search_card(app,lat=lat,lng=lng)] if ai_supported(app) else []
+        extras += [filters_section,search_section]
         if summary:
-            controls.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
+            extras.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
+        controls = []
+    typed = {'text':''}
     map_preview = ft.Container(visible=False)
     map_signature = None
-    map_section = ft.Column(
-        controls=[ft.Text('Postos no mapa',size=20,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),map_preview],
-        visible=False,
-        spacing=16,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-    )
-    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-40)
+    map_section = ft.Column(controls=[map_preview],visible=False,spacing=0,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-(40 if not station_id else 50))
+    map_ratio = 362/158
     async def resize_map_section(event):
         nonlocal map_width
         if event.width > 0:
             map_width = event.width
     map_section.on_size_change = resize_map_section
 
+    def typed_matches(items):
+        text = _fold(typed['text'])
+        if not text:
+            return items
+        return [item for item in items if text in _fold(item.get('name')) or text in _fold(item.get('address'))]
+
     async def refresh_map(items, initial=False):
         nonlocal map_signature
-        # Details already identify the chosen station. Do not repeat its map
-        # or send the user back through another map disclosure.
-        if station_id:
-            return
+        items = typed_matches(items) if not station_id else items
         records = []
         for station in items:
             metadata = station.get('discovery') or {}
@@ -292,19 +353,21 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             if metadata.get('point'):
                 record['price'] = float(metadata['point']['price_per_kwh'])
                 record['status'] = point_status(metadata['point'])[0]
+            if metadata.get('distance_km') is not None:
+                record['distance_km'] = float(metadata['distance_km'])
             records.append(record)
-        signature = [{key:record.get(key) for key in ('id','name','latitude','longitude','free_points','status','price')}
+        signature = [{key:record.get(key) for key in ('id','name','latitude','longitude','free_points','status','price','distance_km')}
                      for record in records]
         if signature == map_signature:
             return
         if items:
             def draw():
                 return station_map_widget(records,lambda selected_id:app.link('stations',station_id=selected_id,**route_state),
-                                          offline=demo,width=map_width,
+                                          offline=demo,width=map_width,variant='detail' if station_id else 'list',
                                           reference=(lat,lng) if lat is not None and lng is not None else None)
             if initial:
                 # The list is usable before the map tiles arrive.
-                await fill_when_ready(app,map_preview,draw,placeholder=skeleton(map_width/STATION_MAP_RATIO))
+                await fill_when_ready(app,map_preview,draw,placeholder=skeleton(map_width/map_ratio))
             else:
                 map_preview.content = await draw()
         else:
@@ -314,47 +377,46 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         map_signature = signature
 
     await refresh_map(stations, initial=True)
-    if not station_id:
-        controls.append(map_section)
     result_count = ft.Text(size=12,color=theme.GRAY_TEXT,visible=not bool(station_id))
-    controls.append(result_count)
-    listing = ft.Column(spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
-    controls.append(listing)
+    listing = ft.Column(spacing=12 if not station_id else 10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    if station_id:
+        controls.insert(map_slot_index,map_section)
+        controls.append(listing)
+    list_heading = D.txt('Perto de Você',15,'bold')
+    page_head = D.txt('Encontre uma estação',15,'bold')
+    search_box = ft.TextField(
+        hint_text='Buscar por endereço ou estação', hint_style=ft.TextStyle(size=11,color=theme.GRAY_TEXT,font_family=D.FONT),
+        text_style=ft.TextStyle(size=11,color=theme.INPUT_TEXT,font_family=D.FONT), border=ft.NoInputBorder(),
+        cursor_color=theme.INPUT_TEXT, content_padding=ft.Padding(left=0,right=12,top=0,bottom=0), expand=True,
+        text_size=11, capitalization=ft.TextCapitalization.WORDS)
+    search_field = ft.Container(ft.Row([ft.Icon(ft.Icons.SEARCH,size=22,color=theme.GRAY_TEXT),search_box],spacing=12,
+                                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                bgcolor=theme.INPUT_BG,border_radius=12,height=47,padding=ft.Padding(left=16,right=0,top=0,bottom=0))
     def station_cards(stations):
         items = []
-        for station in stations:
+        for station in (stations if station_id else typed_matches(stations)):
             metadata = station.get('discovery') or {}
             available_count = metadata.get('available_points',sum(_available(station,point) for point in station['connectors']))
             if not station_id:
-                label = f'{available_count} ponto livre' if available_count == 1 else f'{available_count} pontos livres'
-                if station.get('active') is False:
-                    label = 'Posto desativado'
-                elif not station['connectors']:
-                    label = 'Sem pontos cadastrados'
-                details = [ft.Text(station['name'],size=20,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),
-                           ft.Text(station['address'],size=13,color=theme.GRAY_TEXT),
-                           ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED,size=18,color=theme.GREEN if available_count else theme.GRAY_TEXT),
-                                   ft.Text(label,size=13,color=theme.TEXT_COLOR,expand=True)],spacing=8),
-                           ]
                 chosen = metadata.get('point')
                 if chosen is None:
-                    eligible = discover([station])[0]['discovery']
-                    chosen = eligible['point']
-                if chosen:
-                    state,state_color = point_status(chosen)
-                    details += [ft.Text(f"{money(chosen['price_per_kwh'])}/kWh · {_number(chosen['power_kw'])} kW nominais",size=16,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-                                ft.Text(f"{chosen['connector_type']} · {chosen['public_code']} · {state}",size=13,color=theme.TEXT_COLOR)]
-                    if sort == 'price':
-                        details.append(ft.Text('Menor tarifa do posto entre os pontos que atendem aos filtros.',size=12,color=theme.GRAY_TEXT))
-                    if intention:
-                        details.append(ft.Text(estimate_text(chosen,**intent_limits(chosen,intention)),size=12,color=theme.GRAY_TEXT))
-                if metadata.get('distance_km') is not None:
-                    details.append(ft.Text(f"{_number(round(metadata['distance_km'],1))} km em linha reta da busca",size=12,color=theme.GRAY_TEXT))
-                amenities = [amenity for amenity in station.get('amenities') or [] if isinstance(amenity,dict)]
-                if amenities:
-                    details.append(ft.Text('Comodidades: '+' · '.join(amenity_label(amenity) for amenity in amenities),size=12,color=theme.GRAY_TEXT))
-                details.append(button('Ver pontos',app.link('stations',station_id=station['id'],**route_state)))
-                items.append(card(ft.Column(details,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
+                    chosen = discover([station])[0]['discovery']['point']
+                if station.get('active') is False:
+                    right = D.txt('Posto desativado',11,'medium',theme.GRAY_TEXT)
+                elif not station['connectors']:
+                    right = D.txt('Sem pontos cadastrados',11,'medium',theme.GRAY_TEXT)
+                elif chosen:
+                    right = D.txt(f"{money(chosen['price_per_kwh'])}/kWh",13,'bold')
+                    if not available_count:
+                        right = ft.Column([right,D.txt('Sem pontos livres',10,'regular',theme.GRAY_TEXT)],spacing=2,
+                                          horizontal_alignment=ft.CrossAxisAlignment.END)
+                else:
+                    right = D.txt('Indisponível',11,'medium',theme.GRAY_TEXT)
+                subtitle = _area(station['address'])
+                if intention and chosen:
+                    subtitle += '\n'+estimate_text(chosen,**intent_limits(chosen,intention))
+                items.append(D.list_row(station['name'],subtitle,trailing=right,
+                                        on_click=app.link('stations',station_id=station['id'],**route_state)))
                 continue
             matching_points = station['connectors']
             if connector_type or available_only or max_price_per_kwh is not None:
@@ -402,10 +464,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     listing.controls = station_cards(stations)
     empty_state = ft.Text(
         'Nenhum posto nesta página. Volte para a página anterior.' if offset and total
-        else 'Nenhum posto encontrado para esta busca.', visible=not stations)
-    controls.append(empty_state)
+        else 'Nenhum posto encontrado para esta busca.', visible=not listing.controls and not station_id,
+        color=theme.GRAY_TEXT)
     pagination = ft.Column(spacing=10)
-    controls.append(pagination)
 
     def refresh_pagination():
         pagination.controls = []
@@ -421,6 +482,45 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     current_stations = stations
     refresh_pagination()
+    body = ft.Column(spacing=16,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    def layout_list():
+        searching = bool(typed['text'].strip())
+        shown_items = typed_matches(current_stations)
+        list_heading.value = 'Resultados Encontrados' if searching else 'Perto de Você'
+        page_head.visible = not searching
+        empty_state.visible = not shown_items
+        if searching and not shown_items:
+            empty_state.value = 'Nenhum posto com esse nome. Toque em buscar no teclado para procurar este endereço.'
+        elif not shown_items:
+            empty_state.value = ('Nenhum posto nesta página. Volte para a página anterior.'
+                                 if offset and total else 'Nenhum posto encontrado para esta busca.')
+        head = [page_head,search_field]
+        top = [] if searching else [map_section,ft.Container(height=4)]
+        bottom = [map_section] if searching and shown_items else []
+        body.controls = [*head,*top,list_heading,listing,empty_state,*bottom,result_count,pagination,*extras]
+
+    async def typing(event):
+        typed['text'] = search_box.value or ''
+        await refresh_map(current_stations)
+        listing.controls = station_cards(current_stations)
+        layout_list()
+        app.page.update()
+
+    async def submit_search(event):
+        text = (search_box.value or '').strip()
+        if not text or typed_matches(current_stations):
+            return
+        search_mode.value = 'address'
+        address.value = text
+        await search()
+
+    if not station_id:
+        search_box.on_change = typing
+        search_box.on_submit = app.action(submit_search)
+        layout_list()
+        controls = [body]
+
     async def update():
         nonlocal current_stations,total
         if station_id:
@@ -431,17 +531,26 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             fresh, fresh_total = deepcopy(result['items']),result['total']
         if fresh == current_stations and total == fresh_total:
             return
-        if fresh != current_stations:
+        current_stations,total = fresh,fresh_total
+        if fresh != stations_seen[0]:
+            stations_seen[0] = fresh
             await refresh_map(fresh)
             listing.controls = station_cards(fresh)
             if station_id and fresh:
                 station_heading.controls[0].value = fresh[0]['name']
                 station_heading.controls[1].value = fresh[0]['address']
-        empty_state.visible = not fresh
-        empty_state.value = ('Nenhum posto nesta página. Volte para a página anterior.'
-                             if offset and fresh_total else 'Nenhum posto encontrado para esta busca.')
-        current_stations,total = fresh,fresh_total
+        if station_id:
+            empty_state.visible = not fresh
+        else:
+            layout_list()
         refresh_pagination()
         app.page.update()
+    stations_seen = [stations]
     app.set_poll(update,10)
-    return ft.Column(controls,scroll=ft.ScrollMode.AUTO,spacing=15,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    if station_id:
+        controls += [empty_state]
+    column = ft.Column(controls,scroll=ft.ScrollMode.AUTO,spacing=15 if not station_id else 14,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    if station_id:
+        # The reference detail frame uses a slightly wider side margin (25 pt).
+        return ft.Column([ft.Container(column,padding=ft.Padding(left=5,right=5,top=0,bottom=0),expand=True)],expand=True)
+    return column

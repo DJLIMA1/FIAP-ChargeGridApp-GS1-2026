@@ -9,10 +9,13 @@ from chargegrid_core.driver import PRESETS
 
 from ..api_client import ApiError
 from ..services import driver as helpers
-from . import theme
-from .components import field
+from . import design, theme
 
 CUSTOM, LATER = 'custom', 'later'
+
+
+def _rounded():
+    return ft.OutlineInputBorder(border_radius=design.RADIUS_BTN + 2, side=ft.BorderSide(0, ft.Colors.TRANSPARENT))
 
 
 def _decimal(value):
@@ -32,13 +35,19 @@ class VehiclePicker:
         options = [(k, p['name']) for k, p in self.presets.items()] + [(CUSTOM, 'Outro carro')]
         if allow_later:
             options.append((LATER, 'Prefiro informar depois'))
-        self.model = ft.Dropdown(label=label, value=key, expand=True, color=theme.TEXT_COLOR, bgcolor=theme.WHITE,
-                                 options=[ft.DropdownOption(key=k, text=t) for k, t in options],
-                                 on_select=self._changed)
-        self.name = field('Nome do carro', (vehicle.get('name') or '') if key == CUSTOM else '')
+        # Campo escuro arredondado do design de referência; o rótulo fica dentro do campo.
+        self.model = ft.Dropdown(
+            label=label, value=key, expand=True, color=theme.INPUT_TEXT, bgcolor=theme.CARD, filled=True,
+            fill_color=theme.INPUT_BG, border=_rounded(), border_radius=design.RADIUS_BTN + 2,
+            text_style=ft.TextStyle(size=12.5, font_family=design.FONT, color=theme.INPUT_TEXT),
+            label_style=ft.TextStyle(size=11, font_family=design.FONT_BOLD, color=theme.GRAY_TEXT),
+            content_padding=ft.Padding(left=13, right=13, top=13, bottom=13),
+            options=[ft.DropdownOption(key=k, text=t) for k, t in options],
+            on_select=self._changed)
+        self.name = self._input('Nome do carro', (vehicle.get('name') or '') if key == CUSTOM else '')
         self.name.max_length, self.name.counter = 60, ''
-        self.battery = field('Bateria útil (kWh)', _decimal(vehicle.get('usable_battery_kwh')))
-        self.consumption = field('Consumo (kWh/100 km)', _decimal(vehicle.get('consumption_kwh_per_100km')))
+        self.battery = self._input('Bateria útil (kWh)', _decimal(vehicle.get('usable_battery_kwh')))
+        self.consumption = self._input('Consumo (kWh/100 km)', _decimal(vehicle.get('consumption_kwh_per_100km')))
         for control in (self.battery, self.consumption):
             control.keyboard_type = ft.KeyboardType.NUMBER
         for control in (self.name, self.battery, self.consumption):
@@ -47,11 +56,21 @@ class VehiclePicker:
                 control.on_submit = on_submit
         # Empilhados: rótulos longos não quebram em telas de 360 px.
         self.custom = ft.Column([self.name, self.battery, self.consumption], spacing=8, visible=key == CUSTOM)
-        self.summary = ft.Text('', size=12, color=theme.GRAY_TEXT)
+        self.summary = design.txt('', 11, 'regular', theme.GRAY_TEXT)
         self._last_preset = key if key in self.presets else None
         self._refresh()
         self.control = ft.Column([ft.Row([self.model]), self.custom, self.summary], spacing=8,
                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    @staticmethod
+    def _input(label, value=''):
+        control = design.input_field(value)
+        control.label = label
+        control.label_style = ft.TextStyle(size=11, font_family=design.FONT_BOLD, color=theme.GRAY_TEXT)
+        control.border = _rounded()
+        control.height = None
+        control.error_max_lines = 3
+        return control
 
     @property
     def value(self):

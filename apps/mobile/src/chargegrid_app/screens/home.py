@@ -1,16 +1,15 @@
 import asyncio
+import importlib
+import inspect
 from copy import deepcopy
+from decimal import Decimal
 from math import isfinite
 
 import flet as ft
 
-from chargegrid_core.formatting import kwh
-
-from ..services.maps import STATION_MAP_RATIO, station_map_widget
-from ..ui import theme
+from ..ui import design, theme
 from ..ui.availability import point_status
-from ..ui.components import BRAND_PROMISE, button, card, date_time, money
-from ..ui.deferred import fill_when_ready, skeleton
+from ..ui.components import date_time, money
 from .charging import DEMO_LABELS as DEMO_CHARGING_LABELS
 from .charging import LABELS as CHARGING_LABELS
 from .charging import SOURCE
@@ -68,59 +67,158 @@ def _station_status(station):
     return labels[0] if labels else ('Indisponível', theme.GRAY_TEXT)
 
 
-async def build(app):
-    demo = getattr(app.api,'is_demo',False) is True
+
+
+def _first_name(app, demo):
+    full_name = (app.profile.get('name') or '').strip()
+    # The old demo profile was called "Conta demonstração": greet the role, not "Olá, Conta".
+    if demo and full_name == 'Conta demonstração':
+        return 'motorista'
+    return (full_name.split() or ['motorista'])[0]
+
+
+def _greeting(app, demo):
+    return ft.Container(design.txt(f'Olá, {_first_name(app, demo)}!', 22, 'bold'),
+                        padding=ft.Padding(left=6, right=0, top=0, bottom=0))
+
+
+async def _amount(module_name, function, app):
+    """Saldo vindo de ``services.<module_name>`` (módulo de outro grupo); R$ 0,00 se ainda não existir."""
+    try:
+        module = importlib.import_module(f'chargegrid_app.services.{module_name}')
+        value = getattr(module, function)(app)
+        if inspect.isawaitable(value):
+            value = await value
+        return Decimal(str(value))
+    except Exception:  # noqa: BLE001 - saldo é complementar; a tela nunca quebra por ele
+        return Decimal('0')
+
+
+def _vendor_money(value):
+    """Saldo a receber como na referência: ``R$ 2485,90`` (sem separador de milhar)."""
+    return 'R$ ' + f'{Decimal(value):.2f}'.replace('.', ',')
+
+
+def _ring_scene(kind, content, height):
+    """Imagem com o anel vermelho da referência (SVG por trás). ``kind``: 'car' | 'totem'."""
+    ring = ft.Image(src=f'/design/ring_{kind}.svg', width=364, height=240 if kind == 'totem' else 210,
+                    fit=ft.BoxFit.FILL, exclude_from_semantics=True, left=-1, top=0)
+    return ft.Container(ft.Stack([ring, content], width=362, height=height), height=height)
+
+
+def _car_scene():
+    return _ring_scene('car', ft.Container(design.car_image(width=265), left=39, top=0), 210)
+
+
+def _totem_scene():
+    # Só a parte de cima do totem aparece na referência (o resto some atrás do anel).
+    image = ft.Image(src=design.TOTEM_SRC, width=89, height=315, fit=ft.BoxFit.FILL,
+                     exclude_from_semantics=True, left=0, top=0)
+    crop = ft.Container(ft.Stack([image]), width=89, height=195, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                        left=132, top=0)
+    return _ring_scene('totem', crop, 232)
+
+
+def _row_price(station):
+    price = _station_price(station)
+    if price is None:
+        prices = []
+        for point in _enabled_points(station):
+            try:
+                value = float(point.get('price_per_kwh'))
+            except (TypeError, ValueError):
+                continue
+            if isfinite(value) and value >= 0:
+                prices.append(value)
+        price = min(prices) if prices else None
+    return f'{money(price)}/kWh' if price is not None else _station_status(station)[0]
+
+
+def _station_row(station, on_click, *, carded=True):
+    """Linha de estação da referência: tile branco com pino, nome, endereço, preço e ">"."""
+    texts = ft.Column([design.txt(station.get('name') or 'Estação', 14, 'semibold', max_lines=1,
+                                  overflow=ft.TextOverflow.ELLIPSIS),
+                       design.txt(station.get('address') or '', 11, 'regular', theme.GRAY_TEXT, max_lines=1,
+                                  overflow=ft.TextOverflow.ELLIPSIS)],
+                      spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)
+    row = ft.Row([design.icon_tile(None, size=56), texts,
+                  design.txt(_row_price(station), 13, 'bold'),
+                  ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR)],
+                 spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    if carded:
+        return ft.Container(row, padding=ft.Padding(left=13, right=10, top=15, bottom=15), on_click=on_click,
+                            ink=True, border_radius=design.RADIUS_CARD, bgcolor=theme.CARD)
+    return ft.Container(row, padding=ft.Padding(left=0, right=0, top=0, bottom=0), on_click=on_click, ink=True,
+                        border_radius=design.RADIUS_CARD)
+
+
+def _station_rows(app, stations, *, carded=True):
+    return [_station_row(station, app.link('stations' if carded else 'station_admin', station_id=station['id']),
+                         carded=carded) for station in stations]
+
+
+def _balance_tile(icon, on_click, tooltip):
+    return ft.Container(ft.Icon(icon, size=34, color=theme.TEXT_COLOR), width=46, height=46, border_radius=8,
+                        bgcolor=theme.BG_COLOR, alignment=ft.Alignment(0, 0), on_click=on_click, ink=True,
+                        tooltip=tooltip)
+
+
+def _spaced(control, top=0, bottom=0):
+    return ft.Container(control, margin=ft.Margin(left=0, top=top, right=0, bottom=bottom))
+
+
+def _feature_rows(app):
+    ai_chat = bool(getattr(app.api, 'ai_enabled', False))
+    return [
+        design.list_row('Modo Motorista de App', 'Rode nos picos, recarregue nas horas fracas.',
+                        on_click=app.link('driver'), icon=ft.Icons.LOCAL_TAXI_OUTLINED, tile=46, dark_tile=True),
+        design.list_row('Assistente com IA' if ai_chat else 'Assistente',
+                        'Pergunte por postos, custos ou seu turno.' if ai_chat else
+                        'Tire dúvidas sobre recarga e consulte sua reserva.',
+                        on_click=app.link('chat'), icon=ft.Icons.AUTO_AWESOME, tile=46, dark_tile=True),
+    ]
+
+
+async def build(app, **_):
+    demo = getattr(app.api, 'is_demo', False) is True
+
     async def snapshot():
         return deepcopy(await asyncio.gather(
-            app.api.request('GET','reservations/current'),
-            app.api.request('GET','charging-sessions/current'),
-            app.api.request('GET','stations',params={'limit':3,'offset':0}),
-            app.api.request('GET','me/summary'),
+            app.api.request('GET', 'reservations/current'),
+            app.api.request('GET', 'charging-sessions/current'),
+            app.api.request('GET', 'stations', params={'limit': 3, 'offset': 0}),
         ))
 
     previous = await snapshot()
-    reservation, session, stations_result, month_summary = previous
+    reservation, session, stations_result = previous
     stations = stations_result['items']
-    full_name = (app.profile.get('name') or '').strip()
-    # The demo profile is called "Conta demonstração": greet the role, not "Olá, Conta".
-    name = 'motorista' if demo and full_name == 'Conta demonstração' else (full_name.split() or ['motorista'])[0]
+    balance = await _amount('wallet', 'balance', app)
 
-    identity = [
-        ft.Text(f'Olá, {name}',size=22,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold'),
-        ft.Text(BRAND_PROMISE,size=13,color=theme.GRAY_TEXT),
-    ]
-    greeting = ft.Row([
-        ft.Container(ft.Icon(ft.Icons.PERSON_OUTLINE,color=theme.GRAY_TEXT,size=27),width=52,height=52,bgcolor=theme.LIGHT_GRAY,border_radius=26,alignment=ft.Alignment(0,0)),
-        ft.Column(identity,spacing=2,expand=True),
-    ],spacing=12)
+    balance_text = design.money_text(balance, 28)
+    balance_card = design.card_box(
+        ft.Row([
+            ft.Column([design.txt('SALDO DISPONÍVEL', 11, 'regular', style=ft.TextStyle(letter_spacing=1.0)),
+                       balance_text], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+            _balance_tile(ft.Icons.RECEIPT_OUTLINED, app.link('wallet', page='statement'), 'Extrato'),
+            _balance_tile(ft.Icons.ADD, app.link('wallet', page='add', step=1), 'Adicionar saldo'),
+        ], spacing=13, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        padding=ft.Padding(left=16, right=18, top=0, bottom=0), height=85)
 
-    estimated_cost = ft.Text(money(month_summary.get('estimated_cost')),size=32,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')
-    def summary_text(summary):
-        count = summary.get('sessions_count',0)
-        # Two decimals: "4,800 kWh" reads like four thousand eight hundred in pt-BR.
-        energy = kwh(float(summary.get('energy_wh') or 0)/1000, 2)
-        return f"{count} {'recarga concluída' if count == 1 else 'recargas concluídas'} · {energy}"
-    summary_detail = ft.Text(summary_text(month_summary),size=12,color=theme.GRAY_TEXT)
-    summary_card = card([
-            ft.Text('GASTO ESTIMADO NESTE MÊS',size=11,color=theme.TEXT_COLOR),
-            estimated_cost,
-            summary_detail,
-        ])
     def describe_state(reservation, session):
         if session:
-            source = 'Simulação local' if demo else SOURCE.get(session.get('source'),'origem não informada')
+            source = 'Simulação local' if demo else SOURCE.get(session.get('source'), 'origem não informada')
             battery_label = 'Bateria simulada' if demo else 'Bateria'
             battery = '' if session.get('soc_percent') is None else f" · {battery_label} {float(session['soc_percent']):.0f}%"
             labels = DEMO_CHARGING_LABELS if demo else CHARGING_LABELS
-            state_text = f"{labels.get(session['status'],session['status'])}{battery} · {source}"
+            state_text = f"{labels.get(session['status'], session['status'])}{battery} · {source}"
             if not session.get('online', True):
                 state_text += ' · Equipamento offline, últimos dados recebidos'
             if session.get('station_name'):
                 state_text = session['station_name'] + ' · ' + state_text
-            return state_text, 'Acompanhar recarga', app.link('charging',session_id=session['id'])
+            return state_text, 'Acompanhar recarga', app.link('charging', session_id=session['id'])
         if reservation:
             labels = DEMO_RESERVATION_LABELS if demo else RESERVATION_LABELS
-            state_text = labels.get(reservation['status'],reservation['status'])
+            state_text = labels.get(reservation['status'], reservation['status'])
             if reservation.get('station_name'):
                 state_text = reservation['station_name'] + ' · ' + state_text
             if reservation['status'] == 'confirmed':
@@ -128,86 +226,140 @@ async def build(app):
                     state_text += ' · Chegue até ' + date_time(reservation['expires_at'])
                 connector = reservation.get('connector') or {}
                 return state_text, 'Cheguei: informar código', app.link(
-                    'charging',reservation_id=reservation['id'],point_context=reservation,
-                    max_duration=min(30,connector.get('max_duration_minutes') or 30))
+                    'charging', reservation_id=reservation['id'], point_context=reservation,
+                    max_duration=min(30, connector.get('max_duration_minutes') or 30))
             label = 'Acompanhar liberação' if reservation['status'] == 'cancelling' else 'Acompanhar reserva'
             return state_text, label, app.link('reservations')
-        return 'Nenhuma reserva ou recarga ativa. Escolha um posto para começar.', 'Recarregar agora', app.link('stations')
+        return '', 'Recarregar agora', app.link('stations')
 
     state_text, action_label, state_action = describe_state(reservation, session)
-    active_state = ft.Text(state_text,size=13,color=theme.TEXT_COLOR,expand=True)
-    flow_label = ft.Text('SUA RECARGA' if session else 'SUA RESERVA' if reservation else 'ENCONTRE SEU PONTO',
-                         size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT)
-    flow_icon = ft.Icon(ft.Icons.EV_STATION_OUTLINED if session else ft.Icons.SCHEDULE_OUTLINED if reservation else ft.Icons.EXPLORE_OUTLINED,
-                        color=theme.ACCENT,size=25)
-    active_button = button(action_label,state_action)
-    active_card = card([flow_label,ft.Row([
-        ft.Container(flow_icon,width=34,height=34,bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
-        active_state,
-    ],spacing=10),active_button],on_click=state_action,ink=True,
-        border=ft.Border.all(1,theme.LIGHT_GRAY))
-    map_width = max(200,min(getattr(app.page,'width',None) or 400,600)-40)
+    active_state = design.txt(state_text, 13, 'regular', expand=True)
+    flow_label = design.txt('SUA RECARGA' if session else 'SUA RESERVA', 11, 'bold', theme.ACCENT)
+    active_button = design.primary_button(action_label, state_action, height=44, size=14.5)
+    active_card = design.card_box(
+        ft.Column([flow_label, active_state, active_button], spacing=12,
+                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        on_click=state_action)
+    active_card.visible = bool(session or reservation)
 
-    async def make_map(items):
-        records = [{**station,'free_points':len(_available_points(station)),
-                    'status':_station_status(station)[0],'price':_station_price(station)} for station in items[:3]]
-        return await station_map_widget(records,lambda station_id:app.link('stations',station_id=station_id),offline=demo,width=map_width)
+    rows = ft.Column(_station_rows(app, stations[:2]), spacing=16, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    find_button = design.primary_button('Encontre uma Estação', app.link('stations'), height=39, size=15.5,
+                                        weight='bold')
 
-    map_preview = ft.Container()
-    # Tile downloads must not delay the first paint of the home screen.
-    await fill_when_ready(app, map_preview, lambda: make_map(stations),
-                          placeholder=skeleton(map_width/STATION_MAP_RATIO))
-    map_heading = ft.Text('Postos no mapa',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,size=20,font_family='BarlowCondensedBold')
-    map_section = ft.Column([map_heading,map_preview],spacing=16,
-                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
-    async def resize_map_section(event):
-        nonlocal map_width
-        if event.width <= 0 or abs(event.width-map_width) < .5:
-            return
-        map_width = event.width
-    map_section.on_size_change = resize_map_section
-    def feature_card(label, icon, text, action_label, action):
-        return card([
-            ft.Text(label,size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            ft.Row([
-                ft.Container(ft.Icon(icon,color=theme.ACCENT,size=22),width=34,height=34,
-                             bgcolor=theme.LIGHT_GRAY,border_radius=17,alignment=ft.Alignment(0,0)),
-                ft.Text(text,size=13,color=theme.TEXT_COLOR,expand=True),
-            ],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
-            button(action_label,action,secondary=True),
-        ],border=ft.Border.all(1,theme.LIGHT_GRAY),col={'xs':12,'sm':6})
-
-    ai_chat = bool(getattr(app.api,'ai_enabled',False))
-    driver_card = feature_card('MODO MOTORISTA DE APP',ft.Icons.LOCAL_TAXI_OUTLINED,
-                               'Rode nos picos, recarregue nas horas fracas e junte a refeição com a recarga.',
-                               'Planejar meu turno',app.link('driver'))
-    assistant_card = feature_card('ASSISTENTE COM IA' if ai_chat else 'ASSISTENTE',ft.Icons.AUTO_AWESOME,
-                                  'Pergunte por postos, custos ou seu turno: a IA consulta os dados da sua conta.' if ai_chat else
-                                  'Tire dúvidas sobre recarga e consulte sua reserva ou última recarga.',
-                                  'Perguntar ao assistente',app.link('chat'))
-    # The product differentials sit right below the main action; side by side on tablets.
-    features = ft.ResponsiveRow([driver_card,assistant_card],spacing=10,run_spacing=10)
     controls = [
-        greeting,active_card,features,map_section,summary_card,
+        _spaced(_greeting(app, demo), top=0),
+        _spaced(balance_card, top=-9),
+        _spaced(_car_scene(), top=27),
+        _spaced(design.txt('Perto de Você', 15, 'bold'), top=-8, bottom=-2),
+        rows,
+        _spaced(find_button, top=-1),
+        active_card,
+        *_feature_rows(app),
     ]
+
     async def update():
-        nonlocal previous
+        nonlocal previous, balance
         fresh = await snapshot()
-        if fresh == previous:
+        fresh_balance = await _amount('wallet', 'balance', app)
+        if fresh == previous and fresh_balance == balance:
             return
-        current_reservation, current_session, current_stations, current_summary = fresh
         if fresh[:2] != previous[:2]:
-            active_state.value, active_button.content.value, action = describe_state(current_reservation, current_session)
+            active_state.value, active_button.content.controls[0].value, action = describe_state(*fresh[:2])
             active_card.on_click = active_button.on_click = action
-            flow_label.value = 'SUA RECARGA' if current_session else 'SUA RESERVA' if current_reservation else 'ENCONTRE SEU PONTO'
-            flow_icon.icon = ft.Icons.EV_STATION_OUTLINED if current_session else ft.Icons.SCHEDULE_OUTLINED if current_reservation else ft.Icons.EXPLORE_OUTLINED
-        if current_summary != previous[3]:
-            estimated_cost.value = money(current_summary.get('estimated_cost'))
-            summary_detail.value = summary_text(current_summary)
-        if current_stations['items'] != previous[2]['items']:
-            map_preview.content = await make_map(current_stations['items'])
+            flow_label.value = 'SUA RECARGA' if fresh[1] else 'SUA RESERVA'
+            active_card.visible = bool(fresh[0] or fresh[1])
+        if fresh_balance != balance:
+            balance_text.value = money(fresh_balance)
+            balance = fresh_balance
+        if fresh[2]['items'] != previous[2]['items']:
+            rows.controls = _station_rows(app, fresh[2]['items'][:2])
         previous = fresh
         app.page.update()
 
     app.set_poll(update, 10)
-    return ft.ListView(controls,spacing=10,expand=True)
+    return ft.ListView(controls, spacing=16, expand=True, padding=0)
+
+
+async def build_vendor(app, **_):
+    """Início do vendedor: saldo a receber, totem, "Suas estações" e atalho para o chat."""
+    demo = getattr(app.api, 'is_demo', False) is True
+
+    async def snapshot():
+        profile = await app.api.request('GET', 'me')
+        result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': 0})
+        return profile, deepcopy(result.get('items') or [])
+
+    profile, stations = await snapshot()
+    app.profile = profile
+    if not stations:
+        return _vendor_empty(app, demo)
+
+    payout = await _amount('payout', 'available', app)
+    amount = design.num(_vendor_money(payout), 28)
+    balance = ft.Container(
+        ft.Row([ft.Column([design.txt('SALDO A RECEBER', 11, 'regular', style=ft.TextStyle(letter_spacing=1.0)),
+                           amount], spacing=2, expand=True),
+                ft.Container(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR),
+                             margin=ft.Margin(left=0, top=0, right=8, bottom=0))],
+               vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        padding=ft.Padding(left=6, right=0, top=0, bottom=0), on_click=app.link('payout'), ink=True)
+
+    rows = ft.Column(_station_rows(app, stations[:3], carded=False), spacing=16,
+                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    chat = ft.Container(
+        ft.Row([ft.Image(src='/design/nav_chat.svg', width=22, height=22, color=theme.BTN_PRIMARY_FG,
+                         exclude_from_semantics=True),
+                design.txt('Fale com o ChatBot', 15.6, 'regular', theme.BTN_PRIMARY_FG)],
+               spacing=14, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=theme.BTN_PRIMARY, border_radius=design.RADIUS_BTN, height=39, on_click=app.link('chat'), ink=True,
+        alignment=ft.Alignment(0, 0))
+    controls = [
+        _spaced(_greeting(app, demo), top=0),
+        _spaced(balance, top=6),
+        _spaced(_totem_scene(), top=28),
+        _spaced(design.txt('Suas estações', 15, 'bold'), top=-7, bottom=14),
+        rows,
+        _spaced(chat, top=2),
+    ]
+
+    async def update():
+        nonlocal stations, payout
+        _, fresh = await snapshot()
+        fresh_payout = await _amount('payout', 'available', app)
+        if fresh == stations and fresh_payout == payout:
+            return
+        if fresh_payout != payout:
+            amount.value = _vendor_money(fresh_payout)
+            payout = fresh_payout
+        if fresh != stations:
+            rows.controls = _station_rows(app, fresh[:3], carded=False)
+            stations = fresh
+        app.page.update()
+
+    app.set_poll(update, 15)
+    return ft.ListView(controls, spacing=16, expand=True, padding=0)
+
+
+def _vendor_empty(app, demo):
+    """Vendedor sem estações: configurar a primeira tela escaneando o QR de vinculação."""
+    scan = app.link('operator', claim=True)
+    card = design.card_box(
+        ft.Column([
+            ft.Container(ft.Icon(ft.Icons.QR_CODE_SCANNER, size=62, color=theme.TEXT_COLOR),
+                         alignment=ft.Alignment(0, 0)),
+            design.txt('A tela sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
+                       11.5, 'bold', style=ft.TextStyle(height=1.8)),
+            ft.Container(design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas '
+                                    'quando você publicar.', 11.4, 'regular', style=ft.TextStyle(height=1.8)),
+                         margin=ft.Margin(left=0, top=9, right=0, bottom=0)),
+        ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        padding=ft.Padding(left=14, right=14, top=20, bottom=26))
+    controls = [
+        _spaced(_greeting(app, demo), top=0),
+        _spaced(_totem_scene(), top=6),
+        _spaced(design.txt('Configure sua primeira tela', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
+                top=19, bottom=23),
+        card,
+        _spaced(design.primary_button('Escanear QR Code', scan, height=49, size=14.5, weight='regular'), top=-3),
+    ]
+    return ft.ListView(controls, spacing=16, expand=True, padding=0)

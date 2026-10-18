@@ -37,7 +37,9 @@ def texts(control):
 
 class FakeApp:
     def __init__(self, demo=True):
-        self.api = SimpleNamespace(is_demo=demo)
+        async def request(*args, **kwargs):
+            return {}
+        self.api = SimpleNamespace(is_demo=demo, request=request)
         self.profile = {'name': 'Ana'}
         self.browsing_mode = 'consumer'
         self.back = lambda event=None: None
@@ -62,6 +64,8 @@ class RouteContractTests(unittest.TestCase):
     def test_new_routes_registered_and_accept_arbitrary_params(self):
         for route in NEW_ROUTES:
             self.assertIn(route, SCREENS)
+            if route == 'station_admin':  # needs a real station: covered by test_station_admin.py
+                continue
             control = asyncio.run(SCREENS[route](FakeApp(), step=2, station_id='s', page='power', anything='x'))
             self.assertIsInstance(control, ft.Column)
 
@@ -81,9 +85,9 @@ class RouteContractTests(unittest.TestCase):
         self.assertIsNone(parent_route('home', {}))
 
     def test_active_tabs(self):
-        self.assertEqual(active_tab('booking', {}, 'consumer'), 'stations')
+        self.assertEqual(active_tab('booking', {}, 'consumer'), 'reservations')
         self.assertEqual(active_tab('wallet', {}, 'consumer'), 'profile')
-        self.assertEqual(active_tab('payout', {}, 'vendor'), 'home')
+        self.assertEqual(active_tab('payout', {}, 'vendor'), 'operator')
         self.assertEqual(active_tab('tariffs', {}, 'vendor'), 'operator')
         self.assertEqual(active_tab('station_admin', {}, 'vendor'), 'operator')
         self.assertIsNone(active_tab('notifications', {}, 'consumer'))

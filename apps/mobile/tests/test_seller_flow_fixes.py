@@ -14,7 +14,7 @@ def texts(screen):
 
 
 def fields(screen):
-    return {control.label:control for control in descendants(screen) if isinstance(control,ft.TextField)}
+    return {(control.label or control.data):control for control in descendants(screen) if isinstance(control,ft.TextField)}
 
 
 def station_fixture(active=True):
@@ -185,14 +185,15 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.side_effect = [
             {'account_type':'vendor','operator_enabled':True},
-            {'stations':1,'total_sessions':1,'total_energy_wh':1000,'total_estimated_cost':1},
             {'items':[station_fixture()],'total':1},
         ]
         screen = await operator.build(app)
         self.assertIn('Pontos desativados',texts(screen))
         self.assertNotIn('Configuração pendente',texts(screen))
-        await click(screen,'Revisar pontos')(None)
-        app.go.assert_awaited_with('operator',station_id='station')
+        row = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
+                   and 'Posto Central' in texts(c) and not isinstance(c.content,ft.Column))
+        await row.on_click(None)
+        app.go.assert_awaited_with('station_admin',station_id='station')
 
     async def test_review_disabled_point_preserves_shared_station(self):
         app = HandlerApp()

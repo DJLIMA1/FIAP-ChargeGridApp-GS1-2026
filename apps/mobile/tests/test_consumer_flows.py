@@ -68,7 +68,10 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = lambda method,path,**kwargs: responses[path]
         screen = await home.build(app)
         self.assertNotIn('Gerenciar postos',texts(screen))
-        await click(screen,'Recarregar agora')(None)
+        self.assertIn('Encontre uma Estação',texts(screen))
+        row = next(item for item in descendants(screen) if getattr(item,'on_click',None)
+                   and texts(item) == 'Encontre uma Estação')
+        await row.on_click(None)
         app.go.assert_awaited_once_with('stations')
         app.switch_mode.assert_not_called()
 
@@ -93,7 +96,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Solicitar início',texts(screen))
         self.assertIn('Aguarde a confirmação',texts(screen))
         await click(screen,'Ver minha reserva')(None)
-        app.go.assert_awaited_once_with('reservations')
+        app.go.assert_awaited_once_with('reservations',detail=True)
 
     async def test_different_selected_point_does_not_silently_use_reservation(self):
         app = charging_app(reservation())
@@ -213,7 +216,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
     async def test_reservation_screen_shows_destination_and_correct_charge_context(self):
         app = HandlerApp()
         app.api.request.return_value = reservation()
-        screen = await reservations.build(app)
+        screen = await reservations.build(app,detail=True)
         self.assertIn('Posto Central',texts(screen))
         self.assertIn('Rua Central, 10',texts(screen))
         await click(screen,'Cheguei: informar código')(None)
@@ -223,12 +226,12 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
     async def test_pending_reservation_does_not_label_point_as_reserved(self):
         app = HandlerApp()
         app.api.request.return_value = reservation('pending_device')
-        pending = await reservations.build(app)
+        pending = await reservations.build(app,detail=True)
         self.assertIn('PONTO SOLICITADO', texts(pending))
         self.assertNotIn('PONTO RESERVADO', texts(pending))
         self.assertNotIn('Cheguei: informar código', texts(pending))
         app.api.request.return_value = reservation('confirmed')
-        confirmed = await reservations.build(app)
+        confirmed = await reservations.build(app,detail=True)
         self.assertIn('PONTO RESERVADO', texts(confirmed))
 
     async def test_operator_history_preserves_scope_through_pagination(self):
@@ -237,7 +240,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = {'items':[],'total':41}
         screen = await history.build(app,manage=True,offset=20)
         app.api.request.assert_awaited_once_with('GET','operator/charging-sessions',params={'limit':20,'offset':20})
-        self.assertIn('Histórico dos meus postos',texts(screen))
+        self.assertIn('Histórico',texts(screen))
         await click(screen,'Mais sessões')(None)
         app.go.assert_awaited_once_with('history',station_id=None,offset=40,manage=True)
 
@@ -277,13 +280,13 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(search_section.expanded)
             self.assertTrue(search_section.maintain_state)
             self.assertEqual(list(sections),['Comparar por conector, preço e tempo','Buscar perto de um endereço'])
-            map_section = next(item for item in screen.controls
-                               if isinstance(item,ft.Column) and 'Postos no mapa' in texts(item))
+            body = screen.controls[0]
+            map_section = next(item for item in body.controls
+                               if isinstance(item,ft.Column) and texts(item) == 'Map')
             self.assertTrue(map_section.visible)
-            self.assertIn('Map',texts(map_section))
-            listing = next(item for item in screen.controls
-                           if isinstance(item,ft.Column) and 'Ver pontos' in texts(item))
-            self.assertLess(screen.controls.index(map_section),screen.controls.index(listing))
+            listing = next(item for item in body.controls
+                           if isinstance(item,ft.Column) and 'Posto Central' in texts(item))
+            self.assertLess(body.controls.index(map_section),body.controls.index(listing))
             address = fields(screen)['Endereço para buscar']
             address.value = 'Filtro em edição'
             search_section.expanded = True

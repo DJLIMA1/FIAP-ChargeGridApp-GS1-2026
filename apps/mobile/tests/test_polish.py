@@ -9,7 +9,7 @@ from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import auth, chat, driver, history, home
 from chargegrid_app.services.driver import amenities_text, amenity_label
 from test_chat import ChatApp, composer, send_button
-from test_home_ux import HomeApp, click, descendants, text_values
+from test_home_ux import HomeApp, descendants, text_values
 from test_screens import FakeApp
 
 
@@ -32,21 +32,23 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         app.profile = {'name': 'Conta demonstração'}
         screen = await home.build(app)
         visible = text_values(screen, visible_only=True)
-        self.assertIn('Olá, motorista', visible)
+        self.assertIn('Olá, motorista!', visible)
         self.assertNotIn('Olá, Conta', visible)
-        self.assertIn('ASSISTENTE COM IA', visible)
-        # Differentials come right after the main action, before the map.
-        self.assertLess(visible.index('MODO MOTORISTA DE APP'), visible.index('Postos no mapa'))
-        await click(screen, 'Perguntar ao assistente')(None)
+        self.assertIn('Assistente com IA', visible)
+        # Differentials sit below the reference content (balance, nearby stations, main action).
+        self.assertLess(visible.index('Encontre uma Estação'), visible.index('Modo Motorista de App'))
+        row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
+                   and 'Assistente com IA' in text_values(item))
+        await row.on_click(None)
         app.go.assert_awaited_with('chat')
 
     async def test_home_without_ai_keeps_a_plain_assistant_entry(self):
         app = HomeApp()
         screen = await home.build(app)
         visible = text_values(screen, visible_only=True)
-        self.assertIn('ASSISTENTE', visible)
-        self.assertNotIn('ASSISTENTE COM IA', visible)
-        self.assertIn('Olá, Marina', visible)
+        self.assertIn('Assistente', visible)
+        self.assertNotIn('Assistente com IA', visible)
+        self.assertIn('Olá, Marina!', visible)
 
     def test_amenity_labels_do_not_repeat_the_kind(self):
         self.assertEqual(amenity_label({'kind': 'cafe', 'name': 'Café da Sé'}), 'Café da Sé')

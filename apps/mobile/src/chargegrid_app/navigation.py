@@ -32,7 +32,7 @@ SCREENS = {module.__name__.split('.')[-1]: module.build for module in (
     auth, home, stations, reservations, charging, history, profile, operator, coupons, chat, driver,
     notifications, wallet, payout, booking, tariffs, station_admin, design_gallery)}
 SCREENS['home'] = home_entry
-TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
+TABS = [('home','Início'),('reservations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
 # Routes that follow the wizard/back contract documented in ui/design.py.
 FLOW_ROUTES = ('booking', 'wallet', 'payout', 'tariffs', 'station_admin', 'notifications')
 
@@ -65,12 +65,10 @@ def active_tab(route, data, mode):
     if route == 'driver':
         return 'home'
     if route in ('stations', 'reservations', 'charging', 'booking'):
-        return 'stations' if mode != 'vendor' else None
+        return 'reservations' if mode != 'vendor' else None
     if route == 'wallet':
         return 'profile'
-    if route == 'payout':
-        return 'home'
-    if route in ('tariffs', 'station_admin'):
+    if route in ('payout', 'tariffs', 'station_admin'):
         return 'operator'
     if route == 'notifications':
         return None

@@ -39,19 +39,16 @@ class HomeMapTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(credit.width)
         self.assertFalse(render.call_args.kwargs['dark'])
 
-    async def test_demo_home_uses_bundled_geography_without_network_or_gps(self):
+    async def test_demo_home_uses_bundled_data_without_network_or_gps(self):
         app = HandlerApp()
         app.api = DemoApi()
-        await app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
+        await app.api.login(DEMO_EMAIL,DEMO_PASSWORD)
         app.profile = await app.api.request('GET','me')
         with patch.object(maps,'_fetch_bytes',side_effect=AssertionError('network')), \
                 patch.object(maps,'build_map_png',side_effect=AssertionError('tiles')):
             screen = await home.build(app)
             await app.poll()
-        image = next(item for item in descendants(screen) if isinstance(item,ft.Image))
-        self.assertEqual(image.src,'maps/demo-centro.png')
-        self.assertIn('© OpenStreetMap',texts(screen))
-        self.assertIn('1 vaga',texts(screen))
+        self.assertIn('Perto de Você',texts(screen))
         self.assertNotRegex(texts(screen).lower(),r'estações próximas|\bkm\b|20%|22h')
 
     async def test_real_map_is_light_cartography_and_callout_opens_selected_station(self):

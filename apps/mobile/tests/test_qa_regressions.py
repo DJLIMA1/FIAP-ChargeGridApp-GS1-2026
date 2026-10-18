@@ -344,10 +344,10 @@ class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
         await app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
         screen = await operator.build(app)
         copy = texts(screen)
-        self.assertIn('1 ponto · 1 online', copy)  # Was "1 pontos".
-        self.assertIn('2 pontos', copy)
-        self.assertIn('2 postos · 2 recargas', copy)
-        self.assertIn('4,80 kWh', copy)  # Was "4,800 kWh".
+        self.assertIn('Suas Estações', copy)
+        self.assertIn('Posto Demo Centro', copy)
+        self.assertIn('Online - Conectores livres', copy)
+        self.assertNotIn('1 pontos', copy)
         await app.api.close()
 
 

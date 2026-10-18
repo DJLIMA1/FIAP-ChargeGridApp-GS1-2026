@@ -45,8 +45,6 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         responses = {
             'me': {'account_type': 'vendor', 'operator_enabled': True},
-            'operator/summary': {'stations': 1, 'total_sessions': 0,
-                                 'total_energy_wh': 0, 'total_estimated_cost': 0},
             'operator/stations': {'items': [], 'total': 0},
         }
         async def request(method, path, **kwargs):
@@ -97,7 +95,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.page.web = True
         screen = await ownership.build(app)
         with self.assertRaisesRegex(ApiError, 'APK Android'):
-            await click(screen, 'Abrir câmera para ler o QR')(None)
+            await click(screen, 'Escanear QR Code')(None)
         app.api.request.assert_not_called()
 
     async def test_scan_stops_camera_then_requires_explicit_confirmation(self):
@@ -108,7 +106,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict('sys.modules', {'chargegrid_scanner': SimpleNamespace(QRScanner=constructor)}):
             screen = await ownership.build(app)
             constructor.assert_not_called()
-            await click(screen, 'Abrir câmera para ler o QR')(None)
+            await click(screen, 'Escanear QR Code')(None)
             await constructor.call_args.kwargs['on_scan'](SimpleNamespace(data=URI))
         self.assertFalse(scanner.active)
         app.api.request.assert_not_called()
@@ -151,11 +149,11 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = request
         routed = await operator.build(app, station_id='station', point_id='point',
                                       onboarding=True, step=1)
-        self.assertIn('Localização', [item.value for item in descendants(routed) if isinstance(item, ft.Text)])
+        self.assertIn('Etapa 1 de 3 · Localização', [item.value for item in descendants(routed) if isinstance(item, ft.Text)])
         screen = await onboarding.build(app, 'station', 'point', step=1)
-        fields = {item.label: item for item in descendants(screen) if isinstance(item, ft.TextField)}
-        fields['Nome do posto'].value = 'Estação Centro'
-        fields['Endereço completo'].value = 'Rua das Flores, 50, São Paulo'
+        fields = {(item.label or item.data): item for item in descendants(screen) if isinstance(item, ft.TextField)}
+        fields['Nome da estação'].value = 'Estação Centro'
+        fields['Endereço'].value = 'Rua das Flores, 50, São Paulo'
         fields['Latitude'].value = 'abc'
         fields['Longitude'].value = '-46,63'
         with self.assertRaises(ApiError):
@@ -171,7 +169,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.go.assert_awaited_with('operator', station_id='station', point_id='point', onboarding=True, step=2)
 
         screen = await onboarding.build(app, 'station', 'point', step=2)
-        fields = {item.label: item for item in descendants(screen) if isinstance(item, ft.TextField)}
+        fields = {(item.label or item.data): item for item in descendants(screen) if isinstance(item, ft.TextField)}
         fields['Tarifa por kWh (R$)'].value = '-1'
         with self.assertRaises(ApiError):
             await click(screen, 'Salvar e revisar')(None)

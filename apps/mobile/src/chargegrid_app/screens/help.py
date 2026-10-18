@@ -19,7 +19,7 @@ TOPICS = {
         'Cupons válidos reduzem a estimativa nos postos indicados. Não há Pix, cobrança real ou saldo no app.'
     ),
     'Parar ou resolver uma falha': (
-        'Abra Minha recarga e toque em Solicitar parada. Aguarde a confirmação do equipamento; '
+        'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação do equipamento; '
         'pedido enviado não significa parada física confirmada. Offline mostra os últimos dados recebidos. '
         'Confira a rede do celular e do equipamento. Fechar o app, sair da conta ou trocar de modo não encerra '
         'a sessão física. Não conecte este protótipo a redes de alta potência ou baterias de veículo.'

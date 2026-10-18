@@ -24,7 +24,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     objects = output / "objects"
     objects.mkdir(exist_ok=True)
-    flags = ["-DCHARGEGRID_PANEL_ENABLED", "-DLV_CONF_SKIP", "-DLV_COLOR_DEPTH=16", "-DLV_FONT_MONTSERRAT_14=1", "-DLV_USE_QRCODE=1",
+    flags = ["-DCHARGEGRID_PANEL_ENABLED", "-DLV_CONF_SKIP", "-DLV_COLOR_DEPTH=16", "-DLV_FONT_MONTSERRAT_14=1", "-DLV_USE_QRCODE=1", "-DLV_MEM_SIZE=65536U",
              "-I" + str(lvgl), "-I" + str(firmware / "include")]
     sources = sorted((lvgl / "src").rglob("*.c"))
     sources += sorted((firmware / "src").glob("panel_font*.c"))

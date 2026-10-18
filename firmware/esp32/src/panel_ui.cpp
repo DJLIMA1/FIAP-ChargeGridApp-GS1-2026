@@ -22,24 +22,35 @@ void panelTick() {}
 
 // O port da placa deve chamar lv_disp_drv_register/lv_indev_drv_register antes
 // de panelSetup(). A escolha do port depende do modelo Waveshare 7 ou 7B.
+//
+// Layout: o design de referência do totem é 2:1; aqui ele é escalado em 0,4
+// (800 px de largura) e centralizado verticalmente no painel 800x480 (UI_Y).
 namespace {
-const lv_color_t COLOR_BG = LV_COLOR_MAKE(0x12, 0x13, 0x14);
-const lv_color_t COLOR_CARD = LV_COLOR_MAKE(0x20, 0x22, 0x23);
-const lv_color_t COLOR_CONTROL = LV_COLOR_MAKE(0x34, 0x36, 0x37);
+constexpr int UI_Y = 40;
+// Fundo e gradiente usam valores exatos de RGB565 (R/B em múltiplos de 8, G de 4):
+// qualquer outro tom "pula" de matiz entre as faixas do degradê no painel de 16 bits.
+const lv_color_t COLOR_BG = LV_COLOR_MAKE(0x10, 0x18, 0x20);
+const lv_color_t COLOR_BG_TOP = LV_COLOR_MAKE(0x18, 0x1C, 0x20);
+const lv_color_t COLOR_CARD = LV_COLOR_MAKE(0x20, 0x24, 0x28);
+const lv_color_t COLOR_CONTROL = LV_COLOR_MAKE(0x23, 0x28, 0x30);
+const lv_color_t COLOR_LINE = LV_COLOR_MAKE(0x26, 0x2B, 0x31);
 const lv_color_t COLOR_RED = LV_COLOR_MAKE(0xD7, 0x2B, 0x32);
-const lv_color_t COLOR_RED_DARK = LV_COLOR_MAKE(0xA6, 0x1C, 0x29);
 const lv_color_t COLOR_TEXT = LV_COLOR_MAKE(0xF5, 0xF5, 0xF5);
-const lv_color_t COLOR_MUTED = LV_COLOR_MAKE(0xAA, 0xAC, 0xAF);
-const lv_color_t COLOR_GREEN = LV_COLOR_MAKE(0x54, 0xC6, 0x91);
-const lv_color_t COLOR_AMBER = LV_COLOR_MAKE(0xF3, 0xBC, 0x60);
+const lv_color_t COLOR_SOFT = LV_COLOR_MAKE(0xD6, 0xDA, 0xE0);
+const lv_color_t COLOR_MUTED = LV_COLOR_MAKE(0x7A, 0x82, 0x8E);
+const lv_color_t COLOR_GREEN = LV_COLOR_MAKE(0x1E, 0xDF, 0x5A);
+const lv_color_t COLOR_AMBER = LV_COLOR_MAKE(0xFF, 0xC6, 0x2E);
 
-lv_obj_t *statusLabel, *codeLabel, *connectionLabel, *eyebrowLabel;
+lv_obj_t *statusLabel, *codeLabel, *connectionLabel, *connectionDot;
 lv_obj_t *energyLabel, *costLabel, *timeLabel, *sessionTimeLabel;
-lv_obj_t *instructionLabel, *stopButton, *heroNoteLabel;
+lv_obj_t *instructionLabel, *stopButton;
 lv_obj_t *codeCaptionLabel, *codeHintLabel;
-lv_obj_t *codeTimerLabel, *codeProgressBar;
+lv_obj_t *codeTimerLabel, *codeProgressBar, *codeCard;
+lv_obj_t *darkRoot, *alertRoot, *leftBlock, *rowLineTop, *rowLineBottom;
 lv_obj_t *stepsCard, *reservationCard, *sessionCard, *messageCard;
 lv_obj_t *messageTitle, *messageDetail;
+lv_obj_t *alertTitle, *alertSub, *alertBrand, *alertLogoPad;
+lv_obj_t *pumpBody, *pumpSide, *pumpScreen, *pumpBolt, *pumpNozzle, *pumpHose;
 lv_obj_t *configScreen, *configKeyboard, *ssidInput, *passwordInput, *configStatus;
 lv_obj_t *claimCard, *claimQr, *claimNetworkButton;
 char lastClaimQr[80]{};
@@ -50,11 +61,11 @@ unsigned long lastRefresh = 0;
 bool ready = false;
 volatile bool localStopRequested = false;
 portMUX_TYPE snapshotMux = portMUX_INITIALIZER_UNLOCKED;
-enum class PanelMode : uint8_t { Ready, Reserved, Charging, Message };
+enum class PanelMode : uint8_t { Ready, Reserved, Charging, Message, Unavailable, Maintenance };
 struct PanelSnapshot {
-  char eyebrow[48], status[64], code[64], connection[48], energy[24];
+  char status[64], alertTitle[40], code[64], connection[48], energy[24];
   char cost[24], remaining[32], instruction[128];
-  char heroNote[64], codeCaption[32], codeHint[64];
+  char codeCaption[32], codeHint[64];
   char codeTimer[40];
   uint8_t codeProgress;
   char messageTitle[64], messageDetail[128];
@@ -74,16 +85,47 @@ lv_obj_t* label(lv_obj_t* parent, const char* text, const lv_font_t* font,
   return value;
 }
 
-lv_obj_t* card(lv_obj_t* parent, int x, int y, int width, int height) {
+// Contêiner transparente sem borda, padding nem rolagem.
+lv_obj_t* plain(lv_obj_t* parent, int x, int y, int width, int height) {
   lv_obj_t* value = lv_obj_create(parent);
   lv_obj_set_pos(value, x, y);
   lv_obj_set_size(value, width, height);
-  lv_obj_set_style_bg_color(value, COLOR_CARD, 0);
+  lv_obj_set_style_bg_opa(value, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(value, 0, 0);
-  lv_obj_set_style_radius(value, 12, 0);
-  lv_obj_set_style_pad_all(value, 16, 0);
+  lv_obj_set_style_radius(value, 0, 0);
+  lv_obj_set_style_pad_all(value, 0, 0);
   lv_obj_clear_flag(value, LV_OBJ_FLAG_SCROLLABLE);
   return value;
+}
+
+lv_obj_t* card(lv_obj_t* parent, int x, int y, int width, int height) {
+  lv_obj_t* value = plain(parent, x, y, width, height);
+  lv_obj_set_style_bg_opa(value, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(value, COLOR_CARD, 0);
+  lv_obj_set_style_radius(value, 12, 0);
+  return value;
+}
+
+// Bloco liso (sem bordas) para a ilustração do carregador.
+lv_obj_t* shape(lv_obj_t* parent, int x, int y, int width, int height, int radius) {
+  lv_obj_t* value = plain(parent, x, y, width, height);
+  lv_obj_set_style_bg_opa(value, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(value, radius, 0);
+  return value;
+}
+
+void gradient(lv_obj_t* target, lv_color_t top, lv_color_t bottom) {
+  lv_obj_set_style_bg_opa(target, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(target, top, 0);
+  lv_obj_set_style_bg_grad_color(target, bottom, 0);
+  lv_obj_set_style_bg_grad_dir(target, LV_GRAD_DIR_VER, 0);
+}
+
+lv_obj_t* hline(lv_obj_t* parent, int y) {
+  lv_obj_t* line = plain(parent, 39, y, 711, 1);
+  lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(line, COLOR_LINE, 0);
+  return line;
 }
 
 void stopClicked(lv_event_t*) { localStopRequested = true; }
@@ -157,8 +199,29 @@ const char* instruction() {
   if (!hasSynced) return "Estamos preparando este ponto para você.";
   if (millis() - lastContact >= 45000) return "A conexão caiu. Encontre outro ponto pelo app.";
   if (connectorOwnershipKnown && !panelOwned) return "O responsável está preparando este ponto.";
-  if (!connectorActive) return "Este ponto ainda não está aberto para recargas.";
-  return "Abra o app ChargeGrid e use o código ao lado.";
+  if (!connectorActive) return "Estamos fazendo alguns ajustes para melhorar sua experiência.";
+  return "Abra o app ChargeGrid e use o código ao lado para iniciar a recarga.";
+}
+
+// Cores da ilustração e do texto nas telas de alerta (vermelha / manutenção).
+void applyAlertTheme(bool maintenance) {
+  const lv_color_t top = maintenance ? lv_color_make(0xFE, 0xA5, 0x03) : lv_color_make(0xEC, 0x17, 0x1B);
+  const lv_color_t bottom = maintenance ? lv_color_make(0xFD, 0x98, 0x02) : lv_color_make(0xC1, 0x07, 0x0B);
+  const lv_color_t ink = maintenance ? lv_color_make(0x1B, 0x1B, 0x1B) : lv_color_white();
+  gradient(alertRoot, top, bottom);
+  lv_obj_set_style_text_color(alertTitle, ink, 0);
+  lv_obj_set_style_text_color(alertSub, ink, 0);
+  lv_obj_set_style_text_color(alertBrand, ink, 0);
+  lv_obj_set_style_bg_color(alertLogoPad, maintenance ? lv_color_make(0x1B, 0x1B, 0x1B) : lv_color_white(), 0);
+  const lv_color_t body = maintenance ? lv_color_make(0xFB, 0xB0, 0x0C) : lv_color_make(0xF3, 0x2B, 0x2D);
+  const lv_color_t screen = maintenance ? lv_color_make(0xF0, 0x90, 0x04) : lv_color_make(0xA8, 0x0A, 0x0C);
+  const lv_color_t side = maintenance ? lv_color_make(0xE6, 0x8A, 0x04) : lv_color_make(0x95, 0x08, 0x0A);
+  lv_obj_set_style_bg_color(pumpBody, body, 0);
+  lv_obj_set_style_bg_color(pumpSide, side, 0);
+  lv_obj_set_style_bg_color(pumpScreen, screen, 0);
+  lv_obj_set_style_bg_color(pumpNozzle, body, 0);
+  lv_obj_set_style_img_recolor(pumpBolt, body, 0);
+  lv_obj_set_style_line_color(pumpHose, body, 0);
 }
 
 void refresh() {
@@ -178,8 +241,10 @@ void refresh() {
   };
   static bool painted = false, lastOnline = false;
   static PanelMode lastMode = PanelMode::Message;
-  setTextIfChanged(eyebrowLabel, current.eyebrow);
+  const bool alert = !current.showClaim &&
+      (current.mode == PanelMode::Unavailable || current.mode == PanelMode::Maintenance);
   setTextIfChanged(statusLabel, current.status);
+  setTextIfChanged(alertTitle, current.alertTitle);
   setTextIfChanged(codeLabel, current.code);
   setTextIfChanged(codeCaptionLabel, current.codeCaption);
   setTextIfChanged(codeHintLabel, current.codeHint);
@@ -191,25 +256,33 @@ void refresh() {
   }
   setTextIfChanged(connectionLabel, current.connection);
   if (!painted || current.online != lastOnline)
-    lv_obj_set_style_text_color(connectionLabel, current.online ? COLOR_GREEN : COLOR_AMBER, 0);
-  if (!painted || current.mode != lastMode) {
-    lv_obj_set_style_text_color(eyebrowLabel,
-        current.mode == PanelMode::Reserved ? COLOR_AMBER :
-        current.mode == PanelMode::Charging ? COLOR_GREEN : COLOR_RED, 0);
-  }
+    lv_obj_set_style_bg_color(connectionDot, current.online ? COLOR_GREEN : COLOR_AMBER, 0);
+  if (!painted || current.mode != lastMode)
+    applyAlertTheme(current.mode == PanelMode::Maintenance);
   setTextIfChanged(energyLabel, current.energy);
   setTextIfChanged(costLabel, current.cost);
   setTextIfChanged(timeLabel, current.remaining);
   setTextIfChanged(sessionTimeLabel, current.remaining);
   setTextIfChanged(instructionLabel, current.instruction);
-  setTextIfChanged(heroNoteLabel, current.heroNote);
+  setTextIfChanged(alertSub, current.instruction);
   setTextIfChanged(messageTitle, current.messageTitle);
   setTextIfChanged(messageDetail, current.messageDetail);
-  setHiddenIfChanged(stepsCard, current.mode != PanelMode::Ready);
-  setHiddenIfChanged(reservationCard, current.mode != PanelMode::Reserved);
-  setHiddenIfChanged(sessionCard, current.mode != PanelMode::Charging);
-  setHiddenIfChanged(messageCard, current.mode != PanelMode::Message);
-  setHiddenIfChanged(stopButton, !current.showStop);
+  const PanelMode mode = current.mode;
+  const bool dark = !alert;
+  const bool detail = dark && !current.showClaim;
+  setHiddenIfChanged(darkRoot, !dark);
+  setHiddenIfChanged(alertRoot, !alert);
+  setHiddenIfChanged(leftBlock, !detail);
+  setHiddenIfChanged(codeCard, !(detail && (mode == PanelMode::Ready || mode == PanelMode::Reserved)));
+  setHiddenIfChanged(rowLineTop, !detail);
+  setHiddenIfChanged(rowLineBottom, !detail);
+  setHiddenIfChanged(stepsCard, !(detail && mode == PanelMode::Ready));
+  setHiddenIfChanged(reservationCard, !(detail && mode == PanelMode::Reserved));
+  setHiddenIfChanged(sessionCard, !(detail && mode == PanelMode::Charging));
+  setHiddenIfChanged(messageCard, !(detail && mode == PanelMode::Message));
+  setHiddenIfChanged(stopButton, !(detail && current.showStop));
+  setHiddenIfChanged(codeProgressBar, mode != PanelMode::Ready);
+  setHiddenIfChanged(codeTimerLabel, mode != PanelMode::Ready);
   if (current.showClaim) {
     if (std::strcmp(lastClaimQr, current.claimUrl) != 0) {
       if (lv_qrcode_update(claimQr, current.claimUrl, std::strlen(current.claimUrl)) == LV_RES_OK)
@@ -242,6 +315,230 @@ void showConfigError(const char* message) {
     lvgl_port_unlock();
   }
 }
+
+lv_obj_t* logoMark(lv_obj_t* parent, int x, int y, int zoom) {
+  lv_obj_t* mark = lv_img_create(parent);
+  lv_img_set_src(mark, &chargegrid_logo_64x64);
+  lv_img_set_pivot(mark, 0, 0);
+  lv_img_set_zoom(mark, zoom);
+  lv_obj_set_pos(mark, x, y);
+  lv_obj_add_flag(mark, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(mark, logoEvent, LV_EVENT_ALL, nullptr);
+  return mark;
+}
+
+// Seta fina ">" entre os passos.
+void chevron(lv_obj_t* parent, int x, int y) {
+  static lv_point_t points[3] = {{0, 0}, {9, 11}, {0, 22}};
+  lv_obj_t* line = lv_line_create(parent);
+  lv_line_set_points(line, points, 3);
+  lv_obj_set_pos(line, x, y);
+  lv_obj_set_style_line_width(line, 2, 0);
+  lv_obj_set_style_line_color(line, COLOR_MUTED, 0);
+  lv_obj_set_style_line_rounded(line, true, 0);
+}
+
+lv_obj_t* primaryButton(lv_obj_t* parent, const char* text, lv_event_cb_t cb, int x, int y,
+                        int width, int height, lv_color_t color, lv_color_t textColor) {
+  lv_obj_t* button = lv_btn_create(parent);
+  lv_obj_set_pos(button, x, y); lv_obj_set_size(button, width, height);
+  lv_obj_set_style_bg_color(button, color, 0);
+  lv_obj_set_style_radius(button, 10, 0);
+  lv_obj_set_style_shadow_width(button, 0, 0);
+  lv_obj_add_event_cb(button, cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* text_ = label(button, text, &chargegrid_montserrat_16, textColor);
+  lv_obj_center(text_);
+  return button;
+}
+
+void buildDark(lv_obj_t* screen) {
+  darkRoot = plain(screen, 0, 0, 800, 480);
+  gradient(darkRoot, COLOR_BG_TOP, COLOR_BG);
+
+  logoMark(darkRoot, 39, UI_Y + 22, 160);
+  lv_obj_t* brand = label(darkRoot, "ChargeGrid", &chargegrid_montserrat_24, COLOR_TEXT);
+  lv_obj_set_pos(brand, 90, UI_Y + 26);
+
+  // Estado de conexão: ponto colorido + texto, alinhados à direita.
+  lv_obj_t* pill = plain(darkRoot, 450, UI_Y + 26, 300, 36);
+  lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(pill, 10, 0);
+  connectionDot = shape(pill, 0, 0, 11, 11, LV_RADIUS_CIRCLE);
+  lv_obj_set_style_bg_color(connectionDot, COLOR_AMBER, 0);
+  lv_obj_set_style_shadow_width(connectionDot, 12, 0);
+  lv_obj_set_style_shadow_opa(connectionDot, LV_OPA_40, 0);
+  lv_obj_set_style_shadow_color(connectionDot, COLOR_AMBER, 0);
+  connectionLabel = label(pill, "Preparando", &chargegrid_montserrat_16, COLOR_TEXT);
+
+  // Título + subtítulo, centrados na faixa entre o cabeçalho e os passos.
+  leftBlock = plain(darkRoot, 39, 128, 390, 190);
+  lv_obj_set_flex_flow(leftBlock, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(leftBlock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(leftBlock, 12, 0);
+  statusLabel = label(leftBlock, "Pronto para você", &chargegrid_title_40, COLOR_TEXT);
+  lv_obj_set_width(statusLabel, 390);
+  lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
+  instructionLabel = label(leftBlock, "Abra o app ChargeGrid e use o código ao lado para iniciar a recarga.",
+                           &chargegrid_montserrat_18, COLOR_MUTED);
+  lv_obj_set_width(instructionLabel, 350);
+  lv_label_set_long_mode(instructionLabel, LV_LABEL_LONG_WRAP);
+
+  // Cartão do código do ponto (também usado para o tempo da reserva).
+  codeCard = card(darkRoot, 439, UI_Y + 104, 311, 160);
+  lv_obj_set_style_radius(codeCard, 16, 0);
+  gradient(codeCard, LV_COLOR_MAKE(0x56, 0x29, 0x2E), LV_COLOR_MAKE(0x1C, 0x17, 0x1B));
+  lv_obj_set_style_border_width(codeCard, 1, 0);
+  lv_obj_set_style_border_color(codeCard, LV_COLOR_MAKE(0x45, 0x34, 0x39), 0);
+  codeCaptionLabel = label(codeCard, "CÓDIGO DO PONTO", &chargegrid_montserrat_14, LV_COLOR_MAKE(0xE6, 0xDA, 0xDC));
+  lv_obj_set_style_text_letter_space(codeCaptionLabel, 3, 0);
+  lv_obj_set_pos(codeCaptionLabel, 24, 22);
+  codeLabel = label(codeCard, "--", &chargegrid_title_52, lv_color_white());
+  lv_obj_set_pos(codeLabel, 24, 46); lv_obj_set_width(codeLabel, 270);
+  lv_label_set_long_mode(codeLabel, LV_LABEL_LONG_DOT);
+  codeHintLabel = label(codeCard, "", &chargegrid_montserrat_14, COLOR_TEXT);
+  lv_obj_add_flag(codeHintLabel, LV_OBJ_FLAG_HIDDEN);
+  codeTimerLabel = label(codeCard, "Aguardando código", &chargegrid_montserrat_14, LV_COLOR_MAKE(0xC9, 0xB9, 0xBC));
+  lv_obj_set_pos(codeTimerLabel, 24, 116);
+  codeProgressBar = lv_bar_create(codeCard);
+  lv_obj_set_pos(codeProgressBar, 24, 140); lv_obj_set_size(codeProgressBar, 263, 4);
+  lv_bar_set_range(codeProgressBar, 0, 100);
+  lv_obj_set_style_bg_color(codeProgressBar, LV_COLOR_MAKE(0x3B, 0x2A, 0x2F), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(codeProgressBar, COLOR_TEXT, LV_PART_INDICATOR);
+
+  stopButton = lv_btn_create(darkRoot);
+  lv_obj_set_pos(stopButton, 439, UI_Y + 150); lv_obj_set_size(stopButton, 311, 64);
+  lv_obj_set_style_bg_color(stopButton, COLOR_RED, 0);
+  lv_obj_set_style_radius(stopButton, 14, 0);
+  lv_obj_set_style_shadow_width(stopButton, 0, 0);
+  lv_obj_add_event_cb(stopButton, stopClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* stopText = label(stopButton, "Encerrar", &chargegrid_montserrat_20, lv_color_white());
+  lv_obj_center(stopText);
+  lv_obj_add_flag(stopButton, LV_OBJ_FLAG_HIDDEN);
+
+  rowLineTop = hline(darkRoot, 324);
+  rowLineBottom = hline(darkRoot, 397);
+
+  // Linha inferior (passos / reserva / métricas / mensagem), mesma faixa.
+  stepsCard = plain(darkRoot, 39, 325, 711, 72);
+  const char* stepTitles[] = {"Abra o app ChargeGrid", "Use o código deste ponto", "Comece a recarga"};
+  // Montserrat é mais larga que a fonte do design: títulos em 14 px para caber com as setas.
+  const char* stepDetails[] = {"No seu celular", "Digite no app", "Conecte e carregue"};
+  const int stepX[] = {8, 250, 508};
+  const int chevronX[] = {232, 490};
+  for (int i = 0; i < 3; ++i) {
+    lv_obj_t* tile = shape(stepsCard, stepX[i], 20, 36, 34, 4);
+    lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
+    char digits[3] = {'0', static_cast<char>('1' + i), '\0'};
+    lv_obj_t* number = label(tile, digits, &chargegrid_montserrat_20, LV_COLOR_MAKE(0x10, 0x10, 0x10));
+    lv_obj_center(number);
+    lv_obj_t* stepTitle = label(stepsCard, stepTitles[i], &chargegrid_montserrat_14, COLOR_TEXT);
+    lv_obj_set_pos(stepTitle, stepX[i] + 46, 21);
+    lv_obj_t* stepDetail = label(stepsCard, stepDetails[i], &chargegrid_montserrat_14, COLOR_MUTED);
+    lv_obj_set_pos(stepDetail, stepX[i] + 46, 40);
+    if (i < 2) chevron(stepsCard, chevronX[i], 25);
+  }
+
+  reservationCard = plain(darkRoot, 39, 325, 711, 72);
+  // O prazo aparece no cartão de destaque; timeLabel segue atualizado, porém oculto.
+  timeLabel = label(reservationCard, "--", &chargegrid_montserrat_14, COLOR_TEXT);
+  lv_obj_add_flag(timeLabel, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* reservationHelp = label(reservationCard, "Seu ponto está guardado. Inicie a recarga no aplicativo.", &chargegrid_montserrat_18, COLOR_SOFT);
+  lv_obj_set_pos(reservationHelp, 8, 26);
+
+  sessionCard = plain(darkRoot, 39, 325, 711, 72);
+  const char* metricNames[] = {"ENERGIA", "VALOR ESTIMADO", "TEMPO RESTANTE"};
+  lv_obj_t** metricValues[] = {&energyLabel, &costLabel, &sessionTimeLabel};
+  for (int i = 0; i < 3; ++i) {
+    const int x = 8 + i * 236;
+    lv_obj_t* name = label(sessionCard, metricNames[i], &chargegrid_montserrat_14, COLOR_MUTED);
+    lv_obj_set_style_text_letter_space(name, 2, 0);
+    lv_obj_set_pos(name, x, 12);
+    *metricValues[i] = label(sessionCard, "--", &chargegrid_montserrat_24, COLOR_TEXT);
+    lv_obj_set_pos(*metricValues[i], x, 34);
+    lv_obj_set_width(*metricValues[i], 220);
+    lv_label_set_long_mode(*metricValues[i], LV_LABEL_LONG_DOT);
+  }
+
+  messageCard = plain(darkRoot, 39, 325, 711, 72);
+  messageTitle = label(messageCard, "Precisa de ajuda?", &chargegrid_montserrat_20, COLOR_TEXT);
+  lv_obj_set_pos(messageTitle, 8, 12);
+  messageDetail = label(messageCard, "Encontre outro ponto pelo app ChargeGrid.", &chargegrid_montserrat_16, COLOR_MUTED);
+  lv_obj_set_pos(messageDetail, 8, 40); lv_obj_set_width(messageDetail, 690);
+  lv_label_set_long_mode(messageDetail, LV_LABEL_LONG_DOT);
+
+  // Tela de vinculação (ponto sem dono). Só um token de claim separado gera o QR.
+  // Transparente: o cabeçalho (logo + estado "Aguardando vínculo") continua visível.
+  claimCard = plain(darkRoot, 0, 0, 800, 480);
+  lv_obj_t* claimTitle = label(claimCard, "Ative seu ponto", &chargegrid_title_40, COLOR_TEXT);
+  lv_obj_set_pos(claimTitle, 39, UI_Y + 106);
+  const char* claimStepText[] = {"Entre como vendedor no app.", "Escaneie este QR Code.", "Defina nome, local e tarifa."};
+  for (int i = 0; i < 3; ++i) {
+    const int y = UI_Y + 190 + i * 34;
+    lv_obj_t* tile = shape(claimCard, 39, y, 30, 26, 3);
+    lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
+    char digits[3] = {'0', static_cast<char>('1' + i), '\0'};
+    lv_obj_t* number = label(tile, digits, &chargegrid_montserrat_16, LV_COLOR_MAKE(0x10, 0x10, 0x10));
+    lv_obj_center(number);
+    lv_obj_t* text = label(claimCard, claimStepText[i], &chargegrid_montserrat_18, COLOR_SOFT);
+    lv_obj_set_pos(text, 82, y + 2);
+  }
+  claimNetworkButton = lv_btn_create(claimCard);
+  lv_obj_set_pos(claimNetworkButton, 39, UI_Y + 295); lv_obj_set_size(claimNetworkButton, 200, 44);
+  lv_obj_set_style_bg_color(claimNetworkButton, COLOR_CONTROL, 0);
+  lv_obj_set_style_border_width(claimNetworkButton, 1, 0);
+  lv_obj_set_style_border_color(claimNetworkButton, LV_COLOR_MAKE(0x34, 0x3A, 0x44), 0);
+  lv_obj_set_style_radius(claimNetworkButton, 10, 0); lv_obj_set_style_shadow_width(claimNetworkButton, 0, 0);
+  lv_obj_add_event_cb(claimNetworkButton, openConfig, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* claimNetworkText = label(claimNetworkButton, "Configurar Wi-Fi", &chargegrid_montserrat_16, COLOR_TEXT);
+  lv_obj_center(claimNetworkText);
+  lv_obj_t* qrBorder = shape(claimCard, 507, UI_Y + 81, 243, 274, 14);
+  lv_obj_set_style_bg_color(qrBorder, lv_color_white(), 0);
+  claimQr = lv_qrcode_create(qrBorder, 200, lv_color_black(), lv_color_white());
+  lv_obj_align(claimQr, LV_ALIGN_TOP_MID, 0, 22);
+  lv_obj_t* qrCaption = label(qrBorder, "QR privado de vinculação", &chargegrid_montserrat_14, LV_COLOR_MAKE(0x20, 0x20, 0x20));
+  lv_obj_align(qrCaption, LV_ALIGN_BOTTOM_MID, 0, -14);
+  lv_obj_clear_flag(claimCard, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(claimCard, LV_OBJ_FLAG_HIDDEN);
+}
+
+void buildAlert(lv_obj_t* screen) {
+  alertRoot = plain(screen, 0, 0, 800, 480);
+  gradient(alertRoot, LV_COLOR_MAKE(0xEC, 0x17, 0x1B), LV_COLOR_MAKE(0xC1, 0x07, 0x0B));
+
+  // Ilustração do carregador (translúcida, sangra na borda direita/inferior).
+  pumpBody = shape(alertRoot, 500, UI_Y + 56, 246, 440, 52);
+  pumpSide = shape(alertRoot, 690, UI_Y + 80, 56, 420, 28);
+  lv_obj_set_style_bg_opa(pumpSide, LV_OPA_60, 0);
+  pumpScreen = shape(alertRoot, 526, UI_Y + 86, 154, 222, 24);
+  pumpBolt = lv_img_create(alertRoot);
+  lv_img_set_src(pumpBolt, &chargegrid_pump_bolt);
+  lv_obj_set_pos(pumpBolt, 563, UI_Y + 129);
+  lv_obj_set_style_img_recolor_opa(pumpBolt, LV_OPA_COVER, 0);
+  pumpNozzle = shape(alertRoot, 722, UI_Y + 136, 52, 114, 22);
+  static lv_point_t hose[] = {{0, 0}, {6, 36}, {11, 76}, {10, 106}, {-2, 126}, {-26, 134}};
+  pumpHose = lv_line_create(alertRoot);
+  lv_line_set_points(pumpHose, hose, 6);
+  lv_obj_set_pos(pumpHose, 772, UI_Y + 250);
+  lv_obj_set_style_line_width(pumpHose, 9, 0);
+  lv_obj_set_style_line_rounded(pumpHose, true, 0);
+
+  alertLogoPad = shape(alertRoot, 54, UI_Y + 86, 36, 36, 7);
+  logoMark(alertLogoPad, 3, 3, 120);
+  alertBrand = label(alertRoot, "ChargeGrid", &chargegrid_montserrat_24, lv_color_white());
+  lv_obj_set_pos(alertBrand, 99, UI_Y + 90);
+
+  alertTitle = label(alertRoot, "Ponto Indisponível", &chargegrid_title_52, lv_color_white());
+  lv_obj_set_width(alertTitle, 440);
+  lv_label_set_long_mode(alertTitle, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_line_space(alertTitle, -4, 0);
+  lv_obj_set_pos(alertTitle, 54, UI_Y + 134);
+  alertSub = label(alertRoot, "", &chargegrid_montserrat_18, lv_color_white());
+  lv_obj_set_width(alertSub, 420);
+  lv_label_set_long_mode(alertSub, LV_LABEL_LONG_WRAP);
+  lv_obj_set_pos(alertSub, 54, UI_Y + 276);
+  lv_obj_add_flag(alertRoot, LV_OBJ_FLAG_HIDDEN);
+}
 }  // namespace
 
 void panelSetup() {
@@ -254,154 +551,8 @@ void panelSetup() {
   lv_obj_set_style_bg_color(screen, COLOR_BG, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* brand = label(screen, "ChargeGrid", &chargegrid_montserrat_24, COLOR_TEXT);
-  lv_obj_set_pos(brand, 84, 21);
-  lv_obj_t* mark = lv_img_create(screen);
-  lv_img_set_src(mark, &chargegrid_logo_64x64);
-  lv_img_set_pivot(mark, 0, 0);
-  lv_img_set_zoom(mark, 160);
-  lv_obj_set_pos(mark, 28, 14);
-  lv_obj_add_flag(mark, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(mark, logoEvent, LV_EVENT_ALL, nullptr);
-
-  lv_obj_t* connectionPill = card(screen, 566, 16, 210, 44);
-  lv_obj_set_style_bg_color(connectionPill, COLOR_CARD, 0);
-  lv_obj_set_style_radius(connectionPill, 22, 0);
-  lv_obj_set_style_pad_all(connectionPill, 0, 0);
-  connectionLabel = label(connectionPill, "● Preparando", &chargegrid_montserrat_14, COLOR_AMBER);
-  lv_obj_center(connectionLabel);
-
-  lv_obj_t* hero = card(screen, 24, 78, 752, 256);
-  lv_obj_set_style_bg_grad_color(hero, LV_COLOR_MAKE(0x28, 0x23, 0x25), 0);
-  lv_obj_set_style_bg_grad_dir(hero, LV_GRAD_DIR_HOR, 0);
-  lv_obj_t* accent = lv_obj_create(hero);
-  lv_obj_set_pos(accent, 4, 22); lv_obj_set_size(accent, 5, 176);
-  lv_obj_set_style_bg_color(accent, COLOR_RED, 0);
-  lv_obj_set_style_border_width(accent, 0, 0);
-  lv_obj_set_style_radius(accent, 3, 0);
-  eyebrowLabel = label(hero, "PONTO DISPONÍVEL", &chargegrid_montserrat_14, COLOR_RED);
-  lv_obj_set_pos(eyebrowLabel, 28, 26);
-  statusLabel = label(hero, "Pronto para você", &chargegrid_montserrat_28, COLOR_TEXT);
-  lv_obj_set_pos(statusLabel, 28, 66); lv_obj_set_width(statusLabel, 432);
-  lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_DOT);
-  instructionLabel = label(hero, "Abra o app ChargeGrid e use o código ao lado.", &chargegrid_montserrat_18, COLOR_TEXT);
-  lv_obj_set_pos(instructionLabel, 28, 117);
-  lv_label_set_long_mode(instructionLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(instructionLabel, 414);
-  heroNoteLabel = label(hero, "Simples, seguro e no seu ritmo.", &chargegrid_montserrat_14, COLOR_MUTED);
-  lv_obj_set_pos(heroNoteLabel, 28, 204);
-
-  lv_obj_t* codeCard = card(hero, 488, 14, 224, 196);
-  lv_obj_set_style_bg_color(codeCard, COLOR_RED, 0);
-  lv_obj_set_style_bg_grad_color(codeCard, COLOR_RED_DARK, 0);
-  lv_obj_set_style_bg_grad_dir(codeCard, LV_GRAD_DIR_VER, 0);
-  codeCaptionLabel = label(codeCard, "CÓDIGO TEMPORÁRIO", &chargegrid_montserrat_14, COLOR_TEXT);
-  lv_obj_set_pos(codeCaptionLabel, 0, 10);
-  codeLabel = label(codeCard, "--", &chargegrid_montserrat_20, lv_color_white());
-  lv_obj_set_pos(codeLabel, 0, 58); lv_obj_set_width(codeLabel, 192);
-  lv_label_set_long_mode(codeLabel, LV_LABEL_LONG_DOT);
-  codeHintLabel = label(codeCard, "Use no app ChargeGrid", &chargegrid_montserrat_14, COLOR_TEXT);
-  lv_obj_set_pos(codeHintLabel, 0, 112);
-  codeTimerLabel = label(codeCard, "Aguardando código", &chargegrid_montserrat_14, COLOR_TEXT);
-  lv_obj_set_pos(codeTimerLabel, 0, 137);
-  codeProgressBar = lv_bar_create(codeCard);
-  lv_obj_set_pos(codeProgressBar, 0, 163);
-  lv_obj_set_size(codeProgressBar, 192, 8);
-  lv_bar_set_range(codeProgressBar, 0, 100);
-  lv_obj_set_style_bg_color(codeProgressBar, COLOR_RED_DARK, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(codeProgressBar, COLOR_TEXT, LV_PART_INDICATOR);
-
-  stepsCard = card(screen, 24, 350, 752, 94);
-  const char* stepTitles[] = {"Abra o app", "Use o código", "Comece a recarga"};
-  const char* stepDetails[] = {"ChargeGrid no celular", "Encontre este ponto", "Confirme pelo app"};
-  for (int i = 0; i < 3; ++i) {
-    const int x = 6 + i * 238;
-    lv_obj_t* number = lv_obj_create(stepsCard);
-    lv_obj_set_pos(number, x, 12); lv_obj_set_size(number, 38, 38);
-    lv_obj_set_style_bg_color(number, LV_COLOR_MAKE(0x3D, 0x25, 0x29), 0);
-    lv_obj_set_style_border_width(number, 0, 0);
-    lv_obj_set_style_radius(number, 19, 0);
-    lv_obj_set_style_pad_all(number, 0, 0);
-    char digit[2] = {static_cast<char>('1' + i), '\0'};
-    lv_obj_t* numberText = label(number, digit, &chargegrid_montserrat_18, COLOR_RED);
-    lv_obj_center(numberText);
-    lv_obj_t* stepTitle = label(stepsCard, stepTitles[i], &chargegrid_montserrat_16, COLOR_TEXT);
-    lv_obj_set_pos(stepTitle, x + 50, 7);
-    lv_obj_t* stepDetail = label(stepsCard, stepDetails[i], &chargegrid_montserrat_14, COLOR_MUTED);
-    lv_obj_set_pos(stepDetail, x + 50, 35);
-  }
-
-  reservationCard = card(screen, 24, 350, 752, 94);
-  lv_obj_t* reservationCaption = label(reservationCard, "TEMPO PARA INICIAR", &chargegrid_montserrat_14, COLOR_AMBER);
-  lv_obj_set_pos(reservationCaption, 6, 4);
-  timeLabel = label(reservationCard, "--", &chargegrid_montserrat_28, COLOR_TEXT);
-  lv_obj_set_pos(timeLabel, 6, 30);
-  lv_obj_t* reservationHelp = label(reservationCard, "Seu ponto está guardado.\nInicie a recarga no aplicativo.", &chargegrid_montserrat_16, COLOR_TEXT);
-  lv_obj_set_pos(reservationHelp, 242, 14);
-
-  sessionCard = card(screen, 24, 350, 752, 94);
-  const char* metricNames[] = {"ENERGIA", "VALOR ESTIMADO", "TEMPO RESTANTE"};
-  lv_obj_t** metricValues[] = {&energyLabel, &costLabel, &sessionTimeLabel};
-  for (int i = 0; i < 3; ++i) {
-    const int x = 6 + i * 170;
-    lv_obj_t* name = label(sessionCard, metricNames[i], &chargegrid_montserrat_14, COLOR_MUTED);
-    lv_obj_set_pos(name, x, 4);
-    *metricValues[i] = label(sessionCard, "--", &chargegrid_montserrat_20, COLOR_TEXT);
-    lv_obj_set_pos(*metricValues[i], x, 34);
-    lv_obj_set_width(*metricValues[i], 160);
-    lv_label_set_long_mode(*metricValues[i], LV_LABEL_LONG_DOT);
-  }
-  stopButton = lv_btn_create(sessionCard);
-  lv_obj_set_pos(stopButton, 548, 8); lv_obj_set_size(stopButton, 166, 56);
-  lv_obj_set_style_bg_color(stopButton, COLOR_RED, 0);
-  lv_obj_set_style_radius(stopButton, 8, 0);
-  lv_obj_set_style_shadow_width(stopButton, 0, 0);
-  lv_obj_add_event_cb(stopButton, stopClicked, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* stopText = label(stopButton, "Encerrar", &chargegrid_montserrat_18, lv_color_white());
-  lv_obj_center(stopText);
-  lv_obj_add_flag(stopButton, LV_OBJ_FLAG_HIDDEN);
-
-  messageCard = card(screen, 24, 350, 752, 94);
-  messageTitle = label(messageCard, "Precisa de ajuda?", &chargegrid_montserrat_18, COLOR_TEXT);
-  lv_obj_set_pos(messageTitle, 6, 3);
-  messageDetail = label(messageCard, "Encontre outro ponto pelo app ChargeGrid.", &chargegrid_montserrat_14, COLOR_MUTED);
-  lv_obj_set_pos(messageDetail, 6, 35); lv_obj_set_width(messageDetail, 690);
-  lv_label_set_long_mode(messageDetail, LV_LABEL_LONG_WRAP);
-
-  // Factory onboarding overlays operational metrics but leaves the brand and
-  // connection status visible. Only a separate claim token can produce this QR.
-  claimCard = card(screen, 24, 72, 752, 384);
-  lv_obj_t* claimAccent = lv_obj_create(claimCard);
-  lv_obj_set_pos(claimAccent, 0, 12); lv_obj_set_size(claimAccent, 5, 162);
-  lv_obj_set_style_bg_color(claimAccent, COLOR_RED, 0);
-  lv_obj_set_style_border_width(claimAccent, 0, 0);
-  lv_obj_set_style_radius(claimAccent, 3, 0);
-  lv_obj_t* claimEyebrow = label(claimCard, "CONFIGURAÇÃO DO VENDEDOR", &chargegrid_montserrat_14, COLOR_RED);
-  lv_obj_set_pos(claimEyebrow, 8, 8);
-  lv_obj_t* claimTitle = label(claimCard, "Ative seu ponto", &chargegrid_montserrat_28, COLOR_TEXT);
-  lv_obj_set_pos(claimTitle, 8, 40);
-  lv_obj_t* claimDescription = label(claimCard, "Este QR conecta o ponto à sua conta\nde vendedor no app ChargeGrid.", &chargegrid_montserrat_16, COLOR_MUTED);
-  lv_obj_set_pos(claimDescription, 8, 90); lv_obj_set_width(claimDescription, 414);
-  lv_obj_t* claimSteps = label(claimCard,
-      "1. Entre como vendedor no app.\n\n2. Escaneie este QR.\n\n3. Defina nome, local e tarifa.",
-      &chargegrid_montserrat_16, COLOR_TEXT);
-  lv_obj_set_pos(claimSteps, 8, 156); lv_obj_set_width(claimSteps, 418);
-  claimNetworkButton = lv_btn_create(claimCard);
-  lv_obj_set_pos(claimNetworkButton, 8, 292); lv_obj_set_size(claimNetworkButton, 244, 48);
-  lv_obj_set_style_bg_color(claimNetworkButton, COLOR_CONTROL, 0);
-  lv_obj_set_style_radius(claimNetworkButton, 8, 0); lv_obj_set_style_shadow_width(claimNetworkButton, 0, 0);
-  lv_obj_add_event_cb(claimNetworkButton, openConfig, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* claimNetworkText = label(claimNetworkButton, "Configurar Wi-Fi", &chargegrid_montserrat_16, COLOR_TEXT);
-  lv_obj_center(claimNetworkText);
-  lv_obj_t* qrBorder = card(claimCard, 456, 44, 248, 248);
-  lv_obj_set_style_bg_color(qrBorder, lv_color_white(), 0);
-  lv_obj_set_style_radius(qrBorder, 8, 0);
-  claimQr = lv_qrcode_create(qrBorder, 216, lv_color_black(), lv_color_white());
-  lv_obj_center(claimQr);
-  lv_obj_t* qrCaption = label(claimCard, "QR privado de vinculação", &chargegrid_montserrat_14, COLOR_MUTED);
-  lv_obj_set_pos(qrCaption, 456, 310); lv_obj_set_width(qrCaption, 248);
-  lv_obj_set_style_text_align(qrCaption, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_add_flag(claimCard, LV_OBJ_FLAG_HIDDEN);
+  buildDark(screen);
+  buildAlert(screen);
 
   configScreen = lv_obj_create(screen);
   lv_obj_set_size(configScreen, 800, 480); lv_obj_set_pos(configScreen, 0, 0);
@@ -423,7 +574,7 @@ void panelSetup() {
     lv_obj_set_style_text_color(*fields[i], COLOR_TEXT, 0);
     lv_obj_set_style_border_color(*fields[i], COLOR_MUTED, 0);
     lv_obj_set_style_border_width(*fields[i], 1, 0);
-    lv_obj_set_style_radius(*fields[i], 4, 0);
+    lv_obj_set_style_radius(*fields[i], 10, 0);
     lv_textarea_set_one_line(*fields[i], true);
     lv_obj_set_style_text_font(*fields[i], &chargegrid_montserrat_16, 0);
     lv_obj_add_event_cb(*fields[i], inputFocused, LV_EVENT_FOCUSED, nullptr);
@@ -433,19 +584,14 @@ void panelSetup() {
   configStatus = label(configScreen, "Senha vazia: rede aberta. Identidade do dispositivo preservada.", &chargegrid_montserrat_14, COLOR_MUTED);
   lv_obj_set_pos(configStatus, 8, 228); lv_obj_set_width(configStatus, 590);
   lv_label_set_long_mode(configStatus, LV_LABEL_LONG_DOT);
-  struct ButtonDef { const char* text; lv_event_cb_t cb; lv_color_t color; } buttons[] = {
-    {"Salvar e conectar", saveConfig, COLOR_RED}, {"Limpar rede", clearConfig, COLOR_CONTROL},
-    {"Voltar", closeConfig, COLOR_CONTROL}
+  struct ButtonDef { const char* text; lv_event_cb_t cb; lv_color_t color; lv_color_t ink; } buttons[] = {
+    {"Salvar e conectar", saveConfig, lv_color_white(), lv_color_black()},
+    {"Limpar rede", clearConfig, COLOR_CONTROL, COLOR_TEXT},
+    {"Voltar", closeConfig, COLOR_CONTROL, COLOR_TEXT}
   };
-  for (int i = 0; i < 3; ++i) {
-    lv_obj_t* button = lv_btn_create(configScreen);
-    lv_obj_set_pos(button, 614, 44 + i * 58); lv_obj_set_size(button, 170, 48);
-    lv_obj_set_style_bg_color(button, buttons[i].color, 0);
-    lv_obj_set_style_radius(button, 8, 0);
-    lv_obj_set_style_shadow_width(button, 0, 0);
-    lv_obj_add_event_cb(button, buttons[i].cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* text = label(button, buttons[i].text, &chargegrid_montserrat_16, lv_color_white()); lv_obj_center(text);
-  }
+  for (int i = 0; i < 3; ++i)
+    primaryButton(configScreen, buttons[i].text, buttons[i].cb, 614, 44 + i * 58, 170, 48,
+                  buttons[i].color, buttons[i].ink);
   configKeyboard = lv_keyboard_create(configScreen);
   lv_obj_set_size(configKeyboard, 800, 220);
   lv_obj_align(configKeyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -491,13 +637,11 @@ void panelTick() {
   if (!panelIntegrationEnabled) {
     const bool wifiConnected = panelNetworkConfigured && WiFi.status() == WL_CONNECTED;
     next.mode = PanelMode::Message;
-    snprintf(next.eyebrow, sizeof(next.eyebrow), "NOVO PONTO");
     snprintf(next.status, sizeof(next.status), "Em preparação");
     snprintf(next.code, sizeof(next.code), "EM BREVE");
     snprintf(next.codeCaption, sizeof(next.codeCaption), "SEU PONTO");
     snprintf(next.codeHint, sizeof(next.codeHint), "Ainda não disponível");
-    snprintf(next.heroNote, sizeof(next.heroNote), "ChargeGrid estará aqui em breve.");
-    snprintf(next.connection, sizeof(next.connection), "%s", wifiConnected ? "● Preparando ponto" : "● Em instalação");
+    snprintf(next.connection, sizeof(next.connection), "%s", wifiConnected ? "Preparando ponto" : "Em instalação");
     snprintf(next.energy, sizeof(next.energy), "--");
     snprintf(next.cost, sizeof(next.cost), "--");
     snprintf(next.remaining, sizeof(next.remaining), "--");
@@ -509,15 +653,17 @@ void panelTick() {
   const bool authRejected = lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403;
   const bool apiOnline = WiFi.status() == WL_CONNECTED && !authRejected &&
       hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
+  const bool unavailable = state != "stopped" && std::strcmp(statusTitle(), "Ponto indisponível") == 0;
   next.mode = state == "charging" ? PanelMode::Charging :
       state == "reserved" ? PanelMode::Reserved :
-      state == "idle" && apiOnline && connectorActive && panelOwned ? PanelMode::Ready : PanelMode::Message;
+      state == "idle" && apiOnline && connectorActive && panelOwned ? PanelMode::Ready :
+      unavailable ? PanelMode::Unavailable :
+      state == "idle" && apiOnline && panelOwned && !connectorActive ? PanelMode::Maintenance :
+      PanelMode::Message;
   next.online = apiOnline && (next.mode != PanelMode::Message || state == "stopped");
-  snprintf(next.eyebrow, sizeof(next.eyebrow), "%s",
-      next.mode == PanelMode::Charging ? "RECARGA EM ANDAMENTO" :
-      next.mode == PanelMode::Reserved ? "RESERVA ATIVA" :
-      next.mode == PanelMode::Ready ? "PONTO DISPONÍVEL" : "PONTO CHARGEGRID");
   snprintf(next.status, sizeof(next.status), "%s", statusTitle());
+  snprintf(next.alertTitle, sizeof(next.alertTitle), "%s",
+      next.mode == PanelMode::Maintenance ? "Estamos em manutenção" : "Ponto Indisponível");
   const unsigned long codeElapsed = millis() - presenceCodeReceivedAt;
   const unsigned long codeRemaining = codeElapsed < presenceCodeTtlMs ? presenceCodeTtlMs - codeElapsed : 0UL;
   const bool rotatingCodeKnown = stationPresenceCode.length() == 7 &&
@@ -528,8 +674,7 @@ void panelTick() {
       !rotatingCodeKnown && connectorPublicCode != "--";
   snprintf(next.code, sizeof(next.code), "%s", codeVisible ? stationPresenceCode.c_str() :
       legacyCodeVisible ? connectorPublicCode.c_str() : "--");
-  snprintf(next.codeCaption, sizeof(next.codeCaption), "%s", legacyCodeVisible ?
-      "CÓDIGO DO PONTO" : "CÓDIGO DO POSTO");
+  snprintf(next.codeCaption, sizeof(next.codeCaption), "CÓDIGO DO PONTO");
   snprintf(next.codeHint, sizeof(next.codeHint), "%s", codeVisible || legacyCodeVisible ?
       "Use no app ChargeGrid" : rotatingCodeKnown && apiOnline ?
       "Atualizando código" : "Indisponível agora");
@@ -541,15 +686,11 @@ void panelTick() {
         "Código #F em breve" : rotatingCodeKnown && apiOnline ?
         "Novo código em instantes" : "Aguardando código");
   next.codeProgress = codeVisible ? static_cast<uint8_t>(min(100UL, (codeRemaining * 100UL) / 300000UL)) : 0;
-  snprintf(next.heroNote, sizeof(next.heroNote), "%s", next.mode == PanelMode::Charging ?
-      "Acompanhe tudo pelo aplicativo." : next.mode == PanelMode::Reserved ?
-      "Sua reserva está protegida." : next.mode == PanelMode::Ready ?
-      "Simples, seguro e no seu ritmo." : "Mais opções disponíveis no app.");
   const char* connection = apiOnline ?
-      (state == "charging" ? "● Em uso" : state == "reserved" ? "● Reservado" :
-      state == "stopped" ? "● Recarga concluída" : !panelOwned ? "● Aguardando vínculo" :
-      !connectorActive ? "● Em preparação" : "● Pronto para uso") :
-      "● Temporariamente offline";
+      (state == "charging" ? "Em uso" : state == "reserved" ? "Reservado" :
+      state == "stopped" ? "Recarga concluída" : !panelOwned ? "Aguardando vínculo" :
+      !connectorActive ? "Em preparação" : "Pronto para uso") :
+      "Temporariamente offline";
   snprintf(next.connection, sizeof(next.connection), "%s", connection);
   const bool hasValidSessionData = sessionId.length() && hasSynced;
   if (hasValidSessionData) {
@@ -567,11 +708,15 @@ void panelTick() {
     snprintf(next.remaining, sizeof(next.remaining), "%ld min", ((long)(reservationDeadline - time(nullptr)) + 59) / 60L);
   } else snprintf(next.remaining, sizeof(next.remaining), "--");
   snprintf(next.instruction, sizeof(next.instruction), "%s", instruction());
+  if (next.mode == PanelMode::Reserved) {
+    // O cartão de destaque mostra o prazo da reserva no lugar do código.
+    snprintf(next.codeCaption, sizeof(next.codeCaption), "TEMPO PARA INICIAR");
+    snprintf(next.code, sizeof(next.code), "%s", next.remaining);
+  }
   snprintf(next.messageTitle, sizeof(next.messageTitle), "%s", state == "stopped" ?
-      "Até a próxima" : !connectorActive ? "Em breve por aqui" : "Encontre outro ponto");
+      "Até a próxima" : "Encontre outro ponto");
   snprintf(next.messageDetail, sizeof(next.messageDetail), "%s", state == "stopped" ?
-      "Veja o resumo da sua recarga no app ChargeGrid." : !connectorActive ?
-      "Outros pontos disponíveis estão no app ChargeGrid." :
+      "Veja o resumo da sua recarga no app ChargeGrid." :
       "Abra o app ChargeGrid para encontrar uma opção próxima.");
   next.showStop = state == "charging";
   }

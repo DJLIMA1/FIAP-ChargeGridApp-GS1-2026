@@ -6,19 +6,29 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.planning import estimate_text, intent_limits
+from ..ui import design as d
 from ..ui import theme
 from ..ui.components import (
-    button,
     card,
     date_time,
     disclosure_field,
     field,
-    flat_button,
     money,
-    title,
 )
 from ..ui.point_summary import event_disclosure, journey_summary, point_summary
 from ..ui.point_summary import point_context as context_from_station
+from .reservations import btn, recharge_detail, when_text
+
+
+def title(text, subtitle=''):
+    controls = [d.txt(text, 18, 'bold')]
+    if subtitle:
+        controls.append(d.txt(subtitle, 12, 'regular', theme.GRAY_TEXT))
+    return ft.Column(controls, spacing=4)
+
+
+def button(text, action, secondary=False):
+    return btn(text, action, 'secondary' if secondary else 'primary', height=55)
 
 LABELS = {'starting':'Aguardando equipamento iniciar','charging':'Recarga confirmada','stopping':'Parada pendente no equipamento','completed':'Recarga concluída','failed':'Falha confirmada','interrupted':'Recarga interrompida'}
 DEMO_LABELS = {'starting':'Aguardando início simulado','charging':'Recarga simulada em andamento','stopping':'Finalizando recarga simulada','completed':'Recarga simulada concluída','failed':'Falha simulada','interrupted':'Recarga simulada interrompida'}
@@ -48,6 +58,28 @@ def _progress(session):
     except (KeyError,AttributeError,TypeError,ValueError):
         pass
     return None, 'Bateria: não disponível'
+
+
+TITLES = {'completed':'Recarga concluída','failed':'Recarga com falha','interrupted':'Recarga interrompida'}
+
+
+def _metrics(session):
+    """(gauge, custo, potência, tempo restante) para o painel; só dados recebidos, nunca um relógio local."""
+    progress,label = _progress(session)
+    percent = f'{progress*100:.0f}%' if progress is not None and label.startswith('Bateria') else '-%'
+    cost = money(session.get('cost_estimate')) if session.get('cost_estimate') is not None else '-'
+    power_kw = (session.get('connector') or {}).get('power_kw')
+    power = f"{float(power_kw):g} kW".replace('.',',') if session.get('status') == 'charging' and power_kw is not None else '- kW'
+    remaining = '- minutos'
+    if session.get('status') in ACTIVE:
+        try:
+            start = datetime.fromisoformat(session['started_at'].replace('Z','+00:00'))
+            seen = datetime.fromisoformat(session['last_measurement_at'].replace('Z','+00:00'))
+            left = max(0,int(session['max_duration_minutes'])-int((seen-start).total_seconds()//60))
+            remaining = f"{left} {'minuto' if left == 1 else 'minutos'}"
+        except (KeyError,AttributeError,TypeError,ValueError):
+            pass
+    return percent,cost,power,remaining
 
 
 def session_card(session, *, demo=False):
@@ -158,12 +190,10 @@ def _estimate(draft):
         return 'A estimativa depende da tarifa, potência e limites do ponto. Nenhuma cobrança real.'
 
 
-def _header(step):
+def _header(app, step):
     return ft.Column([
-        ft.Text(f'INICIAR RECARGA · ETAPA {step} DE 3',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-        ft.Row([ft.Container(height=5,expand=True,bgcolor=theme.RED if index<=step else theme.LIGHT_GRAY,border_radius=3)
-                for index in range(1,4)],spacing=5),
-        title(('Confirmar ponto','Definir limites','Revisar recarga')[step-1]),
+        d.progress_bar(3, step),
+        d.page_title(('Confirmar ponto','Definir limites','Revisar recarga')[step-1], getattr(app,'back',None), size=18),
     ],spacing=10)
 
 
@@ -179,18 +209,16 @@ def _review(draft):
             ('Limite de valor',money(body['max_cost']) if body.get('max_cost') else None),
             ('Tarifa',f"{money(point['price_per_kwh'])}/kWh" if point.get('price_per_kwh') is not None else None),
             ('Cupom',body.get('coupon_code'))]
-    # The review sheet is white in both themes: use the light-surface accent (AA).
-    controls = [ft.Text('RESUMO DA RECARGA',size=11,weight=ft.FontWeight.BOLD,color='#B91C24')]
+    controls = [d.txt('RESUMO DA RECARGA',11,'bold',theme.GRAY_TEXT)]
     for label,value in rows:
         if value:
-            controls.append(ft.Row([ft.Text(label,size=12,color='#62666B',width=104),
-                                    ft.Text(str(value),size=14,color=theme.INPUT_TEXT,weight=ft.FontWeight.BOLD,expand=True)],
+            controls.append(ft.Row([d.txt(label,11,'regular',theme.GRAY_TEXT,width=104),
+                                    d.txt(str(value),12.5,'semibold',expand=True)],
                                    vertical_alignment=ft.CrossAxisAlignment.START,spacing=12))
-    return ft.Container(ft.Column(controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-                        bgcolor=theme.INPUT_BG,border_radius=4,padding=18)
+    return d.card_box(ft.Column(controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=18)
 
 
-async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False, planning_intent=None, station_search=None):
+async def build(app, public_code='', reservation_id=None, session_id=None, max_duration=30, point_context=None, step=None, pending_start=False, planning_intent=None, station_search=None, **_):
     demo = getattr(app.api,'is_demo',False) is True
     draft = getattr(app,'charging_draft',None)
     if draft and draft.get('owner') != _owner(app):
@@ -221,8 +249,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await app.go('charging',session_id=session['id'])
         state = ft.Container(session_card(session,demo=demo))
         journey = ft.Container(journey_summary(session, demo=demo))
-        controls = [title('Minha recarga'),state,journey,point_summary(session)]
-        controls.extend(event_disclosure(app, session['id']))
+        live = {}
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
             if current['status'] != session['status']:
@@ -230,26 +257,38 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 return
             state.content = session_card(current,demo=demo)
             journey.content = journey_summary(current, demo=demo)
+            for name,value in zip(('percent','cost','power','remaining'),_metrics(current)):
+                if name in live:
+                    live[name].value = value
             app.page.update()
+        extra = [state,journey,point_summary(session)]
+        extra.extend(event_disclosure(app, session['id']))
         if session['status'] in ACTIVE:
             app.set_poll(update,5)
         else:
-            if getattr(app,'charging_draft',None):
-                controls.append(button('Retomar preparação da recarga',app.link('charging')))
             async def again():
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
                 await app.go('charging')
-            controls.append(button('Iniciar outra recarga',app.action(again)))
+            if getattr(app,'charging_draft',None):
+                extra.insert(0,button('Retomar preparação da recarga',app.link('charging'),secondary=True))
+            action = btn('Iniciar outra recarga',app.action(again))
         if session['status'] in ('starting','charging'):
-            controls.insert(2,button('Solicitar parada',app.action(stop)))
-        controls.append(ft.Text(
+            action = btn('Encerrar recarga',app.action(stop),'danger')
+        elif session['status'] == 'stopping':
+            action = btn('Encerrando recarga...',None,'secondary')
+        extra.append(ft.Text(
             'Atualiza a cada 5 s. A evolução é simulada nesta conta; nenhum equipamento real recebe comandos.'
             if demo and session['status'] in ACTIVE else
             'Atualiza a cada 5 s. Fechar o app ou sair da conta mantém a sessão física e seus limites.'
             if session['status'] in ACTIVE else 'Sessão encerrada. Os dados também estão disponíveis no histórico.',
             size=12,color=theme.GRAY_TEXT))
-        return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        percent,cost,power,remaining = _metrics(session)
+        return recharge_detail(
+            app,TITLES.get(session['status'],'Recarga em andamento'),
+            when=when_text(session.get('started_at') or session.get('created_at')),
+            address=session.get('station_address'),percent=percent,cost=cost,power=power,remaining=remaining,
+            action=action,on_back=app.link('reservations'),extra=extra,live=live)
 
     reservation = await app.api.request('GET','reservations/current')
     if reservation and reservation.get('status') in ('cancelled','expired','consumed'):
@@ -274,7 +313,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 route = {'public_code':public_code,'point_context':context,'max_duration':max_duration,'step':1}
             _metadata(app,route)
             controls = [title('Reserva não está mais ativa','Confira sua reserva ou confirme novamente o código #F no ponto selecionado.'),
-                        button('Ver minha reserva',app.link('reservations'))]
+                        button('Ver minha reserva',app.link('reservations',detail=True))]
             if not reservation:
                 controls.append(button('Continuar sem reserva',app.link('charging',**route),secondary=True))
             return ft.Column(controls,spacing=15,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
@@ -286,7 +325,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                                if different_point else 'Aguarde a liberação do ponto antes de solicitar outra recarga.'
                                if reservation['status'] == 'cancelling' else 'Aguarde a confirmação da reserva no equipamento antes de iniciar.')
                 return ft.Column([title('Confira sua reserva',explanation),point_summary(reservation,'Ponto reservado'),
-                                               button('Ver minha reserva',app.link('reservations'))],spacing=15)
+                                               button('Ver minha reserva',app.link('reservations',detail=True))],spacing=15)
             reservation_id,point_context = reservation['id'],reservation
         elif not explicit_target and not session_id and app.api.last_session_id and not draft:
             return await build(app,session_id=app.api.last_session_id)
@@ -354,7 +393,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         saved()
         await app.go('charging',**_route(draft,next_step))
 
-    controls = [_header(step)]
+    controls = [_header(app,step)]
     if step == 1:
         presence = field('Código temporário do posto',draft['presence_digits'])
         presence.prefix,presence.max_length = '#F',5
@@ -401,9 +440,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 duration.value = str(minutes)
                 await changed()
             return choose
-        preset_row = ft.Row([flat_button(f'{minutes} min' if minutes != limit_minutes else f'Máx. {minutes} min',
-                                         theme.LIGHT_GRAY,theme.TEXT_COLOR,on_click=app.action(choose_duration(minutes)),
-                                         bold=False,radius=20)
+        preset_row = ft.Row([d.chip_option(f'{minutes} min' if minutes != limit_minutes else f'Máx. {minutes} min',
+                                           on_click=app.action(choose_duration(minutes)))
                              for minutes in presets],wrap=True,spacing=8,run_spacing=8)
         time_panel = ft.Column([duration,preset_row],visible=draft['mode']=='time',spacing=10,
                                horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
@@ -416,9 +454,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         value_panel = ft.Column([cost,safety_section],
                                spacing=12,visible=draft['mode']=='value',horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         estimate = ft.Text(size=13,color=theme.GRAY_TEXT)
-        time_button = button('Por tempo',None,secondary=draft['mode']!='time')
-        value_button = button('Por valor',None,secondary=draft['mode']!='value')
-        time_button.expand = value_button.expand = True
+        mode_toggle = ft.Container()
 
         def capture_limits():
             draft.update(duration_minutes=duration.value or '',max_cost=cost.value or '',
@@ -428,9 +464,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         def refresh_mode():
             value_mode = draft['mode']=='value'
             time_panel.visible,value_panel.visible = not value_mode,value_mode
-            for control,selected in ((time_button,not value_mode),(value_button,value_mode)):
-                control.style.bgcolor = theme.RED if selected else theme.LIGHT_GRAY
-                control.content.color = '#FFFFFF' if selected else theme.TEXT_COLOR
+            mode_toggle.content = d.segmented([('time','Por tempo'),('value','Por valor')],draft['mode'],
+                                              lambda value:select_mode(value),height=40)
             safety_summary.value = f"Limite de segurança: {draft['safety_minutes']} min"
             coupon_summary.value = 'Código informado · validação no início' if draft['coupon_code'].strip() else 'Opcional · adicionar código'
             estimate.value = _estimate(draft)
@@ -448,8 +483,6 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             refresh_mode()
             app.page.update()
 
-        time_button.on_click = app.action(lambda:select_mode('time'))
-        value_button.on_click = app.action(lambda:select_mode('value'))
         duration.on_change = cost.on_change = safety.on_change = coupon.on_change = changed
         refresh_mode()
         async def continue_limits():
@@ -466,7 +499,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         async def back():
             capture_limits()
             await navigate(1)
-        controls += [ft.Container(ft.Row([time_button,value_button],spacing=3),padding=3,bgcolor=theme.LIGHT_GRAY,border_radius=4),
+        controls += [mode_toggle,
                      time_panel,value_panel,estimate,
                      coupon_section,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]

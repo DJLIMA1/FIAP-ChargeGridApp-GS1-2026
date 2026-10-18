@@ -1,7 +1,8 @@
 """Account viewing/editing and wizard navigation use separate, explicit states."""
+import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import flet as ft
 
@@ -9,12 +10,48 @@ from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.navigation import SCREENS, form_route, parent_route, tab_entries
 from chargegrid_app.screens import profile
-from test_behavior import HandlerApp, click, descendants
+from test_behavior import HandlerApp, descendants
 
 PROFILE = {'id':'user','name':'Marina','phone':'11988882211','vehicle_description':'Veículo de exemplo','account_type':'consumer'}
 
 
+def row(screen, title):
+    """on_click of the list row whose first text is ``title``."""
+    for item in descendants(screen):
+        if getattr(item,'on_click',None) and any(isinstance(c,ft.Text) and c.value == title for c in descendants(item)):
+            return item.on_click
+    raise AssertionError(title)
+
+
 class AccountUxTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        patcher = patch.dict('os.environ',{'FLET_APP_STORAGE_DATA':directory.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_pix_key_is_kept_on_the_device_and_balance_row_follows_the_mode(self):
+        app = HandlerApp()
+        app.profile = app_profile = {**PROFILE,'id':'user-pix'}
+        app.api.request.return_value = app_profile
+        screen = profile.edit_form(app,app_profile)
+        fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
+        self.assertTrue(fields[1].read_only)  # e-mail is not editable through PATCH me
+        fields[3].value = ' pix@example.com '
+        await row(screen,'Salvar informações')(None)
+        self.assertEqual(profile.PixKeyStore().load('user-pix'),'pix@example.com')
+        self.assertEqual(profile.load_pix_key(app,app_profile),'pix@example.com')
+        app.api.is_demo = True
+        self.assertEqual(profile.load_pix_key(app,app_profile),profile.DEMO_PIX_KEY)
+        for mode,title,route in (('consumer','Meu saldo','wallet'),('vendor','Minha Carteira','payout')):
+            app = HandlerApp()
+            app.browsing_mode = mode
+            app.logout = AsyncMock()
+            app.api.request.return_value = PROFILE
+            await row(await profile.build(app),title)(None)
+            app.go.assert_awaited_once_with(route)
+
     async def test_account_view_has_no_editable_fields_and_edit_is_explicit(self):
         app = HandlerApp()
         app.logout = AsyncMock()
@@ -25,8 +62,12 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         labels = [c.label for c in descendants(screen) if isinstance(c,ft.Semantics)]
         self.assertIn('Nome: Marina',labels)
         self.assertIn('E-mail: marina@example.com',labels)
-        await click(screen,'Editar informações')(None)
+        await row(screen,'Perfil')(None)
         app.go.assert_awaited_once_with('profile',mode='edit')
+        self.assertIn('Editar informações do usuário',[c.value for c in descendants(screen) if isinstance(c,ft.Text)])
+        self.assertIn('Sair',[c.value for c in descendants(screen) if isinstance(c,ft.Text)])
+        await row(screen,'Sair')(None)
+        app.logout.assert_awaited_once()
         self.assertFalse(form_route('profile',{}))
         self.assertTrue(form_route('profile',{'mode':'edit'}))
 
@@ -35,8 +76,8 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = {**PROFILE,'phone':None}
         screen = profile.edit_form(app,PROFILE)
         fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
-        fields[0].value,fields[1].value = ' Marina Silva ',''
-        await click(screen,'Salvar informações')(None)
+        fields[0].value,fields[2].value = ' Marina Silva ',''
+        await row(screen,'Salvar informações')(None)
         # "Prefiro informar depois": the account keeps its description and no car is sent.
         app.api.request.assert_awaited_once_with('PATCH','me',{'name':'Marina Silva','phone':None,
                                                               'vehicle_description':'Veículo de exemplo'})
@@ -49,8 +90,9 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         app.logout = AsyncMock()
         app.api.request.side_effect = lambda method,path,body=None,**kw: driver if path == 'driver/profile' else PROFILE
         screen = await profile.build(app)
-        labels = [c.label for c in descendants(screen) if isinstance(c,ft.Semantics)]
-        self.assertIn('Carro elétrico: BYD Dolphin · ~321 km de autonomia',labels)
+        shown = [c.value for c in descendants(screen) if isinstance(c,ft.Text)]
+        self.assertIn('Meu carro',shown)
+        self.assertIn('BYD Dolphin · ~321 km de autonomia',shown)
         calls = []
         async def request(method,path,body=None,**kwargs):
             calls.append((method,path,body))
@@ -63,7 +105,7 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('later',[option.key for option in model.options])  # a saved car is never "unset"
         model.value = 'byd_seal'
         calls.clear()
-        await click(screen,'Salvar informações')(None)
+        await row(screen,'Salvar informações')(None)
         self.assertIn(('PUT','driver/profile',{'vehicle':{'preset':'byd_seal'},'preferences':{'shift_start':'06:00'}}),calls)
         patch_body = next(body for method,path,body in calls if method == 'PATCH')
         self.assertEqual(patch_body['vehicle_description'],'BYD Seal')
@@ -76,11 +118,11 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
                 app = HandlerApp()
                 screen = profile.edit_form(app,PROFILE)
                 fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
-                fields[0].value,fields[1].value = name,phone
+                fields[0].value,fields[2].value = name,phone
                 with self.assertRaises(ApiError):
-                    await click(screen,'Salvar informações')(None)
+                    await row(screen,'Salvar informações')(None)
                 app.api.request.assert_not_called()
-                self.assertEqual([c.value for c in fields[:2]],[name,phone])
+                self.assertEqual([fields[0].value,fields[2].value],[name,phone])
         app = HandlerApp()
         screen = profile.edit_form(app,PROFILE)
         model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
@@ -88,7 +130,7 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         fields = {c.label: c for c in descendants(screen) if isinstance(c,ft.TextField)}
         fields['Bateria útil (kWh)'].value = '900'
         with self.assertRaises(ApiError):
-            await click(screen,'Salvar informações')(None)
+            await row(screen,'Salvar informações')(None)
         app.api.request.assert_not_called()
 
     async def test_back_moves_between_wizard_steps_without_losing_context(self):

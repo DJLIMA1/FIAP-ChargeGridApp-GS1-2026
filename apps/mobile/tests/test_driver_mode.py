@@ -265,12 +265,13 @@ class DriverIntegrationTests(unittest.IsolatedAsyncioTestCase):
             return state[path]
         app.api.request = request
         app.set_poll = lambda callback, interval: None
-        with patch('chargegrid_app.services.maps.build_map_png', return_value=b'png'):
-            screen = await home.build(app)
+        screen = await home.build(app)
         visible = texts(screen)
-        self.assertIn('MODO MOTORISTA DE APP', visible)
-        self.assertLess(visible.index('MODO MOTORISTA DE APP'), visible.index('GASTO ESTIMADO NESTE MÊS'))
-        await click(screen, 'Planejar meu turno')(None)
+        self.assertIn('Modo Motorista de App', visible)
+        self.assertLess(visible.index('Encontre uma Estação'), visible.index('Modo Motorista de App'))
+        row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
+                   and 'Modo Motorista de App' in texts(item))
+        await row.on_click(None)
         app.go.assert_awaited_once_with('driver')
 
 

@@ -2,20 +2,39 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.ownership import claim_token
-from ..ui import theme
-from ..ui.components import button, card, field, title
+from ..ui import design, theme
+from .setup_ui import cta, setup_field, status_card
 
 
-async def build(app, station_id=None):
+def _intro_card(destination, paragraphs):
+    """Cartão escuro: [destino] + ícone de QR + parágrafo em negrito + parágrafo regular (228 pt na referência)."""
+    leading = ft.TextStyle(height=1.8)
+    return ft.Container(status_card(
+        *destination,
+        ft.Container(ft.Icon(ft.Icons.QR_CODE_SCANNER, size=64, color=theme.TEXT_COLOR),
+                     alignment=ft.Alignment(0, 0), height=64),
+        ft.Container(height=13.5),
+        design.txt(paragraphs[0], 11.5, 'bold', style=leading),
+        ft.Container(height=21.5),
+        design.txt(paragraphs[1], 11.5, 'regular', style=leading),
+        padding=14, spacing=0, top=22, height=None if destination else 228),
+        margin=ft.Margin(left=0, top=-7, right=0, bottom=0))
+
+
+async def build(app, station_id=None, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
     station = await app.api.request('GET',f'stations/{station_id}') if station_id else None
-    credential = field('Código privado do QR')
+    credential_box = setup_field('Código privado do QR', hint='Código privado do QR', rest_bg='#313131',
+                                 text_size=13.6)
+    credential = credential_box.controls[1]
+    credential_box.controls[0].visible = False
     credential.password = True
     credential.autocorrect = False
     credential.enable_suggestions = False
-    credential.hint_text = 'Escaneie o QR ou cole o código privado'
-    hint = ft.Text('O QR é privado e só pode vincular o ponto a um proprietário.',
-                   size=13, color=theme.GRAY_TEXT)
+    credential.hint_text = 'Código privado do QR'
+    credential.can_reveal_password = False
+    credential.height = 49
+    hint = design.txt('', 12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER, visible=False)
     preview = ft.Container(visible=False)
     scanner = None
     claimed = False
@@ -52,6 +71,7 @@ async def build(app, station_id=None):
                 credential.value = claim_token(event.data)
                 hint.value = 'QR reconhecido. Confirme abaixo para vincular o ponto à sua conta.'
                 hint.color = theme.GREEN
+                hint.visible = True
             except ApiError as exc:
                 app.notice(str(exc))
             app.page.update()
@@ -94,60 +114,42 @@ async def build(app, station_id=None):
                      onboarding=True, step=2 if station_id else 1,
                      **({'existing_station':True} if station_id else {}))
 
-    camera_button = button('Abrir câmera para ler o QR', app.action(scan))
-    cancel_camera = button('Fechar câmera', app.action(cancel_scan), secondary=True)
+    camera_button = cta('Escanear QR Code', app.action(scan))
+    cancel_camera = cta('Fechar câmera', app.action(cancel_scan), primary=False)
     cancel_camera.visible = False
+    back = app.link('operator', **({'station_id': station_id} if station_id else {}))
+    destination = ([design.txt('ADICIONAR PONTO AO POSTO', 11, 'bold', theme.ACCENT),
+                    design.txt(station.get('name', 'Posto selecionado'), 16, 'bold'),
+                    design.txt(station.get('address', ''), 12, 'regular', theme.GRAY_TEXT)] if station else [])
     if is_demo:
         from ..demo import DEMO_CLAIM_TOKEN
 
         async def add_demo_equipment():
             nonlocal demo_token
             if demo_token is None:
-                demo_token = app.api.new_claim_token() if hasattr(app.api,'new_claim_token') else DEMO_CLAIM_TOKEN
+                demo_token = app.api.new_claim_token() if hasattr(app.api, 'new_claim_token') else DEMO_CLAIM_TOKEN
             credential.value = demo_token
             await claim()
 
-        return ft.Column([
-            title('Adicionar equipamento simulado','Configure um ponto fictício nesta conta de demonstração.'),
-            card([
-                ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
-                        size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-                ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local simulado',
-                        size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-                ft.Text(station.get('address','') if station else
-                        'Depois de adicionar o equipamento, você define nome, endereço e tarifa de exemplo.',
-                        size=13,color=theme.GRAY_TEXT),
-                ft.Text('O posto reúne os pontos no mesmo endereço. Este equipamento é inteiramente fictício: '
-                        'nenhuma câmera, QR físico ou carregador real é necessário.',size=13,color=theme.GRAY_TEXT),
-            ]),
-            button('Adicionar equipamento simulado',app.action(add_demo_equipment)),
-            ft.Text('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma recarga simulada.',
-                    size=12,color=theme.GRAY_TEXT),
-            button('Voltar',app.link('operator',**({'station_id':station_id} if station_id else {})),secondary=True),
-        ],spacing=15,scroll=ft.ScrollMode.AUTO)
-    return ft.Column([
-        title('Vincular tela', 'Seu ponto, na sua conta'),
-        card([
-            ft.Text('ADICIONAR PONTO AO POSTO' if station else 'CRIAR UM NOVO POSTO',
-                    size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            ft.Text(station.get('name','Posto selecionado') if station else 'Um novo local de recarga',
-                    size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-            ft.Text(station.get('address','') if station else
-                    'Depois do QR, você informa nome e endereço deste local.',size=13,color=theme.GRAY_TEXT),
-            ft.Text('O posto reúne os equipamentos no mesmo endereço. Cada tela vinculada corresponde a um ponto.',
-                    size=12,color=theme.GRAY_TEXT),
-        ]),
-        card([
-            ft.Icon(ft.Icons.QR_CODE_SCANNER, size=42, color=theme.RED),
-            ft.Text('Aponte a câmera para o QR exibido na tela do ponto.',
-                    color=theme.TEXT_COLOR),
-            hint,
-        ]),
-        camera_button, preview, cancel_camera, credential,
-        button('Vincular ponto à minha conta', app.action(claim)),
-        ft.Text('O QR aparece no visor somente enquanto o ponto não tem dono. '
-                'Se a tela mostra “Disponível”, ela já está vinculada; abra Meus postos para editá-la. '
-                'O código temporário #F serve para recarregar, não para vincular a propriedade.',
-                size=12, color=theme.GRAY_TEXT),
-        button('Voltar', app.link('operator', **({'station_id': station_id} if station_id else {})), secondary=True),
-    ], spacing=15, scroll=ft.ScrollMode.AUTO)
+        return design.page(
+            _intro_card(destination, [
+                'Adicione um equipamento simulado a esta conta de demonstração.',
+                'Depois informe nome, endereço e tarifa. ' + (
+                    'O posto reúne os pontos no mesmo endereço. ' if station else
+                    'Será um novo local simulado, publicado só quando você quiser. ') +
+                'Este equipamento é inteiramente fictício: nenhuma câmera, QR físico ou carregador real é necessário.']),
+            cta('Adicionar equipamento simulado', app.action(add_demo_equipment)),
+            design.txt('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma '
+                       'recarga simulada.', 12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER),
+            cta('Voltar', back, primary=False),
+            title='Vincular Tela', on_back=getattr(app, "back", None), center_title=True, gap=16)
+    return design.page(
+        _intro_card(destination, [
+            'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
+            'Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.']),
+        camera_button, preview, cancel_camera, hint,
+        ft.Container(height=25),
+        design.txt('Inserir o Código Privado do QR', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
+        credential_box,
+        cta('Vincular ponto à minha conta', app.action(claim)),
+        title='Vincular Tela', on_back=getattr(app, "back", None), center_title=True, gap=16)

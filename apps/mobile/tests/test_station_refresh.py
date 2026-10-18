@@ -70,7 +70,7 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(render.await_count,1)
             self.assertEqual(render.call_args.args[0][0]['free_points'],1)
             self.assertEqual(render.call_args.args[0][0]['price'],2)
-            self.assertEqual(render.call_args.kwargs,dict(offline=False,width=360,reference=None))
+            self.assertEqual(render.call_args.kwargs,dict(offline=False,width=360,reference=None,variant='list'))
             state = {'items': [{**station, 'connectors': [{**point, 'available': False}]}], 'total': 1}
             await app.poll()
             self.assertEqual(render.call_args.args[0][0]['free_points'],0)

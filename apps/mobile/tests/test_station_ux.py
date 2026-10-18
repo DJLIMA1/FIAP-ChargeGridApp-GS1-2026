@@ -10,6 +10,12 @@ from test_behavior import HandlerApp, click, descendants
 from test_consumer_flows import CONTEXT, POINT, STATION, texts
 
 
+def open_station(screen, name):
+    return next(item.on_click for item in descendants(screen)
+                if getattr(item, 'on_click', None)
+                and any(isinstance(t, ft.Text) and t.value == name for t in descendants(item)))
+
+
 class StationUxTests(unittest.IsolatedAsyncioTestCase):
     async def test_listing_only_offers_point_selection_without_starting_or_reserving(self):
         app = HandlerApp()
@@ -21,9 +27,9 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Já estou aqui: iniciar', visible)
         self.assertNotIn('Reservar para chegar', visible)
         self.assertNotIn('Ver cupons deste posto', visible)
-        self.assertIn('1 ponto livre', visible)
+        self.assertIn(f"{float(POINT['price_per_kwh']):.2f}".replace('.', ','), visible)
         self.assertIn('1 posto nesta página · 1 encontrado', visible)
-        await click(screen, 'Ver pontos')(None)
+        await open_station(screen, STATION['name'])(None)
         app.go.assert_awaited_once_with('stations', station_id=STATION['id'])
         self.assertTrue(all(call.args[0] == 'GET' for call in app.api.request.call_args_list))
 
@@ -32,7 +38,13 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = STATION
         with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))) as render:
             screen = await stations.build(app, station_id=STATION['id'])
-        render.assert_not_awaited()
+        render.assert_awaited_once()
+        self.assertEqual(render.call_args.kwargs['variant'], 'detail')
+        self.assertIn('Reservar estação', texts(screen))
+        self.assertIn('Conectores', texts(screen))
+        await open_station(screen, 'Reservar estação')(None)
+        app.go.assert_awaited_once_with('booking', station_id=STATION['id'], step=1)
+        app.go.reset_mock()
         self.assertNotIn('Ver mapa dos postos',texts(screen))
         self.assertNotIn('Postos no mapa',texts(screen))
         values = [item.value for item in descendants(screen) if isinstance(item, ft.Text)]
@@ -75,7 +87,7 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
             app.page.update.assert_not_called()
             state['items'][0]['connectors'][0]['online'] = False
             await app.poll()
-            self.assertIn('0 pontos livres', texts(screen))
+            self.assertIn('Sem pontos livres', texts(screen))
             self.assertTrue(search.expanded)
             self.assertEqual(address.value, 'Meu endereço em edição')
             app.page.update.assert_called_once_with()
@@ -100,5 +112,5 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
                     screen = await stations.build(app)
                 self.assertIn(label, texts(screen))
-                await click(screen, 'Ver pontos')(None)
+                await open_station(screen, STATION['name'])(None)
                 app.go.assert_awaited_once_with('stations', station_id=STATION['id'])

@@ -10,8 +10,9 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.location import geocode_address
-from ..ui import theme
-from ..ui.components import badge, button, card, field, money
+from ..ui import design, theme
+from ..ui.components import money
+from .setup_ui import cta, setup_field, status_card
 
 
 def _number(control, label, minimum, maximum, *, integer=False):
@@ -37,33 +38,36 @@ def _required(control, label, maximum):
     return value
 
 
-def _step_header(step, existing_station=False):
+def _step_caption(step, existing_station=False):
     labels = ('Posto selecionado' if existing_station else 'Localização', 'Ponto e tarifa', 'Revisão')
     current = max(1, step - 1) if existing_station else step
     total = 2 if existing_station else 3
-    return ft.Column([
-        ft.Text(f'CONFIGURAÇÃO DO PONTO · ETAPA {current} DE {total}', size=11,
-                weight=ft.FontWeight.BOLD, color=theme.ACCENT),
-        ft.Row([
-            ft.Container(height=5, expand=True,
-                         bgcolor=theme.RED if index <= current else theme.LIGHT_GRAY,
-                         border_radius=3)
-            for index in range(1, total + 1)
-        ], spacing=5),
-        ft.Text(labels[step - 1], size=27, weight=ft.FontWeight.BOLD,
-                color=theme.TEXT_COLOR, font_family='BarlowCondensed'),
-    ], spacing=9)
+    return design.txt(f'Etapa {current} de {total} · {labels[step - 1]}', 11, 'regular', theme.GRAY_TEXT,
+                      text_align=ft.TextAlign.CENTER)
 
 
 def _summary_line(label, value):
     return ft.Column([
-        ft.Text(label, color=theme.GRAY_TEXT, size=12),
-        ft.Text(str(value), color=theme.TEXT_COLOR, size=13,
-                weight=ft.FontWeight.BOLD),
+        design.txt(label, 11, 'bold', theme.GRAY_TEXT),
+        design.txt(str(value), 13, 'semibold'),
     ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 
-async def build(app, station_id, point_id=None, step=1, existing_station=False):
+def _group(*controls):
+    """Cartão escuro com linhas de resumo."""
+    return design.card_box(ft.Column(list(controls), spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                           padding=16)
+
+
+def _note(text, color=None):
+    return design.txt(text, 11.5, 'regular', color or theme.GRAY_TEXT)
+
+
+def _form(controls):
+    return ft.Column(controls, spacing=15, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+
+async def build(app, station_id, point_id=None, step=1, existing_station=False, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
     station = await app.api.request('GET', f'stations/{station_id}')
     points = station.get('connectors') or []
@@ -87,43 +91,46 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
         return app.link('operator', station_id=station_id, point_id=point_id,
                         onboarding=True, step=next_step, **context)
 
-    intro = ft.Text(
-        'O posto é o local com endereço; este ponto é o equipamento de recarga. '
-        'Salve cada etapa e publique quando estiver pronto.',
-        size=13, color=theme.GRAY_TEXT,
-    )
-    controls = [_step_header(step, existing_station), intro]
+    controls = []
+    tail = []
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
-        controls.append(card([
-            ft.Text('PONTO SIMULADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            ft.Text('Nome, endereço, tarifa e recargas são exemplos locais. Nenhum equipamento físico será acionado.',
-                    size=13,color=theme.GRAY_TEXT),
-            _summary_line('Código para testar uma recarga após publicar',DEMO_PRESENCE_CODE),
-        ]))
+        tail.append(status_card(
+            design.txt('PONTO SIMULADO', 11, 'bold', theme.ACCENT),
+            _note('Nome, endereço, tarifa e recargas são exemplos locais. Nenhum equipamento físico será acionado.'),
+            _summary_line('Código para testar uma recarga após publicar', DEMO_PRESENCE_CODE), padding=16))
 
     if existing_station:
-        controls.append(card([
-            ft.Text('POSTO SELECIONADO',size=11,weight=ft.FontWeight.BOLD,color=theme.ACCENT),
-            _summary_line('Nome',station['name']),
-            _summary_line('Endereço',station['address']),
-            ft.Text('Este ponto usará o endereço do posto. Para alterar os dados de todos os pontos, '
-                    'abra “Editar posto” na gestão.',size=12,color=theme.GRAY_TEXT),
-        ]))
+        controls.append(_group(
+            design.txt('POSTO SELECIONADO', 11, 'bold', theme.ACCENT),
+            _summary_line('Nome', station['name']),
+            _summary_line('Endereço', station['address']),
+            _note('Este ponto usará o endereço do posto. Para alterar os dados de todos os pontos, '
+                  'abra “Editar posto” na gestão.')))
+
+    def finish(items):
+        items.extend(tail)
+        items.append(_step_caption(step, existing_station))
+        items.append(design.txt('O posto é o local com endereço; este ponto é o equipamento de recarga. '
+                                'Salve cada etapa e publique quando estiver pronto.', 11, 'regular',
+                                theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER))
+        screen = design.page(*items, title='Configurar Estação', on_back=getattr(app, "back", None), center_title=True, gap=16)
+        return screen
 
     if step == 1 and existing_station:
-        controls += [button('Continuar para ponto e tarifa',destination(2)),
-                     button('Voltar ao posto',app.link('operator',station_id=station_id),secondary=True)]
-        return ft.Column(controls,spacing=14,scroll=ft.ScrollMode.AUTO)
+        controls += [cta('Continuar para ponto e tarifa', destination(2), weight='semibold'),
+                     cta('Voltar ao posto', app.link('operator', station_id=station_id), primary=False,
+                         weight='semibold')]
+        return finish(controls)
 
     if step == 1:
-        name = field('Nome do posto', station.get('name', ''))
-        name.hint_text = 'Ex.: Posto Centro'
-        address = field('Endereço completo', station.get('address', ''))
-        address.hint_text = 'Rua, número, bairro, cidade e estado'
-        latitude = field('Latitude', str(station.get('latitude', '')))
-        longitude = field('Longitude', str(station.get('longitude', '')))
-        latitude.keyboard_type = longitude.keyboard_type = ft.KeyboardType.NUMBER
+        name_box = setup_field('Nome da estação', station.get('name', ''), 'Ex.: Posto Centro')
+        address_box = setup_field('Endereço', station.get('address', ''), 'Rua, número, bairro, cidade e estado')
+        latitude_box = setup_field('Latitude', str(station.get('latitude', '')), keyboard=ft.KeyboardType.NUMBER)
+        longitude_box = setup_field('Longitude', str(station.get('longitude', '')), keyboard=ft.KeyboardType.NUMBER)
+        ident_box = setup_field('Identificador', point.get('public_code', ''), read_only=True)
+        name, address, latitude, longitude = (box.controls[1] for box in
+                                              (name_box, address_box, latitude_box, longitude_box))
 
         async def locate():
             _required(address, 'endereço', 300)
@@ -155,26 +162,26 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
             await app.go('operator', station_id=station_id, point_id=point_id,
                          onboarding=True, step=2, **context)
 
+        tail.insert(0, _note('Use um nome e endereço fictícios. A localização de exemplo não consulta serviços externos.' if is_demo else
+                             'Use um nome reconhecível e o endereço da instalação, não o seu endereço pessoal.'))
         controls += [
-            card([ft.Text('Onde seus clientes vão encontrar o ponto?',
-                          weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
-                  ft.Text('Use um nome e endereço fictícios. A localização de exemplo não consulta serviços externos.' if is_demo else
-                          'Use um nome reconhecível e o endereço da instalação, não o seu endereço pessoal.',
-                          size=12, color=theme.GRAY_TEXT),
-                  name, address, button('Usar localização de exemplo' if is_demo else 'Buscar coordenadas do endereço', app.action(locate), secondary=True),
-                  ft.Text('Confira as coordenadas. Se necessário, ajuste-as manualmente.',
-                          size=12, color=theme.GRAY_TEXT), latitude, longitude]),
-            button('Salvar e continuar', app.action(save_location)),
-            button('Deixar para depois', app.link('operator'), secondary=True),
+            _form([name_box, address_box, ident_box,
+                   cta('Usar localização de exemplo' if is_demo else 'Buscar coordenadas do endereço',
+                       app.action(locate), primary=False, weight='semibold'),
+                   latitude_box, longitude_box,
+                   _note('Confira as coordenadas. Se necessário, ajuste-as manualmente.')]),
+            cta('Salvar e continuar', app.action(save_location), weight='bold', size=15),
+            cta('Deixar para depois', app.link('operator'), primary=False, weight='semibold'),
         ]
 
     elif step == 2:
-        kind = field('Tipo de conector', point.get('connector_type', 'Tipo 2'))
-        power = field('Potência (kW)', str(point.get('power_kw', '')))
-        price = field('Tarifa por kWh (R$)', str(point.get('price_per_kwh', '')))
-        duration = field('Tempo máximo por recarga (min)', str(point.get('max_duration_minutes', 60)))
-        for control in (power, price, duration):
-            control.keyboard_type = ft.KeyboardType.NUMBER
+        kind_box = setup_field('Tipo de conector', point.get('connector_type', 'Tipo 2'))
+        power_box = setup_field('Potência (kW)', str(point.get('power_kw', '')), keyboard=ft.KeyboardType.NUMBER)
+        price_box = setup_field('Tarifa por kWh (R$)', str(point.get('price_per_kwh', '')),
+                                keyboard=ft.KeyboardType.NUMBER)
+        duration_box = setup_field('Tempo máximo por recarga (min)', str(point.get('max_duration_minutes', 60)),
+                                   keyboard=ft.KeyboardType.NUMBER)
+        kind, power, price, duration = (box.controls[1] for box in (kind_box, power_box, price_box, duration_box))
 
         async def save_point():
             body = {
@@ -193,49 +200,47 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
                          onboarding=True, step=3, **context)
 
         controls += [
-            card([ft.Text('Ponto ' + point['public_code'], weight=ft.FontWeight.BOLD,
-                          color=theme.TEXT_COLOR),
-                  ft.Text('O código público identifica este ponto simulado. Para testar a recarga, '
-                          f'use {DEMO_PRESENCE_CODE} no modo motorista.' if is_demo else
-                          'O código público identifica este ponto. Para iniciar a recarga, o cliente também '
-                          'informa o código temporário #F exibido na tela.',
-                          size=12, color=theme.GRAY_TEXT), kind, power, price, duration]),
-            button('Salvar e revisar', app.action(save_point)),
-            button('Voltar ao posto' if existing_station else 'Voltar à localização',
-                   app.link('operator',station_id=station_id) if existing_station else destination(1), secondary=True),
+            design.txt('Ponto ' + point['public_code'], 13, 'semibold'),
+            _note('O código público identifica este ponto simulado. Para testar a recarga, '
+                  f'use {DEMO_PRESENCE_CODE} no modo motorista.' if is_demo else
+                  'O código público identifica este ponto. Para iniciar a recarga, o cliente também '
+                  'informa o código temporário #F exibido na tela.'),
+            _form([kind_box, power_box, price_box, duration_box]),
+            cta('Salvar e revisar', app.action(save_point), weight='bold', size=15),
+            cta('Voltar ao posto' if existing_station else 'Voltar à localização',
+                app.link('operator', station_id=station_id) if existing_station else destination(1),
+                primary=False, weight='semibold'),
         ]
 
     else:
         connection = ('Online simulado' if point.get('online') else 'Offline simulado') if is_demo else (
             'Online agora' if point.get('online') else 'Offline agora')
         controls += [
-            card([ft.Text('Posto', size=16, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
-                  _summary_line('Nome', station['name']),
-                  _summary_line('Local', station['address']),
-                  _summary_line('Coordenadas', f"{station['latitude']}, {station['longitude']}")]),
-            card([ft.Text('Ponto de recarga', size=16, weight=ft.FontWeight.BOLD, color=theme.TEXT_COLOR),
-                  _summary_line('Código', point['public_code']),
-                  _summary_line('Conector', point['connector_type']),
-                  _summary_line('Potência', f"{point['power_kw']} kW"),
-                  _summary_line('Tarifa', f"{money(point['price_per_kwh'])}/kWh"),
-                  _summary_line('Limite', f"{point['max_duration_minutes']} min"),
-                  badge(connection, theme.GREEN if point.get('online') else theme.SLATE, width=116)]),
+            _group(design.section_label('Posto'),
+                   _summary_line('Nome', station['name']),
+                   _summary_line('Local', station['address']),
+                   _summary_line('Coordenadas', f"{station['latitude']}, {station['longitude']}")),
+            _group(design.section_label('Ponto de recarga'),
+                   _summary_line('Código', point['public_code']),
+                   _summary_line('Conector', point['connector_type']),
+                   _summary_line('Potência', f"{point['power_kw']} kW"),
+                   _summary_line('Tarifa', f"{money(point['price_per_kwh'])}/kWh"),
+                   _summary_line('Limite', f"{point['max_duration_minutes']} min"),
+                   design.txt(connection, 12, 'semibold', theme.SUCCESS if point.get('online') else theme.GRAY_TEXT)),
         ]
         if not point.get('online'):
-            controls.append(ft.Text('Este equipamento está offline na simulação. Nenhum equipamento físico precisa estar conectado.' if is_demo else
-                                    'O equipamento ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
-                                    size=13, color=theme.WARNING))
+            controls.append(_note('Este equipamento está offline na simulação. Nenhum equipamento físico precisa estar conectado.' if is_demo else
+                                  'O equipamento ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
+                                  theme.WARNING))
         if existing_station and not station.get('active'):
-            controls.append(ft.Text('Este posto está desativado. Publicar o ponto mantém o posto desativado; '
-                                    'reative o posto na gestão quando quiser disponibilizar seus pontos.',
-                                    size=13,color=theme.WARNING))
+            controls.append(_note('Este posto está desativado. Publicar o ponto mantém o posto desativado; '
+                                  'reative o posto na gestão quando quiser disponibilizar seus pontos.', theme.WARNING))
 
-        controls.append(card([
-            ft.Text('DEPOIS DE PUBLICAR', size=11, weight=ft.FontWeight.BOLD, color=theme.ACCENT),
-            ft.Text('Motoristas encontram o ponto na busca, no Modo Motorista e no assistente com IA. '
-                    'Acompanhe receita, ocupação e alertas em Postos ou no painel web do proprietário, '
-                    'com a mesma conta.', size=12, color=theme.GRAY_TEXT),
-        ]))
+        controls.append(_group(
+            design.txt('DEPOIS DE PUBLICAR', 11, 'bold', theme.ACCENT),
+            _note('Motoristas encontram o ponto na busca, no Modo Motorista e no assistente com IA. '
+                  'Acompanhe receita, ocupação e alertas em Postos ou no painel web do proprietário, '
+                  'com a mesma conta.')))
 
         async def publish():
             # Point first, station second: a failed second request leaves the
@@ -249,10 +254,34 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False):
                        'Ponto publicado! Ele estará disponível para recarga quando estiver online e livre.')
             await app.go('operator')
 
+        async def keep_inactive():
+            app.notice('Ponto salvo como inativo. Publique quando estiver pronto.')
+            await app.go('operator')
+
+        status = {'value': 'active'}
+        selector = ft.Container()
+        publish_label = design.txt('Publicar ponto', 15, 'bold', theme.BTN_PRIMARY_FG, text_align=ft.TextAlign.CENTER)
+        publish_button = cta('Publicar ponto', app.action(publish), weight='bold', size=15)
+        publish_button.content = publish_label
+
+        def draw_status():
+            selector.content = design.segmented([('active', 'Ativa'), ('inactive', 'Inativa')], status['value'],
+                                                change_status, height=37)
+
+        async def change_status(value):
+            status['value'] = value
+            publish_label.value = 'Publicar ponto' if value == 'active' else 'Salvar sem publicar'
+            publish_button.on_click = app.action(publish if value == 'active' else keep_inactive)
+            draw_status()
+            app.page.update()
+
+        draw_status()
         controls += [
-            button('Publicar ponto', app.action(publish)),
-            button('Voltar e ajustar tarifa', destination(2), secondary=True),
-            button('Concluir depois', app.link('operator'), secondary=True),
+            ft.Column([design.label('Status', strong=False), selector], spacing=6,
+                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+            publish_button,
+            cta('Voltar e ajustar tarifa', destination(2), primary=False, weight='semibold'),
+            cta('Concluir depois', app.link('operator'), primary=False, weight='semibold'),
         ]
 
-    return ft.Column(controls, spacing=14, scroll=ft.ScrollMode.AUTO)
+    return finish(controls)

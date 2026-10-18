@@ -1,14 +1,11 @@
-import asyncio
 import re
 from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
-from chargegrid_core.formatting import kwh
-
 from ..api_client import ApiError
 from ..services.location import geocode_address
-from ..ui import theme
+from ..ui import design, theme
 from ..ui.ai_features import ai_supported, owner_insights_control
 from ..ui.components import (
     badge,
@@ -21,9 +18,9 @@ from ..ui.components import (
     money,
     title,
 )
-from ..ui.kpi import kpi_card, kpi_grid
 from . import onboarding as onboarding_screen
 from . import ownership
+from .station_admin import chatbot_button, menu_row
 
 
 def _plural(count, one, many):
@@ -43,19 +40,20 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         return await onboarding_screen.build(app, station_id=station_id, point_id=point_id,
                                              step=step, existing_station=existing_station)
     if not profile.get('operator_enabled'):
-        return ft.Column([
-            title('Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira tela',
-                  'Experimente a gestão de postos com dados fictícios.' if is_demo else 'Vincule o equipamento à sua conta de operador'),
-            card([ft.Icon(ft.Icons.QR_CODE_SCANNER, size=48, color=theme.RED),
-                  ft.Text('Adicione um equipamento simulado para criar seu posto. Todo o processo acontece nesta demonstração.' if is_demo else
-                          'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
-                          color=theme.TEXT_COLOR),
-                  ft.Text('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.',
-                          size=13, color=theme.GRAY_TEXT),
-                  ft.Text('Posto é o local com endereço. Cada ponto é um equipamento de recarga nesse local.',
-                          size=13, color=theme.GRAY_TEXT)]),
-            button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela', app.link('operator', claim=True)),
-        ], spacing=15)
+        return design.page(
+            design.card_box(ft.Column([
+                ft.Icon(ft.Icons.QR_CODE_SCANNER, size=44, color=theme.TEXT_COLOR),
+                design.txt('Adicione um equipamento simulado para criar seu posto. Todo o processo acontece nesta demonstração.'
+                           if is_demo else 'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
+                           13, 'semibold'),
+                design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.',
+                           11, 'regular', theme.GRAY_TEXT),
+                design.txt('Posto é o local com endereço. Cada ponto é um equipamento de recarga nesse local.',
+                           11, 'regular', theme.GRAY_TEXT)], spacing=10)),
+            text_button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela',
+                        app.link('operator', claim=True)),
+            title='Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira tela',
+            title_size=20)
     if connector_id:
         if connector_id == 'new':
             return await ownership.build(app, station_id=station_id)
@@ -66,99 +64,68 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if station_id:
         station = await app.api.request('GET',f'stations/{station_id}')
         return await station_form(app,station)
-    # Independent reads: fetch together instead of one after the other.
-    summary, result = await asyncio.gather(
-        app.api.request('GET','operator/summary'),
-        app.api.request('GET','operator/stations',params={'limit':100,'offset':offset}))
+    return await station_list(app, offset, is_demo)
+
+
+def _station_state(station):
+    points = [point for point in station.get('connectors') or [] if not point.get('retired')]
+    online = [point for point in points if point.get('online')]
+    in_use = [point for point in online if point.get('available') is False]
+    live = [point for point in points if point.get('active', True)]
+    if not station.get('active', True):
+        status = 'Desativada'
+    elif points and not live:
+        return 'Pontos desativados - revise para publicar'
+    elif online:
+        status = 'Online'
+    else:
+        status = 'Offline'
+    if in_use:
+        return f'{status} - Conectores em uso'
+    return f'{status} - Conectores livres' if online and station.get('active', True) else status
+
+
+def text_button(text, on_click, *, primary=True, height=48):
+    """Botão com o texto como conteúdo direto (primário branco ou secundário escuro)."""
+    return ft.Container(design.txt(text, 14.5, 'semibold', theme.BTN_PRIMARY_FG if primary else theme.BTN_SECONDARY_FG,
+                                   text_align=ft.TextAlign.CENTER),
+                        bgcolor=theme.BTN_PRIMARY if primary else theme.BTN_SECONDARY, border_radius=design.RADIUS_BTN,
+                        height=height, alignment=ft.Alignment(0, 0), on_click=on_click, ink=True)
+
+
+async def station_list(app, offset, is_demo):
+    result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': offset})
     stations = result['items']
-    instructions = card([
-        ft.Text('COMO FUNCIONA',size=15,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
-        ft.Text('Adicione um equipamento fictício para experimentar a gestão.' if is_demo else
-                'O QR aparece na tela do ponto ainda sem dono.',size=13,color=theme.TEXT_COLOR),
-        ft.Text('1. Adicione um equipamento simulado.\n'
-                '2. Configure nome, endereço de exemplo e tarifa.\n'
-                '3. Revise, publique e teste a recarga simulada.' if is_demo else
-                '1. Ligue a tela e configure o Wi-Fi, se necessário.\n'
-                '2. Escaneie o QR com sua conta de operador.\n'
-                '3. Defina nome, local e tarifa; revise e publique.',size=12,color=theme.GRAY_TEXT),
-        ft.Text('Posto é o endereço; ponto é o equipamento. O botão no topo cria um novo posto. '
-                'Para outro ponto no mesmo endereço, use “Vincular” no posto abaixo.',size=12,color=theme.GRAY_TEXT),
-    ],visible=False)
-
-    async def toggle_instructions():
-        instructions.visible = not instructions.visible
-        help_button.content.value = 'Ocultar orientações' if instructions.visible else 'Como funciona'
-        app.page.update()
-
-    help_button = button('Como funciona',app.action(toggle_instructions),secondary=True)
-    help_button.content.size = 12
-    # Intrinsic height: a fixed 40 px box clipped the 48 px touch-target padding.
-    controls = [
-        button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela',app.link('operator',claim=True)),
-        ft.Row([
-            ft.Text(f"{_plural(summary['stations'],'posto','postos')} · {_plural(summary['total_sessions'],'recarga','recargas')}",size=18,
-                    font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,expand=True),
-            help_button,
-        ],spacing=8),
-        kpi_grid([kpi_card('Energia registrada',kwh(float(summary['total_energy_wh'])/1000, 2),icon=ft.Icons.BOLT),
-                  kpi_card('Valor estimado',money(summary['total_estimated_cost']),icon=ft.Icons.PAYMENTS_OUTLINED)],
-                 columns={'xs':6}),
-        ft.Text('Energia simulada nesta conta.' if is_demo else
-                'O total pode incluir energia simulada, medida ou estimada. Consulte a origem em cada sessão.',
-                size=12,color=theme.GRAY_TEXT),
-        instructions,
-    ]
-    if ai_supported(app):
-        controls.append(owner_insights_control(app))
-    for station in stations:
-        points = station.get('connectors') or []
-        disabled = [point for point in points if not point.get('active') and not point.get('retired')]
-        retired = [point for point in points if point.get('retired')]
-        online = sum(bool(point.get('online')) for point in points if not point.get('retired'))
-        status = ('Tela restaurada' if retired and len(retired) == len(points) else
-                  'Posto desativado' if not station.get('active') else
-                  'Pontos desativados' if disabled and len(disabled) + len(retired) == len(points) else
-                  'Online' if online else 'Offline')
-        color = theme.SLATE if retired and len(retired) == len(points) else theme.AMBER if disabled or not station.get('active') else theme.GREEN if online else theme.SLATE
-        details = [ft.Row([ft.Text(station['name'],size=18,font_family='BarlowCondensed',weight=ft.FontWeight.BOLD,
-                                   color=theme.TEXT_COLOR,expand=True),badge(status,color,width=138)],spacing=8),
-                   ft.Text(station['address'],size=12,color=theme.GRAY_TEXT),
-                   ft.Text(f"{_plural(len(points),'ponto','pontos')} · {online} online",size=12,color=theme.GRAY_TEXT)]
-        if disabled:
-            details.append(ft.Text(f'{len(disabled)} ponto(s) desativado(s). Revise para publicar ou reativar.',
-                                   size=12,color=theme.GRAY_TEXT))
-        if retired:
-            details.append(ft.Text('Equipamento simulado restaurado. Adicione outro equipamento para testar um novo vínculo.' if is_demo else
-                                   'Tela restaurada? O Wi-Fi foi preservado. Escaneie o novo QR para vincular novamente.',
-                                   size=12,color=theme.GRAY_TEXT))
-        if is_demo:
-            from ..demo import DEMO_PRESENCE_CODE
-            details.append(ft.Text(f'Recarga de demonstração: {DEMO_PRESENCE_CODE}',size=12,color=theme.GRAY_TEXT))
-        configure = button('Revisar pontos' if disabled else 'Configurar',app.link('operator',station_id=station['id']),secondary=True)
-        if not disabled:
-            configure.content = ft.Row([
-                ft.Image(src='/figma/configure.svg',width=16,height=16,color=theme.TEXT_COLOR),configure.content,
-            ],spacing=6,alignment=ft.MainAxisAlignment.CENTER,tight=True)
-        actions = [button('Vincular',app.link('operator',station_id=station['id'],claim=True),secondary=True),
-                   button('Recargas',app.link('history',station_id=station['id']),secondary=True)]
-        for action in actions:
-            action.expand = True
-            action.content.size = 13
-        details += [configure,ft.Row(actions,spacing=8)]
-        controls.append(card(ft.Column(details,spacing=6)))
+    add_label = 'Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela'
+    rows = [menu_row(station['name'], _station_state(station), '/design/nav_station_fill.svg',
+                     app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
+    body = [ft.Container(height=7)]
+    if rows:
+        body.append(ft.Column(rows, spacing=22))
+    else:
+        body.append(design.card_box(ft.Column([
+            design.txt('Seu primeiro ponto começa adicionando um equipamento simulado.' if is_demo else
+                       'Seu primeiro ponto começa no QR do equipamento.', 13, 'semibold'),
+            design.txt('Adicione um equipamento fictício para experimentar a gestão.' if is_demo else
+                       'O QR aparece na tela do ponto ainda sem dono.', 11, 'regular', theme.GRAY_TEXT),
+            design.txt('1. Adicione um equipamento simulado.\n2. Configure nome, endereço de exemplo e tarifa.\n'
+                       '3. Revise, publique e teste a recarga simulada.' if is_demo else
+                       '1. Ligue a tela e configure o Wi-Fi, se necessário.\n2. Escaneie o QR com sua conta de operador.\n'
+                       '3. Defina nome, local e tarifa; revise e publique.', 11, 'regular', theme.GRAY_TEXT)], spacing=8)))
+        body.append(text_button(add_label, app.link('operator', claim=True)))
     if offset + 100 < result['total']:
-        controls.append(button('Mais postos',app.link('operator',offset=offset+100)))
+        body.append(text_button('Mais postos', app.link('operator', offset=offset + 100), primary=False))
     if offset:
-        controls.append(button('Postos anteriores',app.link('operator',offset=max(0,offset-100)),secondary=True))
-    if not stations:
-        controls.append(card([ft.Icon(ft.Icons.EV_STATION_OUTLINED,size=35,color=theme.RED),
-                              ft.Text('Seu primeiro ponto começa adicionando um equipamento simulado.' if is_demo else
-                                      'Seu primeiro ponto começa no QR do equipamento.',
-                                      color=theme.TEXT_COLOR,weight=ft.FontWeight.BOLD),
-                              ft.Text('Vincule-o e siga a configuração guiada para publicar o posto.',
-                                      size=12,color=theme.GRAY_TEXT)]))
-    controls += [button('Gerenciar cupons',app.link('coupons',manage=True),secondary=True)]
-    return ft.Column(controls,spacing=16,scroll=ft.ScrollMode.AUTO)
+        body.append(text_button('Postos anteriores', app.link('operator', offset=max(0, offset - 100)), primary=False))
+    body += [ft.Container(height=16), chatbot_button(app, 38), ft.Container(height=4),
+             design.section_label('Mais opções'),
+             *([menu_row(add_label, 'Novo equipamento ou outro ponto em um posto', ft.Icons.QR_CODE_SCANNER,
+                         app.link('operator', claim=True))] if rows else []),
+             menu_row('Gerenciar cupons', 'Criar e acompanhar descontos', ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
+                      app.link('coupons', manage=True))]
+    if ai_supported(app):
+        body.append(owner_insights_control(app))
+    return design.page(*body, title='Suas Estações', title_size=22, gap=16)
 
 
 async def station_form(app, station=None):

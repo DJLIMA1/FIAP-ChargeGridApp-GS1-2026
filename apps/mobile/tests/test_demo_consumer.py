@@ -42,12 +42,12 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             await click(screen,'Ver pontos')(None)
             screen = await stations.build(app,**app.go.call_args.kwargs)
             await click(screen,'Reservar para chegar')(None)
-            reservation_screen = await reservations.build(app)
+            reservation_screen = await reservations.build(app,detail=True)
             self.assertIn('Aguardando confirmação simulada',texts(reservation_screen))
             clock[0] += 2
             await app.poll()
-            app.go.assert_awaited_with('reservations')
-            reservation_screen = await reservations.build(app)
+            app.go.assert_awaited_with('reservations',detail=True)
+            reservation_screen = await reservations.build(app,detail=True)
             self.assertIn('Reserva simulada confirmada',texts(reservation_screen))
             await click(reservation_screen,'Cheguei: informar código')(None)
             start_screen = await charging.build(app,**app.go.call_args.kwargs)
@@ -67,7 +67,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             state = await app.api.request('GET',f'charging-sessions/{session_id}')
             self.assertGreater(float(state['energy_wh']),0)
             self.assertIn(f"Energia: {float(state['energy_wh'])/1000:.3f} kWh".replace('.',','),texts(active_screen))
-            await click(active_screen,'Solicitar parada')(None)
+            await click(active_screen,'Encerrar recarga')(None)
             stopping_screen = await charging.build(app,session_id=session_id)
             self.assertIn('Finalizando recarga simulada',texts(stopping_screen))
             clock[0] += 2
@@ -186,7 +186,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.is_demo = True
         app.api.request.return_value = reservation()
-        reservation_screen = await reservations.build(app)
+        reservation_screen = await reservations.build(app,detail=True)
         self.assertIn('Reserva simulada confirmada',texts(reservation_screen))
         self.assertIn(DEMO_PRESENCE_CODE,texts(reservation_screen))
         app.api.request.return_value = {'items':[{**CONTEXT,'id':'demo-session','status':'completed',

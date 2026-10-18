@@ -358,7 +358,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.poll[1],5)
 
     async def test_empty_reservation_screen_does_not_poll(self):
-        app=FakeApp([None])
+        app=FakeApp([None,None])
         await reservations.build(app)
         self.assertIsNone(app.poll)
 

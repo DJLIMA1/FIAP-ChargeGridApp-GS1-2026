@@ -14,12 +14,14 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
-from ..ui import theme
-from ..ui.components import date_time, field
+from ..ui import design, theme
+from ..ui.components import date_time
 from . import help as guidance
 
 MAX_QUESTION_LENGTH = 500
-ASSISTANT_BACKGROUND = '#252529'
+ASSISTANT_BACKGROUND = None  # transparente: a bolha do assistente só tem contorno
+BUBBLE_BORDER = '#7A7A7A'
+CHAT_FONT = 'Barlow'
 _SESSION_LABELS = {
     'starting': 'Aguardando confirmação do equipamento', 'charging': 'Em recarga',
     'stopping': 'Parada pendente de confirmação', 'completed': 'Concluída',
@@ -148,7 +150,7 @@ def _local_answer(question, demo):
                 'simulada e confira o prazo de 10 minutos em Minha reserva. Para iniciar, abra a reserva '
                 'e use #F12345. Cancelar libera o ponto depois da confirmação simulada.'),
             'Parar ou resolver uma falha': (
-                'Abra Minha recarga e solicite a parada. Aguarde a confirmação da sessão simulada. '
+                'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação da sessão simulada. '
                 'Você pode continuar navegando; sair da conta encerra esta demonstração e apaga seus dados locais. '
                 'Nenhum equipamento real está conectado.'),
             'Criar posto e vincular ponto': (
@@ -284,9 +286,9 @@ def _fallback_note(error):
 
 def _typing_indicator():
     bubble = ft.Container(ft.Row([
-        ft.ProgressRing(width=14, height=14, stroke_width=2, color='#FFFFFF'),
-        ft.Text('Assistente digitando…', color='#FFFFFF', size=13),
-    ], spacing=10, tight=True), bgcolor=ASSISTANT_BACKGROUND, padding=12, border_radius=4)
+        ft.ProgressRing(width=14, height=14, stroke_width=2, color=theme.TEXT_COLOR),
+        ft.Text('Assistente digitando…', color=theme.TEXT_COLOR, size=13, font_family=CHAT_FONT),
+    ], spacing=10, tight=True), border=ft.Border.all(1, BUBBLE_BORDER), padding=12)
     return ft.Semantics(label='Assistente digitando', live_region=True,
                         content=ft.Row([bubble], spacing=0), visible=False)
 
@@ -298,25 +300,27 @@ async def build(app, question='', topic=None):
     # size event cannot reliably tell Python when the list is ready to scroll.
     chat_list = ft.ListView(expand=True, auto_scroll=True, auto_scroll_animation=0,
                             build_controls_on_demand=False,
-                            spacing=12, padding=ft.Padding(top=8, bottom=12))
-    composer = field('Mensagem', app.chat_draft)
-    composer.label = None
-    composer.hint_text = 'Digite sua mensagem'
-    composer.fill_color = theme.WHITE
+                            spacing=12, padding=ft.Padding(top=4, bottom=12))
+    composer = design.input_field(app.chat_draft, 'Digite sua mensagem')
+    composer.height = 51
+    composer.fill_color = theme.BG_COLOR
     composer.color = composer.cursor_color = theme.TEXT_COLOR
-    composer.hint_style = ft.TextStyle(color=theme.GRAY_TEXT)
-    composer.border = ft.OutlineInputBorder(side=ft.BorderSide(1, theme.GRAY_TEXT), border_radius=4)
+    composer.text_style = ft.TextStyle(size=13.5, font_family=CHAT_FONT, color=theme.TEXT_COLOR)
+    composer.hint_style = ft.TextStyle(color=theme.TEXT_COLOR, size=13.5, font_family=CHAT_FONT)
+    composer.border = ft.OutlineInputBorder(side=ft.BorderSide(1, theme.TEXT_COLOR), border_radius=4)
+    composer.border_radius = 4
+    composer.content_padding = ft.Padding(left=15, right=12, top=0, bottom=0)
     composer.counter = ''
     composer.max_length = MAX_QUESTION_LENGTH
     composer.expand = True
-    composer.min_lines = 1
-    composer.max_lines = 3
+    composer.max_lines = 1
     composer.data = 'chat-draft'
     progress = ft.Text('Consultando os dados da sua conta…', color=theme.GRAY_TEXT, size=12, visible=False)
     typing = _typing_indicator()
-    send_button = ft.IconButton(icon=ft.Icons.SEND_ROUNDED, icon_color='#FFFFFF', bgcolor=theme.RED,
-                               tooltip='Enviar mensagem', width=46, height=46,
-                               style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=4)))
+    send_button = ft.IconButton(icon=ft.Icons.NEAR_ME_OUTLINED, icon_color='#FFFFFF', bgcolor=theme.RED,
+                               tooltip='Enviar mensagem', width=44, height=51, icon_size=19,
+                               style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=4),
+                                                    padding=ft.Padding(0, 0, 0, 0)))
 
     def current():
         return _account(app) == identity and getattr(app, '_chat_account_id', None) == identity and app.chat_messages is messages
@@ -329,30 +333,36 @@ async def build(app, question='', topic=None):
         for index in range(len(chat_list.controls), len(messages)):
             message = messages[index]
             user = message['role'] == 'user'
-            content = [ft.Text(message['content'], color='#FFFFFF', size=14,
+            content = [ft.Text(message['content'], color='#FFFFFF' if user else theme.TEXT_COLOR, size=13.5,
+                               font_family=CHAT_FONT, style=ft.TextStyle(height=1.2),
                                semantics_label=('Você: ' if user else 'Assistente: ') + message['content'])]
             if message.get('note'):
-                content.append(ft.Text(message['note'], color='#D0D0D5', size=11, italic=True))
+                content.append(ft.Text(message['note'], color=theme.GRAY_TEXT, size=11, italic=True, font_family=CHAT_FONT))
             if message.get('retry'):
                 content.append(ft.Container(
-                    ft.Row([ft.Icon(ft.Icons.REFRESH, color='#FFFFFF', size=16),
-                            ft.Text('Tentar com IA de novo', color='#FFFFFF', size=12, weight=ft.FontWeight.BOLD)],
+                    ft.Row([ft.Icon(ft.Icons.REFRESH, color=theme.TEXT_COLOR, size=16),
+                            ft.Text('Tentar com IA de novo', color=theme.TEXT_COLOR, size=12, weight=ft.FontWeight.BOLD,
+                                    font_family=CHAT_FONT)],
                            spacing=6, tight=True),
                     on_click=app.action(lambda q=message['retry']: send(q, retry=True)), ink=True,
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=8), border_radius=8,
-                    border=ft.Border.all(1, '#77777C'), tooltip='Reenviar a pergunta ao assistente de IA'))
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=8), border_radius=4,
+                    border=ft.Border.all(1, BUBBLE_BORDER), tooltip='Reenviar a pergunta ao assistente de IA'))
             if message.get('actions'):
                 content.append(ft.Row([
-                    ft.Container(ft.Text(action['label'], color='#FFFFFF', size=12, weight=ft.FontWeight.BOLD),
+                    ft.Container(ft.Text(action['label'], color=theme.TEXT_COLOR, size=12, weight=ft.FontWeight.BOLD,
+                                         font_family=CHAT_FONT),
                                  on_click=app.link(action['route'], **action.get('data', {})), ink=True,
-                                 padding=ft.Padding.symmetric(horizontal=10, vertical=8), border_radius=8,
-                                 border=ft.Border.all(1, '#77777C'))
+                                 padding=ft.Padding.symmetric(horizontal=10, vertical=8), border_radius=4,
+                                 border=ft.Border.all(1, BUBBLE_BORDER))
                     for action in message['actions']
                 ], wrap=True, spacing=8, run_spacing=8))
             bubble = ft.Container(ft.Column(content, spacing=10, tight=True),
-                                  bgcolor=theme.RED if user else ASSISTANT_BACKGROUND, padding=14,
-                                  border_radius=4, expand=7)
-            spacer = ft.Container(expand=1)
+                                  bgcolor=theme.RED if user else ASSISTANT_BACKGROUND,
+                                  border=ft.Border.all(1, '#8E1A1F' if user else BUBBLE_BORDER),
+                                  padding=ft.Padding(left=15, right=15, top=15, bottom=15) if not user else
+                                  ft.Padding(left=13, right=13, top=11, bottom=11),
+                                  expand=7, expand_loose=True)
+            spacer = ft.Container(expand=2 if not user else 1)
             chat_list.controls.append(ft.Row([spacer, bubble] if user else [bubble, spacer], spacing=0,
                                              vertical_alignment=ft.CrossAxisAlignment.START))
 
@@ -450,11 +460,11 @@ async def build(app, question='', topic=None):
         elif topic == 'charging':
             suggestions = ['Como está minha recarga?', 'Resumo da última recarga', 'Parar ou resolver uma falha']
     chips = ft.Row([
-        ft.Container(ft.Text(label, size=12, color=theme.TEXT_COLOR), padding=ft.Padding.symmetric(horizontal=10, vertical=8),
-                     border=ft.Border.all(1, theme.LIGHT_GRAY), border_radius=4, ink=True,
+        ft.Container(ft.Text(label, size=11.5, color=theme.TEXT_COLOR, font_family='BarlowSemiBold'),
+                     padding=ft.Padding.symmetric(horizontal=8, vertical=8), ink=True,
                      on_click=app.action(lambda label=label: send(label)))
         for label in suggestions
-    ], spacing=6, run_spacing=6)
+    ], spacing=7, run_spacing=0)
 
     def compact_chips():
         # Before the first question the suggestions wrap; afterwards they shrink to
@@ -475,16 +485,11 @@ async def build(app, question='', topic=None):
     # Navigation offers context without speaking for the user or querying an
     # unmounted conversation. All sends use the already-mounted interaction.
     draw()
-    return ft.Column([
-        ft.Row([ft.Container(ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, color='#FFFFFF', size=21),
-                             bgcolor=theme.RED, padding=10, border_radius=4),
-                ft.Column([ft.Text('Chat', size=26, color=theme.TEXT_COLOR, weight=ft.FontWeight.BOLD,
-                                   font_family='BarlowCondensed'),
-                           ft.Text('Assistente do ChargeGrid · IA com dados da sua conta' if ai_mode else
-                                   'Assistente do ChargeGrid · orientações automáticas', size=11, color=theme.GRAY_TEXT)],
-                          spacing=2, expand=True)], spacing=12),
-        chat_list, typing, *contextual, chips, progress,
+    composer_row = ft.Container(
         ft.Row([composer, send_button], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        ft.Text((AI_DISCLAIMER + ' ' if ai_mode else '') + 'Conversa disponível só nesta sessão.', size=10,
-                color=theme.GRAY_TEXT),
-    ], expand=True, spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        margin=ft.Margin(left=-4, top=0, right=-4, bottom=0))
+    return ft.Column([
+        chat_list, typing, *contextual, chips, progress,
+        *([ft.Text('IA com dados da sua conta. ' + AI_DISCLAIMER, size=10, color=theme.GRAY_TEXT, font_family=CHAT_FONT)] if ai_mode else []),
+        ft.Container(composer_row, padding=ft.Padding(left=0, right=0, top=0, bottom=4)),
+    ], expand=True, spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

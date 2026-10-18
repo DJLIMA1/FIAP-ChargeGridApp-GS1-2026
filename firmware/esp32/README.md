@@ -33,3 +33,5 @@ Diagnóstico serial a 115200: `CG_STATUS` mostra estado, rede, HTTP e energia se
 O helper precisa de `pyserial` (já incluído no ambiente PlatformIO). No macOS, alguns drivers CH340 reiniciam a placa ao abrir a porta: abra **antes** do fluxo de recarga e mantenha `--action live --seconds 7200` durante a validação. Esse modo aceita `status`, `stop`, `screen` e `quit` pelo stdin, sem reabrir a porta. Abrir/fechar ferramentas seriais no meio de uma recarga pode interrompê-la; um reboot nunca retoma automaticamente uma sessão.
 
 Veja [docs/waveshare-panel.md](../../docs/waveshare-panel.md) para o fluxo completo e [builds/chargegrid-waveshare-7-0.3.6.zip](../../builds/chargegrid-waveshare-7-0.3.6.zip) para o firmware, componentes de recuperação e hashes. Em atualizações, grave somente `firmware.bin` em `0x10000` para preservar o NVS.
+
+Pré-visualização das telas do totem no host: `python firmware/esp32/preview/render.py --output tmp/panel-preview` (LVGL real, sem serial/hardware). Veja "Redesign do totem" em `docs/waveshare-panel.md`.

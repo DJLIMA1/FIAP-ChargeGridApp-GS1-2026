@@ -20,6 +20,7 @@ from chargegrid_app.services.planning import (
 )
 from test_behavior import HandlerApp, click, descendants
 from test_consumer_flows import POINT, STATION, texts
+from test_station_ux import open_station
 
 
 class PlanningTests(unittest.TestCase):
@@ -91,7 +92,7 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(stations,'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app,sort='price',planning_intent=plan)
         self.assertIn(estimate_text(POINT,**intent_limits(POINT,plan)),texts(screen))
-        await click(screen,'Ver pontos')(None)
+        await open_station(screen,STATION['name'])(None)
         self.assertEqual(app.go.call_args.kwargs['planning_intent'],plan)
         app.api.request.return_value = deepcopy(STATION)
         screen = await stations.build(app,**app.go.call_args.kwargs)

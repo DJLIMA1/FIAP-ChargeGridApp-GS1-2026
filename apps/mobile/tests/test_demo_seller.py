@@ -13,7 +13,7 @@ from chargegrid_app.demo import (
     DemoApi,
 )
 from chargegrid_app.screens import onboarding, operator, ownership
-from test_behavior import HandlerApp, click
+from test_behavior import HandlerApp, click, descendants
 from test_seller_flow_fixes import fields, station_fixture, texts
 
 
@@ -29,7 +29,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         app.page.web = True
         app.api.request.side_effect = [ApiError('Falha simulada'),{'station_id':'station','connector_id':'point'}]
         screen = await ownership.build(app)
-        self.assertNotIn('Abrir câmera para ler o QR',texts(screen))
+        self.assertNotIn('Escanear QR Code',texts(screen))
         self.assertNotIn('Código privado do QR',fields(screen))
         self.assertIn('inteiramente fictício',texts(screen))
         app.api.request.assert_not_called()
@@ -59,27 +59,23 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_claim_keeps_camera_and_has_no_simulated_operation(self):
         app = HandlerApp()
         screen = await ownership.build(app)
-        self.assertIn('Abrir câmera para ler o QR',texts(screen))
+        self.assertIn('Escanear QR Code',texts(screen))
         self.assertNotIn('Adicionar equipamento simulado',texts(screen))
         self.assertIn('Código privado do QR',fields(screen))
 
-    async def test_demo_dashboard_puts_local_add_action_first_and_collapses_instructions(self):
+    async def test_demo_dashboard_lists_stations_and_keeps_local_add_action(self):
         app = self.demo_app()
         app.api.request.side_effect = [
             {'account_type':'vendor','operator_enabled':True},
-            {'stations':1,'total_sessions':0,'total_energy_wh':0,'total_estimated_cost':0},
             {'items':[station_fixture()],'total':1},
         ]
         screen = await operator.build(app)
-        self.assertEqual(screen.controls[0].content.value,'Adicionar equipamento simulado')
-        self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
+        self.assertIn('Posto Central',texts(screen))
+        self.assertIn('Adicionar equipamento simulado',texts(screen))
         self.assertNotIn('Ligue a tela',texts(screen))
-        instructions = next(c for c in screen.controls if isinstance(c,ft.Container)
-                            and isinstance(c.content,ft.Column) and 'COMO FUNCIONA' in texts(c))
-        self.assertFalse(instructions.visible)
-        await click(screen,'Como funciona')(None)
-        self.assertTrue(instructions.visible)
-        await click(screen,'Adicionar equipamento simulado')(None)
+        add = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
+                   and 'Adicionar equipamento simulado' in texts(c) and not isinstance(c.content,ft.Column))
+        await add.on_click(None)
         app.go.assert_awaited_with('operator',claim=True)
 
     async def test_demo_station_location_does_not_call_external_geocoder(self):
@@ -168,8 +164,8 @@ class DemoSellerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(route['step'],1)
 
             location_screen = await onboarding.build(app,station_id,point_id,step=1)
-            fields(location_screen)['Nome do posto'].value = 'Posto de teste local'
-            fields(location_screen)['Endereço completo'].value = 'Rua Fictícia, 42, Cidade Simulada'
+            fields(location_screen)['Nome da estação'].value = 'Posto de teste local'
+            fields(location_screen)['Endereço'].value = 'Rua Fictícia, 42, Cidade Simulada'
             await click(location_screen,'Usar localização de exemplo')(None)
             await click(location_screen,'Salvar e continuar')(None)
 

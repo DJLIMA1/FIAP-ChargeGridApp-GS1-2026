@@ -62,7 +62,7 @@ class HandlerApp:
 
 
 class BehaviorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_home_poll_refreshes_status_summary_and_availability_in_place(self):
+    async def test_home_poll_refreshes_status_and_stations_in_place(self):
         app = HandlerApp()
         app.page.update = Mock()
         station = {'id':'station','name':'Posto','address':'Rua','connectors':[{'available':True,'online':True,'price_per_kwh':'1'}]}
@@ -79,18 +79,18 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         original_controls = list(screen.controls)
         active_card = next(item for item in screen.controls if isinstance(item,ft.Container) and isinstance(item.content,ft.Column) and item.on_click)
         self.assertIn('Aguardando equipamento iniciar', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
+        self.assertTrue(active_card.visible)
         await app.poll()
         app.page.update.assert_not_called()
         state['charging-sessions/current'] = None
         state['me/summary'] = {'estimated_cost':'1.25','sessions_count':1,'energy_wh':'1250'}
         state['stations'] = {'items':[{**station,'connectors':[{'available':False,'online':False,'price_per_kwh':'1'}]}],'total':1}
         await app.poll()
-        texts = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text))
-        self.assertIn('Nenhuma reserva ou recarga ativa',texts)
-        self.assertNotIn('Aguardando equipamento iniciar',texts)
-        self.assertIn('R$ 1,25',texts)
-        self.assertIn('1 recarga concluída · 1,25 kWh',texts)
-        self.assertIn('não têm coordenadas válidas para o mapa',texts)
+        visible = ' '.join(str(item.value) for item in descendants(screen)
+                           if isinstance(item,ft.Text) and getattr(item,'visible',True))
+        self.assertNotIn('Acompanhar recarga',visible)
+        self.assertIn('Encontre uma Estação',visible)
+        self.assertFalse(active_card.visible)
         self.assertTrue(all(before is after for before,after in zip(original_controls,screen.controls)))
         app.go.assert_not_called()
         app.page.update.assert_called_once_with()

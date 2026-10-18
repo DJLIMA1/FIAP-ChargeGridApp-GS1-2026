@@ -93,3 +93,19 @@ O firmware 0.3.5 compilou e passou em `tools/validate_firmware.py --decode-qr`; 
 O primeiro pedido pelo app foi aceito, mas a confirmação do ESP32 retornou erro 500: o papel `chargegrid_api` tinha apenas `SELECT, UPDATE` em `device_claims`, enquanto a nova identidade exige `INSERT`. A migração `5e92acb01877` adiciona somente esse privilégio. Ela foi testada em PostgreSQL descartável e aplicada no banco do projeto; a revisão e a permissão efetiva foram conferidas.
 
 A pedido do proprietário, a placa foi restaurada diretamente antes da correção da API: conferi `idle`/sem sessão, salvei uma cópia privada temporária da NVS e apaguei somente sua partição `0x9000`–`0xdfff`. O boot confirmou Wi-Fi e identidade ausentes. Com acesso administrativo, criei `CG-PAINEL-03` como ponto de fábrica inativo e sem dono e provisionei sua nova chave e token pelo USB, sem mostrar os segredos no terminal. O Wi-Fi permaneceu apagado. A captura real do framebuffer mostrou um único QR, decodificado localmente e comparado com o token novo sem divulgá-lo. A cópia temporária da NVS antiga foi apagada após essa validação. `CG-PAINEL-02` permanece inativo e associado ao dono para preservar o histórico. A restauração via botão do app ainda não foi repetida fisicamente depois da correção, para não retirar novamente o ponto de fábrica recém-criado.
+
+## Redesign do totem (tema de referência)
+
+As telas seguem o design de referência do totem (2:1, escalado em 0,4 e centralizado na faixa de 400 px do painel 800 × 480): fundo escuro em degradê com marca e estado de conexão (ponto verde/âmbar) no topo, ou fundo vermelho/âmbar com a ilustração do carregador.
+
+| Estado do firmware | Tela |
+| --- | --- |
+| Ponto sem dono com token de vinculação | **Ative seu ponto**: três passos numerados, botão **Configurar Wi-Fi** e QR privado (conteúdo e ciclo de vida do QR inalterados) |
+| `idle`, ativo, com dono e API online | **Pronto para você**: cartão **CÓDIGO DO PONTO** com o `#F…` rotativo (barra e "Troca em mm:ss") e os passos Abra o app → Use o código → Comece a recarga |
+| Falha, Wi-Fi caído, chave rejeitada ou contato perdido | Vermelha **Ponto Indisponível** com a mensagem de reconexão |
+| Ponto com dono, online, mas desativado pelo responsável (`connectorActive=false`) | Âmbar **Estamos em manutenção** |
+| `reserved` / `charging` / `stopped` / preparação | Mesmo tema escuro: prazo no cartão de destaque, métricas + **Encerrar**, mensagem de despedida |
+
+Tela de configuração Wi-Fi (segurar o logo 5 s) usa o mesmo fundo; **Salvar e conectar** é o botão branco principal. O pool do LVGL subiu para 64 KB (`LV_MEM_SIZE` em `platformio.ini`; a UI usa ~47 KB). Títulos usam Montserrat SemiBold 32/40/52 (`src/panel_font_title_*.c`, subconjunto ASCII + acentos, gerado com `lv_font_conv --bpp 4 --no-compress`); o raio da ilustração é o bitmap alpha `src/panel_font_pump_bolt.c` (o nome casa com o glob de `tools/validate_firmware.py`). Cores de fundo/degradê usam valores exatos de RGB565 para não mudar de matiz entre as faixas.
+
+Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `python firmware/esp32/preview/render.py --output tmp/panel-preview [--reference <pasta com 1.jpg..4.jpg>]` gera `totem-*.png` (800 × 480) e comparações com o design.

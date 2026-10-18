@@ -399,7 +399,8 @@ def input_field(value='', hint='', *, password=False, keyboard=None, prefix=None
         filled=True, fill_color=theme.INPUT_BG, color=theme.INPUT_TEXT, cursor_color=theme.INPUT_TEXT,
         hint_style=ft.TextStyle(color=theme.GRAY_TEXT, size=13, font_family=FONT),
         text_style=ft.TextStyle(size=12.5, font_family=FONT, color=theme.INPUT_TEXT),
-        border=ft.NoInputBorder(), border_radius=RADIUS_BTN + 2, focused_border_color=theme.BORDER,
+        border=ft.OutlineInputBorder(), border_color=ft.Colors.TRANSPARENT, border_width=0,
+        border_radius=RADIUS_BTN + 2, focused_border_color=theme.BORDER,
         content_padding=ft.Padding(left=13, right=13, top=13, bottom=13), text_size=12.5,
         height=None if multiline else height)
 
@@ -450,6 +451,7 @@ def logo():
 _NAV_ICONS = {
     'home': ('nav_home', 'Início'),
     'stations': ('nav_zap', 'Recarga'),
+    'reservations': ('nav_zap', 'Recarga'),
     'operator': ('nav_station', 'Estações'),
     'history': ('nav_clock', 'Histórico'),
     'chat': ('nav_chat', 'Chat'),
@@ -465,12 +467,12 @@ def app_header(app):
                   ft.Container(width=6, height=6, border_radius=3, bgcolor='#D94141', right=3, top=1)],
                  width=30, height=30),
         on_click=app.link('notifications'), tooltip='Notificações', width=36, height=36, alignment=ft.Alignment(0, 0),
-        margin=ft.Margin(left=0, top=8, right=0, bottom=0))
+        margin=ft.Margin(left=0, top=6, right=0, bottom=0))
     person = ft.Container(avatar(app, 25), on_click=app.link('profile'), tooltip='Conta')
     return ft.Container(
         ft.Row([ft.Container(logo(), on_click=app.link('home'), tooltip='Início'), ft.Container(expand=True),
                 bell, person], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.Padding(left=24, right=24, top=26, bottom=0), bgcolor=theme.BG_COLOR)
+        padding=ft.Padding(left=24, right=24, top=23.5, bottom=2.5), bgcolor=theme.BG_COLOR)
 
 
 def bottom_nav(app, entries, active):
