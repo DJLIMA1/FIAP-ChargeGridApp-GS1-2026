@@ -99,7 +99,7 @@ def cdp_capture(args, workdir):
             break
     profile = workdir / 'chrome'
     chrome = subprocess.Popen([
-        CHROME, '--headless=new', '--hide-scrollbars', '--force-device-scale-factor=2', '--window-size=402,874',
+        CHROME, '--headless=new', '--hide-scrollbars', '--force-device-scale-factor=2', f'--window-size={args.width},874',
         f'--remote-debugging-port={debug_port}', f'--user-data-dir={profile}', '--no-first-run',
         '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
         '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist', 'about:blank',
@@ -121,7 +121,7 @@ def cdp_capture(args, workdir):
                         return message.get('result', {})
 
             call('Page.enable')
-            call('Emulation.setDeviceMetricsOverride', width=402, height=874, deviceScaleFactor=2, mobile=False)
+            call('Emulation.setDeviceMetricsOverride', width=args.width, height=874, deviceScaleFactor=2, mobile=False)
             call('Page.navigate', url=f'http://127.0.0.1:{args.port}/')
             end = time.time() + args.timeout
             settled = None
@@ -195,6 +195,7 @@ def main():
     parser.add_argument('--wait', type=float, default=2.0)
     parser.add_argument('--timeout', type=float, default=240.0)
     parser.add_argument('--scroll', type=int, default=0)
+    parser.add_argument('--width', type=int, default=402, help='viewport width in pt (default 402, the reference)')
     parser.add_argument('--compare')
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # still stop the server/Chrome on kill

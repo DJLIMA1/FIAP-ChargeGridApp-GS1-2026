@@ -91,8 +91,9 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = lambda method,path,body=None,**kw: driver if path == 'driver/profile' else PROFILE
         screen = await profile.build(app)
         shown = [c.value for c in descendants(screen) if isinstance(c,ft.Text)]
-        self.assertIn('Meu carro',shown)
-        self.assertIn('BYD Dolphin · ~321 km de autonomia',shown)
+        # O carro sai da tela Conta; é editado em Perfil, no mesmo estilo dos outros campos.
+        self.assertNotIn('Meu carro',shown)
+        self.assertNotIn('Cupons',shown)
         calls = []
         async def request(method,path,body=None,**kwargs):
             calls.append((method,path,body))
@@ -100,6 +101,7 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         app.api.request = request
         screen = await profile.build(app,mode='edit')
         self.assertEqual([c[1] for c in calls],['me','driver/profile'])  # fetched together
+        self.assertIn('Meu carro',[c.value for c in descendants(screen) if isinstance(c,ft.Text)])
         model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
         self.assertEqual(model.value,'byd_dolphin')
         self.assertNotIn('later',[option.key for option in model.options])  # a saved car is never "unset"
@@ -127,8 +129,9 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         screen = profile.edit_form(app,PROFILE)
         model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
         model.value = 'custom'
-        fields = {c.label: c for c in descendants(screen) if isinstance(c,ft.TextField)}
-        fields['Bateria útil (kWh)'].value = '900'
+        # Rótulos acima dos campos: Nome, E-mail, Telefone, Chave Pix, nome do carro, bateria, consumo.
+        fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
+        fields[5].value = '900'
         with self.assertRaises(ApiError):
             await row(screen,'Salvar informações')(None)
         app.api.request.assert_not_called()

@@ -428,6 +428,19 @@ def avatar(app=None, size=25):
                         border_radius=size / 2, bgcolor=theme.BTN_PRIMARY, alignment=ft.Alignment(0, 0))
 
 
+def scene_scale(app, base=362):
+    """Fator para cenas de largura fixa (carro/totem com anel): encolhe em telas estreitas, nunca amplia."""
+    width = getattr(getattr(app, 'page', None), 'width', None)
+    if not isinstance(width, (int, float)) or width <= 0:
+        return 1.0
+    return max(0.6, min(1.0, (width - 2 * GUTTER) / base))
+
+
+def centered(control):
+    """Centraliza horizontalmente um bloco de largura fixa (o carro não fica encostado à esquerda)."""
+    return ft.Row([control], alignment=ft.MainAxisAlignment.CENTER)
+
+
 def car_image(width=None, height=None):
     return ft.Image(src=CAR_SRC, width=width, height=height, fit=ft.BoxFit.CONTAIN, exclude_from_semantics=True)
 

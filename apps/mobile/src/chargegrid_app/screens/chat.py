@@ -131,7 +131,7 @@ def _local_answer(question, demo):
     actions = {
         'Iniciar uma recarga': [_action('Encontrar um ponto', 'stations')],
         'Reservar para chegar depois': [_action('Escolher ponto para reservar', 'stations'), _action('Minha reserva', 'reservations')],
-        'Tempo, valor e cupons': [_action('Definir uma recarga', 'charging'), _action('Consultar cupons', 'coupons')],
+        'Tempo e valor da recarga': [_action('Definir uma recarga', 'charging')],
         'Parar ou resolver uma falha': [_action('Abrir minha recarga', 'charging')],
         'Criar posto e vincular ponto': [_action('Abrir meus postos', 'operator')],
         'Conta, senha e histórico': [_action('Abrir minha conta', 'profile'), _action('Meu histórico', 'history')],
@@ -157,13 +157,13 @@ def _local_answer(question, demo):
                 'QR real nem câmera. Posto é o endereço; ponto é o equipamento. Informe a localização e a tarifa, '
                 'revise e publique. Você também pode adicionar outro ponto a um posto existente. Tudo fica nesta conta.'),
             'Conta, senha e histórico': (
-                'A conta de demonstração permite alternar entre motorista e operador. Dados editados, cupons '
+                'A conta de demonstração permite alternar entre motorista e operador. Dados editados '
                 'e histórico ficam somente nesta sessão. As credenciais públicas permanecem iguais. '
                 'Ao sair e entrar novamente, a demonstração recomeça.'),
         }
         content = overrides.get(heading, content)
     if heading not in actions:
-        content = ('Posso orientar sobre recarga, reserva, limites, cupons e cadastro de postos. '
+        content = ('Posso orientar sobre recarga, reserva, limites, pagamento e cadastro de postos. '
                    'Também posso consultar sua recarga atual ou o resumo da última recarga. '
                    'Não realizo pagamentos nem abro chamados de suporte.')
     return {'content': content, 'actions': actions.get(heading, [])}
@@ -370,8 +370,10 @@ async def build(app, question='', topic=None, seed_demo=False, **_):
                                   padding=ft.Padding(left=15, right=15, top=12, bottom=12) if not user else
                                   ft.Padding(left=13, right=13, top=11, bottom=11),
                                   expand=7, expand_loose=True)
-            spacer = ft.Container(expand=2 if not user else 1)
+            # A mensagem do usuário encosta à direita (largura do texto, até ~88% da linha); a do assistente, à esquerda.
+            spacer = ft.Container(width=44) if user else ft.Container(expand=2)
             chat_list.controls.insert(index, ft.Row([spacer, bubble] if user else [bubble, spacer], spacing=0,
+                                                    alignment=ft.MainAxisAlignment.END if user else ft.MainAxisAlignment.START,
                                                     vertical_alignment=ft.CrossAxisAlignment.START))
 
     def changed(event=None):
@@ -456,7 +458,7 @@ async def build(app, question='', topic=None, seed_demo=False, **_):
     composer.on_submit = send_button.on_click = submit
     vendor = getattr(app, 'browsing_mode', 'consumer') == 'vendor' or topic == 'vendor'
     suggestions = (['Resumo da última recarga', 'Ajuda com pagamento', 'Última recarga dos meus postos',
-                    'Criar posto e vincular ponto', 'Tempo, valor e cupons'] if vendor else
+                    'Criar posto e vincular ponto', 'Tempo e valor da recarga'] if vendor else
                    ['Resumo da última recarga', 'Ajuda com pagamento', 'Iniciar uma recarga', 'Reservar',
                     'Ajuda com limites'])
     if topic == 'reservations':

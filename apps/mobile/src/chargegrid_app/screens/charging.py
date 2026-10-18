@@ -450,6 +450,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         safety_section,safety_summary = disclosure_field('Ajustar tempo máximo','',[
             safety,ft.Text('A recarga para ao atingir o valor ou o tempo máximo, o que acontecer primeiro.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('safety_expanded',False),on_toggle=lambda value:draft.update(safety_expanded=value),on_update=app.page.update)
+        # Cupons ficam fora da área do motorista: o campo segue no rascunho, mas não é exibido.
         coupon_section,coupon_summary = disclosure_field('Cupom de desconto','Opcional',[
             coupon,ft.Text('O código será validado ao solicitar o início. Informar um cupom não confirma o desconto.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('coupon_expanded',bool(draft['coupon_code'])),on_toggle=lambda value:draft.update(coupon_expanded=value),on_update=app.page.update)
@@ -503,7 +504,6 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await navigate(1)
         controls += [mode_toggle,
                      time_panel,value_panel,estimate,
-                     coupon_section,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]
     else:
         pending_message = ft.Text('A resposta do pedido anterior não chegou. Confira o estado ou repita o mesmo pedido; os limites ficam protegidos até confirmar o resultado.',

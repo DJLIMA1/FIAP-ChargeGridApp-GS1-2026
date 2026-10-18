@@ -60,24 +60,26 @@ def btn(text, on_click=None, kind='primary', *, height=54, size=12.8):
                         ink=True, padding=ft.Padding(left=16, right=16, top=0, bottom=0))
 
 
-def _stage(percent, live=None):
-    """Carro com os dois arcos vermelhos + indicador circular (valor ``percent`` já formatado)."""
+def _stage(percent, live=None, k=1.0):
+    """Carro com os dois arcos vermelhos + indicador circular (valor ``percent`` já formatado); ``k``: escala."""
     red = '#D72B32'
     arcs = cv.Canvas([
         # brilho sob o carro (meia elipse preenchida)
-        cv.Arc(55, 100, 245, 70, 0, 3.14159, True, ft.Paint(
+        cv.Arc(55 * k, 100 * k, 245 * k, 70 * k, 0, 3.14159, True, ft.Paint(
             style=ft.PaintingStyle.FILL,
-            gradient=ft.PaintLinearGradient((0, 135), (0, 170), [ft.Colors.with_opacity(0.0, red),
-                                                                 ft.Colors.with_opacity(0.30, red)]))),
-        cv.Arc(55, 100, 245, 70, 0, 3.14159, False, ft.Paint(color=ft.Colors.with_opacity(0.16, red), stroke_width=7,
-                                                           style=ft.PaintingStyle.STROKE)),
-        cv.Arc(55, 100, 245, 70, 0, 3.14159, False, ft.Paint(color=red, stroke_width=2.4,
-                                                           style=ft.PaintingStyle.STROKE)),
-        cv.Arc(1, 76, 360, 123, 0, 3.14159, False, ft.Paint(color=ft.Colors.with_opacity(0.78, red),
-                                                           stroke_width=2.4, style=ft.PaintingStyle.STROKE)),
-    ], width=362, height=200)
-    car = ft.Container(d.car_image(width=236), left=58.5, top=19)
-    stage = ft.Container(ft.Stack([arcs, car], width=362, height=200), margin=ft.Margin(0, 0, 0, -3.5))
+            gradient=ft.PaintLinearGradient((0, 135 * k), (0, 170 * k), [ft.Colors.with_opacity(0.0, red),
+                                                                         ft.Colors.with_opacity(0.30, red)]))),
+        cv.Arc(55 * k, 100 * k, 245 * k, 70 * k, 0, 3.14159, False, ft.Paint(
+            color=ft.Colors.with_opacity(0.16, red), stroke_width=7, style=ft.PaintingStyle.STROKE)),
+        cv.Arc(55 * k, 100 * k, 245 * k, 70 * k, 0, 3.14159, False, ft.Paint(color=red, stroke_width=2.4,
+                                                                             style=ft.PaintingStyle.STROKE)),
+        cv.Arc(1 * k, 76 * k, 360 * k, 123 * k, 0, 3.14159, False, ft.Paint(
+            color=ft.Colors.with_opacity(0.78, red), stroke_width=2.4, style=ft.PaintingStyle.STROKE)),
+    ], width=362 * k, height=200 * k)
+    car = ft.Container(d.car_image(width=236 * k), left=58.5 * k, top=19 * k)
+    stage = ft.Container(d.centered(ft.Container(ft.Stack([arcs, car], width=362 * k, height=200 * k),
+                                                 width=362 * k, height=200 * k)),
+                         margin=ft.Margin(0, 0, 0, -3.5))
     shown = d.txt(percent, 25, 'semibold', text_align=ft.TextAlign.CENTER)
     if live is not None:
         live['percent'] = shown
@@ -138,7 +140,7 @@ def recharge_detail(app, title, *, when, address, percent, cost, power, remainin
     notes = [d.txt(status, 11, 'regular', theme.GRAY_TEXT)] if status else []
     rows = ft.Column([_value_row('Custo estimado', cost, live, 'cost'), _value_row('Potência atual', power, live, 'power')],
                      spacing=16.5)
-    body = [head, *_stage(percent, live), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
+    body = [head, *_stage(percent, live, d.scene_scale(app)), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
             track, _maps_row(app, address),
             ft.Container(action, margin=ft.Margin(6, 0, 6, 0)),
             *[ft.Container(item, margin=ft.Margin(6, 0, 6, 0)) for item in secondary],

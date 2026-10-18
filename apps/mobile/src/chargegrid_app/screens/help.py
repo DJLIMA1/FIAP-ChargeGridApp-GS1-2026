@@ -13,10 +13,10 @@ TOPICS = {
         'Após confirmar, você tem 10 minutos para chegar; veja o prazo em Minha reserva. '
         'No local, abra a reserva e informe o #F do visor. Cancelar também depende de confirmação.'
     ),
-    'Tempo, valor e cupons': (
+    'Tempo e valor da recarga': (
         'Por tempo define a duração máxima. Por valor define um teto de custo estimado, sempre com '
         'um limite de duração de segurança. A recarga pode terminar antes ao atingir um dos limites. '
-        'Cupons válidos reduzem a estimativa nos postos indicados. Não há Pix, cobrança real ou saldo no app.'
+        'Saldo, Pix e cartão no app são simulados: nenhuma cobrança real é feita.'
     ),
     'Parar ou resolver uma falha': (
         'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação do equipamento; '
@@ -48,7 +48,7 @@ def answer(question):
         (('offline', 'parar', 'parada', 'falha', 'erro', 'rede', 'conexao'), 'Parar ou resolver uma falha'),
         (('operador', 'vendedor', 'criar', 'vincul', 'restaur', 'qr', 'cadastro'), 'Criar posto e vincular ponto'),
         (('reserva', 'chegar depois'), 'Reservar para chegar depois'),
-        (('valor', 'tempo', 'limite', 'custo', 'cupom', 'cupons', 'pix', 'pagamento', 'dinheiro', 'preco'), 'Tempo, valor e cupons'),
+        (('valor', 'tempo', 'limite', 'custo', 'pix', 'pagamento', 'dinheiro', 'preco'), 'Tempo e valor da recarga'),
         (('#f', 'codigo', 'iniciar', 'recarga', 'carregar', 'motorista', 'consumidor'), 'Iniciar uma recarga'),
     ]
     for words, topic in rules:

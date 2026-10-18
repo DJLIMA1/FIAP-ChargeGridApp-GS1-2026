@@ -99,24 +99,27 @@ def _vendor_money(value):
     return 'R$ ' + f'{Decimal(value):.2f}'.replace('.', ',')
 
 
-def _ring_scene(kind, content, height):
-    """Imagem com o anel vermelho da referência (SVG por trás). ``kind``: 'car' | 'totem'."""
-    ring = ft.Image(src=f'/design/ring_{kind}.svg', width=364, height=240 if kind == 'totem' else 210,
-                    fit=ft.BoxFit.FILL, exclude_from_semantics=True, left=-1, top=0)
-    return ft.Container(ft.Stack([ring, content], width=362, height=height), height=height)
+def _ring_scene(kind, content, height, k=1.0):
+    """Imagem com o anel vermelho da referência (SVG por trás). ``kind``: 'car' | 'totem'; ``k``: escala."""
+    ring = ft.Image(src=f'/design/ring_{kind}.svg', width=364 * k, height=(240 if kind == 'totem' else 210) * k,
+                    fit=ft.BoxFit.FILL, exclude_from_semantics=True, left=-1 * k, top=0)
+    return design.centered(ft.Container(ft.Stack([ring, content], width=362 * k, height=height * k),
+                                        width=362 * k, height=height * k))
 
 
-def _car_scene():
-    return _ring_scene('car', ft.Container(design.car_image(width=265), left=39, top=4), 210)
+def _car_scene(app=None):
+    k = design.scene_scale(app)
+    return _ring_scene('car', ft.Container(design.car_image(width=265 * k), left=39 * k, top=4 * k), 210, k)
 
 
-def _totem_scene():
+def _totem_scene(app=None):
+    k = design.scene_scale(app)
     # Só a parte de cima do totem aparece na referência (o resto some atrás do anel).
-    image = ft.Image(src=design.TOTEM_SRC, width=89, height=315, fit=ft.BoxFit.FILL,
+    image = ft.Image(src=design.TOTEM_SRC, width=89 * k, height=315 * k, fit=ft.BoxFit.FILL,
                      exclude_from_semantics=True, left=0, top=0)
-    crop = ft.Container(ft.Stack([image]), width=89, height=195, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                        left=132, top=0)
-    return _ring_scene('totem', crop, 232)
+    crop = ft.Container(ft.Stack([image]), width=89 * k, height=195 * k, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                        left=132 * k, top=0)
+    return _ring_scene('totem', crop, 232, k)
 
 
 def _row_price(station):
@@ -262,7 +265,7 @@ async def build(app, **_):
     controls = [
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance_card, top=-8.5),
-        _spaced(_car_scene(), top=27.5),
+        _spaced(_car_scene(app), top=27.5),
         _spaced(design.txt('Perto de Você', 15, 'bold'), top=-8, bottom=-1),
         rows,
         _spaced(find_button, top=0),
@@ -334,7 +337,7 @@ async def build_vendor(app, empty=False, **_):
     controls = [
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance, top=7.5),
-        _spaced(_totem_scene(), top=28),
+        _spaced(_totem_scene(app), top=28),
         _spaced(design.txt('Suas estações', 15, 'bold'), top=-7, bottom=14),
         rows,
         _spaced(chat, top=14),
@@ -374,7 +377,7 @@ def _vendor_empty(app, demo):
         padding=ft.Padding(left=14, right=14, top=21.5, bottom=23))
     controls = [
         _spaced(_greeting(app, demo), top=0),
-        _spaced(_totem_scene(), top=9.5),
+        _spaced(_totem_scene(app), top=9.5),
         _spaced(design.txt('Configure sua primeira tela', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
                 top=17, bottom=23),
         card,

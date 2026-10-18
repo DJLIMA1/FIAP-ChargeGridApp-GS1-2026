@@ -98,8 +98,10 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                         and isinstance(item.content,ft.Column)
                         and isinstance(item.content.controls[0],ft.Semantics)
                         and label in texts(item.content.controls[0]))
-        for label,field_label,key in [('Ajustar tempo máximo','Tempo máximo de segurança (min)','safety_expanded'),
-                                      ('Cupom de desconto','Cupom (opcional)','coupon_expanded')]:
+        # Cupons não aparecem na área do motorista.
+        self.assertFalse(any('Cupom de desconto' in texts(item) for item in descendants(screen)
+                             if isinstance(item,ft.Semantics)))
+        for label,field_label,key in [('Ajustar tempo máximo','Tempo máximo de segurança (min)','safety_expanded')]:
             with self.subTest(label=label):
                 card = section(label)
                 semantic,body = card.content.controls
@@ -121,8 +123,7 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(field.value,'8' if key == 'safety_expanded' else 'PROMO')
         resumed = await charging.build(app)
         self.assertIn('8 min',texts(resumed))
-        self.assertEqual(fields(resumed)['Cupom (opcional)'].value,'PROMO')
-        self.assertIn('Código informado · validação no início',texts(resumed))
+        self.assertNotIn('Cupom (opcional)',fields(resumed))
         self.assertEqual(app.posts,[])
 
     async def test_three_steps_show_only_current_form_and_only_review_posts(self):
@@ -166,17 +167,15 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.data['step'],1)
         self.assertIn('Confirmar ponto',texts(screen))
 
-    async def test_back_and_resume_keep_code_limits_coupon_and_route_context(self):
+    async def test_back_and_resume_keep_code_limits_and_route_context(self):
         app = WizardApp()
         screen = await limits_screen(app)
-        duration,coupon = fields(screen)['Duração máxima (min)'],fields(screen)['Cupom (opcional)']
-        duration.value,coupon.value = '7','PROMO'
+        duration = fields(screen)['Duração máxima (min)']
+        duration.value = '7'
         await duration.on_change(None)
-        await coupon.on_change(None)
         resumed = await charging.build(app)
         self.assertEqual(app.data['step'],2)
         self.assertEqual(fields(resumed)['Duração máxima (min)'].value,'7')
-        self.assertEqual(fields(resumed)['Cupom (opcional)'].value,'PROMO')
         await click(resumed,'Voltar')(None)
         back = await charging.build(app,**app.go.call_args.kwargs)
         self.assertEqual(fields(back)['Código temporário do posto'].value,'12345')
@@ -203,15 +202,14 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         app = WizardApp()
         second = await limits_screen(app)
         fields(second)['Duração máxima (min)'].value = '7'
-        fields(second)['Cupom (opcional)'].value = 'PROMO'
-        await fields(second)['Cupom (opcional)'].on_change(None)
+        await fields(second)['Duração máxima (min)'].on_change(None)
         app.sessions['old'] = {'id':'old','status':'completed','max_duration_minutes':5}
         history = await charging.build(app,session_id='old')
         self.assertEqual(app.charging_draft['duration_minutes'],'7')
         await click(history,'Retomar preparação da recarga')(None)
         resumed = await charging.build(app,**app.go.call_args.kwargs)
         self.assertEqual(app.data['step'],2)
-        self.assertEqual(fields(resumed)['Cupom (opcional)'].value,'PROMO')
+        self.assertEqual(fields(resumed)['Duração máxima (min)'].value,'7')
 
     async def test_value_mode_keeps_safety_limit_and_time_mode_ignores_hidden_cost(self):
         app = WizardApp()
@@ -279,7 +277,6 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 app.reservation = {**CONTEXT,'id':'reservation','status':'confirmed','connector_id':'point'}
                 second = await limits_screen(app)
                 fields(second)['Duração máxima (min)'].value = '7'
-                fields(second)['Cupom (opcional)'].value = 'PROMO'
                 await next_screen(app,second)
                 app.reservation = None if status is None else {**app.reservation,'status':status}
                 expired = await charging.build(app)
@@ -293,11 +290,11 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(fields(first)['Código temporário do posto'].value,'')
                 fields(first)['Código temporário do posto'].value = '54321'
                 second = await next_screen(app,first)
-                self.assertEqual(fields(second)['Cupom (opcional)'].value,'PROMO')
+                self.assertEqual(fields(second)['Duração máxima (min)'].value,'7')
                 third = await next_screen(app,second)
                 await click(third,'Solicitar início')(None)
                 self.assertEqual(app.posts[0][0],{'presence_code':'#F54321','max_duration_minutes':7,
-                                                'coupon_code':'PROMO','public_code':'CG-ONE'})
+                                                'public_code':'CG-ONE'})
 
     async def test_missing_reservation_does_not_unlock_uncertain_post_or_change_identity(self):
         app = WizardApp()

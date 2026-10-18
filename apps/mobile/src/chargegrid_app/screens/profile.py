@@ -144,25 +144,19 @@ async def build(app, mode=None, **_):
 
     money_row = _row('Minha Carteira' if vendor else 'Meu saldo', await balance_text(app, vendor),
                      ft.Icons.CREDIT_CARD, app.link('payout' if vendor else 'wallet'))
-    rows = [money_row,
-            _row('Perfil', 'Editar informações do usuário', ft.Icons.EDIT, app.link('profile', mode='edit'))]
-
-    # Configurações mantidas do app anterior, no mesmo estilo e depois do conteúdo da referência.
-    car = vehicle_text(profile, driver)
-    extras = [
-        _row('Meu carro', car or 'Escolher o carro elétrico', ft.Icons.DIRECTIONS_CAR_OUTLINED,
-             app.link('profile', mode='edit')),
-        _row('Cupons', 'Cupons para minhas recargas', ft.Icons.LOCAL_OFFER_OUTLINED, app.link('coupons')),
-        _row('Tema escuro', 'Aparência do aplicativo', ft.Icons.DARK_MODE_OUTLINED, None, chevron=False,
-             trailing=ft.Switch(value=theme.is_dark(), on_change=dark, data='preference', active_color=theme.RED)),
-    ]
-    if vendor_account:
-        extras.append(_row('Usar como motorista' if vendor else 'Usar como operador',
-                           'A troca de modo mantém sua reserva ou recarga.', ft.Icons.SWAP_HORIZ,
-                           app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor'))))
+    # Ordem pedida: Perfil, saldo/carteira, Alterar senha, Tema escuro (e a troca de modo, quando houver).
+    rows = [_row('Perfil', 'Editar informações do usuário', ft.Icons.EDIT, app.link('profile', mode='edit')),
+            money_row]
     if not demo:
-        extras.append(_row('Alterar senha', 'Você precisará entrar novamente', ft.Icons.LOCK_OUTLINE,
-                           app.link('profile', mode='password')))
+        rows.append(_row('Alterar senha', 'Você precisará entrar novamente', ft.Icons.LOCK_OUTLINE,
+                         app.link('profile', mode='password')))
+    rows.append(_row('Tema escuro', 'Aparência do aplicativo', ft.Icons.DARK_MODE_OUTLINED, None, chevron=False,
+                     trailing=ft.Switch(value=theme.is_dark(), on_change=dark, data='preference',
+                                        active_color=theme.RED)))
+    if vendor_account:
+        rows.append(_row('Usar como motorista' if vendor else 'Usar como operador',
+                         'A troca de modo mantém sua reserva ou recarga.', ft.Icons.SWAP_HORIZ,
+                         app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor'))))
     notes = [design.demo_note(app)]
     if demo:
         notes.append(design.txt('Senha pública: demo1234 · os dados simulados reiniciam ao sair', 10,
@@ -174,8 +168,7 @@ async def build(app, mode=None, **_):
     # Na referência o botão do operador fica 10 pt mais baixo que o do motorista.
     footer = [ft.Container(sair, margin=ft.Margin(left=0, top=0, right=0, bottom=-10 if vendor else 0))]
     heading = ft.Container(design.page_title('Conta', size=15), margin=ft.Margin(left=0, top=3.5, right=0, bottom=1.5))
-    # Extras ficam abaixo da dobra: a primeira tela mostra só o conteúdo da referência.
-    return design.page(heading, identity, *rows, ft.Container(height=400), *extras, *notes, gap=14, footer=footer)
+    return design.page(heading, identity, *rows, *notes, gap=14, footer=footer)
 
 
 def edit_form(app, profile, driver=None):
@@ -191,7 +184,10 @@ def edit_form(app, profile, driver=None):
         control.content_padding = ft.Padding(left=9, right=9, top=13, bottom=13)
     vehicle = saved_vehicle(driver)
     picker = VehiclePicker(vehicle, (driver or {}).get('presets'), allow_later=vehicle is None,
-                           on_change=lambda _: app.page.update())
+                           on_change=lambda _: app.page.update(), label='Meu carro', outer_labels=True)
+    for control in (picker.model, picker.name, picker.battery, picker.consumption):
+        # Mesmo campo de Nome/Telefone: escuro, arredondado e com o mesmo recuo interno.
+        control.content_padding = ft.Padding(left=9, right=9, top=13, bottom=13)
     async def save():
         if not name.value.strip():
             raise ApiError('Informe seu nome.')
@@ -218,10 +214,7 @@ def edit_form(app, profile, driver=None):
         *[ft.Container(design.labeled(text, control, 14), padding=ft.Padding(left=0, right=8, top=0, bottom=0),
                        margin=ft.Margin(left=0, top=13 if text == 'Nome' else 0, right=0, bottom=0))
           for text, control in (('Nome', name), ('E-mail', mail), ('Telefone', phone), ('Chave Pix', pix))],
-        ft.Container(height=420),  # carro e botão ficam abaixo da dobra; a referência mostra só os campos
-        design.section_label('Meu carro'),
-        design.txt('Usado para estimar autonomia e planejar recargas no Modo motorista.', 11, 'regular', theme.GRAY_TEXT),
-        picker.control,
+        ft.Container(picker.control, padding=ft.Padding(left=0, right=8, top=0, bottom=0)),
         design.primary_button('Salvar informações', app.action(save), height=48, size=16),
         ft.Container(height=8),
         title='Perfil', on_back=getattr(app, 'back', None) or app.link('profile'), gap=16, title_size=22)

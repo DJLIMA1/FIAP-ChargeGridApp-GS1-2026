@@ -316,7 +316,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             expanded=False,
             maintain_state=True,
             controls=[card(ft.Column([ft.Semantics(label='Conector',content=connector_filter),available_filter,price_filter,ft.Semantics(label='Ordenar por',content=order_filter),
-                ft.Semantics(label='Minha intenção',content=plan_mode),plan_value,ft.Text('Estimativas pela potência nominal, antes de cupons. O ponto pode entregar menos potência. Nenhuma cobrança real.',size=12,color=theme.GRAY_TEXT),
+                ft.Semantics(label='Minha intenção',content=plan_mode),plan_value,ft.Text('Estimativas pela potência nominal. O ponto pode entregar menos potência. Nenhuma cobrança real.',size=12,color=theme.GRAY_TEXT),
                 button('Aplicar comparação',app.action(search))],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))])
         summary = []
         if connector_type:
@@ -479,7 +479,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 elif status == 'Offline':
                     details.append(ft.Text('Equipamento sem comunicação no momento.',size=12,color=theme.GRAY_TEXT))
                 items.append(card(ft.Column(details,spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
-            items.append(ft.TextButton(content=ft.Text('Ver cupons deste posto',color=theme.GRAY_TEXT),on_click=app.link('coupons',station_id=station['id'])))
         return items
     listing.controls = station_cards(stations)
     empty_state = ft.Text(

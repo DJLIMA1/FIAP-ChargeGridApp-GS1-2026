@@ -24,7 +24,9 @@ def _decimal(value):
 
 class VehiclePicker:
     def __init__(self, vehicle=None, presets=None, *, allow_later=False, on_change=None, on_submit=None,
-                 label='Modelo do carro'):
+                 label='Modelo do carro', outer_labels=False):
+        # ``outer_labels``: rótulos acima dos campos (como Nome/Telefone no Perfil), sem rótulo flutuante.
+        self.outer_labels = outer_labels
         self.presets = {p['key']: p for p in (presets or [p.to_dict() for p in PRESETS.values()])}
         self.on_change = on_change
         self._last_preset = None
@@ -37,7 +39,7 @@ class VehiclePicker:
             options.append((LATER, 'Prefiro informar depois'))
         # Campo escuro arredondado do design de referência; o rótulo fica dentro do campo.
         self.model = ft.Dropdown(
-            label=label, value=key, expand=True, color=theme.INPUT_TEXT, bgcolor=theme.CARD, filled=True,
+            label=None if outer_labels else label, value=key, expand=True, color=theme.INPUT_TEXT, bgcolor=theme.CARD, filled=True,
             fill_color=theme.INPUT_BG, border=_rounded(), border_radius=design.RADIUS_BTN + 2,
             text_style=ft.TextStyle(size=12.5, font_family=design.FONT, color=theme.INPUT_TEXT),
             label_style=ft.TextStyle(size=11, font_family=design.FONT_BOLD, color=theme.GRAY_TEXT),
@@ -55,11 +57,18 @@ class VehiclePicker:
             if on_submit:
                 control.on_submit = on_submit
         # Empilhados: rótulos longos não quebram em telas de 360 px.
-        self.custom = ft.Column([self.name, self.battery, self.consumption], spacing=8, visible=key == CUSTOM)
+        custom = [self.name, self.battery, self.consumption]
+        if outer_labels:
+            custom = []
+            for control in (self.name, self.battery, self.consumption):
+                text, control.label = control.label, None
+                custom.append(design.labeled(text, control, 14))
+        self.custom = ft.Column(custom, spacing=14 if outer_labels else 8, visible=key == CUSTOM)
         self.summary = design.txt('', 11, 'regular', theme.GRAY_TEXT)
         self._last_preset = key if key in self.presets else None
         self._refresh()
-        self.control = ft.Column([ft.Row([self.model]), self.custom, self.summary], spacing=8,
+        model = design.labeled(label, ft.Row([self.model]), 14) if outer_labels else ft.Row([self.model])
+        self.control = ft.Column([model, self.custom, self.summary], spacing=14 if outer_labels else 8,
                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
     @staticmethod
