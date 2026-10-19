@@ -162,6 +162,20 @@ class ChargingWizardBatteryTests(StorageCase):
                                              'max_duration_minutes': 10})
         self.assertEqual((body['soc_percent'], body['battery_kwh'], body['soc_source']), (64.0, 44.9, 'phone'))
 
+    async def test_older_api_rejecting_battery_fields_gets_one_retry_without_them(self):
+        from chargegrid_app.api_client import ApiError
+        app = WizardApp()
+        app.outcomes = [ApiError('Dados inválidos', 422, 'validation_error'), {'id': 'new-session'}]
+        screen = await limits_screen(app)
+        await click(screen, 'Continuar')(None)
+        review = await charging.build(app, **app.go.call_args.kwargs)
+        await click(review, 'Solicitar início')(None)
+        self.assertEqual(len(app.posts), 2)
+        first, retry = app.posts
+        self.assertIn('soc_percent', first[0])
+        self.assertEqual(retry[0], without_soc(first[0]))
+        self.assertNotEqual(first[1], retry[1])  # nova chave de idempotência
+
     async def test_by_autonomy_sends_time_and_value_limits(self):
         app = WizardApp()
         app.station['connectors'][0].update(max_duration_minutes=600)

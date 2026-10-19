@@ -248,3 +248,6 @@ async def start_fields(app, car=None):
     usable = max(5.0, min(250.0, float(car['usable_kwh'])))
     return {'soc_percent': round(float(car['soc']), 1), 'battery_kwh': round(usable, 1),
             'soc_source': 'phone' if car.get('source') == 'phone' else 'simulated'}
+
+# Campos de início de recarga ligados à bateria do carro (omitidos se a API ainda não os aceita).
+START_KEYS = ('soc_percent', 'battery_kwh', 'soc_source')

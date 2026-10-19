@@ -693,7 +693,19 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             sync_pending()
             app.page.update()
             try:
-                result = await app.api.request('POST','charging-sessions',body,key=draft['key'])
+                try:
+                    result = await app.api.request('POST','charging-sessions',body,key=draft['key'])
+                except ApiError as exc:
+                    # API anterior à bateria do carro recusa campos desconhecidos (422 sem
+                    # efeito): repete uma vez sem eles, com nova chave, para não travar a recarga.
+                    legacy = {k: v for k, v in body.items() if k not in vehicle_state.START_KEYS}
+                    if exc.status != 422 or exc.code != 'validation_error' or legacy == body:
+                        raise
+                    body = legacy
+                    draft['key'] = app.api.new_key()
+                    draft['pending_body'] = deepcopy(body)
+                    draft['last_body'] = deepcopy(body)
+                    result = await app.api.request('POST','charging-sessions',body,key=draft['key'])
             except ApiError as exc:
                 # These validation responses prove this serialized start was
                 # rejected. Auth/rate-limit errors on a retry do not prove that.
