@@ -5,7 +5,7 @@ import trimesh
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'entrega-faculdade'
-ZIP = ROOT / 'ChargeGrid-Case-Tela7-Faculdade-v2.zip'
+ZIP = ROOT / 'ChargeGrid-Case-Tela7-Faculdade-v3.zip'
 info = json.loads((ROOT / 'parametros.json').read_text())['verificacao']['arquivos']
 GROUPS = {'1-TESTE-PRIMEIRO': [n for n in info if n.startswith('00-')],
           '2-PECAS': sorted(n for n in info if not n.startswith('00-'))}
@@ -14,8 +14,8 @@ CFG = {'00-TESTE-encaixe-moldura': ('20%', 'brim 5 mm', 2, 'frente na mesa'),
        '00-TESTE-encaixe-corpo': ('20%', 'brim 5 mm', 2, 'tiras finas em pe'),
        '01-MOLDURA-esquerda': ('20%', 'saia', 1, 'frente visivel na mesa'),
        '01-MOLDURA-direita': ('20%', 'saia', 1, 'frente visivel na mesa'),
-       '02-CORPO-esquerdo': ('20%', 'brim 5 mm', 1, 'costas na mesa'),
-       '02-CORPO-direito': ('20%', 'brim 5 mm', 1, 'costas na mesa'),
+       '02-CORPO-esquerdo': ('20%', 'brim 5 mm', 1, 'deitado no fundo'),
+       '02-CORPO-direito': ('20%', 'brim 5 mm', 1, 'deitado no fundo'),
        '03-BASE-esquerda': ('20%', 'saia', 1, 'deitada'),
        '03-BASE-direita': ('20%', 'saia', 1, 'deitada'),
 }

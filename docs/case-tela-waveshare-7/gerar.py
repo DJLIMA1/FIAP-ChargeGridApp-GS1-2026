@@ -33,17 +33,17 @@ PCB_X0, PCB_Y0 = 55.04, -47.30
 
 # ---------------------------------------------------------------- parametros do case
 P = dict(
-    tilt_deg=15.0,          # inclinacao da tela para tras (pedido: entre 10 e 15 graus)
+    tilt_deg=60.0,          # inclinacao da tela a partir do vertical: 60 = tela a 30 graus da mesa (pedido)
     clr_glass=0.35,         # folga vidro -> saia da moldura (por lado)
     skirt_t=2.0, skirt_depth=6.5,
     clr_fit=0.25,           # folga saia -> corpo (por lado)
     collar_wall=3.0, wall=3.0,     # paredes principais com 3 mm (recomendacao do laboratorio)
     plate_t=3.0, lip=2.5, window_chamfer=1.5, outer_chamfer=1.0,
-    chin=7.0,               # queixo inferior (abriga os ganchos inferiores; com 15 graus o minimo e 6,4)
+    chin=7.0,               # borda inferior extra da moldura (abriga a chave escondida); a saia frontal cresce sozinha (Z_FOOT)
     top_depth=28.0,         # espessura do corpo no topo (sem a moldura)
     r_top=None, r_bottom=6.0, ch_back=6.0, ch_back_bottom=2.0,   # arestas que tocam a mesa de impressao: chanfros >= 45 graus
     hook_len=16.0, hook_t=1.6, hook_w=10.0,
-    spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=50.0, spring_preload=0.4, post_d=8.0,
+    spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=60.0, spring_preload=0.35, post_d=8.0,
     usb_hole=[13.5, 8.5], pin_d=2.2,
     key_clear=0.15, bed_max=180.0,   # chaves borboleta; limite da impressora da faculdade
     usar_base=False,        # a base que se estende para tras foi retirada a pedido; True a recoloca
@@ -65,7 +65,13 @@ R_SK_IN, R_SK_OUT, R_CAV = GLASS_R + P['clr_glass'], GLASS_R + P['clr_glass'] + 
 def to_world(X, V, Z):
     return X, V * S_ - Z * C_, V * C_ + Z * S_      # x, y (para tras), z
 
-Z_TABLE = OUT_BOT * C_                              # mesa passa pela aresta frontal inferior
+# A mesa encosta na parte de baixo do corpo a uma profundidade Z_FOOT atras do vidro, o bastante para que a
+# parede de baixo (3 mm) ainda envolva os ganchos inferiores ate Z = -23,5. Com pouca inclinacao Z_FOOT = 0
+# (a aresta frontal toca a mesa); com a tela deitada, a frente fica no ar e aparece uma saia inclinada.
+Z_TABLE_REQ = -CAV_V * C_ - 23.5 * S_ - P['wall'] - 0.5
+Z_FOOT = min(0.0, (Z_TABLE_REQ - OUT_BOT * C_) / S_)
+Z_TABLE = OUT_BOT * C_ + Z_FOOT * S_
+DEITADO = P['tilt_deg'] >= 35.0                    # corpo imprime apoiado no fundo (senao, nas costas)
 Y_BACK = OUT_TOP * S_ + P['top_depth'] * C_          # plano traseiro (vertical)
 
 # ---------------------------------------------------------------- utilitarios
@@ -186,6 +192,8 @@ for axis, sign, c, kind in HOOKS:
 bezel = U([bezel] + hooks)
 # chave borboleta no verso do queixo (fora da saia): une as metades da moldura sem aparecer na frente
 V_KEY_BEZEL = (-(SK_OUT_V + 0.5) + (OUT_BOT + 1.5)) / 2
+_kv = [y for _, y in key_offset(KEY_SMALL, P['key_clear'])]
+assert V_KEY_BEZEL + min(_kv) >= OUT_BOT + 1.0 and V_KEY_BEZEL + max(_kv) <= -SK_OUT_V, 'chave da moldura vazaria pela borda: aumente chin'
 bezel = bezel - prism_z([(x, y + V_KEY_BEZEL) for x, y in key_offset(KEY_SMALL, P['key_clear'])], -1.0, 1.6)
 key_bezel = prism_z([(x, y + V_KEY_BEZEL) for x, y in KEY_SMALL], 0.1, 1.6)
 
@@ -195,9 +203,12 @@ F_T = (OUT_TOP, 0.0)
 B_T = (OUT_TOP, -P['top_depth'])
 B_B = (Y_BACK * S_ + Z_TABLE * C_, -Y_BACK * C_ + Z_TABLE * S_)
 F_B = (OUT_BOT, 0.0)
+K_FOOT = (OUT_BOT, Z_FOOT)                        # onde a saia frontal encontra a mesa
 # chanfro superior traseiro assimetrico: a face fica a 45 graus da mesa de impressao (o topo ja cai 20 graus)
 k45 = (C_ - S_)                                   # d_costas = k45 * d_topo
-prof_out = poly_chamfer([F_T, B_T, B_B, F_B], [0, (P['ch_back'] + 1, (P['ch_back'] + 1) * k45), P['ch_back_bottom'], 0])
+prof_pts = [F_T, B_T, B_B] + ([K_FOOT] if Z_FOOT < -0.01 else []) + [F_B]
+prof_ch = [0, (P['ch_back'] + 1, (P['ch_back'] + 1) * k45), P['ch_back_bottom']] + ([0] if Z_FOOT < -0.01 else []) + [0]
+prof_out = poly_chamfer(prof_pts, prof_ch)
 w = P['wall']
 yb_in, zt_in = Y_BACK - w, Z_TABLE + w
 cA = (CAV_V, 5.0)
@@ -264,21 +275,35 @@ BTN = {'RESET': 55.04 - 48.10, 'BOOT': 55.04 - 59.20}
 Z_BTN = -(PCB_FRONT + PCB_T) - 0.07
 for name, xb in BTN.items():
     cuts.append(md.Manifold.cylinder(30, P['pin_d'] / 2, P['pin_d'] / 2, 24).rotate([-90, 0, 0]).translate([xb, -85, Z_BTN]))
-# ventilacao traseira (mundo)
-vent = U([md.Manifold.cube([3.0, 20, 34]).translate([(i + 0.5) * 7.0 - 1.5, Y_BACK - 10, 0]) for i in range(-5, 5)])
+# ventilacao traseira (mundo): fendas na metade de cima da parede traseira, fora da emenda central
+z_back_top = to_world(0, OUT_TOP, -P['top_depth'])[2] - P['ch_back'] - 3.0
+z_vent0 = max(Z_TABLE + 0.45 * (z_back_top - Z_TABLE), z_back_top - 34.0)
+vent = U([md.Manifold.cube([3.0, 20, z_back_top - z_vent0]).translate([(i + 0.5) * 7.0 - 1.5, Y_BACK - 10, z_vent0]) for i in range(-5, 5)])
 cuts.append(vent.transform(W2S))     # 10 fendas, nenhuma sobre a emenda central
 body = D(body, cuts)
 
-# emenda central do corpo: nervura na parede traseira com 3 chaves borboleta (encaixe pelo lado de dentro)
+# emenda central do corpo: nervura com 3 chaves borboleta, encaixadas pelo lado de dentro.
+# Corpo deitado (tela reclinada): nervura no piso, cavidades abrindo para cima na impressao.
+# Corpo em pe: nervura na parede traseira, cavidades abrindo para cima na impressao (costas na mesa).
 def world_xz(poly_xz, y0, y1):    # perfil (x, z) do mundo extrudado de y0 a y1
     m = md.Manifold.extrude(md.CrossSection([ccw(poly_xz)]), y1 - y0).translate([0, 0, -y1])
     return m.transform(np.array([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0]], float))
-y_rib = Y_BACK - w - 4.5
-rib_w = md.Manifold.cube([34.0, 5.0, -2.5 - (Z_TABLE + w - 0.5)]).translate([-17.0, y_rib, Z_TABLE + w - 0.5])
-body = body + (rib_w.transform(W2S) ^ outer)
-key_z = [Z_TABLE + w + 11.0, (Z_TABLE + w + 11.0 - 12.0) / 2, -12.0]
-body = body - U([world_xz([(x, z + zc) for x, z in key_offset(KEY_BIG, P['key_clear'])], y_rib - 1.0, y_rib + 3.2).transform(W2S) for zc in key_z])
-keys_body = [world_xz([(x, z + zc) for x, z in KEY_BIG], y_rib + 0.1, y_rib + 3.1).transform(W2S) for zc in key_z]
+if DEITADO:
+    z_rib = Z_TABLE + w + 4.5
+    key_y = list(np.linspace(Y_BACK - w - 14.0, Y_BACK - w - 14.0 - 2 * 22.0, 3))
+    rib_f = md.Manifold.cube([34.0, key_y[0] - key_y[-1] + 20.0, 5.0]).translate([-17.0, key_y[-1] - 10.0, Z_TABLE + w - 0.5])
+    body = body + (rib_f.transform(W2S) ^ outer)
+    body = body - U([md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in key_offset(KEY_BIG, P['key_clear'])]]), 4.0)
+                     .translate([0, 0, z_rib - 3.2]).transform(W2S) for yk in key_y])
+    keys_body = [md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in KEY_BIG]]), 3.0)
+                 .translate([0, 0, z_rib - 3.1]).transform(W2S) for yk in key_y]
+else:
+    y_rib = Y_BACK - w - 4.5
+    rib_w = md.Manifold.cube([34.0, 5.0, z_vent0 - 3.0 - (Z_TABLE + w - 0.5)]).translate([-17.0, y_rib, Z_TABLE + w - 0.5])
+    body = body + (rib_w.transform(W2S) ^ outer)
+    key_z = list(np.linspace(Z_TABLE + w + 11.0, z_vent0 - 12.0, 3))
+    body = body - U([world_xz([(x, z + zc) for x, z in key_offset(KEY_BIG, P['key_clear'])], y_rib - 1.0, y_rib + 3.2).transform(W2S) for zc in key_z])
+    keys_body = [world_xz([(x, z + zc) for x, z in KEY_BIG], y_rib + 0.1, y_rib + 3.1).transform(W2S) for zc in key_z]
 
 # ---------------------------------------------------------------- BASE (opcional, aumenta o apoio traseiro)
 # Mundo: a base fica sob o corpo; topo da base = mesa do corpo (Z_TABLE). Dois ganchos sobem pelo piso do corpo
@@ -351,7 +376,7 @@ prints = {}
 for side, mb in zip(['esquerda', 'direita'], halves(bezel)):
     prints[f'01-MOLDURA-{side}'] = center(mb.rotate([180, 0, 0]))            # frente na mesa
 for side, mc in zip(['esquerdo', 'direito'], halves(body)):
-    prints[f'02-CORPO-{side}'] = center(mc.transform(S2W).transform(TO_PRINT_BODY))
+    prints[f'02-CORPO-{side}'] = center(mc.transform(S2W) if DEITADO else mc.transform(S2W).transform(TO_PRINT_BODY))   # fundo ou costas na mesa
 if P['usar_base']:
     for side, ma in zip(['esquerda', 'direita'], halves(base)):
         prints[f'03-BASE-{side}'] = center(ma)                               # deitada
@@ -428,18 +453,28 @@ mass_screen = 230.0
 com_screen = np.array(to_world(0, 0, -6))
 g = 9.81e-3
 def tip_force(with_base):
+    """Menor toque (N), perpendicular ao vidro, que tomba o case: para tras (pivo traseiro) ou para a frente
+    (pivo frontal), varrendo a area ativa de baixo a cima. 'nao tomba' quando o toque so empurra contra a mesa."""
     ms = [(m_body, bw_m.center_mass), (m_bezel, zw_m.center_mass), (mass_screen, com_screen)]
     if with_base: ms.append((m_base, ba_m.center_mass))
-    # pivo: pes de borracha traseiros da base (centro a 16 mm da borda) ou aresta traseira do corpo
-    y_piv = float(Y_BACK + bk - 16) if with_base else float(vw[vw[:, 2] < Z_TABLE + 0.05][:, 1].max())
+    foot = vw[vw[:, 2] < Z_TABLE + 0.05][:, 1]
+    y_back = float(Y_BACK + bk - 16) if with_base else float(foot.max())
+    y_front = float(foot.min())
     z0 = Z_TABLE - (bt_ if with_base else 0)
-    m_tot = sum(m for m, _ in ms); cg = sum(m * c for m, c in ms) / m_tot
-    restoring = g * m_tot * (y_piv - cg[1])
-    def at(V):   # forca perpendicular ao vidro no ponto (0, V) que inicia o tombamento
+    m_tot = sum(m for m, _ in ms); cg = sum(m * c for m, c in ms) / m_tot; W = g * m_tot
+    def need(V):
         _, yp, zp = to_world(0, V, 0)
-        return round(restoring / (C_ * (zp - z0) - S_ * (y_piv - yp)), 1)
-    return dict(massa_g=round(m_tot), cg_y=round(float(cg[1]), 1), pivo_y=round(y_piv, 1),
-                N_topo_area_ativa=at(GV - 13.04), N_centro=at(0.0))
+        out = {}
+        for nome, y_piv, rest in [('para_tras', y_back, W * (y_back - cg[1])), ('para_frente', y_front, W * (cg[1] - y_front))]:
+            tau = S_ * (y_piv - yp) - C_ * (zp - z0)          # >0 gira para a frente, <0 para tras
+            arm = -tau if nome == 'para_tras' else tau
+            out[nome] = round(rest / arm, 1) if arm > 1e-6 else None
+        return out
+    pts = {'topo_area_ativa': GV - 13.04, 'centro': 0.0, 'base_area_ativa': -(GV - 11.0)}
+    res = {k: need(v) for k, v in pts.items()}
+    vals = [x for r in res.values() for x in r.values() if x is not None]
+    return dict(massa_g=round(m_tot), cg_y=round(float(cg[1]), 1), apoio_y=[round(y_front, 1), round(y_back, 1)],
+                toque_N=res, menor_toque_que_tomba_N=(min(vals) if vals else 'nao tomba com toque na area ativa'))
 checks['estabilidade_sem_base'] = tip_force(False)
 if P['usar_base']:
     checks['estabilidade_com_base'] = tip_force(True)
@@ -451,4 +486,5 @@ info = dict(P, medidas_case=dict(largura=round(2 * OUT_X, 2), altura_frente=roun
             espessura_topo_com_moldura=P['top_depth'] + P['plate_t']),
             molas=spring_info, verificacao=checks)
 (ROOT / 'parametros.json').write_text(json.dumps(info, indent=2, ensure_ascii=False) + '\n')
+checks['geometria'] = dict(Z_FOOT=round(Z_FOOT, 2), y_frente_pe=round(float(to_world(0, OUT_BOT, Z_FOOT)[1]), 1), Y_BACK=round(Y_BACK, 1), corpo_deitado=DEITADO)
 print(json.dumps(checks, indent=1, ensure_ascii=False))

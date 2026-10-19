@@ -1,10 +1,10 @@
 CASE DA TELA 7" — CONFIGURAÇÕES DE IMPRESSÃO
-Versão 2 — 18/10/2026. Valem para qualquer fatiador (Cura, PrusaSlicer, Bambu, Orca).
+Versão 3 — 18/10/2026. Valem para qualquer fatiador (Cura, PrusaSlicer, Bambu, Orca).
 
 IMPORTAÇÃO
 - Unidade: milímetros. Escala: 100%. Não redimensionar para a mesa.
 - NÃO girar nem deitar as peças: os STL já estão na orientação certa.
-  Moldura: frente na mesa. Corpo: costas na mesa. Chaves: deitadas.
+  Moldura: frente na mesa. Corpo: deitado sobre o fundo. Chaves: deitadas.
 - Imprimir UMA cópia de cada arquivo. O arquivo de chaves já tem as 8 chaves.
 - Maior medida de qualquer arquivo: 129 mm (cabe em 180 x 180 x 180 mm).
 
@@ -43,12 +43,12 @@ POR ARQUIVO (ver também DIMENSOES.csv)
   00-TESTE-encaixe-corpo          20%       brim 5     26 x 129 x 25
   01-MOLDURA-esquerda             20%       saia       102 x 129 x 26
   01-MOLDURA-direita              20%       saia       102 x 129 x 26
-  02-CORPO-esquerdo               20%       brim 5     102 x 125 x 60
-  02-CORPO-direito                20%       brim 5     102 x 125 x 60
+  02-CORPO-esquerdo               20%       brim 5     102 x 126 x 84
+  02-CORPO-direito                20%       brim 5     102 x 126 x 84
   04-CHAVES-8un                   100%      saia       84 x 58 x 3
 
 FILAMENTO
-- Cerca de 240 g de PLA no total. É uma estimativa pelo volume das peças; o
+- Cerca de 270 g de PLA no total. É uma estimativa pelo volume das peças; o
   fatiador da faculdade dará o valor exato.
 
 O QUE NÃO ALTERAR

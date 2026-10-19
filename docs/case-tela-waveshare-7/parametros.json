@@ -1,5 +1,5 @@
 {
-  "tilt_deg": 15.0,
+  "tilt_deg": 60.0,
   "clr_glass": 0.35,
   "skirt_t": 2.0,
   "skirt_depth": 6.5,
@@ -22,8 +22,8 @@
   "spring_t": 1.2,
   "spring_w": 8.0,
   "spring_len": 16.0,
-  "spring_angle": 50.0,
-  "spring_preload": 0.4,
+  "spring_angle": 60.0,
+  "spring_preload": 0.35,
   "post_d": 8.0,
   "usb_hole": [
     13.5,
@@ -42,62 +42,62 @@
   "medidas_case": {
     "largura": 204.16,
     "altura_frente": 128.96,
-    "altura_mesa": 124.6,
-    "profundidade_base": 63.3,
+    "altura_mesa": 83.3,
+    "profundidade_base": 127.2,
     "espessura_topo_com_moldura": 31.0
   },
   "molas": [
     {
       "pad_X": 72.0,
       "pad_V": 42.0,
-      "poste_X": 86.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": 84.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     },
     {
       "pad_X": 72.0,
       "pad_V": -42.0,
-      "poste_X": 86.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": 84.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     },
     {
       "pad_X": -73.0,
       "pad_V": 42.0,
-      "poste_X": -87.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": -85.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     },
     {
       "pad_X": -73.0,
       "pad_V": -42.0,
-      "poste_X": -87.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": -85.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     },
     {
       "pad_X": -73.0,
       "pad_V": 0.0,
-      "poste_X": -87.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": -85.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     },
     {
       "pad_X": -35.0,
       "pad_V": 40.0,
-      "poste_X": -49.28,
-      "raiz_Z": -18.66,
-      "topo_ressalto_Z": -4.6
+      "poste_X": -47.0,
+      "raiz_Z": -20.31,
+      "topo_ressalto_Z": -4.65
     }
   ],
   "verificacao": {
     "moldura_x_corpo_mm3": 0.0,
     "tela_x_moldura_mm3": 0.0,
     "tela_x_corpo_sem_ressaltos_mm3": 0.0,
-    "tela_x_ressaltos_mm3 (pre-carga intencional)": 19.342793730359954,
+    "tela_x_ressaltos_mm3 (pre-carga intencional)": 16.322894882553246,
     "plugue_usb_x_corpo_mm3": 0.0,
     "plugue_usb_x_moldura_mm3": 0.0,
-    "folga_min_tela_corpo_mm": 0.555,
+    "folga_min_tela_corpo_mm": 0.63,
     "folga_min_tela_moldura_mm": 0.0,
     "cupons_teste_x_mm3": 0.0,
     "chaves_x_pecas_e_tela_mm3": 0.0,
@@ -129,11 +129,11 @@
       "02-CORPO-esquerdo": {
         "dimensoes_mm": [
           102.08,
-          124.57,
-          60.42
+          125.68,
+          83.33
         ],
         "cabe_180": true,
-        "volume_cm3": 88.7,
+        "volume_cm3": 108.4,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
@@ -141,11 +141,11 @@
       "02-CORPO-direito": {
         "dimensoes_mm": [
           102.08,
-          124.57,
-          60.42
+          125.68,
+          83.33
         ],
         "cabe_180": true,
-        "volume_cm3": 85.8,
+        "volume_cm3": 103.5,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
@@ -181,18 +181,34 @@
           25.0
         ],
         "cabe_180": true,
-        "volume_cm3": 5.9,
+        "volume_cm3": 7.8,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 2
       }
     },
     "estabilidade_sem_base": {
-      "massa_g": 434,
-      "cg_y": 12.7,
-      "pivo_y": 40.8,
-      "N_topo_area_ativa": 1.3,
-      "N_centro": 2.3
+      "massa_g": 471,
+      "cg_y": 6.4,
+      "apoio_y": [
+        -48.0,
+        64.8
+      ],
+      "toque_N": {
+        "topo_area_ativa": {
+          "para_tras": 21.3,
+          "para_frente": null
+        },
+        "centro": {
+          "para_tras": null,
+          "para_frente": null
+        },
+        "base_area_ativa": {
+          "para_tras": null,
+          "para_frente": null
+        }
+      },
+      "menor_toque_que_tomba_N": 21.3
     }
   }
 }

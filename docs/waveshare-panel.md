@@ -112,4 +112,4 @@ Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `pyt
 
 ## Case impresso
 
-O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem moldura e corpo em cunha a 15°, lisos e sem nome, apoiados direto na mesa. As peças se unem por pressão, chaves impressas e cola, sem parafusos; a tela fica prensada entre a moldura e molas impressas. Cada peça sai em metades para caber em impressoras de 180 mm. O README traz as medidas oficiais da tela, o pacote para a faculdade (STL e configurações de impressão), testes do encaixe e a verificação digital. Nada foi impresso ainda.
+O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem moldura e corpo em cunha baixa, com a tela deitada a 30° da mesa (estilo console de balcão), lisos e sem nome, apoiados direto na mesa. As peças se unem por pressão, chaves impressas e cola, sem parafusos; a tela fica prensada entre a moldura e molas impressas. Cada peça sai em metades para caber em impressoras de 180 mm. O README traz as medidas oficiais da tela, o pacote para a faculdade (STL e configurações de impressão), testes do encaixe e a verificação digital. Nada foi impresso ainda.

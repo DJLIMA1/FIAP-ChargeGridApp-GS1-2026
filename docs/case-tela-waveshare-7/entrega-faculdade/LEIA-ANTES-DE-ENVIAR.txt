@@ -1,8 +1,9 @@
-CASE DA TELA WAVESHARE 7" — STL PARA A FACULDADE — VERSÃO 2
+CASE DA TELA WAVESHARE 7" — STL PARA A FACULDADE — VERSÃO 3
 Preparado em 18/10/2026.
 
 O QUE É
-Case de mesa para a tela Waveshare ESP32-S3-Touch-LCD-7, inclinado 15°.
+Case de mesa para a tela Waveshare ESP32-S3-Touch-LCD-7, com a tela deitada a
+30° da mesa (estilo console de balcão).
 Sem nome ou logotipo. Nenhum parafuso: as peças se unem por ganchos de
 pressão, chaves borboleta impressas e cola.
 

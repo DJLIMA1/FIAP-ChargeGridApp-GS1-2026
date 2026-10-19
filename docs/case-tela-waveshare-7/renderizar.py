@@ -91,7 +91,7 @@ def com_base(parts):   # inclui a base so quando ela existe
 COL['chave'] = (0.20, 0.55, 0.85)
 asm = com_base([(mol, COL['moldura']), (cor, COL['corpo']), (base, COL['base']), (tela, COL['vidro'])])
 render(asm, '01-frente-3-4.png', 14, -62, 'Montado - frente 3/4')
-render(asm, '02-lateral.png', 0, 0, 'Lateral - tela inclinada %.0f graus' % P['tilt_deg'], light=(0.8, -0.4, 0.5))
+render(asm, '02-lateral.png', 0, 0, 'Lateral - tela a %.0f graus da mesa' % (90 - P['tilt_deg']), light=(0.8, -0.4, 0.5))
 render(asm, '03-traseira-3-4.png', 20, 128, 'Traseira 3/4 - lisa, so a ventilacao', light=(0.3, 0.8, 0.6))
 render(com_base([(cor, COL['corpo']), (base, COL['base']), (mol, COL['moldura']), (tela, COL['vidro']), (usb, COL['usb'])]), '04-lateral-direita-usb.png', 6, -18,
        'Lateral direita - furos USB-C (plugues de exemplo)', light=(0.9, -0.4, 0.4))
