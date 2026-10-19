@@ -54,6 +54,8 @@ O APK 0.5.2 (build 27) está em `builds/chargegrid-0.5.2.apk` (SHA-256 `62264dd1
 
 O APK 0.6.0 (build 28) está em `builds/chargegrid-0.6.0.apk` (SHA-256 `ce08b81b4f90cb4aa56ecb6d2c0122f4ae0c6289246ab8a4e4f62f4f36e69f36`). Bateria do carro sorteada e escondida (sincronizada com o totem pela API), parada automática em 100% com crédito do valor pré-pago não usado, recarga por autonomia e Modo apresentação (bateria do celular como bateria do carro). Com a API anterior à migração `f2b7d4c8a1e6`, o app inicia a recarga sem os campos de bateria.
 
+O APK 0.6.1 (build 29) está em `builds/chargegrid-0.6.1.apk` (SHA-256 `bea4389328bd73edb69eddf42b00556f25d52785d288abcb273c5582d09ea4eb`). Limite de potência do posto e por conector (divisão automática), energia e potência máxima de cada carregador, aviso de limite em uso, limite do motorista no fluxo de recarga, logo do tema claro, gráficos do histórico responsivos e operador sem a aba Limite de bateria. Banco de produção em `c3a9e5f1d204`, API publicada em 19/10/2026.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
