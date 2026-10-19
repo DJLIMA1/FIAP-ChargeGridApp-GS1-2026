@@ -39,6 +39,8 @@ uint32_t version = 0, sequence = 0;
 unsigned long lastContact, lastTick, started, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
 float maxCost = -1, price = 0, discount = 0;
+float socStartPercent = -1, batteryKwh = 0, phoneSocPercent = -1;
+String socSource;
 time_t reservationDeadline = 0;
 JsonDocument acknowledgements;
 bool hasSynced = false;
@@ -374,7 +376,13 @@ void setup() {
 #endif
   version = store.getUInt("version", 0); lastCommand = store.getString("command", "");
   sessionId = store.getString("session", ""); reading.energyWh = store.getFloat("energy", 0);
-  reading.socPercent = min(100.0f, 20.0f + reading.energyWh / 600.0f);
+  if (sessionId.length()) {
+    // A sessão interrompida reporta o SoC final coerente com a energia salva.
+    socStartPercent = store.getFloat("soc0", -1); batteryKwh = store.getFloat("batt", 0);
+    socSource = store.getString("socsrc", "");
+    if (socSource == "phone") phoneSocPercent = socStartPercent;
+  }
+  reading.socPercent = currentSessionSoc(reading.energyWh);
   if (sessionId.length()) { state = "stopped"; endReason = "communication_lost"; }
   bootId = String(esp_random(), HEX) + String(esp_random(), HEX) + String(esp_random(), HEX);
   acknowledgements.to<JsonArray>();

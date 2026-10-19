@@ -18,7 +18,17 @@ from ...models import (
     now,
 )
 from ...presence_code import current_code
-from ...service import active_res, active_session, issue, online, reconcile_expiry, row
+from ...service import (
+    BATTERY_FULL,
+    active_res,
+    active_session,
+    derived_soc,
+    issue,
+    online,
+    reconcile_expiry,
+    row,
+    stop_if_battery_full,
+)
 from ...session_events import record as record_session_event
 
 
@@ -78,7 +88,7 @@ def sync(db, authenticated_device, data):
             terminal_replay = True
             if (
                 energy_wh != reported.energy_wh
-                or soc_percent != reported.soc_percent
+                or _soc_changed(reported, soc_percent)
                 or data.source != reported.source
                 or data.physical_state not in ("idle", "stopped", "fault")
             ):
@@ -215,7 +225,7 @@ def sync(db, authenticated_device, data):
     if data.session_id and not terminal_replay:
         reported = db.get(ChargingSession, data.session_id)
         reported.energy_wh = energy_wh
-        reported.soc_percent = soc_percent
+        reported.soc_percent = _current_soc(reported, soc_percent, energy_wh)
         reported.source = data.source
         reported.last_measurement_at = now()
         reported.cost_estimate = (
@@ -239,6 +249,8 @@ def sync(db, authenticated_device, data):
             ):
                 cmd.status = "superseded"
             device.reconciled = True
+        elif reported.status == "charging" and session and session.id == reported.id:
+            stop_if_battery_full(db, connector, device, reported)
     recover_safety_command(db, connector, device, reservation, session)
     restore_reservation(db, connector, device, reservation, session, reboot)
     pending = db.scalar(
@@ -296,6 +308,28 @@ def sync(db, authenticated_device, data):
     if completed_reset_id:
         result["factory_reset_confirmed"] = completed_reset_id
     return result
+
+
+def _current_soc(session, reported_soc, energy_wh):
+    """Device SoC wins for simulated/legacy sessions; the phone owns ``phone`` sessions."""
+    if session.soc_source == "phone":
+        return session.soc_percent
+    if reported_soc is not None:
+        return reported_soc
+    if session.soc_source == "simulated":
+        derived = derived_soc(session, energy_wh)
+        return derived if derived is not None else session.soc_percent
+    return None
+
+
+def _soc_changed(session, reported_soc):
+    """Final-result immutability for replays. With battery data the stored SoC may be
+    API-derived or phone-reported, so only an explicit, different device value conflicts."""
+    if session.soc_source is None:
+        return reported_soc != session.soc_percent
+    if session.soc_source == "phone" or reported_soc is None:
+        return False
+    return reported_soc != session.soc_percent
 
 
 def recover_safety_command(db, connector, device, reservation, session):
@@ -360,7 +394,9 @@ def restore_reservation(db, connector, device, reservation, session, reboot):
 
 
 def finish(session, data, fallback):
-    reason = data.end_reason or fallback
+    # A battery-full stop was decided by the API; the device's own reason
+    # (often a generic "requested_stop") must not overwrite it.
+    reason = BATTERY_FULL if session.end_reason == BATTERY_FULL else (data.end_reason or fallback)
     session.status = (
         "failed"
         if data.physical_state == "fault" or session.started_at is None
@@ -368,6 +404,23 @@ def finish(session, data, fallback):
     )
     session.ended_at = now()
     session.end_reason = reason
+
+
+def _number(value):
+    return float(value) if value is not None else None
+
+
+def battery_parameters(session):
+    """Car battery fields as plain JSON numbers for the firmware (``as<float>()``)."""
+    return {
+        "soc_percent": _number(session.soc_percent),
+        "battery_kwh": _number(session.battery_kwh),
+        "soc_source": session.soc_source,
+    }
+
+
+def _battery(session):
+    return battery_parameters(session) | {"start_soc_percent": _number(session.start_soc_percent)}
 
 
 def response(db, connector, device):
@@ -420,6 +473,7 @@ def response(db, connector, device):
                         "discount_percent",
                     )
                 }
+                | _battery(session)
                 if session
                 else None
             ),

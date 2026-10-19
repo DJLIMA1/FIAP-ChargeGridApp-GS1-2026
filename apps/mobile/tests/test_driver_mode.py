@@ -15,6 +15,7 @@ from chargegrid_app.navigation import SCREENS, active_tab, parent_route
 from chargegrid_app.preferences import DriverProfileStore
 from chargegrid_app.screens import driver, home
 from chargegrid_app.services import driver as helpers
+from chargegrid_app.services import vehicle_state
 
 SE = {'lat': -23.5505, 'lng': -46.6333}
 # 15h UTC = 12h em São Paulo, terça-feira.
@@ -47,8 +48,8 @@ def fields(control):
 
 
 def battery(control):
-    """The battery is a slider (the only question asked on every shift)."""
-    return next(item for item in descendants(control) if isinstance(item, ft.Slider) and item.data == 'soc')
+    """The old "Bateria agora" slider; the screen no longer asks the battery (hidden SoC), so ``None``."""
+    return next((item for item in descendants(control) if isinstance(item, ft.Slider)), None)
 
 
 class DriverApp:
@@ -148,17 +149,20 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
         screen = await driver.build(self.app)
         visible = texts(screen)
         self.assertIn('Modo motorista', visible)
-        # Reference layout: car line, battery card, collapsible shift, "O APP já considera" rows, two buttons.
-        for label in ('BYD Dolphin - 321 km de autonomia', 'Bateria agora', '80%', '0%', '100%',
+        # Reference layout without the battery card: car line, collapsible shift, "O APP já considera", buttons.
+        self.assertNotIn('Bateria agora', visible)
+        self.assertIsNone(battery(screen))
+        self.assertFalse(any(text.endswith('%') for text in visible))  # the hidden SoC is never a number here
+        for label in ('BYD Dolphin - 321 km de autonomia',
                       'Turno, ganhos e refeições', 'O APP já considera', 'Resto do turno',
                       'Postos ativos por local', 'Situação climática', 'Próxima parada agora'):
             self.assertIn(label, visible)
-        self.assertLess(visible.index('Bateria agora'), visible.index('O APP já considera'))
         self.assertLess(visible.index('Situação climática'), visible.index('Planejar meu turno'))
         form = fields(screen)
         self.assertEqual(form['Modelo do carro'].value, 'byd_dolphin')
-        battery(screen).value = 45
+        vehicle_state.set_simulated_soc(self.app, 45)
         await click(screen, 'Planejar meu turno')(None)
+        self.assertEqual(self.app.driver_state['plan']['slots'][0]['soc'], 45)  # planner uses the hidden SoC
         visible = texts(screen)
         self.assertTrue(any('sem dados oficiais da Uber/99' in text for text in visible))
         for label in ('LUCRO LÍQUIDO ESTIMADO DO TURNO', 'LINHA DO TEMPO DO TURNO', 'BATERIA PROJETADA (SoC)',
@@ -182,7 +186,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_next_stop_offers_reservation_of_recommended_point(self):
         screen = await driver.build(self.app)
-        battery(screen).value = 16
+        vehicle_state.set_simulated_soc(self.app, 16)
         await click(screen, 'Próxima parada agora')(None)
         self.assertIn('PRÓXIMA PARADA AGORA', texts(screen))
         recommendation = self.app.driver_state['next']['recommendation']
@@ -225,13 +229,14 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
             form = fields(screen)
             self.assertEqual(form['Modelo do carro'].value, 'byd_seal')
             self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
-            self.assertEqual(battery(screen).value, 70)
-            battery(screen).value = 55
+            self.assertIsNone(battery(screen))
+            vehicle_state.set_simulated_soc(app, 55)
             await click(screen, 'Planejar meu turno')(None)
             self.assertIn(('PUT', 'driver/profile'), calls)
             self.assertIn(('POST', 'driver/plan'), calls)
             stored = json.loads((Path(directory) / 'driver_profile.json').read_text())
-            self.assertEqual(stored['soc_percent'], 55)
+            self.assertNotIn('soc_percent', stored)  # the battery is no longer a form value
+            self.assertEqual(vehicle_state.simulated_soc(app), 55)
             await demo.close()
 
 

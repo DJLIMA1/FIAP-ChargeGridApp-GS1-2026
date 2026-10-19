@@ -169,6 +169,7 @@ class DemoApi(OwnerApiMixin):
                 'started_at': self._iso(ended - 1200), 'ended_at': self._iso(ended),
                 'max_duration_minutes': 20, 'max_cost': None, 'price_per_kwh': '1.8900',
                 'discount_percent': 0, 'energy_wh': '2400.000', 'soc_percent': '24.00',
+                'start_soc_percent': None, 'battery_kwh': None, 'soc_source': None,
                 'source': 'simulated', 'last_measurement_at': self._iso(ended),
                 'cost_estimate': '4.5360', 'end_reason': 'duration_limit',
             }
@@ -313,7 +314,8 @@ class DemoApi(OwnerApiMixin):
             start = runtime['start_at']
             if runtime.get('never_started'):
                 if self._elapsed >= runtime['stop_at']:
-                    session.update(status='failed', ended_at=self._iso(runtime['stop_at']), end_reason='requested')
+                    session.update(status='failed', ended_at=self._iso(runtime['stop_at']),
+                                   end_reason=runtime.get('stop_reason', 'requested'))
                     self._event(sid, 'ended', at=session['ended_at'])
                 continue
             if self._elapsed < start:
@@ -328,7 +330,10 @@ class DemoApi(OwnerApiMixin):
             if session['max_cost'] is not None and effective_price > 0:
                 deadlines.append((start + float(Decimal(session['max_cost']) * 3600 / (effective_price * power)), 'cost_limit'))
             if runtime.get('stop_at') is not None:
-                deadlines.append((runtime['stop_at'], 'requested'))
+                deadlines.append((runtime['stop_at'], runtime.get('stop_reason', 'requested')))
+            full_at = self._battery_full_at(session, start, power)
+            if full_at is not None:
+                deadlines.append((full_at, 'battery_full'))
             deadline, reason = min(deadlines, key=lambda item: item[0])
             observed = min(self._elapsed, deadline)
             seconds = Decimal(str(max(0, observed - start)))
@@ -337,8 +342,7 @@ class DemoApi(OwnerApiMixin):
             if session['max_cost'] is not None:
                 cost = min(cost, Decimal(session['max_cost']))
             session.update(energy_wh=_decimal(energy, '0.001'), cost_estimate=_decimal(cost, '0.0001'),
-                           soc_percent=_decimal(min(Decimal(100), Decimal(20) + energy / 600), '0.01'),
-                           last_measurement_at=self._iso(observed))
+                           soc_percent=self._soc(session, energy), last_measurement_at=self._iso(observed))
             if self._elapsed >= deadline:
                 session.update(status='completed', ended_at=self._iso(deadline), end_reason=reason)
                 self._event(sid, 'ended', at=session['ended_at'])
@@ -347,6 +351,47 @@ class DemoApi(OwnerApiMixin):
                 reset['status'] = 'applied'
                 self._devices[device_id]['revoked'] = True
                 self._points[self._devices[device_id]['connector_id']]['retired'] = True
+
+    @staticmethod
+    def _soc(session, energy):
+        """Same rule as the API: ``simulated`` derives from energy, ``phone`` keeps the app value."""
+        if session.get('soc_source') == 'phone':
+            return session['soc_percent']
+        if session.get('soc_source') == 'simulated' and session.get('start_soc_percent') and session.get('battery_kwh'):
+            soc = Decimal(session['start_soc_percent']) + energy / 1000 / Decimal(session['battery_kwh']) * 100
+            return _decimal(min(Decimal(100), soc), '0.01')
+        if session.get('soc_source') == 'simulated':
+            return session['soc_percent']
+        # Sessions without battery data keep the historical demo curve.
+        return _decimal(min(Decimal(100), Decimal(20) + energy / 600), '0.01')
+
+    @staticmethod
+    def _battery_full_at(session, start, power):
+        """Elapsed second at which a simulated battery reaches 100 % (None if unknown)."""
+        if (session.get('soc_source') != 'simulated' or session.get('start_soc_percent') is None
+                or not session.get('battery_kwh') or not power):
+            return None
+        missing_kwh = (100 - Decimal(session['start_soc_percent'])) / 100 * Decimal(session['battery_kwh'])
+        return start + float(missing_kwh / power * 3600)
+
+    def _report_soc(self, session_id, body):
+        _fields(body, ('soc_percent',))
+        if 'soc_percent' not in body:
+            _fail('Informe o nível da bateria.')
+        soc = _decimal(_number(body['soc_percent'], 'o nível da bateria', 0, 100), '0.01')
+        session = self._get(self._sessions, session_id, 'Sessão não encontrada')
+        if session['status'] not in ('starting', 'charging'):
+            _fail('A recarga não está em andamento.', 'session_not_active', 409)
+        session.update(soc_percent=soc, soc_source='phone')
+        if session.get('start_soc_percent') is None:
+            session['start_soc_percent'] = soc
+        if Decimal(soc) >= 100:
+            runtime = self._session_runtime[session['id']]
+            runtime.update(stop_at=self._elapsed + 1, never_started=session['status'] == 'starting',
+                           stop_reason='battery_full')
+            session.update(status='stopping', end_reason='battery_full')
+            self._event(session['id'], 'stop_requested')
+        return self._operation_row(session, 'session')
 
     def _event(self, session_id, kind, *, at=None):
         self._session_events.setdefault(session_id, []).append({
@@ -553,6 +598,8 @@ class DemoApi(OwnerApiMixin):
         if parts[0] == 'charging-sessions' and len(parts) == 2 and method == 'GET':
             record = self._current('session') if parts[1] == 'current' else self._get(self._sessions, parts[1])
             return self._operation_row(record, 'session')
+        if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'soc' and method == 'POST':
+            return self._report_soc(parts[1], body)
         if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'stop' and method == 'POST':
             session = self._get(self._sessions, parts[1])
             if session['status'] in ('starting', 'charging'):
@@ -766,7 +813,15 @@ class DemoApi(OwnerApiMixin):
         return self._operation_row(reservation, 'reservation')
 
     def _start(self, body):
-        _fields(body, ('public_code', 'presence_code', 'reservation_id', 'coupon_code', 'max_duration_minutes', 'max_cost'))
+        _fields(body, ('public_code', 'presence_code', 'reservation_id', 'coupon_code', 'max_duration_minutes', 'max_cost',
+                       'soc_percent', 'battery_kwh', 'soc_source'))
+        start_soc = (_decimal(_number(body['soc_percent'], 'o nível da bateria', 0, 100), '0.01')
+                     if body.get('soc_percent') is not None else None)
+        battery = (_decimal(_number(body['battery_kwh'], 'a capacidade da bateria', 5, 250), '0.01')
+                   if body.get('battery_kwh') is not None else None)
+        if body.get('soc_source') not in (None, 'simulated', 'phone'):
+            _fail('Confira a origem do nível da bateria.')
+        soc_source = body.get('soc_source') or ('simulated' if start_soc is not None else None)
         if str(body.get('presence_code', '')).strip().upper() != DEMO_PRESENCE_CODE:
             _fail('Na demonstração, use o código #F12345.', 'invalid_presence_code')
         reservation_id = body.get('reservation_id')
@@ -809,7 +864,8 @@ class DemoApi(OwnerApiMixin):
         session = {'id': sid, 'user_id': _USER, 'connector_id': point['id'], 'reservation_id': reservation_id,
                    'status': 'starting', 'created_at': self._iso(), 'started_at': None, 'ended_at': None,
                    'max_duration_minutes': duration, 'max_cost': maximum, 'price_per_kwh': point['price_per_kwh'],
-                   'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': None, 'source': 'simulated',
+                   'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': start_soc,
+                   'start_soc_percent': start_soc, 'battery_kwh': battery, 'soc_source': soc_source, 'source': 'simulated',
                    'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None}
         self._sessions[sid] = session
         self._event(sid, 'start_requested')

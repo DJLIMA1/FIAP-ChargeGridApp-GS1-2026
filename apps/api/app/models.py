@@ -139,6 +139,11 @@ class ChargingSession(Base):
     energy_wh: Mapped[float] = mapped_column(Numeric(16, 3), default=0)
     soc_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
     source: Mapped[str | None] = mapped_column(String(20))
+    # Car battery (migration f2b7d4c8a1e6): initial SoC, usable capacity and who
+    # drives the current SoC ("simulated" = derived from energy, "phone" = app).
+    start_soc_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    battery_kwh: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    soc_source: Mapped[str | None] = mapped_column(String(20))
     last_measurement_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cost_estimate: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     end_reason: Mapped[str | None] = mapped_column(String(100))
@@ -146,6 +151,11 @@ class ChargingSession(Base):
         CheckConstraint(
             "energy_wh >= 0 AND (soc_percent IS NULL OR soc_percent BETWEEN 0 AND 100) AND discount_percent BETWEEN 0 AND 100"
         ),
+        CheckConstraint(
+            "start_soc_percent IS NULL OR start_soc_percent BETWEEN 0 AND 100", name="session_start_soc_range"
+        ),
+        CheckConstraint("battery_kwh IS NULL OR battery_kwh BETWEEN 5 AND 250", name="session_battery_kwh_range"),
+        CheckConstraint("soc_source IS NULL OR soc_source IN ('simulated', 'phone')", name="session_soc_source"),
         Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(

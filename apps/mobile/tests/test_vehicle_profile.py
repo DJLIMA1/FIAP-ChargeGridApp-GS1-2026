@@ -195,14 +195,8 @@ class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields(screen)['O que planejar'].value, 'full_shift')
         self.assertIn('Turno completo 10:00–22:00', visible)
         self.assertIn('Turno completo', visible)  # row title follows the inferred mode
-        # The estimated range lives in the slider bubble and the screen-reader label, not as card text.
-        slider = battery(screen)
-        self.assertIn('km', slider.label)
-        self.assertTrue(any('acima da reserva' in (item.label or '') for item in descendants(screen)
-                            if isinstance(item, ft.Semantics)))
-        battery(screen).value = 30
-        await battery(screen).on_change(None)
-        self.assertIn('30%', texts(screen))
+        # No battery question: the planner uses the hidden SoC (services.vehicle_state).
+        self.assertIsNone(battery(screen))
         await click(screen, 'Planejar meu turno')(None)
         plan = self.app.driver_state['plan']
         self.assertEqual((plan['mode'], plan['window']['start']), ('full_shift', '10:00'))

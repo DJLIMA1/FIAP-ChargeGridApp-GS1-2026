@@ -133,3 +133,77 @@ def test_reservation_ttl_updates_on_every_sync():
     data["commands"] = []
     device.response(data)
     assert device.reservation_expires == expiry.timestamp()
+
+
+def soc_start(source="simulated", soc=50, battery="60.00"):
+    data = response()
+    data["commands"][0]["parameters"] = {"soc_percent": soc, "battery_kwh": battery, "soc_source": source}
+    return data
+
+
+def test_legacy_start_keeps_bench_soc_without_battery_stop():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    device.response(response())
+    now[0] = 10
+    payload = device.payload()
+    assert device.soc_source is None and not device.soc_known()
+    assert payload["soc_percent"] is None
+
+
+def test_simulated_soc_rises_with_energy_and_ignores_api_echo():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    device.response(soc_start())
+    now[0] = 10
+    assert device.payload()["soc_percent"] == round(50 + 20 / 600, 2)
+    sync = soc_start()
+    sync["commands"] = []
+    sync["authorized"]["session"]["soc_percent"] = 12
+    device.response(sync)
+    assert device.soc() == 50 + 20 / 600
+
+
+def test_simulated_battery_full_stops_locally(tmp_path):
+    now = [0]
+    device = Device(tmp_path / "state.json", clock=lambda: now[0])
+    device.response(soc_start(soc=99.9, battery=10))
+    now[0] = 10
+    payload = device.payload()
+    assert device.state == "stopped" and device.reason == "battery_full"
+    assert payload["end_reason"] == "battery_full" and payload["soc_percent"] == 100
+    assert abs(device.energy - 10) < 1e-6
+    restarted = Device(tmp_path / "state.json", clock=lambda: now[0])
+    assert restarted.soc_source == "simulated" and restarted.soc() == 100
+
+
+def test_phone_soc_passthrough_and_battery_full_stop():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    device.response(soc_start(source="phone", soc=40))
+    now[0] = 10
+    assert device.payload()["soc_percent"] is None and device.soc() == 40
+    sync = soc_start(source="phone", soc=40)
+    sync["commands"] = []
+    sync["authorized"]["session"].update(soc_source="phone", soc_percent="63.50")
+    device.response(sync)
+    now[0] = 20
+    payload = device.payload()
+    assert payload["soc_percent"] is None and device.soc() == 63.5 and device.state == "charging"
+    stop = response(kind="STOP", version=2, identifier="stop-full")
+    stop["commands"][0]["parameters"] = {"reason": "battery_full"}
+    device.response(stop)
+    assert device.state == "stopped" and device.reason == "battery_full"
+
+
+def test_phone_source_switch_mid_session():
+    device = Device()
+    device.response(soc_start())
+    sync = soc_start()
+    sync["commands"] = []
+    sync["authorized"]["session"].update(soc_source="phone", soc_percent=100)
+    device.response(sync)
+    assert device.soc() == 100 and device.state == "charging"  # A API decide a parada.
+    stop = response(kind="STOP", version=2, identifier="stop")
+    device.response(stop)
+    assert device.reason == "battery_full"

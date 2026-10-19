@@ -8,6 +8,7 @@ from ...errors import fail
 from ...http_helpers import page, session_row, session_rows
 from ...models import ChargingSession, Connector, SessionEvent, Station
 from ...schemas import (
+    SocInput,
     StartInput,
 )
 from ...security import current_user
@@ -18,7 +19,7 @@ from ...service import (
     owned,
 )
 from ..auth.routes import limit
-from .service import start, stop
+from .service import report_soc, start, stop
 
 router = APIRouter()
 
@@ -80,6 +81,18 @@ def stop_session(
     db=Depends(db_session),
 ):
     return session_row(db, stop(db, user, session_id, idempotency_key))
+
+
+@router.post("/charging-sessions/{session_id}/soc")
+def session_soc(
+    session_id: UUID,
+    data: SocInput,
+    user=Depends(current_user),
+    db=Depends(db_session),
+):
+    # The app pushes the phone battery every poll (~5 s); 60/min leaves room for retries.
+    limit(db, f"soc:{user.id}", maximum=60, seconds=60)
+    return session_row(db, report_soc(db, user, session_id, data.soc_percent))
 
 
 @router.get("/me/charging-sessions")

@@ -309,6 +309,7 @@ def live(db, scope):
                 "started_at": session.started_at.isoformat() if session.started_at else None,
                 "energy_wh": str(session.energy_wh), "cost_estimate": str(session.cost_estimate),
                 "soc_percent": str(session.soc_percent) if session.soc_percent is not None else None,
+                "soc_source": session.soc_source,
                 "power_w": str(power) if power is not None else None,
                 "source": session.source,
                 "last_measurement_at": session.last_measurement_at.isoformat()

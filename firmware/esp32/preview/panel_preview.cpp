@@ -21,6 +21,8 @@ uint32_t version = 0, sequence = 0;
 unsigned long lastContact = 1000, lastTick = 1000, started = 1000, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
 float maxCost = -1, price = 1, discount = 0;
+float socStartPercent = -1, batteryKwh = 0, phoneSocPercent = -1;
+String socSource;
 time_t reservationDeadline = 0;
 JsonDocument acknowledgements;
 bool hasSynced = true, sessionPricingKnown = false;
@@ -28,11 +30,15 @@ bool panelIntegrationEnabled = true, panelIdentityConfigured = true, panelNetwor
 int lastSyncHttpStatus = 200;
 bool savePanelConnection(const char*, const char*, const char*) { return false; }
 bool clearPanelConnection() { return false; }
-void requestLocalSafeStop() {}
+bool preparePanelFactoryReset(const String&, String&, String&) { return false; }
+void confirmPanelOwnership() {}
 extern "C" bool lvgl_port_lock(int) { return true; }
 extern "C" bool lvgl_port_unlock() { return true; }
 bool chargegridPanelHardwareSetup() { return true; }
 
+// O controlador real calcula o SoC exibido (simulado/celular) exatamente como na placa.
+#include "../src/sensors.cpp"
+#include "../src/charging_controller.cpp"
 #include "../src/panel_ui.cpp"
 
 static lv_color_t framebuffer[800 * 480], drawbuf[800 * 48];
@@ -86,9 +92,17 @@ int main(int argc, char** argv) {
   online(); state = "reserved"; reservationDeadline = time(nullptr) + 8 * 60;
   shot(dir, "totem-5-reserved");
   state = "charging"; sessionId = "s"; reading = {42, 3210, 7200, true}; sessionPricingKnown = true; price = 2;
+  shot(dir, "totem-6-charging-legacy"); // API sem SoC: layout anterior.
+  socSource = "simulated"; socStartPercent = 35; batteryKwh = 50;
+  reading.socPercent = currentSessionSoc(reading.energyWh);
   shot(dir, "totem-6-charging");
-  state = "stopped";
+  state = "stopped"; endReason = "requested";
   shot(dir, "totem-7-stopped");
+  state = "charging"; socSource = "phone"; phoneSocPercent = 87; reading.socPercent = 87;
+  shot(dir, "totem-9-charging-phone");
+  state = "stopped"; endReason = "battery_full"; reading.socPercent = 100;
+  shot(dir, "totem-10-battery-full");
+  socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1; endReason = "";
   online();
   lv_obj_clear_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
   lv_keyboard_set_textarea(configKeyboard, ssidInput);

@@ -1,5 +1,51 @@
 #include "runtime.h"
 #include <time.h>
+#include <stdlib.h>
+#include <string.h>
+// A API serializa Decimal como texto ("42.50"); aceita número ou texto numérico.
+static float jsonNumber(JsonVariantConst value, float fallback) {
+  if (value.is<const char*>()) {
+    const char* text = value.as<const char*>();
+    char* end = nullptr;
+    const float parsed = strtof(text, &end);
+    return end != text ? parsed : fallback;
+  }
+  return value.is<float>() ? value.as<float>() : fallback;
+}
+static bool validSocSource(const char* source) {
+  return source && (strcmp(source, "simulated") == 0 || strcmp(source, "phone") == 0);
+}
+static void resetSessionSoc() {
+  socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1; socSource = "";
+}
+// Lê soc_percent/battery_kwh/soc_source do START (campos ausentes: firmware antigo/API antiga).
+static void readStartSoc(JsonObjectConst source) {
+  if (source.isNull()) return;
+  const float soc = jsonNumber(source["soc_percent"], -1);
+  if (soc >= 0 && soc <= 100) socStartPercent = soc;
+  const float battery = jsonNumber(source["battery_kwh"], 0);
+  if (battery >= 1 && battery <= 1000) batteryKwh = battery;
+  const char* kind = source["soc_source"].as<const char*>();
+  if (validSocSource(kind)) socSource = kind;
+}
+static void persistSessionSoc() {
+  store.putFloat("soc0", socStartPercent);
+  store.putFloat("batt", batteryKwh);
+  store.putString("socsrc", socSource);
+}
+static float batteryFullWh() {
+  if (socSource != "simulated" || socStartPercent < 0 || batteryKwh <= 0) return -1;
+  return (100.0f - socStartPercent) / 100.0f * batteryKwh * 1000.0f;
+}
+bool sessionSocKnown() {
+  if (socSource == "phone") return phoneSocPercent >= 0;
+  return batteryFullWh() >= 0;
+}
+float currentSessionSoc(float energyWh) {
+  if (socSource == "phone" && phoneSocPercent >= 0) return phoneSocPercent;
+  if (batteryFullWh() >= 0) return min(100.0f, socStartPercent + energyWh / (10.0f * batteryKwh));
+  return min(100.0f, 20.0f + energyWh / 600.0f); // Bancada legada, sem SoC da API.
+}
 String isoTime() {
   time_t now = time(nullptr);
   struct tm utc;
@@ -51,16 +97,30 @@ void tick() {
     unsigned long overdue = max(overdueContact, overdueDuration);
     unsigned long permittedElapsed = elapsed > overdue ? elapsed - overdue : 0;
     const float effectivePrice = price * (1 - discount / 100);
+    bool costCapped = false, fullCapped = false;
     if (maxCost >= 0 && effectivePrice > 0) {
       const float remainingWh = max(0.0f, maxCost * 1000 / effectivePrice - reading.energyWh);
       const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / 7200);
-      permittedElapsed = min(permittedElapsed, costElapsed);
+      if (costElapsed < permittedElapsed) { permittedElapsed = costElapsed; costCapped = true; }
+    }
+    // Bateria simulada: não entrega energia além dos 100 %, mesmo com a rede bloqueada.
+    const float fullWh = batteryFullWh();
+    if (fullWh >= 0) {
+      const float remainingWh = max(0.0f, fullWh - reading.energyWh);
+      const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / 7200);
+      if (fullElapsed < permittedElapsed) { permittedElapsed = fullElapsed; fullCapped = true; }
     }
     reading = sensors.read(true, permittedElapsed);
+    reading.socPercent = currentSessionSoc(reading.energyWh);
     if (now - lastSaved >= 30000) { persist(); lastSaved = now; }
     if (now - lastContact >= 45000) stop("communication_lost");
     else if (now - started >= maxDurationMs) stop("duration_limit");
-    else if (maxCost >= 0 && (reading.energyWh / 1000 * effectivePrice >= maxCost || permittedElapsed < elapsed - min(elapsed, overdue))) stop("cost_limit");
+    else if (fullWh >= 0 && (fullCapped || reading.energyWh >= fullWh - 0.01f)) {
+      reading.socPercent = 100;
+      stop("battery_full");
+      nextSync = millis(); // A API encerra com battery_full no próximo sync.
+    }
+    else if (maxCost >= 0 && (reading.energyWh / 1000 * effectivePrice >= maxCost || costCapped)) stop("cost_limit");
   } else if (state == "reserved" && reservationDeadline && time(nullptr) >= reservationDeadline) {
     state = "idle";
   }
@@ -81,9 +141,27 @@ bool apply(JsonDocument& response) {
     price = authorizedSession["price_per_kwh"].as<float>();
     discount = authorizedSession["discount_percent"] | 0.0f;
     sessionPricingKnown = true;
+    // SoC da sessão ativa: o app pode trocar a fonte para o celular durante a recarga.
+    const char* kind = authorizedSession["soc_source"].as<const char*>();
+    if (validSocSource(kind)) socSource = kind;
+    if (batteryKwh <= 0) {
+      const float battery = jsonNumber(authorizedSession["battery_kwh"], 0);
+      if (battery >= 1 && battery <= 1000) batteryKwh = battery;
+    }
+    if (socStartPercent < 0) {
+      const float start = jsonNumber(authorizedSession["start_soc_percent"], -1);
+      if (start >= 0 && start <= 100) socStartPercent = start;
+    }
+    if (socSource == "phone") {
+      // Nível real do celular enviado pelo app: o ponto exibe e reporta, nunca recalcula.
+      const float phone = jsonNumber(authorizedSession["soc_percent"], -1);
+      if (phone >= 0 && phone <= 100) phoneSocPercent = phone;
+      else if (phoneSocPercent < 0) phoneSocPercent = socStartPercent;
+    }
+    reading.socPercent = currentSessionSoc(reading.energyWh);
   }
   if (state == "stopped" && ((!authorization["session"].isNull() && authorization["session"]["id"].as<String>() != sessionId) || (!authorization["reservation"].isNull() && authorization["session"].isNull()))) {
-    sessionId = ""; reading.energyWh = 0; endReason = ""; sessionPricingKnown = false;
+    sessionId = ""; reading.energyWh = 0; endReason = ""; sessionPricingKnown = false; resetSessionSoc();
   }
   bool changed = false;
   uint32_t current = response["control_version"] | 0;
@@ -127,8 +205,14 @@ bool apply(JsonDocument& response) {
         price = session["price_per_kwh"].as<float>();
         discount = session["discount_percent"] | 0.0f;
         sessionPricingKnown = true;
-        reading.energyWh = 0; persist(); // Sessão salva antes de autorizar a bancada.
+        resetSessionSoc();
+        readStartSoc(session);
+        readStartSoc(command["parameters"].as<JsonObjectConst>()); // parameters prevalecem.
+        if (socStartPercent >= 0 && !socSource.length()) socSource = "simulated";
+        if (socSource == "phone") phoneSocPercent = socStartPercent;
+        reading.energyWh = 0; persistSessionSoc(); persist(); // Sessão salva antes de autorizar a bancada.
         sensors.start(); reading = sensors.read(true, 0);
+        reading.socPercent = currentSessionSoc(reading.energyWh);
         started = lastTick = millis(); state = "charging"; endReason = "";
       }
     } else if (type == "RESERVE") {
@@ -139,7 +223,15 @@ bool apply(JsonDocument& response) {
       else { state = "reserved"; reservationDeadline = parseTime(reservation["expires_at"]); }
     } else if (type == "STOP") {
       if (sessionId.length() && sessionId != command["session_id"].as<String>()) error = "session_mismatch";
-      else stop("requested");
+      else {
+        // Parada pedida pela API ao celular chegar a 100 %: reporta o motivo real,
+        // porque o end_reason do ponto prevalece no encerramento da sessão.
+        const char* reason = command["parameters"]["reason"].as<const char*>();
+        const bool full = (reason && strcmp(reason, "battery_full") == 0) ||
+            (socSource == "phone" && phoneSocPercent >= 100);
+        // Uma parada local já reportada (ex.: battery_full) mantém o motivo original.
+        if (!(state == "stopped" && endReason.length())) stop(full ? "battery_full" : "requested");
+      }
     } else if (type == "RELEASE") {
       if (state == "charging") error = "charging_requires_stop";
       else { state = "idle"; reading.connected = false; }
@@ -158,7 +250,7 @@ bool apply(JsonDocument& response) {
   }
   version = max(version, current);
   if (state != "charging" && response["authorized"]["session"].isNull() && acknowledgements.size() == 0) {
-    sessionId = ""; reading.energyWh = 0; endReason = ""; sessionPricingKnown = false;
+    sessionId = ""; reading.energyWh = 0; endReason = ""; sessionPricingKnown = false; resetSessionSoc();
     if (response["authorized"]["reservation"].isNull()) state = "idle";
   }
   persist();

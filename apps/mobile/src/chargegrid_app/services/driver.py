@@ -157,7 +157,8 @@ def soc_summary(plan):
     if not rows:
         return 'Sem dados de bateria.'
     low = min(rows, key=lambda row: row['soc'])
-    return (f"Bateria projetada: começa em {rows[0]['soc']:.0f}%, mínimo de {low['soc']:.0f}% às {low['time']} "
+    # O ponto de partida é o SoC escondido do carro: só mínimo e fim projetados viram texto.
+    return (f"Bateria projetada: mínimo de {low['soc']:.0f}% às {low['time']} "
             f"e termina em {rows[-1]['soc']:.0f}%.")
 
 

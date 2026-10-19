@@ -1,16 +1,20 @@
 """Assistente de recarga do consumidor (rota ``booking``).
 
 Etapas (``step``; voltar = etapa anterior, contrato de ``navigation.parent_route``):
-  1 conector · 2 Reservar/Agora · 3 por tempo/valor · 4 potência · 5 pagamento · 6 revisar
+  1 conector · 2 Reservar/Agora · 3 por tempo/valor/autonomia · 4 potência · 5 pagamento · 6 revisar
   7 Pix/cartão (simulado) · 8 reserva confirmada
 Parâmetros de rota: ``step``, ``station_id``, ``connector_id`` e, para abrir uma etapa já preenchida
-(captura/atalhos): ``kind`` (reserve|now), ``by`` (time|value), ``amount``, ``power`` (max|reduced),
+(captura/atalhos): ``kind`` (reserve|now), ``by`` (time|value|autonomy), ``amount``, ``power`` (max|reduced),
 ``pay`` (balance|pix|card), ``slot``. O estado das escolhas fica em ``app.booking`` (memória).
 
 "Reservar" cria a reserva pela API (``POST reservations`` com chave de idempotência); "Agora" entrega
 para o fluxo de início de recarga (``charging``), onde o código de presença #F continua obrigatório.
 O pagamento é simulado: Saldo debita ``services.wallet``; Pix/cartão apenas confirmam. Nenhum dado de
 cartão é lido, guardado ou enviado.
+
+"Por autonomia": o motorista pede N km; a energia sai do carro do perfil (consumo) e é limitada ao espaço
+livre da bateria (SoC escondido de ``services.vehicle_state``, nunca exibido aqui). Todo pagamento feito
+aqui fica registrado em ``services.prepaid``: a sobra (ex.: bateria cheia) volta como crédito no saldo.
 """
 
 import flet as ft
@@ -18,7 +22,7 @@ import flet.canvas as cv
 
 from ..api_client import ApiError
 from ..services import booking as rules
-from ..services import wallet
+from ..services import prepaid, vehicle_state, wallet
 from ..ui import design, theme
 from ..ui.point_summary import point_context
 
@@ -35,7 +39,7 @@ def _state(app, station_id, keep_done=False):
     state = getattr(app, 'booking', None)
     if not isinstance(state, dict) or state.get('station_id') != station_id or (state.get('done') and not keep_done):
         state = {'station_id': station_id, 'mode': 'reserve', 'by': 'time', 'power': 'max', 'pay': 'balance',
-                 'minutes_text': '', 'value_text': '', 'group': None, 'connector_id': None, 'slot': None,
+                 'minutes_text': '', 'value_text': '', 'km_text': '', 'car': None, 'group': None, 'connector_id': None, 'slot': None,
                  'key': None, 'result': None, 'done': False}
         app.booking = state
     return state
@@ -47,7 +51,14 @@ def _apply_presets(state, group_keys, presets):
             value = str(presets[name])
             state['mode' if name == 'kind' else name] = None if value == 'none' else value
     if presets.get('amount') is not None:
-        state['value_text' if state['by'] == 'value' else 'minutes_text'] = str(presets['amount'])
+        state[_amount_key(state['by'])] = str(presets['amount'])
+
+
+def _amount_key(by):
+    return {'value': 'value_text', 'autonomy': 'km_text'}.get(by, 'minutes_text')
+
+
+KIND_LABELS = {'time': 'Por tempo', 'value': 'Por valor', 'autonomy': 'Por autonomia'}
 
 
 def _info_box(text, icon=ft.Icons.INFO_OUTLINE, width=None):
@@ -262,14 +273,27 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
     if state['slot'] not in slots:
         state['slot'] = slots[0]
     reserving = state['mode'] == 'reserve'
+    if state['by'] == 'autonomy' and step >= 3:
+        # Carro + SoC escondido (no modo apresentação, a bateria do celular) para converter km em energia.
+        state['car'] = await vehicle_state.snapshot(app)
 
     def nav(target):
         async def handler(event=None):
             await app.go('booking', step=target, station_id=station_id)
         return handler
 
+    def autonomy():
+        car = state['car'] or {'consumption': 14.0, 'usable_kwh': 44.9, 'soc': vehicle_state.SOC_MIN}
+        return rules.autonomy_energy(rules.parse_km(state['km_text'] or '0'), car['consumption'], car['soc'],
+                                     car['usable_kwh'])
+
     def quote():
         power = rules.power_options(group)[state['power'] or 'max'][0]
+        if state['by'] == 'autonomy':
+            result = autonomy()
+            if result['energy_kwh'] <= 0:
+                raise ValueError(rules.autonomy_note(result))
+            return {**rules.estimate(power, group['price'], energy=result['energy_kwh']), 'autonomy': result}
         if state['by'] == 'value':
             return rules.estimate(power, group['price'], value=rules.parse_value(state['value_text'] or '0'))
         return rules.estimate(power, group['price'], minutes=rules.parse_minutes(state['minutes_text'] or '0'))
@@ -281,9 +305,13 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             return None
 
     if step > 3 and safe_quote() is None:
-        state['by'], state['minutes_text'] = state['by'], state['minutes_text'] or '30'
+        state['minutes_text'] = state['minutes_text'] or '30'
         if state['by'] == 'value' and not state['value_text']:
             state['value_text'] = '50,00'
+        if state['by'] == 'autonomy' and not state['km_text']:
+            state['km_text'] = '100'
+        if safe_quote() is None:  # ex.: bateria já cheia no modo autonomia
+            state['by'] = 'time'
 
     if step > 5 and not state['pay']:
         state['pay'] = 'balance'
@@ -359,16 +387,32 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
 
     if step == 3:
         by_value = state['by'] == 'value'
+        by_km = state['by'] == 'autonomy'
 
         def set_by(key):
             state['by'] = key
             return app.go('booking', step=3, station_id=station_id)
-        toggle = _toggle([('time', 'Por tempo'), ('value', 'Por valor')], state['by'], set_by)
-        key = 'value_text' if by_value else 'minutes_text'
+        toggle = _toggle(list(KIND_LABELS.items()), state['by'], set_by)
+        key = _amount_key(state['by'])
+        note = design.txt('', 11, 'regular', theme.GRAY_TEXT, visible=False)
+
+        def refresh_note():
+            try:
+                text = rules.autonomy_note(autonomy()) if by_km else None
+            except (ValueError, ArithmeticError):
+                text = None
+            note.value, note.visible = text or '', bool(text)
 
         def changed(event):
             state[key] = event.control.value or ''
-        field = _white_field('Exemplo: 249,90' if by_value else 'Exemplo: 30', state[key], changed)
+            if by_km:
+                refresh_note()
+                app.page.update()
+        hint = 'Exemplo: 249,90' if by_value else 'Exemplo: 120' if by_km else 'Exemplo: 30'
+        field = _white_field(hint, state[key], changed)
+        refresh_note()
+        label = ('Valor da recarga (R$)' if by_value else 'Autonomia desejada (km)' if by_km
+                 else 'Tempo de recarga (minutos)')
 
         async def next_step():
             try:
@@ -382,8 +426,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         return _page(
             ft.Container(height=4), ft.Container(toggle, margin=ft.Margin(left=0, top=0, right=0 if by_value else 9,
                                                                            bottom=0)),
-            ft.Column([design.txt('Valor da recarga (R$)' if by_value else 'Tempo de recarga (minutos)', 10.4),
-                       field], spacing=15,
+            ft.Column([design.txt(label, 10.4), field, *([note] if by_km else [])], spacing=15,
                       horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
             title='Defina como será sua recarga', on_back=app.back, steps=4, step=2,
             edge='c3v' if by_value else 'c3t', footer=_footer(design.primary_button('Próximo Passo', app.action(next_step), height=55, size=16,
@@ -435,6 +478,14 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         if state['pay'] == 'balance' and wallet.balance(app) < amount:
             raise failing('Saldo insuficiente para esta recarga.')
         description = f"Recarga {station.get('name', '')}".strip()
+        if state['by'] == 'autonomy':
+            intent = {'mode': 'autonomy', 'km': rules.parse_km(state['km_text'])}
+        elif state['by'] == 'value':
+            intent = {'mode': 'value', 'max_cost': str(estimate['cost'])}
+        else:
+            intent = {'mode': 'time', 'minutes': max(1, estimate['minutes'] or 30)}
+        paid = dict(amount=amount, energy_amount=estimate['cost'], method=state['pay'], station_id=station_id,
+                    station_name=station.get('name', ''), connector_id=connector['id'])
         if reserving:
             state['key'] = state['key'] or app.api.new_key()
             reservation = await app.api.request('POST', 'reservations', {'connector_id': connector['id']},
@@ -442,6 +493,9 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             state['key'] = None
             if state['pay'] == 'balance':
                 wallet.debit(app, amount, description)
+            prepaid.record(app, **paid, reservation_id=reservation['id'])
+            # Ao chegar e iniciar com esta reserva, o assistente #F já abre com os mesmos limites.
+            app.planning_intent = {'connector_id': connector['id'], 'intent': intent}
             state['result'] = {'id': reservation['id'], 'arrival': f"Hoje - {state['slot']}",
                                'code': rules.reservation_code(reservation['id']), 'paid': str(amount),
                                'pay': state['pay'], 'station': station.get('name', '')}
@@ -450,11 +504,12 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             return
         if state['pay'] == 'balance':
             wallet.debit(app, amount, description)
+        prepaid.record(app, **paid)
         state['done'] = True
         limit = int(connector.get('max_duration_minutes') or 1440)
         await app.go('charging', public_code=connector.get('public_code') or '',
                      point_context=point_context(station, connector),
-                     max_duration=max(1, min(estimate['minutes'] or 30, limit)))
+                     max_duration=max(1, min(estimate['minutes'] or 30, limit)), planning_intent=intent)
 
     if step == 6:
         def row(title, subtitle, icon, target):
@@ -465,10 +520,12 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                 margin=ft.Margin(left=0, top=top, right=0, bottom=0))
         if state['by'] == 'value':
             detail = f"{rules.money(estimate['cost'])} | {estimate['minutes']} minutos"
+        elif state['by'] == 'autonomy':
+            detail = f"{estimate['autonomy']['km']} km | {estimate['minutes']} minutos"
         else:
             detail = f"{estimate['minutes']} minutos"
         when = f"Horário: {state['slot']}" if reserving else f'Tolerância: {rules.TOLERANCE_MINUTES} min'
-        kind = 'Por valor' if state['by'] == 'value' else 'Por tempo'
+        kind = KIND_LABELS.get(state['by'], 'Por tempo')
         power_value, power_note = rules.power_options(group)[state['power'] or 'max']
         pay_sub = rules.money(balance) if state['pay'] == 'balance' else None
         first = block('Recarga', row(f"{kind} | {'Reservar' if reserving else 'Agora'}", f'{detail} | {when}',
@@ -565,6 +622,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             await app.api.request('POST', f"reservations/{result['id']}/cancel")
             if result['pay'] == 'balance':
                 wallet.credit(app, result['paid'], f"Estorno de reserva {result['station']}".strip())
+            prepaid.cancel_reservation(app, result['id'])
         app.planning_intent = None
         state['result'] = None
         await app.go('stations')

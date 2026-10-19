@@ -1,7 +1,7 @@
 import hashlib
 import json
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
@@ -107,6 +107,37 @@ def issue(db, connector, device, kind, reservation=None, session=None, parameter
     if session and kind in ("START", "STOP"):
         record_session_event(db, session, f"{kind.lower()}_requested", "api", f"command:{cmd.id}")
     return cmd
+
+
+BATTERY_FULL = "battery_full"
+SOC_STEP = Decimal("0.01")
+
+
+def derived_soc(session, energy_wh):
+    """SoC of a ``simulated`` session from delivered energy, or None if unknown."""
+    if session.soc_source != "simulated" or session.start_soc_percent is None or not session.battery_kwh:
+        return None
+    gained = Decimal(energy_wh) / Decimal(1000) / Decimal(session.battery_kwh) * Decimal(100)
+    return min(Decimal(100), Decimal(session.start_soc_percent) + gained).quantize(SOC_STEP, rounding=ROUND_HALF_UP)
+
+
+def stop_if_battery_full(db, connector, device, session):
+    """Battery at 100 %: same path as a user stop, once (a stopping session is left alone).
+
+    ``end_reason`` is recorded now so the final reconciliation keeps
+    ``battery_full`` whatever reason the device reports with its STOP ACK.
+    """
+    if (
+        session.status not in ("starting", "charging")
+        or session.soc_percent is None
+        or Decimal(session.soc_percent) < 100
+    ):
+        return False
+    session.status = "stopping"
+    session.end_reason = BATTERY_FULL
+    if device:
+        issue(db, connector, device, "STOP", session=session, parameters={"reason": BATTERY_FULL})
+    return True
 
 
 def reconcile_expiry(db, connector):

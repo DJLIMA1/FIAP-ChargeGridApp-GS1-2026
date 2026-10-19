@@ -48,6 +48,7 @@ lv_obj_t *codeCaptionLabel, *codeHintLabel;
 lv_obj_t *codeTimerLabel, *codeProgressBar, *codeCard;
 lv_obj_t *darkRoot, *alertRoot, *leftBlock, *rowLineTop, *rowLineBottom;
 lv_obj_t *stepsCard, *reservationCard, *sessionCard, *messageCard;
+lv_obj_t *batteryCard, *socLabel, *socDetailLabel, *socBar;
 lv_obj_t *messageTitle, *messageDetail;
 lv_obj_t *alertTitle, *alertSub, *alertBrand, *alertLogoPad;
 lv_obj_t *pumpBody, *pumpSide, *pumpScreen, *pumpBolt, *pumpNozzle, *pumpHose;
@@ -70,6 +71,9 @@ struct PanelSnapshot {
   uint8_t codeProgress;
   char messageTitle[64], messageDetail[128];
   char claimUrl[80];
+  char soc[8], socDetail[32];
+  uint8_t socProgress;
+  bool showSoc;
   PanelMode mode;
   bool showClaim;
   bool showStop;
@@ -173,8 +177,11 @@ void logoEvent(lv_event_t* event) {
   }
 }
 
+bool batteryFullStop() { return state == "stopped" && endReason == "battery_full"; }
+
 const char* statusTitle() {
   if (state == "charging") return "Recarga em andamento";
+  if (batteryFullStop()) return "Bateria cheia";
   if (state == "reserved") return "Ponto reservado";
   if (state == "stopped") return "Recarga encerrada";
   if (state == "fault") return "Ponto indisponível";
@@ -192,6 +199,7 @@ const char* instruction() {
   if (state == "reserved") return WiFi.status() == WL_CONNECTED ?
       "Sua reserva está ativa. Inicie pelo app antes do prazo." :
       "Sua reserva continua ativa. Aguarde a conexão para iniciar.";
+  if (batteryFullStop()) return "A recarga parou sozinha em 100%. Seu resumo está no app.";
   if (state == "stopped") return "Obrigado por usar ChargeGrid. Seu resumo está no app.";
   if (state == "fault") return "Este ponto está indisponível. Encontre outro no app.";
   if (WiFi.status() != WL_CONNECTED) return "Estamos reconectando. Encontre outro ponto pelo app.";
@@ -267,6 +275,13 @@ void refresh() {
   setTextIfChanged(alertSub, current.instruction);
   setTextIfChanged(messageTitle, current.messageTitle);
   setTextIfChanged(messageDetail, current.messageDetail);
+  setTextIfChanged(socLabel, current.soc);
+  setTextIfChanged(socDetailLabel, current.socDetail);
+  static uint8_t lastSocProgress = 255;
+  if (lastSocProgress != current.socProgress) {
+    lv_bar_set_value(socBar, current.socProgress, LV_ANIM_OFF);
+    lastSocProgress = current.socProgress;
+  }
   const PanelMode mode = current.mode;
   const bool dark = !alert;
   const bool detail = dark && !current.showClaim;
@@ -281,6 +296,16 @@ void refresh() {
   setHiddenIfChanged(sessionCard, !(detail && mode == PanelMode::Charging));
   setHiddenIfChanged(messageCard, !(detail && mode == PanelMode::Message));
   setHiddenIfChanged(stopButton, !(detail && current.showStop));
+  // Bateria do veículo: acima do Encerrar durante a carga; centrada no fim da sessão.
+  const bool battery = detail && current.showSoc &&
+      (mode == PanelMode::Charging || mode == PanelMode::Message);
+  setHiddenIfChanged(batteryCard, !battery);
+  const int batteryY = current.showStop ? 112 : 152, stopY = battery ? 270 : 188;
+  const int stopHeight = battery ? 56 : 64;
+  if (lv_obj_get_y(batteryCard) != batteryY) lv_obj_set_y(batteryCard, batteryY);
+  if (lv_obj_get_y(stopButton) != stopY) {
+    lv_obj_set_y(stopButton, stopY); lv_obj_set_height(stopButton, stopHeight);
+  }
   setHiddenIfChanged(codeProgressBar, mode != PanelMode::Ready);
   setHiddenIfChanged(codeTimerLabel, mode != PanelMode::Ready);
   if (current.showClaim) {
@@ -405,6 +430,26 @@ void buildDark(lv_obj_t* screen) {
   lv_bar_set_range(codeProgressBar, 0, 100);
   lv_obj_set_style_bg_color(codeProgressBar, LV_COLOR_MAKE(0x3B, 0x2A, 0x2F), LV_PART_MAIN);
   lv_obj_set_style_bg_color(codeProgressBar, COLOR_TEXT, LV_PART_INDICATOR);
+
+  // Cartão da bateria do carro (SoC sincronizado pela API: mesmo valor do app).
+  batteryCard = card(darkRoot, 439, 112, 311, 146);
+  lv_obj_set_style_radius(batteryCard, 16, 0);
+  gradient(batteryCard, LV_COLOR_MAKE(0x20, 0x44, 0x30), LV_COLOR_MAKE(0x18, 0x1C, 0x20));
+  lv_obj_set_style_border_width(batteryCard, 1, 0);
+  lv_obj_set_style_border_color(batteryCard, LV_COLOR_MAKE(0x2C, 0x48, 0x38), 0);
+  lv_obj_t* socCaption = label(batteryCard, "BATERIA DO VEÍCULO", &chargegrid_body_14, COLOR_SOFT);
+  lv_obj_set_style_text_letter_space(socCaption, 3, 0);
+  lv_obj_set_pos(socCaption, 24, 20);
+  socLabel = label(batteryCard, "--", &chargegrid_code_72, lv_color_white());
+  lv_obj_set_pos(socLabel, 22, 34);
+  socDetailLabel = label(batteryCard, "", &chargegrid_body_17, COLOR_SOFT);
+  lv_obj_align(socDetailLabel, LV_ALIGN_TOP_RIGHT, -24, 84);
+  socBar = lv_bar_create(batteryCard);
+  lv_obj_set_pos(socBar, 24, 122); lv_obj_set_size(socBar, 263, 8);
+  lv_bar_set_range(socBar, 0, 100);
+  lv_obj_set_style_bg_color(socBar, LV_COLOR_MAKE(0x28, 0x34, 0x30), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(socBar, COLOR_GREEN, LV_PART_INDICATOR);
+  lv_obj_add_flag(batteryCard, LV_OBJ_FLAG_HIDDEN);
 
   stopButton = lv_btn_create(darkRoot);
   lv_obj_set_pos(stopButton, 439, 188); lv_obj_set_size(stopButton, 311, 64);
@@ -713,6 +758,20 @@ void panelTick() {
     snprintf(next.codeCaption, sizeof(next.codeCaption), "TEMPO PARA INICIAR");
     snprintf(next.code, sizeof(next.code), "%s", next.remaining);
   }
+  // SoC só aparece quando a API informou (simulado pela energia ou nível do celular).
+  next.showSoc = sessionId.length() && hasSynced && (state == "charging" || state == "stopped") &&
+      sessionSocKnown();
+  if (next.showSoc) {
+    const float soc = batteryFullStop() ? 100.0f : constrain(reading.socPercent, 0.0f, 100.0f);
+    // Arredonda para baixo: "100%" só com a bateria realmente cheia.
+    const int whole = soc >= 100.0f ? 100 : min(99, static_cast<int>(soc));
+    snprintf(next.soc, sizeof(next.soc), "%d%%", whole);
+    next.socProgress = static_cast<uint8_t>(whole);
+    if (socSource == "phone") snprintf(next.socDetail, sizeof(next.socDetail), "Nível do celular");
+    else snprintf(next.socDetail, sizeof(next.socDetail), "Início %d%%", static_cast<int>(socStartPercent + 0.5f));
+  } else {
+    snprintf(next.soc, sizeof(next.soc), "--");
+  }
   snprintf(next.messageTitle, sizeof(next.messageTitle), "%s", state == "stopped" ?
       "Até a próxima" : "Encontre outro ponto");
   snprintf(next.messageDetail, sizeof(next.messageDetail), "%s", state == "stopped" ?
@@ -720,6 +779,17 @@ void panelTick() {
       "Abra o app ChargeGrid para encontrar uma opção próxima.");
   next.showStop = state == "charging";
   }
+  // "Bateria cheia" fica visível por alguns segundos: a API encerra a sessão no mesmo
+  // sync e o ponto voltaria a "Pronto" antes de o motorista ver o motivo da parada.
+  static PanelSnapshot batteryFullHeld{};
+  static unsigned long batteryFullHoldUntil = 0;
+  if (batteryFullStop()) {
+    batteryFullHeld = next; batteryFullHoldUntil = millis() + 10000UL;
+    if (!batteryFullHoldUntil) batteryFullHoldUntil = 1;
+  } else if (batteryFullHoldUntil && (long)(millis() - batteryFullHoldUntil) < 0 &&
+             state == "idle" && !sessionId.length() && !next.showClaim) {
+    next = batteryFullHeld;
+  } else batteryFullHoldUntil = 0;
   taskENTER_CRITICAL(&snapshotMux);
   snapshot = next;
   taskEXIT_CRITICAL(&snapshotMux);

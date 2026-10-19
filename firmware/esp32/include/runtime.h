@@ -15,6 +15,11 @@ extern bool panelOwned, connectorOwnershipKnown, connectorActive;
 extern uint32_t version, sequence;
 extern unsigned long lastContact, lastTick, started, nextSync, lastSaved, maxDurationMs;
 extern float maxCost, price, discount;
+// SoC do veículo vindo da API (START/sync). socStartPercent < 0: desconhecido.
+// socSource "simulated": o ponto avança o SoC pela energia entregue e para em 100 %.
+// socSource "phone": o app envia o nível real do celular; o ponto só exibe.
+extern float socStartPercent, batteryKwh, phoneSocPercent;
+extern String socSource;
 extern time_t reservationDeadline;
 extern JsonDocument acknowledgements;
 extern bool hasSynced;
@@ -36,6 +41,8 @@ String pendingPanelFactoryCommand();
 String pendingPanelFactoryKey();
 String isoTime();
 void persist();
+bool sessionSocKnown();
+float currentSessionSoc(float energyWh);
 void tick();
 bool apply(JsonDocument& response);
 void syncDevice();

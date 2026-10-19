@@ -71,6 +71,14 @@ class StartInput(Input):
     coupon_code: str | None = Field(default=None, max_length=50)
     max_duration_minutes: int = Field(default=30, ge=1, le=1440)
     max_cost: Decimal | None = Field(default=None, gt=0, le=100000)
+    # Car battery: initial SoC, usable capacity and who drives the SoC afterwards.
+    soc_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    battery_kwh: Decimal | None = Field(default=None, ge=5, le=250)
+    soc_source: Literal["simulated", "phone"] | None = None
+
+
+class SocInput(Input):
+    soc_percent: Decimal = Field(ge=0, le=100)
 
 
 class Ack(Input):

@@ -20,6 +20,11 @@ def texts(screen):
     return ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text))
 
 
+def without_soc(body):
+    """Corpo do início sem os campos de bateria (sempre enviados; testados à parte)."""
+    return {key:value for key,value in body.items() if key not in ('soc_percent','battery_kwh','soc_source')}
+
+
 def fields(screen):
     return {item.label:item for item in descendants(screen) if isinstance(item,ft.TextField)}
 
@@ -147,7 +152,10 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.posts,[])
         await click(third,'Solicitar início')(None)
         self.assertEqual(len(app.posts),1)
-        self.assertEqual(app.posts[0][0],{'presence_code':'#F12345','public_code':'CG-ONE','max_duration_minutes':10})
+        self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F12345','public_code':'CG-ONE','max_duration_minutes':10})
+        self.assertEqual(app.posts[0][0]['soc_source'],'simulated')
+        self.assertTrue(15 <= app.posts[0][0]['soc_percent'] <= 60)
+        self.assertEqual(app.posts[0][0]['battery_kwh'],44.9)
         self.assertIsNone(app.charging_draft)
 
     async def test_invalid_code_cannot_advance_or_post(self):
@@ -293,7 +301,7 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(fields(second)['Duração máxima (min)'].value,'7')
                 third = await next_screen(app,second)
                 await click(third,'Solicitar início')(None)
-                self.assertEqual(app.posts[0][0],{'presence_code':'#F54321','max_duration_minutes':7,
+                self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F54321','max_duration_minutes':7,
                                                 'public_code':'CG-ONE'})
 
     async def test_missing_reservation_does_not_unlock_uncertain_post_or_change_identity(self):

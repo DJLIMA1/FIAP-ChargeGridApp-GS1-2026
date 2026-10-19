@@ -2,7 +2,7 @@
 
 O profile é exclusivo da **ESP32-S3-Touch-LCD-7** sem B, 800 × 480. Usa Arduino 3.1.1, LVGL 8.4, `ESP32_Display_Panel` 1.0.4, flash DIO a 40 MHz, 16 MB e PSRAM OPI. O modelo 7B é diferente e não deve receber esta imagem.
 
-O firmware reflete somente estados recebidos da API. A tela principal apresenta disponibilidade, código público, instruções simples, reserva com prazo e, durante a sessão, energia, valor estimado, tempo restante e botão Encerrar. Informações de rede e identidade ficam na tela de manutenção, acessada ao segurar a marca; a interface do cliente não mostra potência, SoC nem telemetria de bancada. Este MVP ainda usa `SimulatedSensors` durante sessões: não mede um carro nem aciona relé ou carregador. START continua autorizado somente pelo servidor.
+O firmware reflete somente estados recebidos da API. A tela principal apresenta disponibilidade, código público, instruções simples, reserva com prazo e, durante a sessão, energia, valor estimado, tempo restante e botão Encerrar. Informações de rede e identidade ficam na tela de manutenção, acessada ao segurar a marca; a interface do cliente não mostra potência nem telemetria de bancada; o SoC do carro só aparece durante/ao fim da sessão quando a API o informa (ver abaixo). Este MVP ainda usa `SimulatedSensors` durante sessões: não mede um carro nem aciona relé ou carregador. START continua autorizado somente pelo servidor.
 
 ## Compilar e gravar
 
@@ -113,3 +113,17 @@ Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `pyt
 ## Case impresso
 
 O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem moldura e corpo em cunha baixa, com a tela deitada a 30° da mesa (estilo console de balcão), lisos e sem nome, apoiados direto na mesa. As peças se unem por pressão, chaves impressas e cola, sem parafusos; a tela fica prensada entre a moldura e molas impressas. Cada peça sai em metades para caber em impressoras de 180 mm. O README traz as medidas oficiais da tela, o pacote para a faculdade (STL e configurações de impressão), testes do encaixe e a verificação digital. Nada foi impresso ainda.
+
+## Bateria do carro (SoC) e "Bateria cheia" — firmware 0.4.0
+
+Protocolo: `docs/esp32-protocol.md`, seção "Bateria do carro (SoC) e parada por bateria cheia". O START lê `soc_percent`, `battery_kwh` e `soc_source` de `parameters` (com `authorized.session` como reserva); campos ausentes ou `null` mantêm o comportamento anterior, sem cartão de bateria e sem parada por bateria. O SoC inicial, a capacidade e a fonte ficam na NVS (`soc0`, `batt`, `socsrc`) só no START, para que uma sessão interrompida por reboot reporte um SoC final coerente.
+
+- `simulated` com `battery_kwh`: o ponto calcula `min(100, início + energia_kWh / battery_kwh × 100)` e o envia em `soc_percent` (o valor do ponto prevalece na API, pela mesma fórmula). A energia nunca passa da capacidade livre, mesmo com a rede bloqueada; ao chegar em 100 % o ponto para localmente como nos outros limites (`stop("battery_full")`, potência zero) e sincroniza na hora com `end_reason: "battery_full"`.
+- `phone` (Modo apresentação): o ponto exibe o `authorized.session.soc_percent` recebido a cada sync (nível real do celular enviado pelo app) e nunca o recalcula; envia `soc_percent: null`. A parada vem da API: um STOP com `parameters.reason == "battery_full"` é aplicado como STOP normal, reportado com `end_reason: "battery_full"`.
+- Sessão sem dados de bateria: `soc_percent: null` (o antigo `20 + energia/600` da bancada não é mais enviado).
+- Um STOP chegando depois de uma parada local mantém o motivo original já reportado.
+
+Tela: durante a recarga, o cartão "BATERIA DO VEÍCULO" (Barlow Condensed 72 px, barra verde e "Início 35%" ou "Nível do celular") fica acima do **Encerrar**, que encolhe para 56 px. O número é truncado (99,6 % aparece como 99%), então "100%" só aparece com a bateria cheia. Ao parar por bateria cheia, o título vira "Bateria cheia" com o cartão em 100% centrado na coluna direita; como a API encerra a sessão no mesmo sync, esse estado fica 10 s na tela antes de voltar para "Pronto para você" (interrompido por nova reserva/recarga). Pré-visualizações: `.venv/bin/python firmware/esp32/preview/render.py` gera `totem-6-charging` (simulado), `totem-6-charging-legacy` (sem SoC), `totem-9-charging-phone` e `totem-10-battery-full`. Custo medido: LVGL +1,8 KB de heap de objetos (48,6 KB de 64 KB), RAM estática +0,9 KB, nenhuma fonte nova.
+
+`tools/device_simulator.py` segue as mesmas regras (subida simulada, repasse do celular, `battery_full` local e via STOP) e é coberto por `tools/tests/test_device_simulator.py`.
+

@@ -5,6 +5,8 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
+from ..services import booking as rules
+from ..services import prepaid, vehicle_state
 from ..services.planning import estimate_text, intent_limits
 from ..ui import design as d
 from ..ui import theme
@@ -36,7 +38,10 @@ SOURCE = {'simulated':'Simulada pelo equipamento','measured':'Medida','estimated
 ACTIVE = {'starting','charging','stopping'}
 END_REASONS = {'user_stop':'Parada solicitada', 'stop_requested':'Parada solicitada', 'duration_limit':'Limite de duração atingido', 'max_duration':'Limite de duração atingido', 'cost_limit':'Limite de custo atingido', 'max_cost':'Limite de custo atingido', 'disconnected':'Cabo desconectado', 'device_fault':'Falha no equipamento', 'reboot':'Equipamento reiniciado'}
 END_REASONS.update(requested='Parada solicitada', communication_lost='Conexão perdida com o servidor',
-                   device_reboot='Equipamento reiniciado', command_timeout='Equipamento não confirmou a operação')
+                   device_reboot='Equipamento reiniciado', command_timeout='Equipamento não confirmou a operação',
+                   battery_full='Bateria cheia (100%)')
+MODES = [('time','Por tempo'),('value','Por valor'),('autonomy','Por autonomia')]
+DEFAULT_CAR = {'name':'BYD Dolphin','usable_kwh':44.9,'consumption':14.0,'soc':vehicle_state.SOC_MIN,'source':'simulated'}
 
 
 def _progress(session):
@@ -61,6 +66,38 @@ def _progress(session):
 
 
 TITLES = {'completed':'Recarga concluída','failed':'Recarga com falha','interrupted':'Recarga interrompida'}
+
+
+def screen_title(session):
+    if session.get('end_reason') == 'battery_full':  # já vem em 'stopping' (parada a 100 %)
+        return 'Bateria cheia'
+    return TITLES.get(session.get('status'),'Recarga em andamento')
+
+
+def credit_notice(amount):
+    """Linha do fim da recarga quando a sobra do pré-pagamento voltou ao saldo."""
+    text = f"{money(amount)} voltou como crédito"
+    return ft.Container(ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE,size=20,color=theme.SUCCESS),
+                                ft.Column([d.txt(text,13,'bold'),
+                                           d.txt('Crédito de recarga não utilizada, já disponível no seu saldo.',11,
+                                                 'regular',theme.GRAY_TEXT)],spacing=2,expand=True)],
+                               spacing=10,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        bgcolor=theme.CARD,border_radius=d.RADIUS_BTN,padding=ft.Padding(left=14,right=14,top=12,bottom=12),
+                        data='prepaid-credit')
+
+
+async def push_phone_soc(app, session):
+    """Modo apresentação: envia a bateria do celular para a API; devolve a sessão atualizada (ou ``session``)."""
+    if session.get('status') not in ('starting','charging') or not vehicle_state.presentation_mode(app):
+        return session
+    level = await vehicle_state.phone_battery(app)
+    if level is None:
+        return session
+    try:
+        result = await app.api.request('POST',f"charging-sessions/{session['id']}/soc",{'soc_percent':level})
+    except ApiError:
+        return session  # a próxima leitura tenta de novo; o equipamento segue com o último valor
+    return result if isinstance(result,dict) and result.get('id') == session['id'] else session
 
 
 def _metrics(session):
@@ -145,7 +182,28 @@ def _point_limit(draft):
     return int((draft['point_context'].get('connector') or {}).get('max_duration_minutes') or 1440)
 
 
+def _car(draft):
+    return draft.get('car') or DEFAULT_CAR
+
+
+def _autonomy(draft):
+    """Resultado de ``rules.autonomy_limits`` para o rascunho (levanta ``ApiError`` com a explicação)."""
+    connector = draft['point_context'].get('connector') or {}
+    try:
+        km = rules.parse_km(draft.get('autonomy_km'))
+        return rules.autonomy_limits(km,_car(draft),connector.get('power_kw'),connector.get('price_per_kwh') or 0,
+                                     _point_limit(draft))
+    except (ValueError,ArithmeticError) as exc:
+        raise ApiError(str(exc) or 'Informe a autonomia em km inteiros (ex.: 120).') from exc
+
+
 def _limits(draft):
+    if draft['mode'] == 'autonomy':
+        result = _autonomy(draft)
+        body = {'max_duration_minutes':result['max_duration_minutes']}
+        if result.get('max_cost') is not None:
+            body['max_cost'] = format(result['max_cost'],'f')
+        return body
     value_mode = draft['mode'] == 'value'
     try:
         minutes = int(draft['safety_minutes'] if value_mode else draft['duration_minutes'])
@@ -183,6 +241,14 @@ def _body(draft):
 
 def _estimate(draft):
     connector = draft['point_context'].get('connector') or {}
+    if draft['mode'] == 'autonomy':
+        try:
+            result = _autonomy(draft)
+        except ApiError as exc:
+            return str(exc)
+        energy = f"{result['energy_kwh']:.2f}".replace('.',',')
+        return (f"Cerca de {energy} kWh para ~{result['km']} km com o {_car(draft)['name']} "
+                f"(até {result['max_duration_minutes']} min). O consumo real varia.")
     try:
         limits = _limits(draft)
         return estimate_text(connector, limits['max_duration_minutes'], limits.get('max_cost'))
@@ -205,6 +271,7 @@ def _review(draft):
             ('Endereço',context.get('station_address')),
             ('Conector',' · '.join(str(point[key]) for key in ('public_code','connector_type') if point.get(key))),
             ('Código de presença',body['presence_code']),
+            ('Autonomia desejada',f"{draft.get('autonomy_km')} km" if draft['mode'] == 'autonomy' else None),
             ('Limite de tempo',f"{body['max_duration_minutes']} min"),
             ('Limite de valor',money(body['max_cost']) if body.get('max_cost') else None),
             ('Tarifa',f"{money(point['price_per_kwh'])}/kWh" if point.get('price_per_kwh') is not None else None),
@@ -254,6 +321,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         live = {}
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
+            current = await push_phone_soc(app,current)
             if current['status'] != session['status']:
                 await app.go('charging',session_id=session['id'])
                 return
@@ -268,6 +336,11 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         if session['status'] in ACTIVE:
             app.set_poll(update,5)
         else:
+            # Fim da recarga: o carro fica com o SoC final e a sobra paga antes volta como crédito (uma vez).
+            vehicle_state.record_session_end(app,session)
+            credited = prepaid.settle(app,session)
+            if credited:
+                extra.insert(0,credit_notice(credited))
             async def again():
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
@@ -287,7 +360,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             size=12,color=theme.GRAY_TEXT))
         percent,cost,power,remaining = _metrics(session)
         return recharge_detail(
-            app,TITLES.get(session['status'],'Recarga em andamento'),
+            app,screen_title(session),
             when=when_text(session.get('started_at') or session.get('created_at')),
             address=session.get('station_address'),percent=percent,cost=cost,power=power,remaining=remaining,
             action=action,on_back=app.link('reservations'),extra=extra,live=live)
@@ -347,7 +420,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                  'point_context':deepcopy(context),'initial_duration':initial_duration,
                  'presence_digits':presence_digits,'duration_minutes':str(initial_duration),
                  'safety_minutes':str(point_limit if connector.get('max_duration_minutes') else initial_duration),
-                 'mode':'time','max_cost':'','coupon_code':'','step':1,'furthest':1,
+                 'mode':'time','max_cost':'','autonomy_km':'','car':None,'coupon_code':'','step':1,'furthest':1,
                  'key':app.api.new_key(),'last_body':None,'pending_body':None,'uncertain':False}
         saved_intent = getattr(app, 'planning_intent', None) or {}
         draft['station_search'] = deepcopy(station_search or (
@@ -355,7 +428,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         intention = planning_intent
         if not intention and connector.get('id') == saved_intent.get('connector_id'):
             intention = saved_intent.get('intent')
-        if intention:
+        if intention and intention.get('mode') == 'autonomy':
+            draft.update(mode='autonomy', autonomy_km=str(intention.get('km') or ''))
+        elif intention:
             limits = intent_limits(connector, intention)
             draft['duration_minutes'] = draft['safety_minutes'] = str(limits['minutes'])
             if limits.get('max_cost'):
@@ -365,6 +440,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
     elif not uncertain:
         draft.update(public_code=public_code,reservation_id=reservation_id,point_context=deepcopy(context))
     app.charging_draft = draft
+    if draft['mode'] == 'autonomy' and not draft.get('car') and not uncertain:
+        # Carro do perfil + SoC escondido: convertem "Por autonomia" em limites (nunca exibidos como número).
+        draft['car'] = await vehicle_state.snapshot(app)
     try:
         step = min(max(1,int(step if step is not None else draft['step'])),draft['furthest'],3)
     except (TypeError,ValueError):
@@ -428,11 +506,12 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
     elif step == 2:
         duration = field('Duração máxima (min)',draft['duration_minutes'])
         cost = field('Limite de custo estimado (R$)',draft['max_cost'])
+        autonomy = field('Autonomia desejada (km)',draft.get('autonomy_km',''))
         safety = field('Tempo máximo de segurança (min)',draft['safety_minutes'])
         coupon = field('Cupom (opcional)',draft['coupon_code'])
-        for control in (duration,cost,safety,coupon):
+        for control in (duration,cost,safety,coupon,autonomy):
             control.width = None
-        duration.keyboard_type = cost.keyboard_type = safety.keyboard_type = ft.KeyboardType.NUMBER
+        duration.keyboard_type = cost.keyboard_type = safety.keyboard_type = autonomy.keyboard_type = ft.KeyboardType.NUMBER
         # One-tap durations: typing minutes on a phone keyboard is the slowest step.
         limit_minutes = _point_limit(draft)
         presets = sorted({minutes for minutes in (15,30,60) if minutes < limit_minutes} | {min(limit_minutes,1440)})
@@ -456,44 +535,60 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             expanded=draft.get('coupon_expanded',bool(draft['coupon_code'])),on_toggle=lambda value:draft.update(coupon_expanded=value),on_update=app.page.update)
         value_panel = ft.Column([cost,safety_section],
                                spacing=12,visible=draft['mode']=='value',horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        autonomy_note = ft.Text(size=12,color=theme.GRAY_TEXT,visible=False)
+        autonomy_panel = ft.Column([autonomy,autonomy_note],spacing=10,visible=draft['mode']=='autonomy',
+                                   horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         estimate = ft.Text(size=13,color=theme.GRAY_TEXT)
         mode_toggle = ft.Container()
 
         def capture_limits():
             draft.update(duration_minutes=duration.value or '',max_cost=cost.value or '',
-                         safety_minutes=safety.value or '',coupon_code=coupon.value or '',furthest=2)
+                         safety_minutes=safety.value or '',coupon_code=coupon.value or '',
+                         autonomy_km=autonomy.value or '',furthest=2)
             saved()
 
         def refresh_mode():
-            value_mode = draft['mode']=='value'
-            time_panel.visible,value_panel.visible = not value_mode,value_mode
-            mode_toggle.content = d.segmented([('time','Por tempo'),('value','Por valor')],draft['mode'],
-                                              lambda value:select_mode(value),height=40)
+            mode = draft['mode']
+            time_panel.visible,value_panel.visible,autonomy_panel.visible = (mode=='time',mode=='value',
+                                                                             mode=='autonomy')
+            mode_toggle.content = d.segmented(MODES,draft['mode'],lambda value:select_mode(value),height=40)
+            note = None
+            if mode == 'autonomy':
+                try:
+                    car = _car(draft)
+                    note = rules.autonomy_note(rules.autonomy_energy(rules.parse_km(draft.get('autonomy_km')),
+                                                                     car['consumption'],car['soc'],car['usable_kwh']))
+                except (ValueError,ArithmeticError):
+                    note = None
+            autonomy_note.value,autonomy_note.visible = note or '',bool(note)
             safety_summary.value = f"Limite de segurança: {draft['safety_minutes']} min"
             coupon_summary.value = 'Código informado · validação no início' if draft['coupon_code'].strip() else 'Opcional · adicionar código'
             estimate.value = _estimate(draft)
 
         async def changed(event=None):
             capture_limits()
-            for control in (duration,cost,safety,coupon):
+            for control in (duration,cost,safety,coupon,autonomy):
                 control.error_text = None
             refresh_mode()
             app.page.update()
 
         async def select_mode(value):
             capture_limits()
+            if value == 'autonomy' and not draft.get('car'):
+                draft['car'] = await vehicle_state.snapshot(app)
             draft['mode'] = value
             refresh_mode()
             app.page.update()
 
-        duration.on_change = cost.on_change = safety.on_change = coupon.on_change = changed
+        duration.on_change = cost.on_change = safety.on_change = coupon.on_change = autonomy.on_change = changed
         refresh_mode()
         async def continue_limits():
             capture_limits()
             try:
                 _limits(draft)
             except ApiError as exc:
-                target = duration if draft['mode']=='time' else safety if 'duração' in str(exc) else cost
+                target = (duration if draft['mode']=='time' else autonomy if draft['mode']=='autonomy'
+                          else safety if 'duração' in str(exc) else cost)
                 target.error_text = str(exc)
                 app.page.update()
                 raise
@@ -503,7 +598,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             capture_limits()
             await navigate(1)
         controls += [mode_toggle,
-                     time_panel,value_panel,estimate,
+                     time_panel,value_panel,autonomy_panel,estimate,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]
     else:
         pending_message = ft.Text('A resposta do pedido anterior não chegou. Confira o estado ou repita o mesmo pedido; os limites ficam protegidos até confirmar o resultado.',
@@ -516,6 +611,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             if not isinstance(result,dict) or not result.get('id'):
                 raise ApiError('Não foi possível confirmar o resultado. Verifique o estado antes de repetir.')
             app.charging_draft = None
+            sent = draft.get('pending_body') or draft.get('last_body') or {}
+            prepaid.link_session(app,result['id'],reservation_id=sent.get('reservation_id') or draft['reservation_id'],
+                                 connector_id=(draft['point_context'].get('connector') or {}).get('id'))
             await app.go('charging',session_id=result['id'])
 
         async def recover():
@@ -581,6 +679,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     if station.get('active') is False or current_point.get('active') is False or current_point.get('retired'):
                         raise ApiError('Este ponto foi desativado. Volte à lista para escolher outro.')
                 body = _body(draft)
+                # Bateria do carro (escondida; no modo apresentação, a do celular) e capacidade útil:
+                # a API e o totem passam a mostrar o mesmo SoC durante a recarga.
+                body.update(await vehicle_state.start_fields(app))
                 if draft['last_body'] is not None and body != draft['last_body']:
                     draft['key'] = app.api.new_key()
                 draft['before_session_id'] = app.api.last_session_id

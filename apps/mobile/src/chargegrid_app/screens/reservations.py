@@ -175,6 +175,8 @@ async def seed_demo(app, kind):
     if kind not in ('res', 'session') or getattr(app.api, 'is_demo', False) is not True:
         return
     import asyncio
+
+    from ..services import vehicle_state
     current = await app.api.request('GET', 'reservations/current')
     if not current or current.get('status') not in ('pending_device', 'confirmed'):
         stations = await app.api.request('GET', 'stations', params={'limit': 5, 'offset': 0})
@@ -188,7 +190,8 @@ async def seed_demo(app, kind):
         point = (current or {}).get('connector') or {}
         await app.api.request('POST', 'charging-sessions', {
             'presence_code': '#F12345', 'public_code': point.get('public_code') or (current or {}).get('public_code'),
-            'reservation_id': current['id'], 'max_duration_minutes': 30}, key='seed-ses')
+            'reservation_id': current['id'], 'max_duration_minutes': 30,
+            **await vehicle_state.start_fields(app)}, key='seed-ses')
         await asyncio.sleep(4)
 
 

@@ -1,3 +1,5 @@
+from decimal import ROUND_HALF_UP
+
 from sqlalchemy import func, select
 
 from ...errors import fail
@@ -5,6 +7,7 @@ from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, 
 from ...presence_code import valid_code
 from ...service import (
     SESSION_ACTIVE,
+    SOC_STEP,
     active_res,
     device_for,
     ensure_user_free,
@@ -14,7 +17,11 @@ from ...service import (
     lock_point,
     online,
     remember,
+    stop_if_battery_full,
 )
+from ..devices.service import battery_parameters
+
+_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source")
 
 
 def _point_for_code(db, user, data):
@@ -49,11 +56,33 @@ def _point_for_code(db, user, data):
     fail("ambiguous_presence_code", "Há mais de um ponto com este código. Escolha o ponto na lista antes de iniciar.", 422)
 
 
+def _start_body(data):
+    # Idempotency hash: omit the optional battery keys when absent so a retry
+    # hashed before they existed still matches the same body.
+    body = data.model_dump()
+    for name in _BATTERY_KEYS:
+        if body.get(name) is None:
+            body.pop(name, None)
+    return body
+
+
+def _battery_fields(data):
+    soc = data.soc_percent.quantize(SOC_STEP, rounding=ROUND_HALF_UP) if data.soc_percent is not None else None
+    source = data.soc_source or ("simulated" if soc is not None else None)
+    return {
+        "soc_percent": soc,
+        "start_soc_percent": soc,
+        "battery_kwh": data.battery_kwh.quantize(SOC_STEP, rounding=ROUND_HALF_UP)
+        if data.battery_kwh is not None else None,
+        "soc_source": source,
+    }
+
+
 def start(db, user, data, key):
     # Serialize this user's requests before looking up a rotating code. A retry
     # must recover the accepted session even after expiry or availability changes.
     db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
-    old, body_hash = idempotent(db, user, "start", key, data.model_dump(), ChargingSession)
+    old, body_hash = idempotent(db, user, "start", key, _start_body(data), ChargingSession)
     if old:
         lock_point(db, user, old.connector_id)
         db.refresh(old)
@@ -113,6 +142,7 @@ def start(db, user, data, key):
         max_cost=data.max_cost,
         price_per_kwh=connector.price_per_kwh,
         discount_percent=discount,
+        **_battery_fields(data),
     )
     db.add(session)
     db.flush()
@@ -122,6 +152,7 @@ def start(db, user, data, key):
         "max_cost": str(session.max_cost) if session.max_cost else None,
         "price_per_kwh": str(session.price_per_kwh),
         "discount_percent": discount,
+        **battery_parameters(session),
     }
     issue(db, connector, device, "START", session=session, parameters=limits)
     remember(db, user, "start", key, body_hash, session)
@@ -141,4 +172,22 @@ def stop(db, user, session_id, key):
         session.status = "stopping"
         issue(db, connector, device_for(db, connector), "STOP", session=session)
     remember(db, user, "stop:" + str(session_id), key, body_hash, session)
+    return session
+
+
+def report_soc(db, user, session_id, soc_percent):
+    """Phone (presentation mode) reports the car SoC; >= 100 stops as ``battery_full``."""
+    session = db.get(ChargingSession, session_id)
+    if not session or session.user_id != user.id:
+        fail("not_found", "Sessão não encontrada", 404)
+    connector = lock_point(db, user, session.connector_id)
+    db.refresh(session)
+    if session.status not in ("starting", "charging"):
+        fail("session_not_active", "A recarga não está em andamento", 409)
+    session.soc_percent = soc_percent.quantize(SOC_STEP, rounding=ROUND_HALF_UP)
+    session.soc_source = "phone"
+    if session.start_soc_percent is None:
+        session.start_soc_percent = session.soc_percent
+    stop_if_battery_full(db, connector, device_for(db, connector), session)
+    db.flush()
     return session

@@ -269,7 +269,7 @@ class DeferredContentTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_zero_battery_is_kept_and_screen_opens_offline_from_local_profile(self):
+    async def test_screen_opens_offline_from_local_profile_without_battery_question(self):
         import tempfile
 
         from chargegrid_app.preferences import DriverProfileStore
@@ -284,7 +284,7 @@ class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
             app = DriverApp(SimpleNamespace(is_demo=False, request=offline, new_key=lambda: 'k'))
             screen = await driver.build(app)  # Used to fail the whole screen.
             form = fields(screen)
-            self.assertEqual(battery(screen).value, 0)  # Was replaced by 60.
+            self.assertIsNone(battery(screen))  # The battery is hidden now (services.vehicle_state).
             self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
             self.assertIn('Sem conexão', app.notices[0])
 

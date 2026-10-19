@@ -8,6 +8,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services import driver as helpers
+from ..services import vehicle_state
 from ..services.driver_profile import save_vehicle
 from ..ui import design, theme
 from ..ui.components import button, money
@@ -157,6 +158,16 @@ async def build(app, mode=None, **_):
     rows.append(_row('Tema escuro', 'Aparência do aplicativo', ft.Icons.DARK_MODE_OUTLINED, None, chevron=False,
                      trailing=ft.Switch(value=theme.is_dark(), on_change=dark, data='preference',
                                         active_color=theme.RED)))
+    if vehicle_state.presentation_available(app):
+        # Pitch: o celular carregado pelo ChargeGrid Mini faz o papel do carro (preferência do aparelho).
+        async def presentation(e):
+            if not vehicle_state.set_presentation_mode(app, bool(e.control.value)):
+                app.notice('Modo apresentação aplicado nesta sessão. Não foi possível salvar no dispositivo.')
+            app.page.update()
+        rows.append(_row('Modo apresentação', 'Usa a bateria do celular como bateria do carro',
+                         ft.Icons.BATTERY_CHARGING_FULL, None, chevron=False,
+                         trailing=ft.Switch(value=vehicle_state.presentation_mode(app), on_change=presentation,
+                                            data='presentation', active_color=theme.RED)))
     notes = [design.demo_note(app)]
     if demo:
         notes.append(design.txt('Senha pública: demo1234 · os dados simulados reiniciam ao sair', 10,
@@ -200,6 +211,7 @@ def edit_form(app, profile, driver=None):
         account = app.api.request('PATCH','me',{'name':name.value.strip(),'phone':phone.value.strip() or None,
                                                 'vehicle_description':description or None})
         if chosen:
+            vehicle_state.remember_vehicle(app, chosen)
             # Mesmo carro do Modo motorista; as preferências do turno são mantidas.
             app.profile, _ = await asyncio.gather(account, save_vehicle(app.api, chosen, driver))
         else:

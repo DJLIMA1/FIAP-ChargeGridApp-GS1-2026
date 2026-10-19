@@ -144,7 +144,10 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['max_duration_minutes'],10)
         self.assertEqual(body['public_code'],'CG-ONE')
         self.assertNotIn('payment',body)
-        self.assertNotIn('soc_percent',body)
+        self.assertNotIn('payment_method',body)
+        # The hidden car battery travels with the start (same value the totem shows).
+        self.assertEqual(body['soc_source'],'simulated')
+        self.assertTrue(15 <= body['soc_percent'] <= 60)
 
     async def test_by_time_estimate_is_explicitly_nominal_and_not_battery_soc(self):
         screen = await charging_limits(charging_app(),public_code='CG-ONE',point_context=CONTEXT)

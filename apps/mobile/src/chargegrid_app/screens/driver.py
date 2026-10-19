@@ -3,13 +3,14 @@
 Todo cálculo vem da API (``/v1/driver/*``) ou, no modo demo, do mesmo motor
 ``chargegrid_core.driver`` executado localmente. Demanda é sempre estimativa.
 
-A tela pergunta só o que muda a cada turno (a bateria agora). O carro e o turno vêm do
-perfil, o modo sai do horário, o local da busca salva e o clima da API (Open-Meteo).
-Layout = referência "Modo motorista" (402 x 874 pt): subtítulo com o carro, cartão
-"Bateria agora", turno recolhível, "O APP já considera" (3 linhas que abrem o ajuste)
-e os botões "Planejar meu turno" / "Próxima parada agora".
+A tela não pergunta a bateria: o planejador usa o SoC escondido do carro
+(``services.vehicle_state`` — sorteado por conta no modo oficial, a bateria do celular no modo
+apresentação), nunca exibido como número. O carro e o turno vêm do perfil, o modo sai do horário,
+o local da busca salva e o clima da API (Open-Meteo).
+Layout = referência "Modo motorista" (402 x 874 pt) sem o cartão de bateria: subtítulo com o carro,
+turno recolhível, "O APP já considera" (3 linhas que abrem o ajuste) e os botões
+"Planejar meu turno" / "Próxima parada agora".
 """
-import asyncio
 from datetime import datetime
 
 import flet as ft
@@ -20,6 +21,7 @@ from ..api_client import ApiError
 from ..demo import DEMO_LOCATIONS
 from ..preferences import DriverProfileStore
 from ..services import driver as helpers
+from ..services import vehicle_state
 from ..services.driver_demo import LOCAL_TZ
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.search_location import SearchLocation
@@ -201,31 +203,6 @@ async def _remote_profile(app, demo):
         return {'saved': False}
 
 
-async def _live_soc(app):
-    """Bateria lida da recarga em andamento (quando o ponto informa o SoC)."""
-    try:
-        session = await app.api.request('GET', 'charging-sessions/current')
-    except Exception:  # noqa: BLE001 - leitura opcional: o motorista ajusta a bateria
-        return None
-    soc = session.get('soc_percent') if isinstance(session, dict) else None
-    return float(soc) if isinstance(soc, (int, float)) and 0 <= soc <= 100 else None
-
-
-def _battery_slider(value):
-    """Controle branco da referência: trilho 6 pt (branco/cinza), polegar branco de 18 pt."""
-    slider = ft.Slider(value=value, min=0, max=100, divisions=100, data='soc', label='{value}%',
-                       active_color=theme.TEXT_COLOR, inactive_color=_track_off(), thumb_color=theme.TEXT_COLOR,
-                       overlay_color=ft.Colors.with_opacity(0.08, theme.TEXT_COLOR),
-                       padding=ft.Padding(left=0, right=0, top=0, bottom=0))
-    themed = ft.Container(slider, height=26, theme=ft.Theme(slider_theme=ft.SliderTheme(
-        track_height=6,
-        active_tick_mark_color=ft.Colors.TRANSPARENT, inactive_tick_mark_color=ft.Colors.TRANSPARENT,
-        value_indicator_color=theme.BTN_SECONDARY if theme.is_dark() else theme.TEXT_COLOR,
-        value_indicator_text_style=ft.TextStyle(size=12, font_family=design.FONT_SEMIBOLD,
-                                                color='#FFFFFF' if theme.is_dark() else theme.CARD))))
-    return slider, themed
-
-
 async def build(app, **_):
     demo = getattr(app.api, 'is_demo', False) is True
     state = getattr(app, 'driver_state', None)
@@ -234,7 +211,7 @@ async def build(app, **_):
         app.driver_state = state
     store = DriverProfileStore()
     local = None if demo else store.load()
-    remote, live_soc = await asyncio.gather(_remote_profile(app, demo), _live_soc(app))
+    remote = await _remote_profile(app, demo)
     profile = remote if remote.get('saved') or not local else {**remote, **local}
     vehicle = dict(profile.get('vehicle') or {})
     prefs = dict(profile.get('preferences') or {})
@@ -248,7 +225,6 @@ async def build(app, **_):
     def car_changed(chosen):
         if chosen:
             car_text.value = car_line(chosen)
-        refresh_battery()
         app.page.update()
 
     picker = VehiclePicker(vehicle, remote.get('presets'), on_change=car_changed)
@@ -261,49 +237,6 @@ async def build(app, **_):
         button=True, label='Trocar o carro',
         content=ft.Container(car_text, on_click=toggle_picker, ink=False, tooltip='Trocar o carro', height=16,
                              alignment=ft.Alignment(-1, 0), padding=ft.Padding(left=5, right=0, top=0, bottom=0)))
-
-    # --- bateria agora: a única pergunta de cada turno ------------------------------------------
-    # 0 % is a real reading: only a missing value falls back to the next source.
-    soc_value = next((value for value in (state.get('soc'), live_soc, (local or {}).get('soc_percent'))
-                      if value is not None), 80 if demo else 60)
-    soc_value = round(max(0, min(100, float(soc_value))))
-    soc, soc_control = _battery_slider(soc_value)
-    readout = design.txt(f'{soc_value}%', 43, 'bold')
-    range_semantics = ft.Semantics(label='Bateria agora (%)', content=soc_control)
-
-    def reserve_level():
-        try:
-            return helpers.number(reserve.value, 'a reserva', 5, 50)
-        except ApiError:
-            return float(prefs.get('reserve_percent', 15))
-
-    def refresh_battery():
-        level = round(float(soc.value or 0))
-        readout.value = f'{level}%'
-        line = helpers.battery_line(picker.read(strict=False), level, reserve_level())
-        # Autonomia estimada sem poluir o cartão: aparece no balão ao arrastar e no leitor de tela.
-        total = helpers.range_km(picker.read(strict=False), level)
-        soc.label = f'{{value}}% · ≈ {total} km' if total is not None else '{value}%'
-        range_semantics.label = f'Bateria agora: {level}%. {line}'
-        range_semantics.data = line
-
-    async def soc_changed(event=None):
-        state['soc'] = round(float(soc.value or 0))
-        refresh_battery()
-        app.page.update()
-    soc.on_change = soc_changed
-
-    def caption(text):
-        return design.txt(text, 10, 'regular', '#898989' if theme.is_dark() else theme.GRAY_TEXT)
-    battery_card = ft.Container(ft.Column([
-        ft.Container(design.txt('Bateria agora', 11.5, 'regular', '#C7C7C7' if theme.is_dark() else theme.GRAY_TEXT),
-                     height=20, alignment=ft.Alignment(-1, 0)),
-        ft.Container(readout, height=56, alignment=ft.Alignment(-1, 0), padding=ft.Padding(left=0, right=0, top=2, bottom=0)),
-        ft.Container(range_semantics, margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
-        ft.Container(ft.Row([caption('0%'), caption('100%')], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                     height=14, alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=0, top=8, right=0, bottom=0)),
-    ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        bgcolor=_surface(), border_radius=CARD_RADIUS, padding=ft.Padding(left=16, right=16, top=17, bottom=16))
 
     # --- turno, ganhos e refeições (do perfil; aberto só na primeira vez) -------------------------
     shift_start = _field('Início do turno (HH:MM)', prefs.get('shift_start', '10:00'))
@@ -335,7 +268,6 @@ async def build(app, **_):
         _small('Refeições: o planejador tenta parar para comer num posto com restaurante ou café, '
                'recarregando enquanto você come.'), *meal_rows,
     ], expanded=first_time, chevron='up')
-    reserve.on_change = soc_changed
 
     # --- o que o app já considera (modo, local, clima), cada um com um ajuste opcional ----------
     now = _now(app, demo)
@@ -381,7 +313,6 @@ async def build(app, **_):
         place_text, region, _small('Sem GPS: use um bairro, endereço ou a busca salva em Postos.')])
     weather_row, _, _ = expandable_row(app, 'Situação climática', [weather_text, rain])
     refresh_context()
-    refresh_battery()
 
     def collect_profile():
         meals = [helpers.build_meal(kind, enabled.value, start.value, length.value, flex.value)
@@ -422,22 +353,25 @@ async def build(app, **_):
 
     async def request_body():
         profile = collect_profile()
-        level = helpers.number(soc.value, 'a bateria agora (%)', 0, 100)
+        # Bateria escondida do carro: sorteio da conta ou, no modo apresentação, a do celular.
+        level, _ = await vehicle_state.current_soc(app)
+        level = round(max(0.0, min(100.0, float(level))), 1)
         prefs.update(profile['preferences'])
         if not state.get('mode_manual'):
             # O turno pode ter mudado no formulário: o modo segue o horário.
             mode.value = helpers.auto_mode(profile['preferences'], _now(app, demo))
-        state.update(soc=level, rain=bool(rain.value))
+        state.update(rain=bool(rain.value))
         body = {'soc_percent': level, **profile, 'context': {'rain': True} if rain.value else {}}
         position = await locate()
         if position:
             body.update(lat=position[0], lng=position[1])
-        await persist(profile, level)
+        await persist(profile)
         return body
 
-    async def persist(profile, level):
+    async def persist(profile):
         if not demo:
-            store.save({**profile, 'soc_percent': level})
+            store.save(profile)
+        vehicle_state.remember_vehicle(app, profile['vehicle'])
         try:
             await app.api.request('PUT', 'driver/profile', profile)
         except ApiError as error:
@@ -493,7 +427,6 @@ async def build(app, **_):
     body = ft.Column([
         ft.Container(car_row, margin=ft.Margin(left=0, top=0, right=0, bottom=1)),
         picker_box,
-        battery_card,
         shift_section,
         ft.Container(design.txt('O APP já considera', 11.5, 'bold'), height=20, alignment=ft.Alignment(-1, 0),
                      padding=ft.Padding(left=3, right=0, top=0, bottom=4)),
@@ -574,7 +507,7 @@ def timeline_card(plan):
                               spacing=4, tight=True)], wrap=True, spacing=12, run_spacing=6)
     rows = [ft.Row([design.txt(f"{block['start']}–{block['end']}", 12, 'regular', width=92),
                     ft.Container(width=10, height=10, bgcolor=colors[block['kind']], border_radius=2),
-                    design.txt(f"{block['label']} · {block['soc_start']:.0f}% → {block['soc_end']:.0f}%", 12,
+                    design.txt(f"{block['label']} · bateria → {block['soc_end']:.0f}%", 12,
                                'regular', expand=True)], spacing=8) for block in blocks]
     return _card([
         _heading('LINHA DO TEMPO DO TURNO'),
@@ -664,7 +597,8 @@ def next_stop_view(result, app, reserve_action):
         _heading('PRÓXIMA PARADA AGORA'),
         design.txt(recommendation['headline'], 16, 'bold'),
         design.txt(recommendation['message'], 12.5, 'regular'),
-        _small(f"Bateria {status['soc_percent']:.0f}% · ~{max(0, round(status['range_above_reserve_km'] or 0))} km acima da reserva · "
+        # O SoC atual é escondido (services.vehicle_state): só a autonomia acima da reserva aparece.
+        _small(f"~{max(0, round(status['range_above_reserve_km'] or 0))} km acima da reserva · "
                f"demanda agora {status['demand_now']:.2f}× a média{peak}".replace('.', ',')),
     ]
     if recommendation.get('station_id'):

@@ -39,10 +39,13 @@ void syncDevice() {
   persist(); // Não regredir a energia já enviada após reboot.
   JsonDocument body;
   body["boot_id"] = bootId; body["sequence"] = ++sequence;
-  body["firmware_version"] = "0.3.6";
+  body["firmware_version"] = "0.4.0";
   if (sessionId.length()) body["session_id"] = sessionId; else body["session_id"] = nullptr;
   body["physical_state"] = state; body["connected"] = reading.connected;
-  if (sessionId.length()) body["soc_percent"] = reading.socPercent; else body["soc_percent"] = nullptr;
+  // SoC próprio só na fonte simulada com bateria conhecida (o valor do ponto prevalece
+  // na API). Fonte phone ou sessão sem dados de bateria: null, nunca eco da API.
+  if (sessionId.length() && socSource == "simulated" && sessionSocKnown()) body["soc_percent"] = reading.socPercent;
+  else body["soc_percent"] = nullptr;
   body["energy_wh"] = reading.energyWh; body["power_w"] = reading.powerW;
   body["source"] = "simulated"; body["captured_at"] = isoTime();
   if (endReason.length()) body["end_reason"] = endReason; else body["end_reason"] = nullptr;

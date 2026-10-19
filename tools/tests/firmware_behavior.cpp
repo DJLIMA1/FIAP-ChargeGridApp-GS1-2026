@@ -47,6 +47,8 @@ uint32_t version = 0, sequence = 0;
 unsigned long lastContact = 1000, lastTick = 1000, started = 1000, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
 float maxCost = -1, price = 1, discount = 0;
+float socStartPercent = -1, batteryKwh = 0, phoneSocPercent = -1;
+String socSource;
 time_t reservationDeadline = 0;
 JsonDocument acknowledgements;
 bool hasSynced = true, sessionPricingKnown = false;
@@ -190,6 +192,59 @@ int main(int argc, char** argv) {
   assert(reading.energyWh <= 5.001); // Money limit is enforced during a blocked network call.
   assert(!sensors.read(false, 0).connected);
 
+  // Car SoC: legacy START (no fields) keeps the old bench behaviour and no battery stop.
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  response["authorized"]["session"].remove("max_cost");
+  apply(response); lastContact = testMillis;
+  assert(state == "charging" && !sessionSocKnown() && socSource.empty());
+  testMillis += 10000; tick();
+  assert(state == "charging" && std::abs(reading.socPercent - (20 + 20.0f / 600)) < 0.001);
+  // Simulated source: SoC rises with delivered energy (start + kWh / battery * 100).
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  auto socStart = startResponse();
+  socStart["commands"][0]["parameters"]["soc_percent"] = 50;
+  socStart["commands"][0]["parameters"]["battery_kwh"] = "60.00"; // Decimal serialised as text.
+  socStart["commands"][0]["parameters"]["soc_source"] = "simulated";
+  apply(socStart); lastContact = testMillis;
+  assert(state == "charging" && sessionSocKnown() && std::abs(reading.socPercent - 50) < 0.001);
+  testMillis += 10000; tick();
+  assert(std::abs(reading.socPercent - (50 + 20.0f / 600)) < 0.001);
+  auto socSync = socStart; socSync["commands"].to<JsonArray>();
+  socSync["authorized"]["session"]["soc_percent"] = 12; // API echo never overrides the simulation.
+  apply(socSync); assert(std::abs(reading.socPercent - (50 + 20.0f / 600)) < 0.001);
+  // At 100 % the bench stops locally (energy capped exactly at the free capacity).
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  socStart["commands"][0]["parameters"]["soc_percent"] = 99.9;
+  socStart["commands"][0]["parameters"]["battery_kwh"] = 10;
+  apply(socStart); lastContact = testMillis;
+  testMillis += 10000; tick();
+  assert(state == "stopped" && endReason == "battery_full" && reading.socPercent == 100);
+  assert(std::abs(reading.energyWh - 10) < 0.05 && reading.powerW == 0 && !reading.connected);
+  // Phone source: the device shows the level pushed by the app and never recalculates it.
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  socStart["commands"][0]["parameters"]["soc_percent"] = 40;
+  socStart["commands"][0]["parameters"]["soc_source"] = "phone";
+  apply(socStart); lastContact = testMillis;
+  assert(state == "charging" && sessionSocKnown() && reading.socPercent == 40);
+  testMillis += 10000; tick();
+  assert(state == "charging" && reading.socPercent == 40);
+  socSync = socStart; socSync["commands"].to<JsonArray>();
+  socSync["authorized"]["session"]["soc_source"] = "phone";
+  socSync["authorized"]["session"]["soc_percent"] = "63.50";
+  apply(socSync); lastContact = testMillis;
+  assert(reading.socPercent == 63.5f);
+  testMillis += 10000; tick(); assert(state == "charging" && reading.socPercent == 63.5f);
+  auto fullStop = socSync;
+  auto stopCommand = fullStop["commands"].to<JsonArray>().add<JsonObject>();
+  stopCommand["id"] = "stop-full"; stopCommand["type"] = "STOP"; stopCommand["version"] = 2;
+  stopCommand["session_id"] = "test-session"; stopCommand["expires_at"] = "2026-09-21T13:00:00Z";
+  stopCommand["parameters"]["reason"] = "battery_full";
+  fullStop["control_version"] = 2;
+  assert(apply(fullStop) && state == "stopped" && endReason == "battery_full");
+  assert(acknowledgements[0]["status"] == "applied");
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle"; endReason = "";
+  socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1;
+
   // A reboot starts idle. Replaying the old RESERVE must not falsely ACK it;
   // only a fresh server version can restore the reservation and its deadline.
   sessionId = ""; lastCommand = ""; version = 0; state = "idle";
@@ -254,6 +309,33 @@ int main(int argc, char** argv) {
   screenshot(argv[1], "panel-charging");
   assert(!lv_obj_has_flag(sessionCard, LV_OBJ_FLAG_HIDDEN));
   assert(!lv_obj_has_flag(stopButton, LV_OBJ_FLAG_HIDDEN));
+  assert(lv_obj_has_flag(batteryCard, LV_OBJ_FLAG_HIDDEN)); // No SoC from the API: legacy layout.
+  socSource = "simulated"; socStartPercent = 35; batteryKwh = 50;
+  reading.socPercent = currentSessionSoc(reading.energyWh);
+  screenshot(argv[1], "panel-charging-soc");
+  assert(!lv_obj_has_flag(batteryCard, LV_OBJ_FLAG_HIDDEN));
+  assert(std::string(lv_label_get_text(socLabel)) == "41%");
+  assert(std::string(lv_label_get_text(socDetailLabel)) == "Início 35%");
+  assert(lv_bar_get_value(socBar) == 41);
+  assert(!lv_obj_has_flag(stopButton, LV_OBJ_FLAG_HIDDEN));
+  socSource = "phone"; phoneSocPercent = 99.6f; reading.socPercent = 99.6f;
+  panelTick(); refresh();
+  assert(std::string(lv_label_get_text(socLabel)) == "99%"); // Never shows 100% before full.
+  state = "stopped"; endReason = "battery_full"; reading.socPercent = 100;
+  screenshot(argv[1], "panel-battery-full");
+  assert(std::string(lv_label_get_text(statusLabel)) == "Bateria cheia");
+  assert(std::string(lv_label_get_text(socLabel)) == "100%");
+  assert(lv_obj_has_flag(stopButton, LV_OBJ_FLAG_HIDDEN));
+  // The API ends the session in the same sync: the end state is held for 10 s.
+  state = "idle"; sessionId = ""; endReason = ""; reading = {20, 0, 0, false};
+  socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1;
+  testMillis += 5000; lastContact = testMillis; panelTick(); refresh();
+  assert(std::string(lv_label_get_text(statusLabel)) == "Bateria cheia");
+  testMillis += 6000; lastContact = testMillis; panelTick(); refresh();
+  assert(std::string(lv_label_get_text(statusLabel)) == "Pronto para você");
+  sessionId = "test-session";
+  state = "charging"; endReason = ""; reading = {42, 3210, 7200, true};
+  socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1;
   lv_event_send(stopButton, LV_EVENT_CLICKED, nullptr); panelTick();
   assert(state == "stopped" && reading.powerW == 0 && endReason == "requested");
   screenshot(argv[1], "panel-stopped");
@@ -357,6 +439,6 @@ int main(int argc, char** argv) {
   assert(acknowledgements[0]["status"] == "failed");
   assert(acknowledgements[0]["new_device_key_hash"].isNull());
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
-  puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, reserved reboot/recovery, countdown, status text and keyboard");
-  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 12 LVGL frames");
+  puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
+  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 14 LVGL frames");
 }

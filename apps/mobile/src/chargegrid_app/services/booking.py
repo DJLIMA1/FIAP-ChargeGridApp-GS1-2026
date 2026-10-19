@@ -99,14 +99,20 @@ def time_slots(now=None, count=SLOT_COUNT):
     return [(first + timedelta(minutes=SLOT_STEP_MINUTES * index)).strftime('%H:%M') for index in range(count)]
 
 
-def estimate(power_kw, price_per_kwh, *, minutes=None, value=None):
+def estimate(power_kw, price_per_kwh, *, minutes=None, value=None, energy=None):
     """Estimativa de recarga: devolve ``{minutes, energy_kwh, cost}`` (custo da energia, sem taxa).
 
     Por tempo: energia = potência x horas. Por valor: energia = valor / tarifa.
+    Por autonomia (``energy`` em kWh, de ``autonomy_energy``): tempo = energia / potência, custo = energia x tarifa.
     """
     power, price = to_decimal(power_kw), to_decimal(price_per_kwh)
     if power <= 0:
         raise ValueError('Potência inválida.')
+    if energy is not None:
+        amount = max(Decimal(0), to_decimal(energy))
+        needed = (amount * 60 / power).to_integral_value(rounding=ROUND_CEILING) if amount else Decimal(0)
+        return {'minutes': int(needed), 'energy_kwh': amount.quantize(CENT, rounding=ROUND_HALF_UP),
+                'cost': (amount * price).quantize(CENT, rounding=ROUND_HALF_UP)}
     if value is not None:
         cost = to_decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
         energy = cost / price if price > 0 else Decimal(0)
@@ -127,6 +133,61 @@ def parse_minutes(text):
     if not raw.isascii() or not raw.isdigit() or int(raw) < 1:
         raise ValueError('Informe o tempo em minutos inteiros (ex.: 30).')
     return int(raw)
+
+
+def parse_km(text):
+    raw = str(text or '').strip().lower().replace('km', '').strip()
+    if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= 2000:
+        raise ValueError('Informe a autonomia em km inteiros (ex.: 120).')
+    return int(raw)
+
+
+def autonomy_energy(km, consumption_kwh_per_100km, soc_percent, usable_kwh):
+    """Energia para ``km`` de autonomia: ``km x consumo / 100``, limitada ao espaço livre da bateria
+    (``(100 - SoC)% x bateria útil``). Devolve ``{energy_kwh, wanted_kwh, free_kwh, capped, km}``
+    (``km`` = autonomia efetivamente adicionada)."""
+    consumption = to_decimal(consumption_kwh_per_100km)
+    if consumption <= 0:
+        raise ValueError('Consumo do carro inválido.')
+    wanted = to_decimal(km) * consumption / 100
+    soc = min(Decimal(100), max(Decimal(0), to_decimal(soc_percent)))
+    free = (Decimal(100) - soc) / 100 * max(Decimal(0), to_decimal(usable_kwh))
+    capped = wanted > free
+    energy = free if capped else wanted
+    return {'energy_kwh': energy.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
+            'wanted_kwh': wanted.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
+            'free_kwh': free.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP), 'capped': capped,
+            'km': int((energy / consumption * 100).to_integral_value(rounding=ROUND_HALF_UP))}
+
+
+def autonomy_note(result):
+    """Aviso gentil quando a bateria não comporta toda a autonomia pedida (nunca mostra o SoC)."""
+    if not result or not result.get('capped'):
+        return None
+    if result['energy_kwh'] <= 0:
+        return 'A bateria do carro já está cheia: não há autonomia para adicionar agora.'
+    return (f"A bateria comporta cerca de {result['km']} km agora; a recarga vai até encher "
+            '(o restante não é cobrado).')
+
+
+def autonomy_limits(km, car, power_kw, price_per_kwh, max_minutes=None):
+    """Autonomia → limites que a API entende: ``{max_duration_minutes, max_cost?, energy_kwh, capped, km}``.
+
+    ``car``: ``{'consumption', 'usable_kwh', 'soc'}`` (``services.vehicle_state.snapshot``).
+    Tempo = energia / potência (arredondado para cima, 1..``max_minutes``); valor = energia x tarifa.
+    """
+    result = autonomy_energy(km, car['consumption'], car['soc'], car['usable_kwh'])
+    if result['energy_kwh'] <= 0:
+        raise ValueError('A bateria do carro já está cheia: não há autonomia para adicionar agora.')
+    quote = estimate(power_kw, price_per_kwh, energy=result['energy_kwh'])
+    minutes = max(1, quote['minutes'])
+    if max_minutes:
+        minutes = min(minutes, int(max_minutes))
+    limits = {'max_duration_minutes': minutes, 'energy_kwh': quote['energy_kwh'], 'capped': result['capped'],
+              'km': result['km'], 'cost': quote['cost']}
+    if to_decimal(price_per_kwh) > 0:
+        limits['max_cost'] = max(CENT, quote['cost'])
+    return limits
 
 
 def parse_value(text):
