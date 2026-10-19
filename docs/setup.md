@@ -50,6 +50,8 @@ O APK 0.5.0 (build 25) está em `builds/chargegrid-0.5.0.apk` (SHA-256 `fc2ab8df
 
 O APK 0.5.1 (build 26) está em `builds/chargegrid-0.5.1.apk` (SHA-256 `734ff96d752dd529cacb157a3a4df73d44a36809937b489d48cfb0855a91ad37`). Ajustes do teste com a equipe: carro centralizado e proporcional à largura da tela, mensagem do usuário alinhada à direita no chat, tela Conta reordenada (Perfil, saldo/carteira, Alterar senha, Tema escuro), carro no Perfil no mesmo estilo dos outros campos e cupons fora da área do motorista.
 
+O APK 0.5.2 (build 27) está em `builds/chargegrid-0.5.2.apk` (SHA-256 `62264dd17d34d79a634f72691f764c23d659ece86bc34e3a8615a1ae107d4bac`). Modo motorista no novo design (abaixo do carro no Início), filtros da busca de estações num ícone da barra de pesquisa, notificações com leitura, barra de gestos na cor da navegação e limpeza da Conta, do saldo e dos dados da estação.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
