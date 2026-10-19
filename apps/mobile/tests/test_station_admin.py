@@ -58,10 +58,10 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Estação CG-001', texts(screen))
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
                                 ('Potência por conector', ('station_admin', {'station_id': sid, 'page': 'power'})),
-                                ('Tarifas dinâmicas', ('tariffs', {'station_id': sid})),
-                                ('Limite de bateria', ('station_admin', {'station_id': sid, 'page': 'battery'}))):
+                                ('Tarifas dinâmicas', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
             self.assertEqual((app.go.await_args.args[0], app.go.await_args.kwargs), expected)
+        self.assertNotIn('Limite de bateria', texts(screen))  # aba removida do operador
         await app.api.close()
 
     async def test_data_page_patches_name_address_and_status(self):
@@ -89,23 +89,6 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         point = (await app.api.request('GET', f'stations/{station["id"]}'))['connectors'][0]
         self.assertEqual(float(point['power_kw']), 22.0)
         await app.api.close()
-
-    async def test_battery_rule_is_saved_locally_without_api_calls(self):
-        app = HandlerApp()
-        app.back = lambda event=None: None
-        app.api.is_demo = True
-        app.profile = {'id': 'u'}
-        app.api.request.return_value = {'id': 's', 'name': 'Posto', 'address': 'Rua', 'connectors': []}
-        screen = await station_admin.build(app, station_id='s', page='battery')
-        self.assertIn('80%', texts(screen))
-        slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
-        slider.value = 65
-        await slider.on_change(SimpleNamespace(control=slider))
-        self.assertIn('65%', texts(screen))
-        calls = app.api.request.await_count
-        await press(screen, 'Salvar regra')(None)
-        self.assertEqual(app.api.request.await_count, calls)
-        self.assertEqual(station_settings.battery_rule(app, 's'), {'limit': 65, 'active': True, 'action': 'notify'})
 
     def test_battery_rule_validation(self):
         app = HandlerApp()

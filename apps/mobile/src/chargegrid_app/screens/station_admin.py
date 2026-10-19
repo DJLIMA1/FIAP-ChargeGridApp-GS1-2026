@@ -1,16 +1,14 @@
 """Estação do vendedor: detalhe e subpáginas (dados, potência por conector, limite de bateria).
 
-Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'power' | 'battery').
+Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'power').
 Nome, endereço e status usam ``PATCH stations``; a potência usa ``PATCH connectors`` (``power_kw``);
 o limite de bateria é uma regra local simulada (``services/station_settings.py``).
 """
 
-import math
 
 import flet as ft
 
 from ..api_client import ApiError
-from ..services import station_settings
 from ..ui import design, theme
 
 POWER_MAX = {'Tipo 2': 45}
@@ -67,11 +65,6 @@ def heading(app, text, on_back=None):
                         height=34, margin=ft.Margin(left=0, top=-1, right=0, bottom=0))
 
 
-def battery_tile():
-    return ft.Container(ft.Icon(ft.Icons.BATTERY_0_BAR_OUTLINED, size=20, color=theme.TILE_FG, rotate=ft.Rotate(math.pi / 2)),
-                        width=38, height=34, bgcolor=theme.TILE, border_radius=10, alignment=ft.Alignment(0, 0))
-
-
 def _round(field):
     return ft.Container(field, border_radius=14, bgcolor=theme.INPUT_BG, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
 
@@ -104,8 +97,6 @@ async def build(app, station_id=None, page=None, **params):
         return _data_page(app, station, code)
     if page == 'power':
         return _power_page(app, station)
-    if page == 'battery':
-        return _battery_page(app, station)
     return _main_page(app, station, code)
 
 
@@ -126,7 +117,6 @@ def _main_page(app, station, code):
             menu_row('Potência por conector', power_line, ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifas dinâmicas', 'Rotatividade, demanda e pico', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
-            menu_row('Limite de bateria', 'Proteção e alertas de carga', None, go('battery'), tile_control=battery_tile()),
         ], spacing=29),
         ft.Container(height=18),
         chatbot_button(app, 38), gap=14)
@@ -249,59 +239,3 @@ def _power_card(app, point, kind, index, current, top, value, state):
                         margin=ft.Margin(left=0, top=0, right=0, bottom=24))
 
 
-def _battery_page(app, station):
-    sid = station['id']
-    rule = station_settings.battery_rule(app, sid)
-    state = {'limit': rule['limit'], 'active': rule['active']}
-    readout = design.txt(f"{state['limit']}%", 46, 'bold')
-    holder = ft.Container()
-
-    async def changed(event):
-        state['limit'] = round(event.control.value)
-        readout.value = f"{state['limit']}%"
-        app.page.update()
-
-    async def choose(value):
-        state['active'] = value == 'on'
-        draw()
-        app.page.update()
-
-    def draw():
-        holder.content = design.segmented([('on', 'Ativa'), ('off', 'Inativa')],
-                                          'on' if state['active'] else 'off', choose, height=37.5)
-    draw()
-
-    async def save():
-        station_settings.save_battery_rule(app, sid, state['limit'], state['active'])
-        app.notice('Regra de limite de bateria salva.')
-
-    slider = ft.Slider(value=state['limit'], min=0, max=100, active_color=theme.BTN_PRIMARY,
-                       inactive_color=theme.SEGMENT_OFF, thumb_color=theme.BTN_PRIMARY, data='battery',
-                       on_change=changed, padding=0)
-    limit_card = design.card_box(ft.Column([
-        design.txt('Limite desejado', 11.5, 'regular', theme.GRAY_TEXT),
-        ft.Container(readout, margin=ft.Margin(left=0, top=-2, right=0, bottom=0)),
-        ft.Container(slider, margin=ft.Margin(left=0, top=6.5, right=0, bottom=0)),
-        ft.Row([design.txt('0%', 11.5, 'regular', theme.GRAY_TEXT), design.txt('100%', 11.5, 'regular', theme.GRAY_TEXT)],
-               alignment=ft.MainAxisAlignment.SPACE_BETWEEN)], spacing=10),
-        padding=ft.Padding(left=16, right=16, top=20, bottom=18.5))
-    action_card = design.card_box(ft.Column([
-        ft.Row([ft.Stack([ft.Icon(ft.Icons.NOTIFICATIONS_NONE, size=22, color=theme.TEXT_COLOR),
-                          ft.Container(width=6, height=6, bgcolor=theme.RED, border_radius=3, right=1, top=1)],
-                         width=22, height=22),
-                design.txt('Enviar notificação', 12.5, 'bold')], spacing=9),
-        ft.Container(design.txt('A recarga segue a configuração de segurança do equipamento e do veículo.', 10.5,
-                                'regular', theme.GRAY_TEXT), width=250)], spacing=22),
-        padding=ft.Padding(left=15, right=15, top=22, bottom=18))
-    return design.page(
-        heading(app, 'Limite de bateria'),
-        ft.Container(ft.Column([design.txt('Configure a meta de carga', 12.5, 'regular', theme.GRAY_TEXT),
-                                design.txt('usada nos alertas.', 12.5, 'regular', theme.GRAY_TEXT)], spacing=2),
-                     margin=ft.Margin(left=0, top=-6, right=0, bottom=22)),
-        limit_card,
-        ft.Container(design.section_label('Ao atingir o limite'), margin=ft.Margin(left=0, top=0, right=0, bottom=-2)),
-        action_card,
-        gap=16, gutter=5,
-        footer=[design.labeled('Status', holder, gap=4, strong=False),
-                ft.Container(design.primary_button('Salvar regra', app.action(save), height=46, weight='bold', size=13),
-                             margin=ft.Margin(left=0, top=4, right=0, bottom=5))])

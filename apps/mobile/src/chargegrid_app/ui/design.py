@@ -128,6 +128,7 @@ MAP_SRC = ASSET_DIR + 'map_villa_lobos.jpg'
 QR_SRC = ASSET_DIR + 'qr_pix_demo.png'
 STATION_PIN_SRC = ASSET_DIR + 'icon_station_pin.svg'
 WORDMARK_SRC = '/figma/wordmark-dark.svg'
+WORDMARK_LIGHT_SRC = '/figma/wordmark-light.svg'  # quadrado escuro com ícone branco e texto preto
 
 
 # ---------------------------------------------------------------- texto
@@ -457,12 +458,9 @@ def map_image(height=160, radius=RADIUS_CARD, src=None):
 
 
 def logo():
-    """Marca do cabeçalho (quadrado branco com ícone + ``ChargeGrid``)."""
-    image = ft.Image(src=WORDMARK_SRC, width=101, height=21, fit=ft.BoxFit.CONTAIN, semantics_label='ChargeGrid')
-    if theme.is_dark():
-        return image
-    # The wordmark is white artwork: keep it on a dark plate in the light theme.
-    return ft.Container(image, bgcolor='#1F1F1F', border_radius=4, padding=ft.Padding(left=0, right=2, top=0, bottom=0))
+    """Marca do cabeçalho: versão branca no tema escuro e versão escura (quadrado preto) no tema claro."""
+    return ft.Image(src=WORDMARK_SRC if theme.is_dark() else WORDMARK_LIGHT_SRC, width=101, height=21,
+                    fit=ft.BoxFit.CONTAIN, semantics_label='ChargeGrid')
 
 
 # ---------------------------------------------------------------- shell
