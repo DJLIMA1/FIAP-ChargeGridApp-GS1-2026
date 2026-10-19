@@ -1,13 +1,16 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
-import { OPERATOR_PENDING_MESSAGE } from './auth/vendor'
-import { Icon } from './components/Icon'
+import { AUTH_ROUTES } from './auth/routes'
 import { Layout } from './components/Layout'
 import { ToastProvider } from './components/Toast'
 import { EmptyState, Logo, Skeleton } from './components/ui'
 import { FiltersProvider } from './lib/filters'
+import ForgotPassword from './pages/ForgotPassword'
 import Login from './pages/Login'
+import OperatorPending from './pages/OperatorPending'
+import Signup from './pages/Signup'
+import VerifyEmail from './pages/VerifyEmail'
 
 const Overview = lazy(() => import('./pages/Overview'))
 const Stations = lazy(() => import('./pages/Stations'))
@@ -42,24 +45,6 @@ function PageFallback() {
   )
 }
 
-function OperatorPending() {
-  const { logout, profile } = useAuth()
-  return (
-    <div className="center-screen">
-      <div className="restricted card" style={{ padding: 32 }}>
-        <Logo height={24} />
-        <h1 style={{ margin: '8px 0 0', fontSize: 26 }}>Olá{profile?.name ? `, ${profile.name.split(' ')[0]}` : ''}!</h1>
-        <p className="muted" style={{ margin: 0, fontSize: 15 }}>
-          {OPERATOR_PENDING_MESSAGE}
-        </p>
-        <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => void logout()}>
-          <Icon name="logout" size={16} /> Sair
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function NotFound() {
   return (
     <div className="card">
@@ -70,17 +55,35 @@ function NotFound() {
   )
 }
 
+/** Telas de acesso que não fazem sentido com a sessão aberta. */
+const AUTH_PATHS = ['/login', ...Object.values(AUTH_ROUTES)]
+
 function Gate() {
   const { status } = useAuth()
   if (status === 'booting') return <Splash />
   if (status === 'signed_out') {
     return (
       <Routes>
+        <Route path={AUTH_ROUTES.login} element={<Login />} />
+        <Route path={AUTH_ROUTES.register} element={<Signup />} />
+        <Route path={AUTH_ROUTES.verify} element={<VerifyEmail />} />
+        <Route path={AUTH_ROUTES.forgot} element={<ForgotPassword />} />
+        <Route path="/login" element={<Navigate to={AUTH_ROUTES.login} replace />} />
+        {/* Link profundo (ex.: /sessoes): entra e continua no mesmo endereço. */}
         <Route path="*" element={<Login />} />
       </Routes>
     )
   }
-  if (status === 'operator_pending') return <OperatorPending />
+  if (status === 'operator_pending') {
+    return (
+      <Routes>
+        {AUTH_PATHS.map((path) => (
+          <Route key={path} path={path} element={<Navigate to="/" replace />} />
+        ))}
+        <Route path="*" element={<OperatorPending />} />
+      </Routes>
+    )
+  }
   return (
     <FiltersProvider>
       <Routes>
@@ -92,7 +95,9 @@ function Gate() {
           <Route path="alertas" element={<Suspense fallback={<PageFallback />}><Alerts /></Suspense>} />
           <Route path="cupons" element={<Suspense fallback={<PageFallback />}><Coupons /></Suspense>} />
           <Route path="insights" element={<Suspense fallback={<PageFallback />}><Insights /></Suspense>} />
-          <Route path="login" element={<Navigate to="/" replace />} />
+          {AUTH_PATHS.map((path) => (
+            <Route key={path} path={path} element={<Navigate to="/" replace />} />
+          ))}
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

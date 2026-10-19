@@ -3,6 +3,7 @@ import { ApiError, createApiClient, type ApiClient } from '../api/client'
 import { endpoints, type Endpoints } from '../api/endpoints'
 import type { Profile } from '../api/types'
 import { createTokenStore } from './tokens'
+import { interpretRegister, registerBody, type RegisterOutcome, type SignupInput } from './signup'
 import { accessFor, NOT_VENDOR_MESSAGE } from './vendor'
 
 export type AuthStatus = 'booting' | 'signed_out' | 'granted' | 'operator_pending'
@@ -15,6 +16,10 @@ interface AuthValue {
   /** Mensagem para a tela de login (sessão expirada, conta de motorista...). */
   notice: string | null
   login(email: string, password: string): Promise<void>
+  /** Cria a conta de vendedor. `tokens` = já entrou; `confirm` = verificar e-mail; `neutral` = aviso neutro. */
+  register(input: SignupInput): Promise<RegisterOutcome['kind']>
+  /** Consulta `/me` de novo (ex.: depois de vincular o primeiro equipamento no app). */
+  recheck(): Promise<void>
   logout(message?: string): Promise<void>
 }
 
@@ -88,6 +93,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api, resolveProfile],
   )
 
+  const register = useCallback(
+    async (input: SignupInput) => {
+      setNotice(null)
+      const outcome = interpretRegister(await api.register(registerBody(input)))
+      if (outcome.kind === 'tokens') {
+        api.adoptTokens(outcome.tokens)
+        await resolveProfile()
+      }
+      return outcome.kind
+    },
+    [api, resolveProfile],
+  )
+
+  const recheck = useCallback(() => resolveProfile(), [resolveProfile])
+
   const logout = useCallback(
     async (message?: string) => {
       await api.logout()
@@ -99,8 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo<AuthValue>(
-    () => ({ status, profile, api, ep, notice, login, logout }),
-    [status, profile, api, ep, notice, login, logout],
+    () => ({ status, profile, api, ep, notice, login, register, recheck, logout }),
+    [status, profile, api, ep, notice, login, register, recheck, logout],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

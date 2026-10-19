@@ -7,6 +7,13 @@
  * - qualquer e-mail → vendedor "João Silva" com operação habilitada
  * - e-mail contendo "motorista" → conta de motorista (testa o bloqueio)
  * - e-mail contendo "pendente" → vendedor ainda sem operação habilitada
+ * - e-mail contendo "naoconfirmado" → login pede confirmação de e-mail
+ * Cadastro (`/auth/register`, sempre conta de vendedor):
+ * - e-mail contendo "confirmar" → `requires_email_confirmation` (tela "Verifique seu e-mail")
+ * - e-mail contendo "existe" → resposta neutra (aviso no login)
+ * - e-mail contendo "limite" → 429 (também no reenvio)
+ * - senha "senhafraca" → `weak_password`
+ * - qualquer outro → já entra, como vendedor sem operação habilitada
  * Auto-login para capturas: abra com `?mock_login=1`.
  */
 import type { Coupon, CouponInput, Profile } from '../api/types'
@@ -14,6 +21,7 @@ import { REFRESH_KEY } from '../auth/tokens'
 import * as data from './data'
 
 const PROFILE_KEY = 'chargegrid.mock.profile'
+const NAME_KEY = 'chargegrid.mock.name'
 let calls = 0
 
 function json(body: unknown, status = 200): Response {
@@ -24,14 +32,16 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function profile(): Profile {
   let kind = 'vendor'
+  let name: string | null = null
   try {
     kind = sessionStorage.getItem(PROFILE_KEY) ?? 'vendor'
+    name = sessionStorage.getItem(NAME_KEY)
   } catch {
     /* ignora */
   }
   return {
     id: 'f0001-6b1e-4c7a-9d2f-000000001eef',
-    name: kind === 'driver' ? 'Marina Costa' : 'João Silva',
+    name: name ?? (kind === 'driver' ? 'Marina Costa' : 'João Silva'),
     account_type: kind === 'driver' ? 'consumer' : 'vendor',
     operator_enabled: kind === 'vendor',
     phone: null,
@@ -53,9 +63,11 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
   if (path === '/auth/login' && method === 'POST') {
     const { email = '', password = '' } = (body ?? {}) as { email?: string; password?: string }
     if (password === 'errada' || !email.includes('@')) return fail(401, 'auth_rejected', 'Credenciais ou código inválidos')
+    if (email.includes('naoconfirmado')) return fail(401, 'email_not_confirmed', 'Confirme seu e-mail para entrar. Você pode solicitar uma nova mensagem.')
     const kind = email.includes('motorista') ? 'driver' : email.includes('pendente') ? 'pending' : 'vendor'
     try {
       sessionStorage.setItem(PROFILE_KEY, kind)
+      sessionStorage.removeItem(NAME_KEY)
     } catch {
       /* ignora */
     }
@@ -64,6 +76,28 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
   if (path === '/auth/refresh' && method === 'POST') {
     const token = (body as { refresh_token?: string })?.refresh_token ?? ''
     return token.startsWith('mock-refresh') ? json(tokens()) : fail(401, 'auth_rejected', 'Credenciais ou código inválidos')
+  }
+  if (path === '/auth/register' && method === 'POST') {
+    const { email = '', password = '', name = '', account_type } = (body ?? {}) as { email?: string; password?: string; name?: string; account_type?: string }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || !name.trim() || account_type !== 'vendor') {
+      return json({ error: { code: 'validation_error', message: 'Dados inválidos', fields: [{ field: password.length < 8 ? 'password' : 'email', message: 'invalid' }] } }, 422)
+    }
+    if (email.includes('limite')) return fail(429, 'rate_limited', 'Aguarde antes de repetir')
+    if (password === 'senhafraca') return fail(422, 'weak_password', 'Escolha uma senha mais forte, com pelo menos 8 caracteres; evite senhas comuns')
+    if (email.includes('confirmar')) return json({ id: 'mock-user', user: { email }, requires_email_confirmation: true })
+    if (email.includes('existe')) return json({ message: 'Cadastro recebido', requires_email_confirmation: false })
+    try {
+      sessionStorage.setItem(PROFILE_KEY, 'pending')
+      sessionStorage.setItem(NAME_KEY, name.trim())
+    } catch {
+      /* ignora */
+    }
+    return json({ ...tokens(), requires_email_confirmation: false })
+  }
+  if (path === '/auth/resend-signup' && method === 'POST') {
+    const { email = '' } = (body ?? {}) as { email?: string }
+    if (email.includes('limite')) return fail(429, 'rate_limited', 'Aguarde antes de repetir')
+    return json({ message: 'Se a conta puder receber mensagens, uma confirmação será enviada' })
   }
   if (path === '/auth/password/forgot') return json({ message: 'Se a conta existir, você receberá instruções para recuperar a senha' })
   if (!auth?.startsWith('Bearer mock-access')) return fail(401, 'unauthorized', 'Não autenticado')

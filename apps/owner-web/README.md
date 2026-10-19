@@ -29,12 +29,24 @@ O período segue a mesma regra de `chargegrid_core.analytics.period_bounds`. Os 
 
 ## Autenticação e acesso
 
-1. `POST /v1/auth/login`: o access token fica **só em memória** e o refresh token fica no `localStorage` (`chargegrid.owner.refresh`, com todo acesso protegido por try/catch).
-2. `GET /v1/me` decide o acesso:
+Telas públicas (mesmo layout: formulário à esquerda e, à direita, o totem sobre o anel de luz do app vendedor; abaixo de 900 px o painel some e uma versão compacta aparece acima do formulário):
+
+| Rota | Conteúdo |
+| --- | --- |
+| `/entrar` | Login (qualquer outro endereço sem sessão também mostra o login e, depois de entrar, continua no mesmo endereço) |
+| `/criar-conta` | Cadastro de vendedor: nome completo, e-mail, senha e confirmação, com a validação do app (nome até 100, senha de 8 a 128) |
+| `/verificar-email` | "Verifique seu e-mail", com "Voltar para entrar" e "Reenviar confirmação" (`POST /v1/auth/resend-signup`, mensagem neutra e espera de 60 s) |
+| `/esqueci-senha` | `POST /v1/auth/password/forgot` |
+
+O e-mail digitado passa de uma tela para outra pelo estado do router, nunca pela URL.
+
+1. `POST /v1/auth/login`: o access token fica **só em memória** e o refresh token fica no `localStorage` (`chargegrid.owner.refresh`, com todo acesso protegido por try/catch). Se a API responder `email_not_confirmed`, o painel abre "Verifique seu e-mail".
+2. `POST /v1/auth/register` com `account_type: "vendor"`. A resposta é tratada como no app: com `access_token` e `refresh_token`, a sessão abre direto; com `requires_email_confirmation`, abre "Verifique seu e-mail"; em qualquer outro caso, volta ao login com o aviso neutro *"Confira seu e-mail. Se já tem uma conta, entre com sua senha."* Os erros (`weak_password`, validação, 429, rede) viram mensagens em português ao lado do campo ou no topo do formulário (`src/auth/signup.ts`).
+3. `GET /v1/me` decide o acesso:
    - `operator_enabled` → acesso liberado;
-   - `account_type == "vendor"` sem operação habilitada → orientação para vincular o primeiro equipamento pelo app, com botão Sair;
+   - `account_type == "vendor"` sem operação habilitada → passo a passo para vincular o primeiro equipamento (instalar o app, escanear o QR do totem, publicar e voltar), com "Já vinculei · Atualizar" (consulta `/me` de novo) e Sair;
    - qualquer outra conta → logout e a mensagem *"Este painel é exclusivo para vendedores. Use o app ChargeGrid como motorista."*
-3. Ao recarregar a página, a sessão é retomada com `POST /v1/auth/refresh`. O link "Esqueci minha senha" chama `POST /v1/auth/password/forgot`.
+4. Ao recarregar a página, a sessão é retomada com `POST /v1/auth/refresh`.
 
 ## Desenvolvimento
 
@@ -52,6 +64,9 @@ npm run dev:mock   # mesmo servidor com dados fictícios (VITE_MOCK=1)
 | e-mail com `motorista` | testa o bloqueio de contas que não são de vendedor |
 | e-mail com `pendente` | vendedor sem operação habilitada |
 | senha `errada` | erro de credenciais |
+| e-mail com `naoconfirmado` | login pede a confirmação do e-mail |
+
+No cadastro (`/criar-conta`): e-mail com `confirmar` → "Verifique seu e-mail"; com `existe` → aviso neutro no login; com `limite` → erro 429 (também no reenvio); senha `senhafraca` → `weak_password`; qualquer outro → a conta entra direto como vendedor sem operação habilitada.
 
 Os dados de 7 dias batem com a referência visual: R$ 8.420, 2.184 kWh, 184 recargas e ticket de R$ 45,76. O mock é importado só atrás de `import.meta.env.DEV`, por isso fica fora do build de produção. `npm run check:dist` confirma isso.
 
@@ -67,7 +82,7 @@ Variáveis (opcionais, somente em desenvolvimento; veja `.env.example`):
 ```bash
 npm run lint        # ESLint (typescript-eslint + react-hooks), zero avisos
 npm run typecheck   # tsc strict
-npm test            # Vitest: formatação, período → query, token/refresh, acesso de vendedor, CSV/JSON
+npm test            # Vitest: formatação, período → query, token/refresh, acesso de vendedor, cadastro, CSV/JSON
 npm run build       # tsc + vite build → dist/
 npm run check:dist  # garante que nada do modo demonstração foi para dist/
 ```

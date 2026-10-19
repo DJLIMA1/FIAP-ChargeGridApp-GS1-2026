@@ -10,6 +10,7 @@
  */
 import type { ApiErrorBody, TokenResponse } from './types'
 import type { TokenStore } from '../auth/tokens'
+import type { RegisterResult } from '../auth/signup'
 
 export type QueryValue = string | number | boolean | null | undefined
 export type Query = Record<string, QueryValue>
@@ -204,5 +205,14 @@ export function createApiClient(config: ApiClientConfig) {
     },
     forgotPassword: (email: string) =>
       request<{ message: string }>('POST', '/auth/password/forgot', { body: { email }, auth: false }),
+    /** Cadastro: devolve o corpo bruto; quem chama decide (tokens, confirmação ou aviso neutro). */
+    register: (body: { email: string; password: string; name: string; account_type: 'vendor' }) =>
+      request<RegisterResult>('POST', '/auth/register', { body, auth: false }),
+    resendSignup: (email: string) =>
+      request<{ message?: string }>('POST', '/auth/resend-signup', { body: { email }, auth: false }),
+    /** Adota os tokens de um cadastro que já entra direto. */
+    adoptTokens(tokens: TokenResponse): void {
+      store.setTokens(tokens, now())
+    },
   }
 }

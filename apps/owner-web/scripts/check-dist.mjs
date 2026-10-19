@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const FORBIDDEN = ['mock-access', 'mock-refresh', 'installMock', 'mock_login', 'Modo demonstração', 'João Silva', 'VERAO10', 'Villa Lobos', 'chargegrid.mock']
+const FORBIDDEN = ['mock-access', 'mock-refresh', 'installMock', 'mock_login', 'Modo demonstração', 'João Silva', 'VERAO10', 'Villa Lobos', 'chargegrid.mock', 'senhafraca', 'naoconfirmado']
 const root = fileURLToPath(new URL('../dist/', import.meta.url))
 
 function walk(dir) {
