@@ -1,0 +1,60 @@
+CASE DA TELA 7" — CONFIGURAÇÕES DE IMPRESSÃO
+Versão 1 — 18/10/2026. Valem para qualquer fatiador (Cura, PrusaSlicer, Bambu, Orca).
+
+IMPORTAÇÃO
+- Unidade: milímetros. Escala: 100%. Não redimensionar para a mesa.
+- NÃO girar nem deitar as peças: os STL já estão na orientação certa.
+  Moldura: frente na mesa. Corpo: costas na mesa. Base e chaves: deitadas.
+- Imprimir UMA cópia de cada arquivo. O arquivo de chaves já tem as 12 chaves.
+- Maior medida de qualquer arquivo: 131 mm (cabe em 180 x 180 x 180 mm).
+
+MATERIAL E MÁQUINA
+- PLA, bico 0,4 mm.
+- Bico 205 °C (faixa 200–215 °C, conforme o fabricante do PLA).
+- Mesa 60 °C. Ventilador da peça a 100% a partir da 3ª camada.
+- Use a mesma cor nas duas metades de cada peça. Sugestão: moldura preta,
+  corpo e base na cor que preferir.
+
+QUALIDADE (todas as peças)
+- Altura de camada: 0,20 mm (primeira camada 0,20 mm).
+- Paredes/perímetros: 4 (cerca de 1,7 mm).
+- Camadas sólidas: 5 no topo e 5 no fundo.
+- Preenchimento: 20% giroide (ou grade/cúbico). Exceção: chaves com 100%.
+- Velocidade da parede externa: até 30 mm/s. Pontes: 20 mm/s.
+- Compensação XY/horizontal: 0. Compensação de pé de elefante: 0,1 mm, se houver.
+- Costura (seam): alinhada atrás ou "mais próxima"; evite aleatória na moldura.
+
+SUPORTES: DESLIGADOS EM TODOS OS ARQUIVOS
+- As peças foram desenhadas para imprimir sem suporte. Nenhuma face passa de
+  45° de balanço; existem apenas pontes curtas, de até 11 mm (janelas dos
+  ganchos, fendas de ventilação, furos USB-C, rebaixos dos pés).
+- Suporte automático ENCHERIA os ganchos, as molas, os bolsos e as fendas,
+  e as peças deixariam de encaixar. Se o fatiador sugerir suporte, recusar.
+
+ADESÃO À MESA
+- Corpo (02) e testes (00): brim de 5 mm (peças altas ou tiras finas em pé).
+- Moldura (01), base (03) e chaves (04): só saia (skirt), sem brim. A face da
+  moldura que encosta na mesa é a frente do case: mesa limpa e lisa
+  (vidro ou PEI liso) dá o melhor acabamento.
+
+POR ARQUIVO (ver também DIMENSOES.csv)
+  arquivo                         preench.  adesão     tamanho (mm)
+  00-TESTE-encaixe-moldura        20%       brim 5     26 x 131 x 26
+  00-TESTE-encaixe-corpo          20%       brim 5     26 x 131 x 25
+  01-MOLDURA-esquerda             20%       saia       102 x 131 x 26
+  01-MOLDURA-direita              20%       saia       102 x 131 x 26
+  02-CORPO-esquerdo               20%       brim 5     102 x 123 x 71
+  02-CORPO-direito                20%       brim 5     102 x 123 x 71
+  03-BASE-esquerda                20%       saia       102 x 124 x 17
+  03-BASE-direita                 20%       saia       102 x 124 x 17
+  04-CHAVES-12un                  100%      saia       84 x 94 x 3
+
+FILAMENTO
+- Cerca de 330 g de PLA no total. É uma estimativa pelo volume das peças; o
+  fatiador da faculdade dará o valor exato.
+
+O QUE NÃO ALTERAR
+- Não engrossar paredes nem aplicar "reparo" automático da malha. Os STL são
+  fechados (estanques), e as partes finas são intencionais: saia da moldura
+  2 mm, ganchos 1,6 mm, molas 1,2 mm, nervuras 1,8 mm, chaves 1,5 a 3 mm.
+  Elas precisam flexionar ou encaixar com folgas de 0,15 a 0,35 mm.

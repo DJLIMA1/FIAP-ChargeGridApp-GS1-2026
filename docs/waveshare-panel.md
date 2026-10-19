@@ -112,4 +112,4 @@ Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `pyt
 
 ## Case impresso
 
-O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem três peças encaixadas por pressão, sem parafusos: moldura, corpo em cunha a 20° e base de apoio. O README traz as medidas oficiais da tela, os STL prontos para Ender-3 em PLA, cupons de teste do encaixe e a verificação digital. Nada foi impresso ainda.
+O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem moldura, corpo em cunha a 20° e base de apoio, todos lisos, sem nome. As peças se unem por pressão, chaves impressas e cola, sem parafusos. Cada peça sai em metades para caber em impressoras de 180 mm. O README traz as medidas oficiais da tela, o pacote para a faculdade (STL e configurações de impressão), testes do encaixe e a verificação digital. Nada foi impresso ainda.

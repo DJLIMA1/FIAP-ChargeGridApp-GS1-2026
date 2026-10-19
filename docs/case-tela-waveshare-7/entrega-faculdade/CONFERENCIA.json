@@ -1,0 +1,119 @@
+{
+  "arquivos": {
+    "STL/1-TESTE-PRIMEIRO/00-TESTE-encaixe-moldura.stl": {
+      "sha256": "26603166a7ed51d8cf6ac10023c643b4d995e8af6a7a9545ce3bd558735647c8",
+      "bytes": 13884,
+      "dimensoes_mm": [
+        26.0,
+        130.96,
+        25.5
+      ],
+      "pecas": 2,
+      "volume_cm3": 3.1,
+      "estanque": true
+    },
+    "STL/1-TESTE-PRIMEIRO/00-TESTE-encaixe-corpo.stl": {
+      "sha256": "3e5c93ab772987f3b1d59b11507142b9c39126ac351d1b7054c6df494758e80f",
+      "bytes": 4284,
+      "dimensoes_mm": [
+        26.0,
+        130.96,
+        25.0
+      ],
+      "pecas": 2,
+      "volume_cm3": 6.5,
+      "estanque": true
+    },
+    "STL/2-PECAS/01-MOLDURA-esquerda.stl": {
+      "sha256": "d7d62ed75e3eb32836801373a23d1cf21b0926b8744bb80b2ce39e96d2577e94",
+      "bytes": 123584,
+      "dimensoes_mm": [
+        102.08,
+        130.96,
+        25.5
+      ],
+      "pecas": 1,
+      "volume_cm3": 14.2,
+      "estanque": true
+    },
+    "STL/2-PECAS/01-MOLDURA-direita.stl": {
+      "sha256": "19dcf414ba6e0c8d6ea6e0758297249b18cf22402b22d4b64878e36ccc9712da",
+      "bytes": 123784,
+      "dimensoes_mm": [
+        102.08,
+        130.96,
+        25.5
+      ],
+      "pecas": 1,
+      "volume_cm3": 14.2,
+      "estanque": true
+    },
+    "STL/2-PECAS/02-CORPO-esquerdo.stl": {
+      "sha256": "cd0356437396efa3c90b5e5784cf14fad81670d3b85f82556581feacef638c70",
+      "bytes": 106184,
+      "dimensoes_mm": [
+        102.08,
+        123.06,
+        71.1
+      ],
+      "pecas": 1,
+      "volume_cm3": 95.4,
+      "estanque": true
+    },
+    "STL/2-PECAS/02-CORPO-direito.stl": {
+      "sha256": "6c4010dba1173c41b1f99e0e8543b320d65f4f42d77efe5eb9ac355464f3e0d9",
+      "bytes": 257984,
+      "dimensoes_mm": [
+        102.08,
+        123.06,
+        71.1
+      ],
+      "pecas": 1,
+      "volume_cm3": 92.2,
+      "estanque": true
+    },
+    "STL/2-PECAS/03-BASE-esquerda.stl": {
+      "sha256": "86abf0770baedb83abfaa75ce6fd239f8c0656d08f1711c952aa5af27ae32ec4",
+      "bytes": 66884,
+      "dimensoes_mm": [
+        102.08,
+        124.22,
+        17.4
+      ],
+      "pecas": 1,
+      "volume_cm3": 49.4,
+      "estanque": true
+    },
+    "STL/2-PECAS/03-BASE-direita.stl": {
+      "sha256": "9b540d068dfdf19adfec46ad24bdfc43857ac9999346b7747d46d4c402b16f0e",
+      "bytes": 66884,
+      "dimensoes_mm": [
+        102.08,
+        124.22,
+        17.4
+      ],
+      "pecas": 1,
+      "volume_cm3": 49.4,
+      "estanque": true
+    },
+    "STL/2-PECAS/04-CHAVES-12un.stl": {
+      "sha256": "f1568ae9cded5c790d0ea9338ab276edb228133bf9c40b8fbaa95b2e4b15d55f",
+      "bytes": 12084,
+      "dimensoes_mm": [
+        84.0,
+        94.0,
+        3.0
+      ],
+      "pecas": 12,
+      "volume_cm3": 5.5,
+      "estanque": true
+    }
+  },
+  "total_bytes": 775556,
+  "maior_dimensao_mm": 130.96,
+  "limite_informado_mm": [
+    180,
+    180,
+    180
+  ]
+}

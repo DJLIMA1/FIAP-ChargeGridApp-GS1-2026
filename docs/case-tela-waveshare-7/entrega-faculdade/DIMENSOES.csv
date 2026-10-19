@@ -1,0 +1,10 @@
+pasta;arquivo;x_mm;y_mm;z_mm;pecas;volume_cm3;preenchimento;adesao;orientacao
+1-TESTE-PRIMEIRO;00-TESTE-encaixe-moldura.stl;26,0;131,0;25,5;2;3,1;20%;brim 5 mm;frente na mesa
+1-TESTE-PRIMEIRO;00-TESTE-encaixe-corpo.stl;26,0;131,0;25,0;2;6,5;20%;brim 5 mm;tiras finas em pe
+2-PECAS;01-MOLDURA-esquerda.stl;102,1;131,0;25,5;1;14,2;20%;saia;frente visivel na mesa
+2-PECAS;01-MOLDURA-direita.stl;102,1;131,0;25,5;1;14,2;20%;saia;frente visivel na mesa
+2-PECAS;02-CORPO-esquerdo.stl;102,1;123,1;71,1;1;95,4;20%;brim 5 mm;costas na mesa
+2-PECAS;02-CORPO-direito.stl;102,1;123,1;71,1;1;92,2;20%;brim 5 mm;costas na mesa
+2-PECAS;03-BASE-esquerda.stl;102,1;124,2;17,4;1;49,4;20%;saia;deitada
+2-PECAS;03-BASE-direita.stl;102,1;124,2;17,4;1;49,4;20%;saia;deitada
+2-PECAS;04-CHAVES-12un.stl;84,0;94,0;3,0;12;5,5;100%;saia;chaves macicas

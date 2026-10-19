@@ -1,0 +1,54 @@
+CASE DA TELA WAVESHARE 7" — STL PARA A FACULDADE — VERSÃO 1
+Preparado em 18/10/2026.
+
+O QUE É
+Case de mesa para a tela Waveshare ESP32-S3-Touch-LCD-7, inclinado 20°.
+Sem nome ou logotipo. Nenhum parafuso: as peças se unem por ganchos de
+pressão, chaves borboleta impressas e cola.
+
+ARQUIVOS PARA ENVIAR
+STL/1-TESTE-PRIMEIRO: duas tiras de teste do encaixe (cerca de 1 h no total).
+  Se possível, imprimir estes primeiro e testar antes das peças grandes.
+STL/2-PECAS: as 7 peças do case.
+  01 moldura (esquerda e direita), 02 corpo (esquerdo e direito),
+  03 base (esquerda e direita), 04 chaves (12 unidades num só arquivo).
+Imprimir UMA cópia de cada arquivo. Ao todo são 9 arquivos.
+
+LIMITES INFORMADOS
+Cada arquivo cabe em 180 × 180 × 180 mm; a maior medida é 131 mm.
+O case montado tem 204 mm de largura e não cabe inteiro na impressora.
+Por isso cada peça foi dividida em metades no centro.
+Total dos STL: ver CONFERENCIA.json (bem abaixo de 50 MB).
+O ZIP serve só para transporte. Se o portal aceitar apenas .stl, extraia o
+ZIP e envie os arquivos .stl diretamente.
+
+CONFIGURAÇÕES
+Todas as configurações estão em CONFIGURACOES-DE-IMPRESSAO.txt e, por
+arquivo, em DIMENSOES.csv. Resumo: PLA, camada 0,2 mm, 4 paredes, 20% de
+preenchimento (chaves 100%), SEM SUPORTE, orientação como entregue,
+brim só no corpo e nos testes.
+
+PAREDES — ORIENTAÇÃO DO LABORATÓRIO
+As paredes principais têm 3 mm. Partes funcionais ficam abaixo de 3 mm de
+propósito: ganchos de 1,6 mm e molas de 1,2 mm (precisam flexionar), saia da
+moldura de 2 mm (fica entre o vidro e o corpo), nervuras de 1,8 mm e chaves
+de 1,5 a 3 mm. Peço avaliação sem engrossar e sem reparo automático, para não
+perder os encaixes.
+
+DEPOIS DE IMPRIMIR (montagem, feita por nós)
+Colar as metades com cola instantânea (cianoacrilato) ou epóxi, com as chaves
+encaixadas nas cavidades em forma de borboleta. Antes de colar a moldura,
+confira o alinhamento encaixando a tela a seco e retire-a. Instruções
+completas no README do projeto.
+
+OBSERVAÇÃO PARA O LABORATÓRIO (texto para acompanhar o pedido)
+Solicito a impressão dos 9 arquivos STL em PLA, em milímetros e escala 100%,
+uma cópia de cada, na orientação em que foram entregues. Todas as dimensões
+são menores que 180 mm (a maior é 131 mm). As peças foram projetadas para
+imprimir SEM SUPORTE: suportes automáticos preencheriam ganchos e encaixes.
+Sugestão de parâmetros: camada 0,2 mm, 4 paredes, 20% de preenchimento
+(arquivo de chaves com 100%) e brim nos arquivos 00 e 02. Os detalhes estão
+em CONFIGURACOES-DE-IMPRESSAO.txt. As paredes principais têm 3 mm; ganchos,
+molas e chaves são mais finos de propósito. Peço avaliação dessas regiões
+sem alteração automática da geometria. Se possível, imprimir primeiro os
+dois arquivos de teste (00).

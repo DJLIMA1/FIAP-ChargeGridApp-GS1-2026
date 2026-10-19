@@ -1,8 +1,11 @@
 """Case inclinado para a Waveshare ESP32-S3-Touch-LCD-7 (com touch). Python + numpy + manifold3d + trimesh.
 
-Duas pecas impressas, unidas so por travas (nenhum parafuso):
+Pecas impressas, unidas so por travas, chaves e cola (nenhum parafuso):
   1. MOLDURA  - frente; segura o vidro pela borda e tem 6 ganchos.
   2. CORPO    - cunha inclinada; recebe os ganchos e empurra o LCD com 6 molas impressas.
+  3. BASE     - apoio traseiro que encaixa por baixo do corpo.
+Para caber em impressoras de 180 x 180 x 180 mm, cada peca sai em metades (esquerda/direita) unidas por
+chaves borboleta impressas e cola. Sem nome ou logotipo nas superficies.
 
 Referencial da tela (S): X para a direita olhando a tela, V para cima, Z saindo da tela.
 Z = 0 e a face frontal do vidro. Mundo (W): x direita, y para tras, z para cima.
@@ -34,14 +37,15 @@ P = dict(
     clr_glass=0.35,         # folga vidro -> saia da moldura (por lado)
     skirt_t=2.0, skirt_depth=6.5,
     clr_fit=0.25,           # folga saia -> corpo (por lado)
-    collar_wall=2.62, wall=2.4,
-    plate_t=2.4, lip=2.5, window_chamfer=1.0, outer_chamfer=1.0,
-    chin=8.5,               # queixo inferior (abriga os ganchos inferiores com a inclinacao de 20 graus)
+    collar_wall=3.0, wall=3.0,     # paredes principais com 3 mm (recomendacao do laboratorio)
+    plate_t=3.0, lip=2.5, window_chamfer=1.5, outer_chamfer=1.0,
+    chin=9.0,               # queixo inferior (abriga os ganchos inferiores com a inclinacao de 20 graus)
     top_depth=28.0,         # espessura do corpo no topo (sem a moldura)
     r_top=None, r_bottom=6.0, ch_back=6.0, ch_back_bottom=2.0,   # arestas que tocam a mesa de impressao: chanfros >= 45 graus
     hook_len=16.0, hook_t=1.6, hook_w=10.0,
     spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=50.0, spring_preload=0.4, post_d=8.0,
     usb_hole=[13.5, 8.5], pin_d=2.2,
+    key_clear=0.15, bed_max=180.0,   # chaves borboleta; limite da impressora da faculdade
     base_t=4.0, base_back=50.0, base_r_back=20.0, base_hook_x=40.0, base_hook_y=24.0, base_hook_len=13.0,
 )
 P.update(json.loads(os.environ.get('CASE_PARAMS', '{}')))   # para estudos: CASE_PARAMS='{"tilt_deg": 20}'
@@ -129,17 +133,14 @@ def box(x0, x1, v0, v1, z0, z1):
 def U(items): return md.Manifold.batch_boolean(items, md.OpType.Add)
 def D(a, items): return md.Manifold.batch_boolean([a] + items, md.OpType.Subtract)
 
-def text_solid(txt, height, depth, font):
-    from matplotlib.textpath import TextPath
-    from matplotlib.font_manager import FontProperties
-    tp = TextPath((0, 0), txt, size=10, prop=FontProperties(fname=str(font)))
-    polys = [p for p in tp.to_polygons(closed_only=True) if len(p) > 2]
-    allp = np.vstack(polys); x0, y0 = allp.min(0); x1, y1 = allp.max(0)
-    k = height / (y1 - y0)
-    polys = [[((x - (x0 + x1) / 2) * k, (y - (y0 + y1) / 2) * k) for x, y in p] for p in polys]
-    return md.Manifold.extrude(md.CrossSection(polys, md.FillRule.EvenOdd), depth), (x1 - x0) * k
+def bowtie(half_len, end_w, neck_w):   # chave borboleta, eixo longo em x
+    return ccw([(-half_len, -end_w / 2), (0, -neck_w / 2), (half_len, -end_w / 2), (half_len, end_w / 2), (0, neck_w / 2), (-half_len, end_w / 2)])
 
-FONT = ROOT.parents[1] / 'apps' / 'mobile' / 'assets' / 'BarlowCondensed-Bold.ttf'
+def key_offset(pts, d):
+    return ccw([tuple(q) for q in md.CrossSection([pts]).offset(d, md.JoinType.Miter, 4.0).to_polygons()[0]])
+
+KEY_BIG = bowtie(12.0, 12.0, 6.0)      # corpo e base
+KEY_SMALL = bowtie(9.0, 8.5, 4.2)      # moldura (queixo)
 
 # ---------------------------------------------------------------- MOLDURA
 outline = rrect(-OUT_X, OUT_X, OUT_BOT, OUT_TOP, R_OUT, P['r_bottom'])
@@ -182,8 +183,10 @@ for axis, sign, c, kind in HOOKS:
     beam = [(-HT, Z_SK + 0.6), (0, Z_SK + 0.6), (0, Z_TIP), (-HT, Z_TIP)]
     hooks += [place_pz(beam, axis, sign, c, HW), place_pz(LIP[kind], axis, sign, c, HW)]
 bezel = U([bezel] + hooks)
-txt, txt_w = text_solid('ChargeGrid', 4.4, 1.0, FONT)
-bezel = D(bezel, [txt.translate([0, (OUT_BOT + 1.0 - (GV - P["lip"] + ch)) / 2, pt - 0.6])])
+# chave borboleta no verso do queixo (fora da saia): une as metades da moldura sem aparecer na frente
+V_KEY_BEZEL = (-(SK_OUT_V + 0.5) + (OUT_BOT + 1.5)) / 2
+bezel = bezel - prism_z([(x, y + V_KEY_BEZEL) for x, y in key_offset(KEY_SMALL, P['key_clear'])], -1.0, 1.6)
+key_bezel = prism_z([(x, y + V_KEY_BEZEL) for x, y in KEY_SMALL], 0.1, 1.6)
 
 # ---------------------------------------------------------------- CORPO
 # perfil lateral externo (V,Z)
@@ -261,12 +264,20 @@ Z_BTN = -(PCB_FRONT + PCB_T) - 0.07
 for name, xb in BTN.items():
     cuts.append(md.Manifold.cylinder(30, P['pin_d'] / 2, P['pin_d'] / 2, 24).rotate([-90, 0, 0]).translate([xb, -85, Z_BTN]))
 # ventilacao traseira (mundo)
-vent = U([md.Manifold.cube([3.0, 20, 34]).translate([i * 7.0 - 1.5, Y_BACK - 10, 0]) for i in range(-5, 6)])
-cuts.append(vent.transform(W2S))
-# texto traseiro em baixo-relevo, lido por quem olha por tras (direita = -x do mundo)
-btxt, _ = text_solid('ChargeGrid', 7.0, 1.8, FONT)
-cuts.append(btxt.transform(np.array([[-1, 0, 0, 0], [0, 0, 1, Y_BACK - 0.8], [0, 1, 0, -30.0]], float)).transform(W2S))
+vent = U([md.Manifold.cube([3.0, 20, 34]).translate([(i + 0.5) * 7.0 - 1.5, Y_BACK - 10, 0]) for i in range(-5, 5)])
+cuts.append(vent.transform(W2S))     # 10 fendas, nenhuma sobre a emenda central
 body = D(body, cuts)
+
+# emenda central do corpo: nervura na parede traseira com 3 chaves borboleta (encaixe pelo lado de dentro)
+def world_xz(poly_xz, y0, y1):    # perfil (x, z) do mundo extrudado de y0 a y1
+    m = md.Manifold.extrude(md.CrossSection([ccw(poly_xz)]), y1 - y0).translate([0, 0, -y1])
+    return m.transform(np.array([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0]], float))
+y_rib = Y_BACK - w - 4.5
+rib_w = md.Manifold.cube([34.0, 5.0, -2.5 - (Z_TABLE + w - 0.5)]).translate([-17.0, y_rib, Z_TABLE + w - 0.5])
+body = body + (rib_w.transform(W2S) ^ outer)
+key_z = [Z_TABLE + w + 11.0, (Z_TABLE + w + 11.0 - 12.0) / 2, -12.0]
+body = body - U([world_xz([(x, z + zc) for x, z in key_offset(KEY_BIG, P['key_clear'])], y_rib - 1.0, y_rib + 3.2).transform(W2S) for zc in key_z])
+keys_body = [world_xz([(x, z + zc) for x, z in KEY_BIG], y_rib + 0.1, y_rib + 3.1).transform(W2S) for zc in key_z]
 
 # ---------------------------------------------------------------- BASE (opcional, aumenta o apoio traseiro)
 # Mundo: a base fica sob o corpo; topo da base = mesa do corpo (Z_TABLE). Dois ganchos sobem pelo piso do corpo
@@ -289,9 +300,10 @@ base_hooks, body_catch, body_slots = [], [], []
 for sx in (-1, 1):
     c = sx * hx
     xo = c + sx * 0.8                                # face externa da haste
-    beam = md.Manifold.cube([1.6, 10.0, HL + 0.6]).translate([c - 0.8, hy - 5.0, Z_TABLE - 0.6])
-    lip_xz = [(xo - sx * 0.2, z_catch), (xo, z_catch), (xo + sx * 0.8, z_catch + 0.8), (xo + sx * 0.8, z_catch + 1.0),
-              (xo, Z_TABLE + HL), (xo - sx * 0.2, Z_TABLE + HL)]
+    beam = md.Manifold.cube([1.6, 10.0, HL + 1.0]).translate([c - 0.8, hy - 5.0, Z_TABLE - 0.6])   # haste passa 0,4 do dente
+    # dente sobreposto 0,2 mm a haste (nenhum vertice exatamente na face da haste)
+    lip_xz = [(xo - sx * 0.2, z_catch - 0.2), (xo + sx * 0.8, z_catch + 0.8), (xo + sx * 0.8, z_catch + 1.0),
+              (xo - sx * 0.2, Z_TABLE + HL + 0.3)]
     lip = md.Manifold.extrude(md.CrossSection([ccw([(x, -z) for x, z in lip_xz])]), 10.0).translate([0, 0, -hy - 5.0]) \
         .transform(np.array([[1, 0, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0]], float))
     base_hooks += [beam, lip]
@@ -313,6 +325,10 @@ for axis, sign, c, kind in HOOKS:
         acc.append(md.Manifold.cube([HW + 2.0, yb - ya + 1.0, bt_ + 2]).translate([c - HW / 2 - 1.0, ya - 0.5, Z_TABLE - bt_ - 1]))
 for name, xb in BTN.items():
     acc.append(md.Manifold.cylinder(bt_ + 2, 2.0, 2.0, 32).translate([xb, on_table(Z_BTN), Z_TABLE - bt_ - 1]))
+key_y_base = [y_front + 30.0, Y_BACK + bk - 30.0]
+for yk in key_y_base:   # chaves borboleta por baixo da base, rentes
+    acc.append(md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in key_offset(KEY_BIG, P['key_clear'])]]), 3.1).translate([0, 0, Z_TABLE - bt_ - 1.0]))
+keys_base = [md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in KEY_BIG]]), 2.0).translate([0, 0, Z_TABLE - bt_ + 0.1]) for yk in key_y_base]
 base = D(U([base] + base_hooks), acc)
 body = D(U([body] + [m.transform(W2S) for m in body_catch]), [m.transform(W2S) for m in body_slots])
 base_w = base
@@ -322,25 +338,44 @@ def mesh(s):
     m = s.to_mesh(); return trimesh.Trimesh(np.array(m.vert_properties[:, :3]), np.array(m.tri_verts), process=False)
 
 body_w = body.transform(S2W)                                  # mundo: y para tras, z para cima
-body_print = body_w.transform(np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0]], float))  # (x, z, -y)
-bb = body_print.bounding_box(); body_print = body_print.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
-bezel_print = bezel.rotate([180, 0, 0]); bb = bezel_print.bounding_box()
-bezel_print = bezel_print.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
-mesh(bezel_print).export(ROOT / 'stl' / '01-MOLDURA-frente.stl')
-mesh(body_print).export(ROOT / 'stl' / '02-CORPO-cunha.stl')
+TO_PRINT_BODY = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0]], float)   # costas na mesa: (x, z, -y)
+def center(m):
+    bb = m.bounding_box(); return m.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
+def halves(m):    # (esquerda X<=0, direita X>=0) vistas de frente
+    return m.trim_by_plane([-1, 0, 0], 0.0), m.trim_by_plane([1, 0, 0], 0.0)
+for d in (ROOT / 'stl').glob('*.stl'):
+    d.unlink()
+prints = {}
+for side, mb in zip(['esquerda', 'direita'], halves(bezel)):
+    prints[f'01-MOLDURA-{side}'] = center(mb.rotate([180, 0, 0]))            # frente na mesa
+for side, mc in zip(['esquerdo', 'direito'], halves(body)):
+    prints[f'02-CORPO-{side}'] = center(mc.transform(S2W).transform(TO_PRINT_BODY))
+for side, ma in zip(['esquerda', 'direita'], halves(base)):
+    prints[f'03-BASE-{side}'] = center(ma)                                   # deitada
+# chaves: 3 do corpo + 2 reservas, 1 da moldura + 2 reservas, 2 da base + 2 reservas
+kb = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 3.0)
+kz = md.Manifold.extrude(md.CrossSection([KEY_SMALL]), 1.5)
+kbase = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 2.0)
+lot = [kb.translate([-30 + 30 * (i % 3), -22 + 16 * (i // 3), 0]) for i in range(5)]
+lot += [kz.translate([-30 + 30 * i, 26, 0]) for i in range(3)]
+lot += [kbase.translate([-30 + 30 * (i % 3), 44 + 16 * (i // 3), 0]) for i in range(4)]
+prints['04-CHAVES-12un'] = center(U(lot))
 # cupons de teste do encaixe (faixa com um gancho de bolso em cima e um de janela embaixo)
 cx0, cx1 = 42.0, 68.0
 cup_m = bezel ^ box(cx0, cx1, -200, 200, -40, 10)
 cup_c = body ^ box(cx0, cx1, -200, 200, -25, 10)
 cm = cup_m.rotate([180, 0, 0]); bb = cm.bounding_box(); cm = cm.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
 cc = cup_c; bb = cc.bounding_box(); cc = cc.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
-mesh(cm).export(ROOT / 'stl' / '00-TESTE-encaixe-moldura.stl')
-mesh(cc).export(ROOT / 'stl' / '00-TESTE-encaixe-corpo.stl')
+prints['00-TESTE-encaixe-moldura'] = cm
+prints['00-TESTE-encaixe-corpo'] = cc
+for name in prints:   # elimina arestas microscopicas que viram triangulos nulos ao gravar o STL em float32
+    prints[name] = prints[name].simplify(0.002)
+    mesh(prints[name]).export(ROOT / 'stl' / f'{name}.stl')
 mesh(bezel).export(ROOT / 'verificacao' / 'montagem-moldura.stl')
 mesh(body).export(ROOT / 'verificacao' / 'montagem-corpo.stl')
 mesh(base_w.transform(W2S)).export(ROOT / 'verificacao' / 'montagem-base.stl')
-bb = base_w.bounding_box(); base_print = base_w.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
-mesh(base_print).export(ROOT / 'stl' / '03-BASE-apoio.stl')
+keys_all = U(keys_body + [key_bezel] + [k.transform(W2S) for k in keys_base])
+mesh(keys_all).export(ROOT / 'verificacao' / 'montagem-chaves.stl')
 
 # ---------------------------------------------------------------- modelo da tela para verificacao
 pcb_ref = json.loads((ROOT / 'referencia' / 'pcb-componentes-step.json').read_text())
@@ -373,13 +408,13 @@ checks = {
 checks['folga_min_tela_corpo_mm'] = round((body - nubs_only).min_gap(screen, 5.0), 3)
 checks['folga_min_tela_moldura_mm'] = round(bezel.min_gap(screen, 5.0), 3)
 checks['cupons_teste_x_mm3'] = inter(cup_m, cup_c)
-for name, s in [('moldura', bezel_print), ('corpo', body_print), ('base', base_print), ('teste_moldura', cm), ('teste_corpo', cc)]:
-    bb = s.bounding_box(); m = mesh(s)
-    checks[f'{name}_dimensoes_impressao_mm'] = [round(bb[3] - bb[0], 2), round(bb[4] - bb[1], 2), round(bb[5] - bb[2], 2)]
-    checks[f'{name}_cabe_ender3_220'] = bool(bb[3] - bb[0] <= 215 and bb[4] - bb[1] <= 215 and bb[5] - bb[2] <= 245)
-    checks[f'{name}_volume_cm3'] = round(s.volume() / 1000, 1)
-    checks[f'{name}_estanque'] = bool(m.is_watertight)
-    checks[f'{name}_corpos'] = len(s.decompose())
+checks['chaves_x_pecas_e_tela_mm3'] = inter(keys_all, U([bezel, body, base_w.transform(W2S), screen]))
+checks['arquivos'] = {}
+for name, s in prints.items():
+    m = trimesh.load(ROOT / 'stl' / f'{name}.stl')    # confere o arquivo gravado, nao so a geometria em memoria
+    bb = s.bounding_box(); dims = [round(bb[3] - bb[0], 2), round(bb[4] - bb[1], 2), round(bb[5] - bb[2], 2)]
+    checks['arquivos'][name] = dict(dimensoes_mm=dims, cabe_180=bool(max(dims) <= P['bed_max'] - 2),
+                                    volume_cm3=round(s.volume() / 1000, 1), estanque=bool(m.is_watertight), triangulos_nulos=int((m.area_faces < 1e-9).sum()), pecas=len(s.decompose()))
 # estabilidade: toque perpendicular ao vidro que levanta a frente (tomba para tras), com e sem a base
 bw_m = mesh(body_w); vw = bw_m.vertices; zw_m = mesh(bezel.transform(S2W)); ba_m = mesh(base_w)
 m_body, m_bezel, m_base = body.volume() / 1000 * 1.24 * 0.8, bezel.volume() / 1000 * 1.24 * 0.9, base_w.volume() / 1000 * 1.24 * 0.6
