@@ -48,15 +48,14 @@ def kwh_short(value):
     return _int_text(_number(value)) + ' kWh'
 
 
-def line_chart(values, labels, *, color, fill, plot_height, dot_color=None, dots=(0, 2, 4, 6)):
-    """Linha com área, grade horizontal (4 linhas) e rótulos, como na referência."""
-    numbers = [_number(value) for value in values]
+def _chart_shapes(numbers, labels, width, *, color, fill, plot_height, dot_color, dots):
+    """Formas do gráfico para uma largura (redesenhadas quando a tela muda de tamanho)."""
     count = len(numbers)
     top = (max(numbers, default=0) or 1) * 1.12
-    inner = CHART_W - 2 * PAD_X
+    inner = width - 2 * PAD_X
     step = inner / max(1, count - 1)
     points = [(PAD_X + index * step, plot_height - number / top * plot_height) for index, number in enumerate(numbers)]
-    elements = [cv.Line(PAD_X, plot_height * row / 3, CHART_W - PAD_X, plot_height * row / 3,
+    elements = [cv.Line(PAD_X, plot_height * row / 3, width - PAD_X, plot_height * row / 3,
                         paint=ft.Paint(color=GRID, stroke_width=1)) for row in range(4)]
     if count > 1:
         area = [cv.Path.MoveTo(points[0][0], plot_height)] + [cv.Path.LineTo(x, y) for x, y in points] + [
@@ -73,9 +72,36 @@ def line_chart(values, labels, *, color, fill, plot_height, dot_color=None, dots
     style = ft.TextStyle(size=10.5, color=theme.GRAY_TEXT, font_family='Inter')
     for index, text in enumerate(labels):
         elements.append(cv.Text(points[index][0], plot_height + 19.5, text, style=style, alignment=ft.Alignment(0, 0)))
+    return elements
+
+
+def line_chart(values, labels, *, color, fill, plot_height, dot_color=None, dots=(0, 2, 4, 6)):
+    """Linha com área, grade horizontal (4 linhas) e rótulos, como na referência.
+
+    Ocupa a largura disponível: o desenho é refeito quando o tamanho do gráfico muda (tela girada,
+    janela do navegador, celulares de larguras diferentes)."""
+    numbers = [_number(value) for value in values]
+    draw = dict(color=color, fill=fill, plot_height=plot_height, dot_color=dot_color, dots=dots)
+    state = {'width': CHART_W}
+
+    def resized(event):
+        width = float(getattr(event, 'width', 0) or 0)
+        if width <= 2 * PAD_X or abs(width - state['width']) < 1:
+            return
+        state['width'] = width
+        canvas.shapes = _chart_shapes(numbers, labels, width, **draw)
+        try:
+            canvas.update()
+        except (RuntimeError, AssertionError, AttributeError):
+            pass  # ainda não montado
+
+    canvas = cv.Canvas(_chart_shapes(numbers, labels, CHART_W, **draw), height=plot_height + 40,
+                       expand=True, resize_interval=60, on_resize=resized)
+    count = len(numbers)
     summary = (f'Gráfico: {count} dias, de {numbers[0]:g} a {numbers[-1]:g}, máximo {max(numbers):g}.' if numbers
                else 'Gráfico sem dados.')
-    return ft.Semantics(content=cv.Canvas(elements, width=CHART_W, height=plot_height + 40), label=summary)
+    # Row: o gráfico ocupa toda a largura disponível, dentro ou fora de um Container.
+    return ft.Row([ft.Semantics(content=canvas, label=summary, expand=True)], spacing=0)
 
 
 def _window(days, shift=0):
