@@ -109,3 +109,7 @@ As telas seguem o design de referência do totem (2:1; as posições verticais s
 Tela de configuração Wi-Fi (segurar o logo 5 s) usa o mesmo fundo; **Salvar e conectar** é o botão branco principal. O pool do LVGL subiu para 64 KB (`LV_MEM_SIZE` em `platformio.ini`; a UI usa ~47 KB). A tipografia é Barlow Condensed (OFL, `include/panel_font_barlow_OFL.txt`; TTFs em `apps/mobile/assets/`), o rosto condensado do design: Bold para marca, títulos, código e números (`panel_font_brand_30/34`, `title_48`, `alert_68`, `code_72`) e Medium para o texto (`panel_font_body_14/17/19/22`, U+0020–U+00FF e U+2022; o 17 inclui o ● do DejaVu para campos de senha). Todas geradas com `lv_font_conv --bpp 4 --no-compress`; o raio da ilustração é o bitmap alpha `src/panel_font_pump_bolt.c` (o nome casa com o glob de `tools/validate_firmware.py`). Cores de fundo/degradê usam valores exatos de RGB565 para não mudar de matiz entre as faixas.
 
 Pré-visualização no host (LVGL real + `src/panel_ui.cpp`, sem hardware): `python firmware/esp32/preview/render.py --output tmp/panel-preview [--reference <pasta com 1.jpg..4.jpg>]` gera `totem-*.png` (800 × 480) e comparações com o design.
+
+## Case impresso
+
+O [case inclinado](case-tela-waveshare-7/README.md) para esta placa tem três peças encaixadas por pressão, sem parafusos: moldura, corpo em cunha a 20° e base de apoio. O README traz as medidas oficiais da tela, os STL prontos para Ender-3 em PLA, cupons de teste do encaixe e a verificação digital. Nada foi impresso ainda.

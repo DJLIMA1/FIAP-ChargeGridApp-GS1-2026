@@ -1,0 +1,162 @@
+{
+  "tilt_deg": 20.0,
+  "clr_glass": 0.35,
+  "skirt_t": 2.0,
+  "skirt_depth": 6.5,
+  "clr_fit": 0.25,
+  "collar_wall": 2.62,
+  "wall": 2.4,
+  "plate_t": 2.4,
+  "lip": 2.5,
+  "window_chamfer": 1.0,
+  "outer_chamfer": 1.0,
+  "chin": 8.5,
+  "top_depth": 28.0,
+  "r_top": 13.1,
+  "r_bottom": 6.0,
+  "ch_back": 6.0,
+  "ch_back_bottom": 2.0,
+  "hook_len": 16.0,
+  "hook_t": 1.6,
+  "hook_w": 10.0,
+  "spring_t": 1.2,
+  "spring_w": 8.0,
+  "spring_len": 16.0,
+  "spring_angle": 50.0,
+  "spring_preload": 0.4,
+  "post_d": 8.0,
+  "usb_hole": [
+    13.5,
+    8.5
+  ],
+  "pin_d": 2.2,
+  "base_t": 4.0,
+  "base_back": 50.0,
+  "base_r_back": 20.0,
+  "base_hook_x": 40.0,
+  "base_hook_y": 24.0,
+  "base_hook_len": 13.0,
+  "medidas_case": {
+    "largura": 203.4,
+    "altura_frente": 129.7,
+    "altura_mesa": 121.9,
+    "profundidade_base": 72.9,
+    "espessura_topo_com_moldura": 30.4
+  },
+  "molas": [
+    {
+      "pad_X": 72.0,
+      "pad_V": 42.0,
+      "poste_X": 86.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    },
+    {
+      "pad_X": 72.0,
+      "pad_V": -42.0,
+      "poste_X": 86.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    },
+    {
+      "pad_X": -73.0,
+      "pad_V": 42.0,
+      "poste_X": -87.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    },
+    {
+      "pad_X": -73.0,
+      "pad_V": -42.0,
+      "poste_X": -87.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    },
+    {
+      "pad_X": -73.0,
+      "pad_V": 0.0,
+      "poste_X": -87.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    },
+    {
+      "pad_X": -35.0,
+      "pad_V": 40.0,
+      "poste_X": -49.28,
+      "raiz_Z": -18.66,
+      "topo_ressalto_Z": -4.6
+    }
+  ],
+  "verificacao": {
+    "moldura_x_corpo_mm3": 0.0,
+    "tela_x_moldura_mm3": 0.0,
+    "tela_x_corpo_sem_ressaltos_mm3": 0.0,
+    "tela_x_ressaltos_mm3 (pre-carga intencional)": 19.342793730359954,
+    "plugue_usb_x_corpo_mm3": 0.0,
+    "plugue_usb_x_moldura_mm3": 0.0,
+    "folga_min_tela_corpo_mm": 0.555,
+    "folga_min_tela_moldura_mm": 0.0,
+    "cupons_teste_x_mm3": 0.0,
+    "moldura_dimensoes_impressao_mm": [
+      203.4,
+      129.7,
+      24.9
+    ],
+    "moldura_cabe_ender3_220": true,
+    "moldura_volume_cm3": 24.1,
+    "moldura_estanque": true,
+    "moldura_corpos": 1,
+    "corpo_dimensoes_impressao_mm": [
+      203.4,
+      121.88,
+      70.67
+    ],
+    "corpo_cabe_ender3_220": true,
+    "corpo_volume_cm3": 151.7,
+    "corpo_estanque": true,
+    "corpo_corpos": 1,
+    "base_dimensoes_impressao_mm": [
+      203.4,
+      123.23,
+      17.0
+    ],
+    "base_cabe_ender3_220": true,
+    "base_volume_cm3": 98.6,
+    "base_estanque": true,
+    "base_corpos": 1,
+    "teste_moldura_dimensoes_impressao_mm": [
+      26.0,
+      129.7,
+      24.9
+    ],
+    "teste_moldura_cabe_ender3_220": true,
+    "teste_moldura_volume_cm3": 2.7,
+    "teste_moldura_estanque": true,
+    "teste_moldura_corpos": 2,
+    "teste_corpo_dimensoes_impressao_mm": [
+      26.0,
+      129.7,
+      25.0
+    ],
+    "teste_corpo_cabe_ender3_220": true,
+    "teste_corpo_volume_cm3": 5.7,
+    "teste_corpo_estanque": true,
+    "teste_corpo_corpos": 2,
+    "estabilidade_sem_base": {
+      "massa_g": 407,
+      "cg_y": 11.5,
+      "pivo_y": 45.0,
+      "N_topo_area_ativa": 1.5,
+      "N_centro": 2.9
+    },
+    "estabilidade_com_base": {
+      "massa_g": 481,
+      "cg_y": 15.1,
+      "pivo_y": 81.0,
+      "N_topo_area_ativa": 3.9,
+      "N_centro": 8.4
+    },
+    "base_x_corpo_mm3": 3.735524546658672e-06,
+    "base_x_tela_mm3": 0.0
+  }
+}
