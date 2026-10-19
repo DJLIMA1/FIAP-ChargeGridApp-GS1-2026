@@ -52,6 +52,8 @@ O APK 0.5.1 (build 26) está em `builds/chargegrid-0.5.1.apk` (SHA-256 `734ff96d
 
 O APK 0.5.2 (build 27) está em `builds/chargegrid-0.5.2.apk` (SHA-256 `62264dd17d34d79a634f72691f764c23d659ece86bc34e3a8615a1ae107d4bac`). Modo motorista no novo design (abaixo do carro no Início), filtros da busca de estações num ícone da barra de pesquisa, notificações com leitura, barra de gestos na cor da navegação e limpeza da Conta, do saldo e dos dados da estação.
 
+O APK 0.6.0 (build 28) está em `builds/chargegrid-0.6.0.apk` (SHA-256 `ce08b81b4f90cb4aa56ecb6d2c0122f4ae0c6289246ab8a4e4f62f4f36e69f36`). Bateria do carro sorteada e escondida (sincronizada com o totem pela API), parada automática em 100% com crédito do valor pré-pago não usado, recarga por autonomia e Modo apresentação (bateria do celular como bateria do carro). Com a API anterior à migração `f2b7d4c8a1e6`, o app inicia a recarga sem os campos de bateria.
+
 ## API e PostgreSQL
 
 Crie outro ambiente virtual dentro de `apps/api` e instale as dependências:
