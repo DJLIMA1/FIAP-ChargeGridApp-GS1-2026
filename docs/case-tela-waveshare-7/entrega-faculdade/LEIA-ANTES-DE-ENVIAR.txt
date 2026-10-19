@@ -1,4 +1,4 @@
-CASE DA TELA WAVESHARE 7" — STL PARA A FACULDADE — VERSÃO 3
+CASE DA TELA WAVESHARE 7" — STL PARA A FACULDADE — VERSÃO 4
 Preparado em 18/10/2026.
 
 O QUE É
@@ -8,7 +8,8 @@ Sem nome ou logotipo. Nenhum parafuso: as peças se unem por ganchos de
 pressão, chaves borboleta impressas e cola.
 
 ARQUIVOS PARA ENVIAR
-STL/1-TESTE-PRIMEIRO: duas tiras de teste do encaixe (cerca de 1 h no total).
+STL/1-TESTE-PRIMEIRO: tira da moldura e fatia do corpo para testar o encaixe
+  (cerca de 2 a 3 h no total).
   Se possível, imprimir estes primeiro e testar antes das peças grandes.
 STL/2-PECAS: as peças do case, em 5 arquivos.
   01 moldura (esquerda e direita), 02 corpo (esquerdo e direito),
@@ -32,7 +33,7 @@ brim só no corpo e nos testes.
 PAREDES — ORIENTAÇÃO DO LABORATÓRIO
 As paredes principais têm 3 mm. Partes funcionais ficam abaixo de 3 mm de
 propósito: ganchos de 1,6 mm e molas de 1,2 mm (precisam flexionar), saia da
-moldura de 2 mm (fica entre o vidro e o corpo) e chaves de 1,5 e 3 mm. Peço avaliação sem engrossar e sem reparo automático, para não
+moldura de 2 mm (fica entre o vidro e o corpo) e chaves de 1,4 e 3 mm. Peço avaliação sem engrossar e sem reparo automático, para não
 perder os encaixes.
 
 DEPOIS DE IMPRIMIR (montagem, feita por nós)

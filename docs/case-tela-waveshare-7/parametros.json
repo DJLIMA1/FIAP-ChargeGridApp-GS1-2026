@@ -23,15 +23,16 @@
   "spring_w": 8.0,
   "spring_len": 16.0,
   "spring_angle": 60.0,
-  "spring_preload": 0.35,
+  "spring_preload": 0.5,
   "post_d": 8.0,
   "usb_hole": [
     13.5,
     8.5
   ],
   "pin_d": 2.2,
-  "key_clear": 0.15,
+  "key_clear": 0.2,
   "bed_max": 180.0,
+  "hook_play": 0.15,
   "usar_base": false,
   "base_t": 4.0,
   "base_back": 50.0,
@@ -51,53 +52,53 @@
       "pad_X": 72.0,
       "pad_V": 42.0,
       "poste_X": 84.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     },
     {
       "pad_X": 72.0,
       "pad_V": -42.0,
       "poste_X": 84.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     },
     {
       "pad_X": -73.0,
       "pad_V": 42.0,
       "poste_X": -85.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     },
     {
       "pad_X": -73.0,
       "pad_V": -42.0,
       "poste_X": -85.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     },
     {
       "pad_X": -73.0,
       "pad_V": 0.0,
       "poste_X": -85.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     },
     {
       "pad_X": -35.0,
       "pad_V": 40.0,
       "poste_X": -47.0,
-      "raiz_Z": -20.31,
-      "topo_ressalto_Z": -4.65
+      "raiz_Z": -20.16,
+      "topo_ressalto_Z": -4.5
     }
   ],
   "verificacao": {
     "moldura_x_corpo_mm3": 0.0,
     "tela_x_moldura_mm3": 0.0,
     "tela_x_corpo_sem_ressaltos_mm3": 0.0,
-    "tela_x_ressaltos_mm3 (pre-carga intencional)": 16.322894882553246,
+    "tela_x_ressaltos_mm3 (pre-carga intencional)": 25.75418959549718,
     "plugue_usb_x_corpo_mm3": 0.0,
     "plugue_usb_x_moldura_mm3": 0.0,
-    "folga_min_tela_corpo_mm": 0.63,
+    "folga_min_tela_corpo_mm": 0.48,
     "folga_min_tela_moldura_mm": 0.0,
     "cupons_teste_x_mm3": 0.0,
     "chaves_x_pecas_e_tela_mm3": 0.0,
@@ -157,7 +158,7 @@
           3.0
         ],
         "cabe_180": true,
-        "volume_cm3": 3.8,
+        "volume_cm3": 3.7,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 8
@@ -177,14 +178,14 @@
       "00-TESTE-encaixe-corpo": {
         "dimensoes_mm": [
           26.0,
-          128.96,
-          25.0
+          125.68,
+          83.33
         ],
         "cabe_180": true,
-        "volume_cm3": 7.8,
+        "volume_cm3": 20.5,
         "estanque": true,
         "triangulos_nulos": 0,
-        "pecas": 2
+        "pecas": 1
       }
     },
     "estabilidade_sem_base": {

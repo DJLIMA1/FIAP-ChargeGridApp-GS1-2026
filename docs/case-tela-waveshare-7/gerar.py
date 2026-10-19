@@ -43,9 +43,11 @@ P = dict(
     top_depth=28.0,         # espessura do corpo no topo (sem a moldura)
     r_top=None, r_bottom=6.0, ch_back=6.0, ch_back_bottom=2.0,   # arestas que tocam a mesa de impressao: chanfros >= 45 graus
     hook_len=16.0, hook_t=1.6, hook_w=10.0,
-    spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=60.0, spring_preload=0.35, post_d=8.0,
+    spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=60.0, spring_preload=0.50,   # 0,50 no modelo = 0,35 efetivo depois da folga dos ganchos
+    post_d=8.0,
     usb_hole=[13.5, 8.5], pin_d=2.2,
-    key_clear=0.15, bed_max=180.0,   # chaves borboleta; limite da impressora da faculdade
+    key_clear=0.20, bed_max=180.0,   # folga lateral das chaves (por lado)
+    hook_play=0.15,         # folga axial dos ganchos: tolera ate 0,15 mm de cedimento; as molas a consomem
     usar_base=False,        # a base que se estende para tras foi retirada a pedido; True a recoloca
     base_t=4.0, base_back=50.0, base_r_back=20.0, base_hook_x=40.0, base_hook_y=24.0, base_hook_len=13.0,
 )
@@ -173,7 +175,7 @@ HOOKS = [('V', +1, -55.0, 'bolso'), ('V', +1, 55.0, 'bolso'),
          ('V', -1, -55.0, 'janela'), ('V', -1, 55.0, 'janela'),
          ('X', -1, 0.0, 'bolso'), ('X', +1, 30.0, 'bolso')]
 LIP = {'bolso': [(-0.2, -19.6), (0.0, -19.6), (1.0, -20.6), (1.0, -20.8), (0.0, Z_TIP), (-0.2, Z_TIP)],
-       'janela': [(-0.2, -19.6), (1.2, -19.6), (1.2, -20.4), (0.0, Z_TIP), (-0.2, Z_TIP)]}
+       'janela': [(-0.2, -19.6), (1.0, -19.6), (1.0, -20.4), (0.0, Z_TIP), (-0.2, Z_TIP)]}   # dente de 1,0 mm: ~1% de deformacao
 
 def place_pz(pz_pts, axis, sign, c, w):
     """perfil (p, Z) onde p = distancia para fora da face externa da saia; largura w ao longo da borda."""
@@ -188,14 +190,15 @@ def place_pz(pz_pts, axis, sign, c, w):
 hooks = []
 for axis, sign, c, kind in HOOKS:
     beam = [(-HT, Z_SK + 0.6), (0, Z_SK + 0.6), (0, Z_TIP), (-HT, Z_TIP)]
-    hooks += [place_pz(beam, axis, sign, c, HW), place_pz(LIP[kind], axis, sign, c, HW)]
+    root = [(-P['skirt_t'], Z_SK + 0.3), (-HT + 0.05, Z_SK + 0.3), (-HT + 0.05, Z_SK - 0.45), (-P['skirt_t'], Z_SK)]   # reforco 45 graus na raiz
+    hooks += [place_pz(beam, axis, sign, c, HW), place_pz(root, axis, sign, c, HW), place_pz(LIP[kind], axis, sign, c, HW)]
 bezel = U([bezel] + hooks)
 # chave borboleta no verso do queixo (fora da saia): une as metades da moldura sem aparecer na frente
 V_KEY_BEZEL = (-(SK_OUT_V + 0.5) + (OUT_BOT + 1.5)) / 2
 _kv = [y for _, y in key_offset(KEY_SMALL, P['key_clear'])]
 assert V_KEY_BEZEL + min(_kv) >= OUT_BOT + 1.0 and V_KEY_BEZEL + max(_kv) <= -SK_OUT_V, 'chave da moldura vazaria pela borda: aumente chin'
 bezel = bezel - prism_z([(x, y + V_KEY_BEZEL) for x, y in key_offset(KEY_SMALL, P['key_clear'])], -1.0, 1.6)
-key_bezel = prism_z([(x, y + V_KEY_BEZEL) for x, y in KEY_SMALL], 0.1, 1.6)
+key_bezel = prism_z([(x, y + V_KEY_BEZEL) for x, y in KEY_SMALL], 0.2, 1.6)   # 1,4 mm = 7 camadas, 0,2 recuada
 
 # ---------------------------------------------------------------- CORPO
 # perfil lateral externo (V,Z)
@@ -252,10 +255,11 @@ body = U([body] + springs)
 cuts = []
 for axis, sign, c, kind in HOOKS:
     if kind == 'janela':
-        cuts.append(box(c - HW / 2 - 0.5, c + HW / 2 + 0.5, -200, -CAV_V + 0.5, -23.5, -19.55))
+        cuts.append(box(c - HW / 2 - 0.5, c + HW / 2 + 0.5, -200, -CAV_V + 0.5, -23.5, -19.6 + P['hook_play']))
     else:
         # bolso cego: face frontal a 45 graus (mesma inclinacao do dente), 0,05 mm a frente do dente
-        pz = [(-0.1, -19.45), (1.35, -20.9), (1.35, -23.2), (-0.1, -23.2)]
+        hp = P['hook_play']
+        pz = [(-0.1, -19.5 + hp), (1.35, -20.95 + hp), (1.35, -23.2), (-0.1, -23.2)]
         cuts.append(place_pz(pz, axis, sign, c, HW + 1.0))
 # furos USB-C na lateral direita (eixo X)
 USB_V = [35.735 + PCB_Y0, 50.835 + PCB_Y0]
@@ -266,9 +270,9 @@ for vc in USB_V:
     m = md.Manifold.extrude(md.CrossSection([ccw(hole)]), 10).translate([0, 0, CAV_X - 2])
     cuts.append(m.transform(np.array([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0]], float)))
     for k in range(4):  # chanfro externo
-        g = 0.8 * (k + 1) / 4
+        g = 0.4 * (k + 1) / 4
         hole2 = ccw([tuple(p) for p in md.CrossSection([ccw(hole)]).offset(g, md.JoinType.Round).to_polygons()[0]])
-        m = md.Manifold.extrude(md.CrossSection([hole2]), 3).translate([0, 0, OUT_X - 0.8 + 0.8 * k / 4])
+        m = md.Manifold.extrude(md.CrossSection([hole2]), 3).translate([0, 0, OUT_X - 0.4 + 0.4 * k / 4])
         cuts.append(m.transform(np.array([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0]], float)))
 # furos de pino para RESET / BOOT (por baixo)
 BTN = {'RESET': 55.04 - 48.10, 'BOOT': 55.04 - 59.20}
@@ -382,7 +386,7 @@ if P['usar_base']:
         prints[f'03-BASE-{side}'] = center(ma)                               # deitada
 # chaves: 3 do corpo + 2 reservas, 1 da moldura + 2 reservas (+ 2 da base + 2 reservas, se houver base)
 kb = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 3.0)
-kz = md.Manifold.extrude(md.CrossSection([KEY_SMALL]), 1.5)
+kz = md.Manifold.extrude(md.CrossSection([KEY_SMALL]), 1.4)
 kbase = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 2.0)
 lot = [kb.translate([-30 + 30 * (i % 3), -22 + 16 * (i // 3), 0]) for i in range(5)]
 lot += [kz.translate([-30 + 30 * i, 26, 0]) for i in range(3)]
@@ -392,9 +396,9 @@ prints[f'04-CHAVES-{len(lot)}un'] = center(U(lot))
 # cupons de teste do encaixe (faixa com um gancho de bolso em cima e um de janela embaixo)
 cx0, cx1 = 42.0, 68.0
 cup_m = bezel ^ box(cx0, cx1, -200, 200, -40, 10)
-cup_c = body ^ box(cx0, cx1, -200, 200, -25, 10)
+cup_c = body ^ (box(cx0, cx1, -200, 200, -200, 10) if DEITADO else box(cx0, cx1, -200, 200, -25, 10))
 cm = cup_m.rotate([180, 0, 0]); bb = cm.bounding_box(); cm = cm.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
-cc = cup_c; bb = cc.bounding_box(); cc = cc.translate([-(bb[0] + bb[3]) / 2, -(bb[1] + bb[4]) / 2, -bb[2]])
+cc = center(cup_c.transform(S2W)) if DEITADO else center(cup_c)   # cupom do corpo na mesma orientacao do corpo real
 prints['00-TESTE-encaixe-moldura'] = cm
 prints['00-TESTE-encaixe-corpo'] = cc
 for name in prints:   # elimina arestas microscopicas que viram triangulos nulos ao gravar o STL em float32

@@ -1,5 +1,5 @@
 CASE DA TELA 7" — CONFIGURAÇÕES DE IMPRESSÃO
-Versão 3 — 18/10/2026. Valem para qualquer fatiador (Cura, PrusaSlicer, Bambu, Orca).
+Versão 4 — 18/10/2026. Valem para qualquer fatiador (Cura, PrusaSlicer, Bambu, Orca).
 
 IMPORTAÇÃO
 - Unidade: milímetros. Escala: 100%. Não redimensionar para a mesa.
@@ -25,9 +25,11 @@ QUALIDADE (todas as peças)
 - Costura (seam): alinhada atrás ou "mais próxima"; evite aleatória na moldura.
 
 SUPORTES: DESLIGADOS EM TODOS OS ARQUIVOS
-- As peças foram desenhadas para imprimir sem suporte. Nenhuma face passa de
-  45° de balanço; existem apenas pontes curtas, de até 11 mm (janelas dos
-  ganchos, fendas de ventilação, furos USB-C).
+- As peças foram desenhadas para imprimir sem suporte. Os únicos balanços são
+  detalhes pequenos que imprimem sem ajuda: faces de trava dos ganchos
+  (ressalto de até 1 mm, faces a 60° e tetos dos bolsos a 75°, de 17 mm²), topo dos furos USB-C (ponte de
+  13,5 mm numa parede de 3 mm), topo das fendas de ventilação (3 mm) e o
+  interior dos furos de pino de 2,2 mm.
 - Suporte automático ENCHERIA os ganchos, as molas, os bolsos e as fendas,
   e as peças deixariam de encaixar. Se o fatiador sugerir suporte, recusar.
 
@@ -40,19 +42,19 @@ ADESÃO À MESA
 POR ARQUIVO (ver também DIMENSOES.csv)
   arquivo                         preench.  adesão     tamanho (mm)
   00-TESTE-encaixe-moldura        20%       brim 5     26 x 129 x 26
-  00-TESTE-encaixe-corpo          20%       brim 5     26 x 129 x 25
+  00-TESTE-encaixe-corpo          20%       brim 5     26 x 126 x 83
   01-MOLDURA-esquerda             20%       saia       102 x 129 x 26
   01-MOLDURA-direita              20%       saia       102 x 129 x 26
-  02-CORPO-esquerdo               20%       brim 5     102 x 126 x 84
-  02-CORPO-direito                20%       brim 5     102 x 126 x 84
+  02-CORPO-esquerdo               20%       brim 5     102 x 126 x 83
+  02-CORPO-direito                20%       brim 5     102 x 126 x 83
   04-CHAVES-8un                   100%      saia       84 x 58 x 3
 
 FILAMENTO
-- Cerca de 270 g de PLA no total. É uma estimativa pelo volume das peças; o
+- Cerca de 280 g de PLA no total. É uma estimativa pelo volume das peças; o
   fatiador da faculdade dará o valor exato.
 
 O QUE NÃO ALTERAR
 - Não engrossar paredes nem aplicar "reparo" automático da malha. Os STL são
   fechados (estanques), e as partes finas são intencionais: saia da moldura
-  2 mm, ganchos 1,6 mm, molas 1,2 mm, chaves 1,5 e 3 mm.
+  2 mm, ganchos 1,6 mm, molas 1,2 mm, chaves 1,4 e 3 mm.
   Elas precisam flexionar ou encaixar com folgas de 0,15 a 0,35 mm.

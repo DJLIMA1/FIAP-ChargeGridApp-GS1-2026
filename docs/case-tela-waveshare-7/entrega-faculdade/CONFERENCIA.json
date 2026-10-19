@@ -1,8 +1,8 @@
 {
   "arquivos": {
     "STL/1-TESTE-PRIMEIRO/00-TESTE-encaixe-moldura.stl": {
-      "sha256": "9e2c92f3a0c3cc8cd386a3a26eb90329c4382630665624551304615f5cb053c6",
-      "bytes": 13884,
+      "sha256": "f13637cc371e0907a6f5830ecaaa8aaf377d462f7e7017a2c0cd79bb3883ea1d",
+      "bytes": 14484,
       "dimensoes_mm": [
         26.0,
         128.96,
@@ -13,20 +13,20 @@
       "estanque": true
     },
     "STL/1-TESTE-PRIMEIRO/00-TESTE-encaixe-corpo.stl": {
-      "sha256": "6ef3138db71f33878ff93b76806f225f36dea2faa15e5e5c93b3da3919f985a0",
-      "bytes": 3684,
+      "sha256": "0f3021cb91dceaaadfb7a2cb00a202a5c69affa15f2c1b9e384e1c2bc0659a03",
+      "bytes": 8684,
       "dimensoes_mm": [
         26.0,
-        128.96,
-        25.0
+        125.68,
+        83.33
       ],
-      "pecas": 2,
-      "volume_cm3": 7.8,
+      "pecas": 1,
+      "volume_cm3": 20.5,
       "estanque": true
     },
     "STL/2-PECAS/01-MOLDURA-direita.stl": {
-      "sha256": "9c4f7686800c35df18d59224f7a27c648f48a3fd03dac90d9f4c253e982c3ad4",
-      "bytes": 123684,
+      "sha256": "f16399ba4484df5ec6839a896e5b051fc565b6d857f0f02c5dab8da4a4e6d814",
+      "bytes": 124584,
       "dimensoes_mm": [
         102.08,
         128.96,
@@ -37,8 +37,8 @@
       "estanque": true
     },
     "STL/2-PECAS/01-MOLDURA-esquerda.stl": {
-      "sha256": "038df6e2580731174d82e443757d240ac9d3e8f091228aec02229a02ce998a3e",
-      "bytes": 123484,
+      "sha256": "4d17fb0e1c72c9f260199e5dc1f4d340933d326dd83ac332b53e4aecd6ecc58c",
+      "bytes": 124484,
       "dimensoes_mm": [
         102.08,
         128.96,
@@ -49,8 +49,8 @@
       "estanque": true
     },
     "STL/2-PECAS/02-CORPO-direito.stl": {
-      "sha256": "cf1e06091d7547917a42a0ff533a681c652d623a8a3218e7b4605d410f95bef4",
-      "bytes": 254884,
+      "sha256": "656616b0abe8dee2e178f61d1648446e6f4e5fbc2515272e8230ef1c7a943365",
+      "bytes": 206884,
       "dimensoes_mm": [
         102.08,
         125.68,
@@ -61,7 +61,7 @@
       "estanque": true
     },
     "STL/2-PECAS/02-CORPO-esquerdo.stl": {
-      "sha256": "a06e66014bf8f77c9229924d2dedf23a3970210eef783cb2be204629748a7458",
+      "sha256": "d14223a1dc21be86b8c2b948267552aa9906dfb34341a7db05c6846f85a9eedc",
       "bytes": 101984,
       "dimensoes_mm": [
         102.08,
@@ -73,7 +73,7 @@
       "estanque": true
     },
     "STL/2-PECAS/04-CHAVES-8un.stl": {
-      "sha256": "4a603ab6d37480647ff119ec80ca8fab848f7a43b45d2edee087b4bc90bf4703",
+      "sha256": "f855c085424e4c7b4213ac2a426f49316f25ce165591e638d773819c71ae225e",
       "bytes": 8084,
       "dimensoes_mm": [
         84.0,
@@ -81,11 +81,11 @@
         3.0
       ],
       "pecas": 8,
-      "volume_cm3": 3.8,
+      "volume_cm3": 3.7,
       "estanque": true
     }
   },
-  "total_bytes": 629688,
+  "total_bytes": 589188,
   "maior_dimensao_mm": 128.96,
   "limite_informado_mm": [
     180,
