@@ -16,6 +16,7 @@ from chargegrid_app.demo import (
 from chargegrid_app.screens import charging, history, home, reservations, stations
 from chargegrid_app.services import maps
 from chargegrid_app.services.location import geocode_demo_address
+from chargegrid_app.services.search_location import SearchLocation
 from test_behavior import HandlerApp, click, descendants
 from test_consumer_flows import (
     CONTEXT,
@@ -26,6 +27,7 @@ from test_consumer_flows import (
     reservation,
     texts,
 )
+from test_station_ux import search_box
 
 
 class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
@@ -33,7 +35,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         clock = [0.0]
         with patch('httpx.AsyncClient',side_effect=AssertionError('network client')), \
                 patch.object(maps,'build_map_png',side_effect=AssertionError('network tiles')), \
-                patch.object(stations,'SearchLocation',side_effect=AssertionError('persistent storage')):
+                patch.object(SearchLocation,'save',side_effect=AssertionError('persistent storage')):
             app = HandlerApp()
             app.api = DemoApi(clock=lambda:clock[0])
             await app.api.login(DEMO_EMAIL,DEMO_PASSWORD)
@@ -103,7 +105,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             {'items':[STATION],'total':1},
             {'items':[{**STATION,'connectors':[{**STATION['connectors'][0],'available':False}]}],'total':1},
         ]
-        with patch.object(stations,'SearchLocation',side_effect=AssertionError('persistent storage')) as storage, \
+        with patch.object(SearchLocation,'__init__',side_effect=AssertionError('persistent storage')) as storage, \
                 patch.object(maps,'build_map_png',side_effect=AssertionError('network tiles')) as render, \
                 patch('httpx.AsyncClient',side_effect=AssertionError('network client')):
             screen = await stations.build(app)
@@ -114,28 +116,31 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Código #F12345',texts(screen))
         self.assertNotIn('Salvar busca neste dispositivo',texts(screen))
         self.assertNotIn('Usar busca salva',texts(screen))
+        self.assertNotIn('Busca inteligente',texts(screen))
 
     async def test_demo_known_search_uses_fixture_not_geocoding_service(self):
         app = HandlerApp()
         app.api.is_demo = True
         app.api.request.return_value = {'items':[],'total':0}
         screen = await stations.build(app)
-        fields(screen)['Endereço para buscar'].value = DEMO_LOCATIONS[0]['name']
+        search = search_box(screen)
+        search.value = DEMO_LOCATIONS[0]['name']
         with patch.object(stations,'geocode_address',new=AsyncMock(side_effect=AssertionError('online geocoder'))) as geocode:
-            await click(screen,'Buscar')(None)
+            await search.on_submit(None)
         geocode.assert_not_called()
         self.assertEqual(app.go.call_args.kwargs['lat'],float(DEMO_LOCATIONS[0]['latitude']))
         self.assertEqual(app.go.call_args.kwargs['lng'],float(DEMO_LOCATIONS[0]['longitude']))
+        self.assertEqual(app.go.call_args.kwargs['query'],DEMO_LOCATIONS[0]['name'])
 
     async def test_demo_unknown_search_explains_local_scope_without_fallback(self):
         app = HandlerApp()
         app.api.is_demo = True
         app.api.request.return_value = {'items':[],'total':0}
         screen = await stations.build(app)
-        fields(screen)['Endereço para buscar'].value = 'Um endereço particular desconhecido'
+        search_box(screen).value = 'Um endereço particular desconhecido'
         with patch.object(stations,'geocode_address',new=AsyncMock(side_effect=AssertionError('online geocoder'))) as geocode:
             with self.assertRaisesRegex(ApiError,'conta demo'):
-                await click(screen,'Buscar')(None)
+                await search_box(screen).on_submit(None)
         geocode.assert_not_called()
         app.go.assert_not_called()
 

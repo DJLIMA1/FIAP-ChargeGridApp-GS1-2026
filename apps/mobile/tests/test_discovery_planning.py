@@ -20,7 +20,7 @@ from chargegrid_app.services.planning import (
 )
 from test_behavior import HandlerApp, click, descendants
 from test_consumer_flows import POINT, STATION, texts
-from test_station_ux import open_station
+from test_station_ux import open_filters, open_station, sheet_app, sheet_field
 
 
 class PlanningTests(unittest.TestCase):
@@ -65,25 +65,22 @@ class PlanningTests(unittest.TestCase):
 
 class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_planning_field_appears_only_for_selected_unit_and_clears_on_unit_change(self):
-        app = HandlerApp()
+        app = sheet_app()
         app.api.request.return_value = {'items': [], 'total': 0}
         screen = await stations.build(app)
-        mode = next(c for c in descendants(screen) if isinstance(c, ft.Dropdown) and c.label == 'Minha intenção')
-        amount = next(c for c in descendants(screen) if isinstance(c, ft.TextField)
-                      and c.label == 'Minutos ou valor em R$')
-        self.assertFalse(amount.visible)
-        mode.value = 'time'
-        await mode.on_select(None)
-        self.assertTrue(amount.visible)
-        self.assertEqual(amount.label, 'Tempo disponível (min)')
+        sheet = open_filters(app, screen)
+        def shown():
+            return [c for c in descendants(sheet) if isinstance(c, ft.TextField) and c.data == 'plan_value']
+        self.assertEqual(shown(), [])
+        await click(sheet, 'Por tempo')(None)
+        amount = sheet_field(sheet, 'plan_value')
+        self.assertIn('Tempo disponível (min)', texts(sheet))
         amount.value = '30'
-        mode.value = 'value'
-        await mode.on_select(None)
-        self.assertEqual(amount.label, 'Orçamento máximo (R$)')
+        await click(sheet, 'Por valor')(None)
+        self.assertIn('Orçamento máximo (R$)', texts(sheet))
         self.assertEqual(amount.value, '')
-        mode.value = 'none'
-        await mode.on_select(None)
-        self.assertFalse(amount.visible)
+        await click(sheet, 'Só comparar')(None)
+        self.assertEqual(shown(), [])
 
     async def test_comparison_and_start_use_same_plan(self):
         app = HandlerApp()
@@ -110,19 +107,20 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
                                                'station_search':{'sort':'price','planning_intent':plan}})
 
     async def test_invalid_budget_and_distance_have_clear_errors(self):
-        app = HandlerApp()
+        app = sheet_app()
         app.api.request.return_value = {'items':[],'total':0}
         screen = await stations.build(app)
-        fields = {c.label:c for c in descendants(screen) if isinstance(c,(ft.TextField,ft.Dropdown))}
-        fields['Minha intenção'].value = 'value'
+        sheet = open_filters(app, screen)
+        await click(sheet,'Por valor')(None)
         for bad in ('NaN','Infinity','0','-1'):
-            fields['Minutos ou valor em R$'].value = bad
-            with self.subTest(bad=bad),self.assertRaises(ApiError):
-                await click(screen,'Aplicar comparação')(None)
-        fields['Minha intenção'].value = 'none'
-        fields['Ordenar por'].value = 'distance'
-        with self.assertRaises(ApiError):
-            await click(screen,'Aplicar comparação')(None)
+            with self.subTest(bad=bad):
+                sheet_field(sheet,'plan_value').value = bad
+                await open_station(sheet,'Aplicar filtros')(None)
+                self.assertIn('Informe minutos inteiros',texts(sheet))
+        await click(sheet,'Só comparar')(None)
+        await click(sheet,'Mais perto')(None)
+        await open_station(sheet,'Aplicar filtros')(None)
+        self.assertIn('ordenar por proximidade',texts(sheet))
         app.go.assert_not_awaited()
 
     async def test_demo_filters_before_pagination_and_validates(self):

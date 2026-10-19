@@ -325,14 +325,26 @@ class ChargeGridApp:
         self.page.theme_mode = ft.ThemeMode.DARK if theme.is_dark() else ft.ThemeMode.LIGHT
         # STANDARD density keeps 48 px touch targets on web/desktop builds too
         # (Flutter defaults those platforms to COMPACT, shrinking buttons by 8 px).
-        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Inter',
-                                   visual_density=ft.VisualDensity.STANDARD)
         authenticated = bool(self.api.session.access_token) and route != 'auth'
+        show_nav = authenticated and nav_visible(route, data) and getattr(self, 'hide_nav_for_route', None) != route
+        # A faixa da barra de gestos (fora da área segura) mostra o fundo da página: metade de cima com a cor
+        # do conteúdo e metade de baixo com a cor da barra inferior, sem mudar o layout.
+        self.page.decoration = ft.BoxDecoration(gradient=ft.LinearGradient(
+            begin=ft.Alignment(0, -1), end=ft.Alignment(0, 1),
+            colors=[theme.BG_COLOR, theme.BG_COLOR, theme.NAV_BG, theme.NAV_BG],
+            stops=[0, 0.5, 0.5, 1])) if show_nav else None
+        # Barra de gestos/botões do Android com a cor da barra inferior (não a do fundo da página).
+        self.page.theme = ft.Theme(color_scheme_seed=theme.RED,font_family='Inter',
+                                   visual_density=ft.VisualDensity.STANDARD,
+                                   system_overlay_style=ft.SystemOverlayStyle(
+                                       system_navigation_bar_color=theme.NAV_BG if show_nav else theme.BG_COLOR,
+                                       system_navigation_bar_divider_color=theme.NAV_BG if show_nav else theme.BG_COLOR,
+                                       system_navigation_bar_icon_brightness=(
+                                           ft.Brightness.LIGHT if theme.is_dark() else ft.Brightness.DARK)))
         if authenticated:
-            nav = (design.bottom_nav(self, tab_entries(self.browsing_mode), active_tab(route, data, self.browsing_mode))
-                   if nav_visible(route, data) and getattr(self, 'hide_nav_for_route', None) != route
-                   else ft.Container(height=0))
             header = design.app_header(self)
+            nav = (design.bottom_nav(self, tab_entries(self.browsing_mode), active_tab(route, data, self.browsing_mode))
+                   if show_nav else ft.Container(height=0))
             content = ft.SafeArea(ft.Column([
                 header, self.freshness,
                 ft.Container(body, padding=ft.Padding(left=design.GUTTER, right=design.GUTTER, top=26, bottom=16),
@@ -357,6 +369,26 @@ class ChargeGridApp:
         self.page.update()
         if self.poll_callback:
             self.start_poll()
+        if authenticated and isinstance(self.page, ft.Page):
+            asyncio.create_task(self.refresh_notification_badge(generation))
+
+    async def refresh_notification_badge(self, generation=None):
+        """Acende a bolinha do sino só quando há aviso não lido (nunca bloqueia a tela)."""
+        from .services import notifications
+        try:
+            items = await notifications.collect(self)
+            has_unread = bool(notifications.unread(self, items))
+        except Exception:  # noqa: BLE001 - aviso é opcional
+            return
+        self.has_unread_notifications = has_unread
+        dot = getattr(self, 'notification_dot', None)
+        if dot is None or (generation is not None and generation != self.generation) or dot.visible == has_unread:
+            return
+        dot.visible = has_unread
+        try:
+            dot.update()
+        except (RuntimeError, AssertionError, AttributeError):
+            pass
 
     def set_poll(self, callback, interval):
         self.poll_callback, self.poll_interval = callback,interval

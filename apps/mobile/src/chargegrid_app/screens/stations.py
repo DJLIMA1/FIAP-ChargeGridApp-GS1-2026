@@ -1,4 +1,3 @@
-import math
 import unicodedata
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
@@ -11,16 +10,22 @@ from ..services.driver import amenity_label
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import station_map_widget
 from ..services.planning import estimate_text, intent_limits
-from ..services.search_location import SearchLocation
 from ..ui import design as D
 from ..ui import theme
-from ..ui.ai_features import ai_search_card, ai_supported
 from ..ui.availability import point_status, station_map_record
-from ..ui.components import badge, button, card, field, money, pill
+from ..ui.components import badge, button, card, money, pill
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
 
 CONNECTOR_LABELS = {'type2':'Tipo 2','ccs2':'CCS2','chademo':'CHAdeMO','bench':'Bancada'}
+SORT_OPTIONS = [('default','Padrão'),('price','Menor tarifa'),('distance','Mais perto')]
+PLAN_OPTIONS = [('none','Só comparar'),('time','Por tempo'),('value','Por valor')]
+PLAN_LABELS = {'none':'Minutos ou valor em R$','time':'Tempo disponível (min)','value':'Orçamento máximo (R$)'}
+PLAN_HINTS = {'none':'','time':'Ex.: 30','value':'Ex.: 25,00'}
+DEFAULTS = dict(lat=None,lng=None,radius=5,query='',connector_type=None,available_only=False,
+                max_price_per_kwh=None,sort='default',planning_intent={})
+LOCATION_KEYS = ('lat','lng','radius','query')
+FILTER_KEYS = ('connector_type','available_only','max_price_per_kwh','sort','planning_intent')
 
 
 def _available(station, point):
@@ -81,15 +86,189 @@ def _number(value):
     return f'{float(value):g}'.replace('.', ',')
 
 
+def _filter_summary(connector_type, available_only, max_price_per_kwh, sort, intention):
+    """Active filters in reading order (one entry per filter: the badge shows how many)."""
+    summary = []
+    if connector_type:
+        summary.append(CONNECTOR_LABELS.get(connector_type, connector_type))
+    if available_only:
+        summary.append('disponíveis')
+    if max_price_per_kwh is not None:
+        summary.append(f'até {money(max_price_per_kwh)}/kWh')
+    if sort != 'default':
+        summary.append('menor tarifa' if sort == 'price' else 'mais perto da busca')
+    if intention:
+        summary.append(f"tenho {intention['minutes']} min" if intention['mode'] == 'time' else f"até {money(intention['max_cost'])}")
+    return summary
+
+
+async def _locate(demo, text):
+    """Typed address -> (lat, lng). The demo account only resolves bundled places (no network)."""
+    if demo:
+        from ..demo import DEMO_LOCATIONS
+        from ..services.driver_demo import DEMO_DRIVER_NETWORK
+        coordinates = geocode_demo_address(text,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
+        if not coordinates:
+            raise ApiError('Na conta demo, busque um local de exemplo (Villa Lobos, Marginal Pinheiros, Av. Paulista, '
+                           'Congonhas). A busca não acessa a internet.')
+        return coordinates
+    try:
+        coordinates = await geocode_address(text)
+    except Exception as exc:
+        raise ApiError('Não foi possível localizar o endereço. Verifique a conexão e tente novamente.') from exc
+    if not coordinates:
+        raise ApiError('Endereço não encontrado. Tente o nome da rua com o bairro ou a cidade.')
+    return coordinates
+
+
+def _filter_sheet(app, current, location, *, close):
+    """Bottom sheet with the comparison filters (connector, price, order, time/value plan).
+
+    ``current`` holds the applied filter values (route params); ``location`` the active
+    address search, kept untouched when the filters are applied or cleared.
+    """
+    intent = current['planning_intent'] or {}
+    max_price = current['max_price_per_kwh']
+    draft = {'connector_type':current['connector_type'] or '','available_only':bool(current['available_only']),
+             'sort':current['sort'] or 'default','plan_mode':intent.get('mode','none')}
+    price = D.input_field(str(max_price).replace('.',',') if max_price is not None else '','Ex.: 2,50',
+                          keyboard=ft.KeyboardType.NUMBER,max_length=12)
+    price.data = 'max_price_per_kwh'
+    plan_value = D.input_field(str(intent.get('minutes',intent.get('max_cost',''))).replace('.',','),
+                               PLAN_HINTS[draft['plan_mode']],keyboard=ft.KeyboardType.NUMBER,max_length=12)
+    plan_value.data = 'plan_value'
+    for control in (price,plan_value):
+        control.counter = ''
+    available = ft.Switch(value=draft['available_only'],active_track_color=theme.BTN_PRIMARY,
+                          active_color=theme.BTN_PRIMARY_FG,inactive_track_color=theme.TILE,
+                          inactive_thumb_color=theme.GRAY_TEXT,track_outline_color=ft.Colors.TRANSPARENT,
+                          data='available_only')
+    error = D.txt('',11.5,'medium',theme.RED,visible=False)
+    sections = ft.Column(spacing=20,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+    def refresh():
+        app.page.update()
+
+    def pick(key, value):
+        async def choose(event=None):
+            if key == 'plan_mode' and value != draft['plan_mode']:
+                # A number entered as minutes must not silently become a money limit.
+                plan_value.value = ''
+                plan_value.hint_text = PLAN_HINTS[value] or None
+            draft[key] = value
+            error.visible = False
+            render()
+            refresh()
+        return choose
+
+    def segment(key):
+        return lambda value: pick(key,value)()
+
+    async def toggle_available(event=None):
+        draft['available_only'] = bool(available.value)
+
+    available.on_change = toggle_available
+
+    def render():
+        chips = []
+        for key,text in [('','Todos'),*CONNECTOR_LABELS.items()]:
+            chip = D.chip_option(text,selected=draft['connector_type'] == key,on_click=pick('connector_type',key))
+            chip.alignment = None  # hug the label (an aligned container would take the whole row)
+            chips.append(chip)
+        connectors = ft.Row(chips,wrap=True,spacing=8,run_spacing=8)
+        mode = draft['plan_mode']
+        plan = [D.segmented(PLAN_OPTIONS,mode,segment('plan_mode'))]
+        if mode != 'none':
+            plan.append(D.labeled(PLAN_LABELS[mode],plan_value))
+        plan.append(D.txt('Estimativas pela potência nominal. O ponto pode entregar menos potência. Nenhuma cobrança real.',
+                          10.5,'regular',theme.GRAY_TEXT))
+        sections.controls = [
+            D.labeled('Conector',connectors),
+            D.card_box(ft.Row([ft.Column([D.txt('Somente pontos disponíveis',13,'semibold'),
+                                          D.txt('Esconde postos sem conector livre agora',10.5,'regular',theme.GRAY_TEXT)],
+                                         spacing=3,expand=True,tight=True),available],
+                              vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                       padding=ft.Padding(left=14,right=8,top=10,bottom=10)),
+            D.labeled('Tarifa máxima (R$/kWh)',price),
+            D.labeled('Ordenar por',D.segmented(SORT_OPTIONS,draft['sort'],segment('sort'))),
+            D.labeled('Tempo / valor em comparação',ft.Column(plan,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)),
+        ]
+
+    def values():
+        maximum = None
+        try:
+            text = (price.value or '').strip()
+            if text:
+                maximum = Decimal(text.replace(',','.'))
+                if not maximum.is_finite() or not 0 <= maximum <= 10000:
+                    raise InvalidOperation
+        except (InvalidOperation,ValueError):
+            raise ApiError('Informe uma tarifa máxima de zero a R$ 10.000 por kWh.')
+        intent = {}
+        mode = draft['plan_mode']
+        if mode != 'none':
+            try:
+                amount = Decimal((plan_value.value or '').strip().replace(',','.'))
+                ceiling = 1440 if mode == 'time' else 100000
+                if not amount.is_finite() or not 0 < amount <= ceiling or (mode == 'time' and amount != amount.to_integral_value()):
+                    raise InvalidOperation
+                intent = {'mode':'time','minutes':int(amount)} if mode == 'time' else {'mode':'value','max_cost':format(amount,'f')}
+            except (InvalidOperation,ValueError):
+                raise ApiError('Informe minutos inteiros de 1 a 1.440 ou um valor maior que zero e de até R$ 100.000.')
+        if draft['sort'] == 'distance' and location.get('lat') is None:
+            raise ApiError('Busque um endereço na barra de busca para ordenar por proximidade.')
+        return dict(connector_type=draft['connector_type'] or None,available_only=bool(available.value),
+                    max_price_per_kwh=format(maximum,'f') if maximum is not None else None,
+                    sort=draft['sort'],planning_intent=intent)
+
+    async def apply(event=None):
+        try:
+            chosen = values()
+        except ApiError as exc:
+            error.value, error.visible = str(exc), True
+            refresh()
+            return
+        close()
+        await app.go('stations',**location,**{key:value for key,value in chosen.items() if value != DEFAULTS[key]})
+
+    async def clear(event=None):
+        close()
+        await app.go('stations',**location)
+
+    async def dismiss(event=None):
+        close()
+
+    render()
+    summary = _filter_summary(current['connector_type'],current['available_only'],max_price,current['sort'],intent)
+    header = ft.Row([
+        ft.Column([D.txt('Filtros',18,'bold'),
+                   D.txt('Ativos: '+' · '.join(summary) if summary else 'Compare por conector, preço e tempo',
+                         11,'regular',theme.GRAY_TEXT,max_lines=2,overflow=ft.TextOverflow.ELLIPSIS)],
+                  spacing=4,expand=True,tight=True),
+        ft.Container(ft.Icon(ft.Icons.CLOSE,size=22,color=theme.TEXT_COLOR),width=40,height=40,border_radius=20,
+                     alignment=ft.Alignment(0,0),on_click=dismiss,ink=True,tooltip='Fechar',bgcolor=theme.CARD)],
+        vertical_alignment=ft.CrossAxisAlignment.START)
+    handle = ft.Container(ft.Container(width=40,height=4,border_radius=2,bgcolor='#4A4A4A' if theme.is_dark() else theme.BORDER_SOFT),
+                          alignment=ft.Alignment(0,0),padding=ft.Padding(left=0,right=0,top=0,bottom=6))
+    footer = ft.Row([ft.Container(D.secondary_button('Limpar',clear,height=48),expand=2,border_radius=D.RADIUS_BTN,
+                                  border=ft.Border.all(1,theme.BORDER_SOFT)),
+                     ft.Container(D.primary_button('Aplicar filtros',apply,height=50,weight='bold'),expand=3)],spacing=12)
+    body = ft.Column([handle,header,sections,error,footer],spacing=18,tight=True,
+                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    return ft.BottomSheet(
+        ft.Container(body,padding=ft.Padding(left=D.GUTTER,right=D.GUTTER,top=10,bottom=22)),
+        bgcolor='#262626' if theme.is_dark() else theme.BG_COLOR,scrollable=True,dismissible=True,
+        shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius(top_left=24,top_right=24,bottom_left=0,bottom_right=0)),
+        barrier_color='#A6000000',data='station-filters')
+
+
 async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, offset=0,
                 connector_type=None, available_only=False, max_price_per_kwh=None, sort='default', planning_intent=None,
-                typed_query=''):
+                typed_query='', filters_open=False, **_):
     intention = deepcopy(planning_intent) if planning_intent else {}
     route_state = dict(lat=lat,lng=lng,radius=radius,query=query,connector_type=connector_type,
                        available_only=available_only,max_price_per_kwh=max_price_per_kwh,sort=sort,planning_intent=intention)
-    defaults = dict(lat=None,lng=None,radius=5,query='',connector_type=None,available_only=False,
-                    max_price_per_kwh=None,sort='default',planning_intent={})
-    route_state = {key:value for key,value in route_state.items() if value != defaults[key]}
+    route_state = {key:value for key,value in route_state.items() if value != DEFAULTS[key]}
     demo = getattr(app.api,'is_demo',False) is True
     if station_id:
         stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
@@ -104,161 +283,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             params.update(lat=lat,lng=lng,radius_km=radius)
         result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
-    connector_filter = ft.Dropdown(label='Conector',value=connector_type or '',
-        options=[ft.DropdownOption(key=k,text=v) for k,v in [('', 'Todos'),*CONNECTOR_LABELS.items()]],
-        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
-    available_filter = ft.Checkbox(label='Somente pontos disponíveis',value=available_only)
-    price_filter = field('Tarifa máxima (R$/kWh)',str(max_price_per_kwh) if max_price_per_kwh is not None else '')
-    price_filter.keyboard_type = ft.KeyboardType.NUMBER
-    order_filter = ft.Dropdown(label='Ordenar por',value=sort,
-        options=[ft.DropdownOption(key=k,text=v) for k,v in [('default','Padrão'),('price','Menor tarifa'),('distance','Mais perto da busca')]],
-        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
-    plan_mode = ft.Dropdown(label='Minha intenção',value=intention.get('mode','none'),
-        options=[ft.DropdownOption(key=k,text=v) for k,v in [('none','Só comparar pontos'),('time','Tenho alguns minutos'),('value','Até um valor em reais')]],
-        color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
-    plan_value = field('Minutos ou valor em R$',str(intention.get('minutes',intention.get('max_cost',''))))
-    plan_value.keyboard_type = ft.KeyboardType.NUMBER
-    active_plan_mode = plan_mode.value
-    plan_value.visible = active_plan_mode != 'none'
-    if active_plan_mode == 'time':
-        plan_value.label = 'Tempo disponível (min)'
-    elif active_plan_mode == 'value':
-        plan_value.label = 'Orçamento máximo (R$)'
-
-    async def change_plan_mode(event):
-        nonlocal active_plan_mode
-        if plan_mode.value != active_plan_mode:
-            # A number entered as minutes must not silently become a money limit.
-            plan_value.value = ''
-        active_plan_mode = plan_mode.value
-        plan_value.visible = active_plan_mode != 'none'
-        plan_value.label = ('Tempo disponível (min)' if active_plan_mode == 'time'
-                            else 'Orçamento máximo (R$)' if active_plan_mode == 'value'
-                            else 'Minutos ou valor em R$')
-        app.page.update()
-
-    plan_mode.on_select = change_plan_mode
-
-    def filter_values():
-        maximum = None
-        try:
-            if price_filter.value.strip():
-                maximum = Decimal(price_filter.value.strip().replace(',','.'))
-                if not maximum.is_finite() or not 0 <= maximum <= 10000:
-                    raise InvalidOperation
-        except (InvalidOperation,ValueError):
-            raise ApiError('Informe uma tarifa máxima de zero a R$ 10.000 por kWh.')
-        intent = {}
-        if plan_mode.value != 'none':
-            try:
-                amount = Decimal(plan_value.value.strip().replace(',','.'))
-                ceiling = 1440 if plan_mode.value == 'time' else 100000
-                if not amount.is_finite() or not 0 < amount <= ceiling or (plan_mode.value == 'time' and amount != amount.to_integral_value()):
-                    raise InvalidOperation
-                intent = {'mode':'time','minutes':int(amount)} if plan_mode.value == 'time' else {'mode':'value','max_cost':format(amount,'f')}
-            except (InvalidOperation,ValueError):
-                raise ApiError('Informe minutos inteiros de 1 a 1.440 ou um valor maior que zero e de até R$ 100.000.')
-        return dict(connector_type=connector_filter.value or None,available_only=bool(available_filter.value),
-                    max_price_per_kwh=format(maximum,'f') if maximum is not None else None,
-                    sort=order_filter.value,planning_intent=intent)
-
-    address = field('Endereço para buscar',query)
-    address.max_length = 300
-    latitude, longitude, reach = field('Latitude',str(lat) if lat is not None else ''),field('Longitude',str(lng) if lng is not None else ''),field('Raio (km)',f'{float(radius):g}'.replace('.',',') if isinstance(radius,(int,float)) else str(radius))
-    search_mode = ft.Dropdown(label='Buscar por',value='address' if query or lat is None else 'coordinates',
-                              options=[ft.DropdownOption(key='address',text='Endereço'),ft.DropdownOption(key='coordinates',text='Coordenadas')],
-                              color=theme.TEXT_COLOR,bgcolor=theme.WHITE)
-
-    async def search_values():
-        search_lat, search_lng = None, None
-        search_query = address.value.strip() if search_mode.value == 'address' else ''
-        if search_query:
-            if demo:
-                from ..demo import DEMO_LOCATIONS
-                from ..services.driver_demo import DEMO_DRIVER_NETWORK
-                coordinates = geocode_demo_address(search_query,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
-                if not coordinates:
-                    raise ApiError('Na conta demo, busque um local de exemplo (Villa Lobos, Marginal Pinheiros, Av. Paulista, '
-                                   'Congonhas) ou selecione Coordenadas. A busca não acessa a internet.')
-            else:
-                try:
-                    coordinates = await geocode_address(search_query)
-                except Exception as exc:
-                    raise ApiError('Não foi possível localizar o endereço. Selecione Coordenadas em Buscar por ou tente novamente.') from exc
-            if not coordinates:
-                raise ApiError('Endereço não encontrado. Selecione Coordenadas em Buscar por para informar latitude e longitude.')
-            search_lat,search_lng = coordinates
-        elif search_mode.value == 'coordinates':
-            if not latitude.value.strip() or not longitude.value.strip():
-                raise ApiError('Informe latitude e longitude juntas.')
-            try:
-                search_lat,search_lng = float(latitude.value.replace(',','.')),float(longitude.value.replace(',','.'))
-            except ValueError as exc:
-                raise ApiError('Informe números válidos para latitude e longitude.') from exc
-        if search_lat is not None and (not -90 <= search_lat <= 90 or not -180 <= search_lng <= 180):
-            raise ApiError('Informe latitude de -90 a 90 e longitude de -180 a 180.')
-        try:
-            search_radius = float(reach.value.replace(',','.'))
-        except ValueError as exc:
-            raise ApiError('Informe um raio numérico maior que zero e de até 500 km.') from exc
-        if not math.isfinite(search_radius) or not 0 < search_radius <= 500:
-            raise ApiError('Informe um raio maior que zero e de até 500 km.')
-        return {'lat':search_lat,'lng':search_lng,'radius':search_radius,'query':search_query}
-
-    async def search():
-        location = await search_values()
-        filters = filter_values()
-        if filters['sort'] == 'distance' and location['lat'] is None:
-            raise ApiError('Informe um endereço ou coordenadas para ordenar por proximidade.')
-        await app.go('stations',**location,**{key:value for key,value in filters.items() if value != defaults[key]})
-
-    latitude.expand = True
-    longitude.expand = True
-    coordinates = ft.Row([latitude,longitude],visible=search_mode.value == 'coordinates')
-    address.visible = search_mode.value == 'address'
-
-    async def change_search_mode(event):
-        address.visible = search_mode.value == 'address'
-        coordinates.visible = not address.visible
-        app.page.update()
-
-    search_mode.on_select = change_search_mode
-    profile = getattr(app,'profile',{}) or {}
-    user = getattr(getattr(app.api,'session',None),'user',None) or {}
-    saved_location = None if demo else SearchLocation(profile.get('id') or user.get('id'))
-    saved = saved_location.load() if saved_location else None
-    saved_box = ft.Column(spacing=8)
-
-    async def remove_saved():
-        nonlocal saved
-        if not saved_location.remove():
-            raise ApiError('Não foi possível remover a busca deste dispositivo. Tente novamente.')
-        saved = None
-        refresh_saved()
-        app.page.update()
-        app.notice('Busca salva removida deste dispositivo.')
-
-    def refresh_saved():
-        saved_box.controls = []
-        if saved:
-            label = saved['query'] or f"{saved['lat']:.4f}, {saved['lng']:.4f}"
-            saved_box.controls = [ft.Text('Busca salva nesta conta: '+label,size=12,color=theme.GRAY_TEXT),
-                                  button('Usar busca salva',app.link('stations',**{**route_state,**saved}),secondary=True),
-                                  button('Remover busca salva',app.action(remove_saved),secondary=True)]
-
-    async def save_search():
-        nonlocal saved
-        data = await search_values()
-        if data['lat'] is None:
-            raise ApiError('Informe um endereço ou coordenadas antes de salvar esta busca.')
-        if not saved_location.save(data):
-            raise ApiError('Não foi possível salvar a busca nesta conta e dispositivo.')
-        saved = data
-        refresh_saved()
-        app.page.update()
-        app.notice('Busca salva somente para esta conta neste dispositivo.')
-
-    refresh_saved()
     if station_id:
         first = stations[0]
         station_heading = ft.Column([D.txt(first['name'],21.5,'bold'),D.txt(_street(first['address']),11.5,'regular',theme.GRAY_TEXT)],spacing=5)
@@ -292,47 +316,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         # The reference puts the map right under the title.
         map_slot_index = 2
     else:
-        search_controls = [search_mode,address,coordinates,reach,button('Buscar',app.action(search)),
-                           ft.Text('Sem endereço, mostramos todos os postos. O raio é aplicado à localização informada.',size=12,color=theme.GRAY_TEXT)]
-        if saved_location is not None and saved_location.path is not None:
-            search_controls += [button('Salvar busca neste dispositivo',app.action(save_search),secondary=True),
-                                ft.Text('Salvamos a localização somente ao tocar em Salvar. Você pode removê-la aqui.',size=12,color=theme.GRAY_TEXT),saved_box]
-        search_section = ft.ExpansionTile(
-            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
-            title=ft.Text('Buscar perto de um endereço',size=15,color=theme.TEXT_COLOR),
-            leading=ft.Icons.SEARCH,
-            controls=[card(ft.Column(search_controls,spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))],
-            expanded=bool(query.strip() or lat is not None or lng is not None),
-            maintain_state=True,
-            min_tile_height=44,
-            tile_padding=ft.Padding(left=0,right=0,top=0,bottom=0),
-            controls_padding=0,
-            icon_color=theme.RED,
-            collapsed_icon_color=theme.GRAY_TEXT,
-        )
-        filters_section = ft.ExpansionTile(
-            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
-            title=ft.Text('Comparar por conector, preço e tempo',size=15,color=theme.TEXT_COLOR),
-            expanded=False,
-            maintain_state=True,
-            controls=[card(ft.Column([ft.Semantics(label='Conector',content=connector_filter),available_filter,price_filter,ft.Semantics(label='Ordenar por',content=order_filter),
-                ft.Semantics(label='Minha intenção',content=plan_mode),plan_value,ft.Text('Estimativas pela potência nominal. O ponto pode entregar menos potência. Nenhuma cobrança real.',size=12,color=theme.GRAY_TEXT),
-                button('Aplicar comparação',app.action(search))],spacing=12,horizontal_alignment=ft.CrossAxisAlignment.STRETCH))])
-        summary = []
-        if connector_type:
-            summary.append(CONNECTOR_LABELS.get(connector_type, connector_type))
-        if available_only:
-            summary.append('disponíveis')
-        if max_price_per_kwh is not None:
-            summary.append(f'até {money(max_price_per_kwh)}/kWh')
-        if sort != 'default':
-            summary.append('menor tarifa' if sort == 'price' else 'proximidade da busca')
-        if intention:
-            summary.append(f"tenho {intention['minutes']} min" if intention['mode'] == 'time' else f"até {money(intention['max_cost'])}")
-        extras = [ai_search_card(app,lat=lat,lng=lng)] if ai_supported(app) else []
-        extras += [filters_section,search_section]
-        if summary:
-            extras.append(ft.Text('Comparação: '+ ' · '.join(summary)+'. Abra Comparar para editar.',size=13,color=theme.TEXT_COLOR))
         controls = []
     typed = {'text':str(typed_query or '')}  # typed_query: texto já digitado na busca (captura/atalhos)
     map_preview = ft.Container(visible=False)
@@ -408,9 +391,44 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         text_style=ft.TextStyle(size=11,color=theme.GRAY_TEXT,font_family=D.FONT), border=ft.NoInputBorder(),
         cursor_color=theme.INPUT_TEXT, content_padding=ft.Padding(left=0,right=12,top=0,bottom=0), expand=True,
         text_size=11, capitalization=ft.TextCapitalization.WORDS, value=typed['text'])
-    search_field = ft.Container(ft.Row([ft.Icon(ft.Icons.SEARCH,size=22,color=theme.GRAY_TEXT),search_box],spacing=10,
+    location_state = {key:route_state[key] for key in LOCATION_KEYS if key in route_state}
+    filter_state = {key:route_state[key] for key in FILTER_KEYS if key in route_state}
+    active_filters = _filter_summary(connector_type,available_only,max_price_per_kwh,sort,intention)
+
+    def close_filters():
+        pop = getattr(app.page,'pop_dialog',None)
+        if pop:
+            pop()
+
+    def open_filters(event=None):
+        sheet = _filter_sheet(app,dict(connector_type=connector_type,available_only=available_only,
+                                       max_price_per_kwh=max_price_per_kwh,sort=sort,planning_intent=intention),
+                              location_state,close=close_filters)
+        app.page.show_dialog(sheet)
+
+    filter_count = ft.Container(D.txt(str(len(active_filters)),8.5,'bold','#FFFFFF',text_align=ft.TextAlign.CENTER),
+                                width=15,height=15,border_radius=8,bgcolor=theme.RED,alignment=ft.Alignment(0,0),
+                                right=-6,top=-6,visible=bool(active_filters),data='filter-count')
+    filter_button = ft.Container(
+        ft.Stack([ft.Icon(ft.Icons.TUNE,size=22,color=theme.TEXT_COLOR if active_filters else theme.GRAY_TEXT),filter_count],
+                 width=22,height=22,clip_behavior=ft.ClipBehavior.NONE),
+        width=50,height=47,alignment=ft.Alignment(0,0),on_click=open_filters,ink=True,border_radius=12,
+        tooltip='Filtros'+(f' ({len(active_filters)} ativos)' if active_filters else ''),data='station-filters')
+    search_field = ft.Container(ft.Row([ft.Icon(ft.Icons.SEARCH,size=22,color=theme.GRAY_TEXT),search_box,filter_button],spacing=10,
                                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                bgcolor=theme.INPUT_BG,border_radius=12,height=47,padding=ft.Padding(left=13.5,right=0,top=0,bottom=0))
+                                bgcolor=theme.INPUT_BG,border_radius=12,height=47,padding=ft.Padding(left=13.5,right=2,top=0,bottom=0))
+    location_chip = None
+    if query or (lat is not None and lng is not None):
+        place = query or f'{float(lat):.4f}, {float(lng):.4f}'.replace('.',',')
+        location_chip = ft.Container(ft.Row([
+            ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,size=16,color=theme.GRAY_TEXT),
+            D.txt(f'Perto de {place} · {_number(radius)} km',11,'medium',theme.TEXT_COLOR,expand=True,max_lines=1,
+                  overflow=ft.TextOverflow.ELLIPSIS),
+            ft.Container(ft.Icon(ft.Icons.CLOSE,size=16,color=theme.GRAY_TEXT),width=30,height=30,border_radius=15,
+                         alignment=ft.Alignment(0,0),on_click=app.link('stations',**filter_state),ink=True,
+                         tooltip='Limpar endereço')],
+            spacing=6,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=theme.CARD,border_radius=10,height=34,padding=ft.Padding(left=10,right=2,top=0,bottom=0))
     def station_cards(stations):
         items = []
         for station in (stations if station_id else typed_matches(stations)):
@@ -516,14 +534,17 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                                  if offset and total else 'Nenhum posto encontrado para esta busca.')
         head = [page_head_box,
                 ft.Container(search_field,margin=ft.Margin(left=0,top=5 if searching else -1,right=0,bottom=0))]
+        if location_chip is not None:
+            head.append(ft.Container(location_chip,margin=ft.Margin(left=0,top=-6,right=0,bottom=0)))
         top = [] if searching else [map_section,ft.Container(height=4)]
         bottom = [map_section] if searching and shown_items else []
-        # Filtros, busca por IA e contagem ficam abaixo da dobra: o primeiro ecrã segue a referência.
+        # Contagem e paginação ficam abaixo da dobra: o primeiro ecrã segue a referência.
         rows = len(shown_items)
-        used = 95 + 24 + 63 + (16 + 158 if shown_items else 0) + 40 + rows * 101
+        used = (95 + 24 + 63 + (16 + 158 if shown_items else 0) + 40 + rows * 101
+                + (44 if location_chip is not None else 0))
         fold = ft.Container(height=max(0,800 - used))
         body.controls = [*head,*top,ft.Container(list_heading,margin=ft.Margin(left=0,top=-2 if searching else 0,right=0,bottom=0)),
-                         listing,empty_state,*bottom,fold,result_count,pagination,*extras]
+                         listing,empty_state,*bottom,fold,result_count,pagination]
 
     async def typing(event):
         typed['text'] = search_box.value or ''
@@ -532,19 +553,26 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         layout_list()
         app.page.update()
 
-    async def submit_search(event):
+    async def submit_search():
         text = (search_box.value or '').strip()
         if not text or typed_matches(current_stations):
             return
-        search_mode.value = 'address'
-        address.value = text
-        await search()
+        found_lat,found_lng = await _locate(demo,text)
+        try:
+            reach = float(radius)
+        except (TypeError,ValueError):
+            reach = DEFAULTS['radius']
+        if not 0 < reach <= 500:  # also rejects NaN
+            reach = DEFAULTS['radius']
+        await app.go('stations',lat=found_lat,lng=found_lng,radius=reach,query=text,**filter_state)
 
     if not station_id:
         search_box.on_change = typing
         search_box.on_submit = app.action(submit_search)
         layout_list()
         controls = [body]
+        if filters_open and hasattr(app.page,'show_dialog'):
+            open_filters()
 
     async def update():
         nonlocal current_stations,total

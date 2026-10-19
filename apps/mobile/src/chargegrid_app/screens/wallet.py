@@ -52,12 +52,6 @@ def balance_card(app):
         alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=0, top=-9, right=0, bottom=0))
 
 
-def leave_button(app, lower=0):
-    """Em Meu saldo "Sair" é voltar à Conta (``lower``: pt de ajuste fino da posição, referência varia por tela)."""
-    button = design.primary_button('Sair', app.link('profile'), height=48, expand=False)
-    return ft.Container(button, margin=ft.Margin(left=0, top=0, right=0, bottom=-lower)) if lower else button
-
-
 def _pix_tile(size=44):
     return design.icon_tile(ft.Icons.MONEY, size=size)
 
@@ -81,7 +75,7 @@ def home(app):
                  app.link('wallet', page='statement')),
         ft.Container(_menu_row('Adicionar ao Saldo', 'Fazer transferência para seu Saldo ChargeGrid', ft.Icons.WALLET,
                                app.link('wallet', page='add', step=1)), margin=ft.Margin(left=0, top=2.5, right=0, bottom=0)),
-        title='Meu saldo', title_size=15, on_back=app.back, footer=leave_button(app, 2))
+        title='Meu saldo', title_size=15, on_back=app.back)
 
 
 def statement(app):
@@ -102,7 +96,7 @@ def statement(app):
     return design.page(
         balance_card(app), ft.Container(height=2), design.txt('Transferências', 15, 'bold'),
         ft.Container(ft.Column(rows, spacing=16), margin=ft.Margin(left=0, top=-1, right=0, bottom=0)),
-        title='Extrato', title_size=15, on_back=app.back, footer=leave_button(app))
+        title='Extrato', title_size=15, on_back=app.back)
 
 
 def add_amount(app, amount=None):
@@ -128,7 +122,7 @@ def add_amount(app, amount=None):
         balance_card(app), ft.Container(height=2), design.txt('Escolher o valor', 15, 'bold'),
         ft.Container(box, margin=ft.Margin(left=0, top=-1, right=0, bottom=0)), error,
         design.danger_button('Prosseguir para o pagamento', proceed, height=48),
-        title='Adicionar ao Saldo', title_size=15, on_back=app.back, footer=leave_button(app, -4))
+        title='Adicionar ao Saldo', title_size=15, on_back=app.back)
 
 
 def _wide(button, lower=12):

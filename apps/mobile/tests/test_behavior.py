@@ -224,18 +224,13 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['presence_code'], '#F12345')
         self.assertNotIn('public_code', body)
 
-    async def test_partial_coordinate_search_is_rejected_without_navigation(self):
+    async def test_blank_station_search_never_navigates(self):
         app = HandlerApp()
-        app.api.request.return_value = {'items': [], 'total': 0}
+        app.api.request.return_value = {'items':[], 'total':0}
         screen = await stations.build(app)
-        search_mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
-        search_mode.value = 'coordinates'
-        await search_mode.on_select(None)
-        fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
-        latitude = next(field for field in fields if field.label == 'Latitude')
-        latitude.value = '-23.5'
-        with self.assertRaisesRegex(ApiError, 'juntas'):
-            await click(screen, 'Buscar')(None)
+        search = next(item for item in descendants(screen) if isinstance(item, ft.TextField))
+        search.value = '   '
+        await search.on_submit(None)
         app.go.assert_not_called()
 
     async def test_coupon_create_cannot_bypass_operator_guard(self):

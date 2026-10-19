@@ -263,24 +263,13 @@ class AiScreensTests(unittest.IsolatedAsyncioTestCase):
         await self.app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
         self.app.profile = await self.app.api.request('GET', 'me')
 
-    async def test_station_search_card_applies_filters_and_explains(self):
+    async def test_station_screen_has_no_ai_search_card(self):
+        # Filters moved to the search-bar sheet; natural-language search is not on this screen anymore.
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1'}), \
-                patch('httpx.AsyncClient', side_effect=AssertionError('network')), \
-                patch.object(stations, 'SearchLocation', side_effect=AssertionError('storage')):
+                patch('httpx.AsyncClient', side_effect=AssertionError('network')):
             screen = await stations.build(self.app)
-            self.assertIn('Busca inteligente', texts(screen))
-            query = next(c for c in descendants(screen) if isinstance(c, ft.TextField)
-                         and c.label == 'Descreva o que você procura')
-            query.value = 'carga rápida tipo 2 perto do centro até R$ 2/kWh'
-            await click(screen, 'Buscar com IA')(None)
-            params = self.app.go.await_args.kwargs
-            self.assertEqual(self.app.go.await_args.args, ('stations',))
-            self.assertEqual(params['connector_type'], 'type2')
-            self.assertEqual(params['sort'], 'distance')
-            again = await stations.build(self.app, **params)
-            self.assertIn('Potência mínima de 40 kW', texts(again))
-            self.assertIn('Interpretado automaticamente', texts(again))
-            self.assertIsNone(self.app.ai_search_note)
+        self.assertNotIn('Busca inteligente', texts(screen))
+        self.assertNotIn('Buscar com IA', texts(screen))
 
     async def test_history_session_insight_and_operator_insights(self):
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1'}), \

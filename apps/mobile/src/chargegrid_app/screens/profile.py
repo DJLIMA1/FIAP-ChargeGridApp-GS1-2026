@@ -10,7 +10,7 @@ from ..api_client import ApiError
 from ..services import driver as helpers
 from ..services.driver_profile import save_vehicle
 from ..ui import design, theme
-from ..ui.components import button, card, field, money, title
+from ..ui.components import button, money
 from ..ui.vehicle import VehiclePicker
 
 
@@ -144,19 +144,19 @@ async def build(app, mode=None, **_):
 
     money_row = _row('Minha Carteira' if vendor else 'Meu saldo', await balance_text(app, vendor),
                      ft.Icons.CREDIT_CARD, app.link('payout' if vendor else 'wallet'))
-    # Ordem pedida: Perfil, saldo/carteira, Alterar senha, Tema escuro (e a troca de modo, quando houver).
+    # Ordem pedida: Perfil, saldo/carteira, Alterar senha, troca de modo (quando houver), Tema escuro.
     rows = [_row('Perfil', 'Editar informações do usuário', ft.Icons.EDIT, app.link('profile', mode='edit')),
             money_row]
     if not demo:
         rows.append(_row('Alterar senha', 'Você precisará entrar novamente', ft.Icons.LOCK_OUTLINE,
                          app.link('profile', mode='password')))
-    rows.append(_row('Tema escuro', 'Aparência do aplicativo', ft.Icons.DARK_MODE_OUTLINED, None, chevron=False,
-                     trailing=ft.Switch(value=theme.is_dark(), on_change=dark, data='preference',
-                                        active_color=theme.RED)))
     if vendor_account:
         rows.append(_row('Usar como motorista' if vendor else 'Usar como operador',
                          'A troca de modo mantém sua reserva ou recarga.', ft.Icons.SWAP_HORIZ,
                          app.action(lambda: app.switch_mode('consumer' if vendor else 'vendor'))))
+    rows.append(_row('Tema escuro', 'Aparência do aplicativo', ft.Icons.DARK_MODE_OUTLINED, None, chevron=False,
+                     trailing=ft.Switch(value=theme.is_dark(), on_change=dark, data='preference',
+                                        active_color=theme.RED)))
     notes = [design.demo_note(app)]
     if demo:
         notes.append(design.txt('Senha pública: demo1234 · os dados simulados reiniciam ao sair', 10,
@@ -221,15 +221,24 @@ def edit_form(app, profile, driver=None):
 
 
 def password_form(app):
+    back = getattr(app, 'back', None) or app.link('profile')
     if getattr(app.api, 'is_demo', False):
-        return ft.Column([title('Conta de demonstração','A senha pública desta conta é fixa; nenhuma credencial real é alterada.'),
-                          button('Voltar à conta',app.link('profile'))],spacing=16)
-    password = field('Nova senha', password=True)
-    confirmation = field('Confirmar nova senha', password=True)
+        return design.page(
+            design.txt('A senha pública desta conta é fixa; nenhuma credencial real é alterada.', 12, 'regular',
+                       theme.GRAY_TEXT),
+            title='Alterar senha', on_back=back, gap=16, title_size=22,
+            footer=[button('Voltar à conta', app.link('profile'))])
+    password = design.input_field(password=True, max_length=128)
+    confirmation = design.input_field(password=True, max_length=128)
     for control in (password, confirmation):
-        control.max_length = 128
         control.autocorrect = False
         control.enable_suggestions = False
+        control.counter = ''
+        control.height = None
+        control.error_max_lines = 3
+        control.border = ft.OutlineInputBorder(border_radius=design.RADIUS_BTN + 2,
+                                               side=ft.BorderSide(0, ft.Colors.TRANSPARENT))
+        control.content_padding = ft.Padding(left=9, right=9, top=13, bottom=13)
     async def save():
         value = password.value or ''
         if not 8 <= len(value) <= 128:
@@ -249,12 +258,12 @@ def password_form(app):
         app.notice('Senha alterada. Entre novamente. Outros dispositivos pedirão login ao renovar o acesso.')
     submit = app.action(save)
     confirmation.on_submit = submit
-    return ft.Column([
-        title('Alterar senha', 'Você precisará entrar novamente após salvar.'),
-        card(ft.Column([password, confirmation], spacing=16)),
-        ft.Text('Você sairá deste app. Outros dispositivos pedirão login ao renovar o acesso; '
-                'um acesso já emitido pode continuar válido até expirar. A recarga no equipamento não é interrompida.',
-                size=13,color=theme.GRAY_TEXT),
+    # Mesmo padrão de Perfil: título com "<", rótulos acima dos campos escuros e botão branco.
+    return design.page(
+        *[ft.Container(design.labeled(text, control, 14), padding=ft.Padding(left=0, right=8, top=0, bottom=0),
+                       margin=ft.Margin(left=0, top=13 if text == 'Nova senha' else 0, right=0, bottom=0))
+          for text, control in (('Nova senha', password), ('Confirmar nova senha', confirmation))],
+        design.txt('Você precisará entrar novamente. Outros dispositivos pedirão login ao renovar o acesso; '
+                   'a recarga no equipamento não é interrompida.', 11, 'regular', theme.GRAY_TEXT),
         button('Salvar nova senha', submit),
-        button('Cancelar', app.link('profile'), secondary=True),
-    ], spacing=16, scroll=ft.ScrollMode.AUTO)
+        title='Alterar senha', on_back=back, gap=16, title_size=22)

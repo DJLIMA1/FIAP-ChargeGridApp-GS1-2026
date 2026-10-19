@@ -147,7 +147,7 @@ def _station_row(station, on_click, *, carded=True, right=None, subtitle=None):
     texts = ft.Column([design.txt(station.get('name') or 'Estação', 14, 'semibold', max_lines=1,
                                   overflow=ft.TextOverflow.ELLIPSIS),
                        design.txt(subtitle if subtitle is not None else _area(station.get('address')), 11, 'regular',
-                                  theme.GRAY_TEXT, max_lines=2 if subtitle and '\n' in subtitle else 1, overflow=ft.TextOverflow.ELLIPSIS)],
+                                  theme.GRAY_TEXT, max_lines=3 if subtitle and '\n' in subtitle else 1, overflow=ft.TextOverflow.ELLIPSIS)],
                       spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)
     chevron = ft.Icon(ft.Icons.CHEVRON_RIGHT, size=26, color=theme.TEXT_COLOR)
     price = right if right is not None else design.txt(_row_price(station), 13, 'bold')
@@ -182,16 +182,10 @@ def _spaced(control, top=0, bottom=0):
     return ft.Container(control, margin=ft.Margin(left=0, top=top, right=0, bottom=bottom))
 
 
-def _feature_rows(app):
-    ai_chat = bool(getattr(app.api, 'ai_enabled', False))
-    return [
-        design.list_row('Modo Motorista de App', 'Rode nos picos, recarregue nas horas fracas.',
-                        on_click=app.link('driver'), icon=ft.Icons.LOCAL_TAXI_OUTLINED, tile=46, dark_tile=True),
-        design.list_row('Assistente com IA' if ai_chat else 'Assistente',
-                        'Pergunte por postos, custos ou seu turno.' if ai_chat else
-                        'Tire dúvidas sobre recarga e consulte sua reserva.',
-                        on_click=app.link('chat'), icon=ft.Icons.AUTO_AWESOME, tile=46, dark_tile=True),
-    ]
+def _driver_row(app):
+    """Atalho do Modo motorista, logo abaixo do carro."""
+    return design.list_row('Modo motorista', 'Planeje as recargas do seu turno de app.',
+                           on_click=app.link('driver'), icon=ft.Icons.LOCAL_TAXI_OUTLINED, tile=46, dark_tile=True)
 
 
 async def build(app, **_):
@@ -266,13 +260,13 @@ async def build(app, **_):
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance_card, top=-8.5),
         _spaced(_car_scene(app), top=27.5),
-        _spaced(design.txt('Perto de Você', 15, 'bold'), top=-8, bottom=-1),
+        _spaced(_driver_row(app), top=-8),
+        _spaced(design.txt('Perto de Você', 15, 'bold'), top=0, bottom=-1),
         rows,
         _spaced(find_button, top=0),
         # extras abaixo da dobra: o primeiro só aparece depois da navegação inferior
         ft.Container(height=20),
         active_card,
-        *_feature_rows(app),
     ]
 
     async def update():

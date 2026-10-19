@@ -34,20 +34,15 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         visible = text_values(screen, visible_only=True)
         self.assertIn('Olá, motorista!', visible)
         self.assertNotIn('Olá, Conta', visible)
-        self.assertIn('Assistente com IA', visible)
-        # Differentials sit below the reference content (balance, nearby stations, main action).
-        self.assertLess(visible.index('Encontre uma Estação'), visible.index('Modo Motorista de App'))
-        row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
-                   and 'Assistente com IA' in text_values(item))
-        await row.on_click(None)
-        app.go.assert_awaited_with('chat')
+        # O Início não leva mais ao assistente; o chat segue na barra inferior.
+        self.assertNotIn('Assistente com IA', visible)
+        self.assertLess(visible.index('Modo motorista'), visible.index('Perto de Você'))
 
-    async def test_home_without_ai_keeps_a_plain_assistant_entry(self):
+    async def test_home_without_ai_has_no_assistant_entry(self):
         app = HomeApp()
         screen = await home.build(app)
         visible = text_values(screen, visible_only=True)
-        self.assertIn('Assistente', visible)
-        self.assertNotIn('Assistente com IA', visible)
+        self.assertNotIn('Assistente', visible)
         self.assertIn('Olá, Marina!', visible)
 
     def test_amenity_labels_do_not_repeat_the_kind(self):

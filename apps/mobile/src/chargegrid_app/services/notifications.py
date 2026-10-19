@@ -5,7 +5,10 @@ Vendedor: estações/pontos sem comunicação (``operator/stations``).
 Na demonstração, quando nada gera aviso, mostra os exemplos da referência.
 """
 
+import json
+import os
 from datetime import datetime
+from pathlib import Path
 
 BATTERY_TARGET = 80
 
@@ -92,3 +95,54 @@ async def collect(app):
     except Exception:  # noqa: BLE001 - aviso é opcional; a tela segue sem ele
         pass
     return items or (sample_items() if demo else [])
+
+
+# --------------------------------------------------------------- lidas / não lidas
+def _store_path():
+    storage = Path(os.environ.get('FLET_APP_STORAGE_DATA') or Path.home() / '.chargegrid')
+    return storage / 'notifications_read.json'
+
+
+def _account(app):
+    return str(((getattr(app.api, 'session', None) and app.api.session.user) or {}).get('id')
+               or (getattr(app, 'profile', None) or {}).get('id') or 'local')
+
+
+def read_ids(app):
+    """Ids já lidos da conta atual (demo: só na memória da sessão)."""
+    cache = getattr(app, 'notifications_read', None)
+    if cache is None:
+        cache = set()
+        if getattr(app.api, 'is_demo', False) is not True:
+            try:
+                data = json.loads(_store_path().read_text())
+                cache = set((data or {}).get(_account(app)) or [])
+            except (OSError, ValueError, TypeError, AttributeError):
+                cache = set()
+        app.notifications_read = cache
+    return cache
+
+
+def mark_read(app, ids):
+    """Marca avisos como lidos; nunca falha (sem disco, vale só nesta sessão)."""
+    cache = read_ids(app)
+    cache.update(ids)
+    if getattr(app.api, 'is_demo', False) is True:
+        return
+    try:
+        path = _store_path()
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        data[_account(app)] = sorted(cache)[-200:]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def unread(app, items):
+    seen = read_ids(app)
+    return [item for item in items if item['id'] not in seen]

@@ -324,14 +324,15 @@ class CouponAndFilterUxTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock as Async
 
         from chargegrid_app.screens import stations
-        from test_behavior import HandlerApp
         from test_consumer_flows import texts
-        app = HandlerApp()
+        from test_station_ux import open_filters, sheet_app
+        app = sheet_app()
         app.api.request.return_value = {'items': [], 'total': 0}
         with patch.object(stations, 'station_map_widget', new=Async(return_value=ft.Text('Map'))):
             screen = await stations.build(app, connector_type='type2')
-        self.assertIn('Comparação: Tipo 2', texts(screen))
-        self.assertNotIn('Comparação: type2', texts(screen))
+        sheet = open_filters(app, screen)
+        self.assertIn('Ativos: Tipo 2', texts(sheet))
+        self.assertNotIn('type2', texts(sheet))
 
 
 class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):

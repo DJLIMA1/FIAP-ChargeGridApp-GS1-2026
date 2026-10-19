@@ -189,12 +189,9 @@ def _data_page(app, station, code):
         ft.Container(design.section_label('Configurações adicionais'), margin=ft.Margin(left=0, top=0, right=0, bottom=-3)),
         menu_row('Potência por conector', 'Definir limite de cada conector', ft.Icons.BOLT_OUTLINED,
                  app.link('station_admin', station_id=sid, page='power')),
-        ft.Container(height=190),  # atalhos extras ficam abaixo da primeira tela (a referência mostra só o primeiro)
+        ft.Container(height=8),
         menu_row('Pontos e equipamentos', 'Vincular por QR, editar e restaurar', ft.Icons.QR_CODE_SCANNER,
                  app.link('operator', station_id=sid, nav=False)),
-        menu_row('Recargas da estação', 'Histórico de sessões', ft.Icons.HISTORY, app.link('history', station_id=sid, manage=True)),
-        menu_row('Cupons de desconto', 'Criar e gerenciar cupons', ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
-                 app.link('coupons', manage=True)),
         gap=16, gutter=3)
 
 

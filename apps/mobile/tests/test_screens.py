@@ -371,26 +371,14 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.poll[1],10)
         labels=[]
         def visit(item):
-            if isinstance(item,ft.TextField): labels.append(item.label)
+            if isinstance(item,ft.TextField): labels.append(item.hint_text)
             content=getattr(item,'content',None)
             if content: visit(content)
             for child in getattr(item,'controls',[]) or []: visit(child)
         visit(screen)
-        self.assertIn('Endereço para buscar',labels)
-        def descendants(item):
-            yield item
-            content=getattr(item,'content',None)
-            if content and not isinstance(content,str): yield from descendants(content)
-            for child in getattr(item,'controls',[]) or []: yield from descendants(child)
-        search_mode=next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
-        self.assertEqual(search_mode.label,'Buscar por')
-        self.assertEqual(search_mode.value,'address')
-        latitude=next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label=='Latitude')
-        coordinates=next(item for item in descendants(screen) if isinstance(item,ft.Row) and latitude in item.controls)
-        self.assertFalse(coordinates.visible)
-        search_mode.value='coordinates'
-        await search_mode.on_select(None)
-        self.assertTrue(coordinates.visible)
+        self.assertIn('Buscar por endereço ou estação',labels)
+        # The old address/coordinate form is gone: only the search bar remains.
+        self.assertEqual(labels,['Buscar por endereço ou estação'])
 
 
 if __name__ == '__main__':

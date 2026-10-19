@@ -148,12 +148,19 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
         screen = await driver.build(self.app)
         visible = texts(screen)
         self.assertIn('Modo motorista', visible)
-        self.assertIn('Estimativas', visible)
+        # Reference layout: car line, battery card, collapsible shift, "O APP já considera" rows, two buttons.
+        for label in ('BYD Dolphin - 321 km de autonomia', 'Bateria agora', '80%', '0%', '100%',
+                      'Turno, ganhos e refeições', 'O APP já considera', 'Resto do turno',
+                      'Postos ativos por local', 'Situação climática', 'Próxima parada agora'):
+            self.assertIn(label, visible)
+        self.assertLess(visible.index('Bateria agora'), visible.index('O APP já considera'))
+        self.assertLess(visible.index('Situação climática'), visible.index('Planejar meu turno'))
         form = fields(screen)
         self.assertEqual(form['Modelo do carro'].value, 'byd_dolphin')
         battery(screen).value = 45
         await click(screen, 'Planejar meu turno')(None)
         visible = texts(screen)
+        self.assertTrue(any('sem dados oficiais da Uber/99' in text for text in visible))
         for label in ('LUCRO LÍQUIDO ESTIMADO DO TURNO', 'LINHA DO TEMPO DO TURNO', 'BATERIA PROJETADA (SoC)',
                       'Paradas recomendadas', 'Pico estimado'):
             self.assertIn(label, visible)
@@ -267,10 +274,11 @@ class DriverIntegrationTests(unittest.IsolatedAsyncioTestCase):
         app.set_poll = lambda callback, interval: None
         screen = await home.build(app)
         visible = texts(screen)
-        self.assertIn('Modo Motorista de App', visible)
-        self.assertLess(visible.index('Encontre uma Estação'), visible.index('Modo Motorista de App'))
+        self.assertIn('Modo motorista', visible)
+        # Logo abaixo da foto do carro, antes de "Perto de Você".
+        self.assertLess(visible.index('Modo motorista'), visible.index('Perto de Você'))
         row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
-                   and 'Modo Motorista de App' in texts(item))
+                   and 'Modo motorista' in texts(item))
         await row.on_click(None)
         app.go.assert_awaited_once_with('driver')
 

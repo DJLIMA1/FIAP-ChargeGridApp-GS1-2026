@@ -184,15 +184,22 @@ class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
         await self.api.request('PUT', 'driver/profile', {'vehicle': {'preset': 'byd_seal'}, 'preferences': {}})
         screen = await driver.build(self.app)
         visible = texts(screen)
-        self.assertIn('BYD Seal · ~500 km de autonomia', visible)
+        self.assertIn('BYD Seal - 500 km de autonomia', visible)
         picker_box = next(c for c in descendants(screen) if isinstance(c, ft.Column) and len(c.controls) == 1
                           and any(isinstance(d, ft.Dropdown) and d.label == 'Modelo do carro' for d in descendants(c)))
         self.assertFalse(picker_box.visible)
-        await click(screen, 'Trocar')(None)
+        # Tapping the car line ("Trocar o carro") opens the picker inline.
+        swap = next(item for item in descendants(screen) if getattr(item, 'tooltip', None) == 'Trocar o carro')
+        await swap.on_click(None)
         self.assertTrue(picker_box.visible)
         self.assertEqual(fields(screen)['O que planejar'].value, 'full_shift')
         self.assertIn('Turno completo 10:00–22:00', visible)
-        self.assertTrue(any('acima da reserva' in text for text in visible))
+        self.assertIn('Turno completo', visible)  # row title follows the inferred mode
+        # The estimated range lives in the slider bubble and the screen-reader label, not as card text.
+        slider = battery(screen)
+        self.assertIn('km', slider.label)
+        self.assertTrue(any('acima da reserva' in (item.label or '') for item in descendants(screen)
+                            if isinstance(item, ft.Semantics)))
         battery(screen).value = 30
         await battery(screen).on_change(None)
         self.assertIn('30%', texts(screen))
@@ -200,16 +207,18 @@ class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
         plan = self.app.driver_state['plan']
         self.assertEqual((plan['mode'], plan['window']['start']), ('full_shift', '10:00'))
 
-    async def test_without_saved_car_the_picker_is_open_and_plan_saves_it(self):
+    async def test_demo_shows_default_car_and_plan_saves_the_chosen_one(self):
         screen = await driver.build(self.app)
-        self.assertIn('Qual é o seu carro?', texts(screen))
+        # The demo ships with the default car: summary line, picker closed (opens on tap).
+        self.assertIn('BYD Dolphin - 321 km de autonomia', texts(screen))
+        self.assertNotIn('Qual é o seu carro?', texts(screen))
         form = fields(screen)
         form['Modelo do carro'].value = 'byd_dolphin_mini'
         await click(screen, 'Próxima parada agora')(None)
         saved = await self.api.request('GET', 'driver/profile')
         self.assertTrue(saved['saved'])
         self.assertEqual(saved['vehicle']['preset'], 'byd_dolphin_mini')
-        self.assertIn('BYD Dolphin Mini · ~304 km de autonomia', texts(screen))
+        self.assertIn('BYD Dolphin Mini - 304 km de autonomia', texts(screen))
 
     async def test_rain_override_and_location_are_optional_context(self):
         bodies = []

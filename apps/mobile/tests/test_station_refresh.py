@@ -5,7 +5,7 @@ import flet as ft
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import stations
-from test_behavior import HandlerApp, click, descendants
+from test_behavior import HandlerApp, descendants
 
 
 class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
@@ -83,18 +83,31 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
             await app.poll()
             self.assertEqual(render.await_count, 2)
 
-    async def test_search_invalid_numbers_have_actionable_validation(self):
-        for latitude, longitude, radius in [('abc', '0', '5'), ('0', '0', ''), ('0', '0', 'abc')]:
-            with self.subTest(latitude=latitude, radius=radius):
+    async def test_typed_address_search_failures_are_actionable_and_do_not_navigate(self):
+        cases = [(AsyncMock(return_value=None), 'Endereço não encontrado'),
+                 (AsyncMock(side_effect=OSError('offline')), 'Não foi possível localizar o endereço')]
+        for geocode, message in cases:
+            with self.subTest(message=message):
                 app = HandlerApp()
                 app.api.request.return_value = {'items': [], 'total': 0}
                 screen = await stations.build(app)
-                search_mode = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown) and c.label == 'Buscar por')
-                search_mode.value = 'coordinates'
-                await search_mode.on_select(None)
-                fields = {c.label: c for c in descendants(screen) if isinstance(c, ft.TextField)}
-                fields['Latitude'].value, fields['Longitude'].value = latitude, longitude
-                fields['Raio (km)'].value = radius
-                with self.assertRaises(ApiError):
-                    await click(screen, 'Buscar')(None)
+                field = next(c for c in descendants(screen) if isinstance(c, ft.TextField))
+                field.value = 'Rua sem posto'
+                with patch.object(stations, 'geocode_address', new=geocode), \
+                        self.assertRaisesRegex(ApiError, message):
+                    await field.on_submit(None)
                 app.go.assert_not_awaited()
+
+    async def test_typed_text_matching_a_listed_station_only_filters_locally(self):
+        app = HandlerApp()
+        station = {'id': 's', 'name': 'Posto Central', 'address': 'Rua', 'latitude': 0, 'longitude': 0, 'connectors': []}
+        app.api.request.return_value = {'items': [station], 'total': 1}
+        with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
+            screen = await stations.build(app)
+            field = next(c for c in descendants(screen) if isinstance(c, ft.TextField))
+            field.value = 'central'
+            await field.on_change(None)
+            with patch.object(stations, 'geocode_address', new=AsyncMock(side_effect=AssertionError('geocoder'))):
+                await field.on_submit(None)
+        self.assertIn('Resultados Encontrados', [c.value for c in descendants(screen) if isinstance(c, ft.Text)])
+        app.go.assert_not_awaited()

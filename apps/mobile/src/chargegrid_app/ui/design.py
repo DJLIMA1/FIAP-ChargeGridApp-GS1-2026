@@ -482,10 +482,12 @@ def app_header(app):
     """Cabeçalho: logo (-> home) à esquerda; sino com ponto vermelho e avatar à direita."""
     bell = ft.Container(
         ft.Stack([ft.Icon(ft.Icons.NOTIFICATIONS_NONE, size=24, color='#FFFFFF' if theme.is_dark() else theme.TEXT_COLOR),
-                  ft.Container(width=6, height=6, border_radius=3, bgcolor='#D94141', right=5, top=3)],
+                  dot := ft.Container(width=6, height=6, border_radius=3, bgcolor='#D94141', right=5, top=3,
+                                      visible=bool(getattr(app, 'has_unread_notifications', False)))],
                  width=30, height=30),
         on_click=app.link('notifications'), tooltip='Notificações', width=36, height=36, alignment=ft.Alignment(0, 0),
         margin=ft.Margin(left=0, top=6, right=0, bottom=0))
+    app.notification_dot = dot  # o shell acende/apaga conforme houver aviso não lido
     person = ft.Container(avatar(app, 25), on_click=app.link('profile'), tooltip='Conta')
     return ft.Container(
         ft.Row([ft.Container(logo(), on_click=app.link('home'), tooltip='Início'), ft.Container(expand=True),

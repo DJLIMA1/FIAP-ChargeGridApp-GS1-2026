@@ -275,11 +275,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         ]
         with patch.object(stations, 'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app)
-            sections = {item.title.value:item for item in descendants(screen) if isinstance(item,ft.ExpansionTile)}
-            search_section = sections['Buscar perto de um endereço']
-            self.assertFalse(search_section.expanded)
-            self.assertTrue(search_section.maintain_state)
-            self.assertEqual(list(sections),['Comparar por conector, preço e tempo','Buscar perto de um endereço'])
+            self.assertFalse(any(isinstance(item,ft.ExpansionTile) for item in descendants(screen)))
             body = screen.controls[0]
             map_section = next(item for item in body.controls
                                if isinstance(item,ft.Column) and texts(item) == 'Map')
@@ -287,66 +283,46 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
             listing = next(item for item in body.controls
                            if isinstance(item,ft.Column) and 'Posto Central' in texts(item))
             self.assertLess(body.controls.index(map_section),body.controls.index(listing))
-            address = fields(screen)['Endereço para buscar']
-            address.value = 'Filtro em edição'
-            search_section.expanded = True
+            search = next(item for item in descendants(screen) if isinstance(item,ft.TextField))
+            search.value = 'Filtro em edição'
             await app.poll()
-            self.assertTrue(search_section.expanded)
             self.assertTrue(map_section.visible)
-            self.assertIs(fields(screen)['Endereço para buscar'],address)
-            self.assertEqual(address.value,'Filtro em edição')
+            self.assertIs(next(item for item in descendants(screen) if isinstance(item,ft.TextField)),search)
+            self.assertEqual(search.value,'Filtro em edição')
 
-    async def test_active_location_filter_is_initially_expanded(self):
-        for data in ({'query':'Praça'}, {'lat':-23.5,'lng':-46.6}):
+    async def test_active_location_search_is_shown_as_a_removable_chip(self):
+        for data, label in (({'query':'Praça','lat':-23.5,'lng':-46.6}, 'Perto de Praça · 5 km'),
+                            ({'lat':-23.5,'lng':-46.6,'radius':2.5}, 'Perto de -23,5000, -46,6000 · 2,5 km')):
             with self.subTest(data=data):
                 app = HandlerApp()
                 app.api.request.return_value = {'items':[],'total':0}
                 screen = await stations.build(app,**data)
-                search_section = next(item for item in descendants(screen)
-                                      if isinstance(item,ft.ExpansionTile) and item.title.value=='Buscar perto de um endereço')
-                self.assertTrue(search_section.expanded)
-
-    async def test_coordinate_mode_ignores_failed_address_and_retains_fields(self):
+                self.assertIn(label,texts(screen))
         app = HandlerApp()
         app.api.request.return_value = {'items':[],'total':0}
         screen = await stations.build(app)
-        inputs = fields(screen)
-        inputs['Endereço para buscar'].value = 'Endereço que falhou'
-        inputs['Latitude'].value,inputs['Longitude'].value = '-23.5','-46.6'
-        mode = next(item for item in descendants(screen) if isinstance(item,ft.Dropdown) and item.label == 'Buscar por')
-        mode.value = 'coordinates'
-        await mode.on_select(None)
-        with patch.object(stations,'geocode_address',new=AsyncMock()) as geocode:
-            await click(screen,'Buscar')(None)
-        geocode.assert_not_called()
-        app.go.assert_awaited_once_with('stations',lat=-23.5,lng=-46.6,radius=5.0,query='')
-        self.assertEqual(inputs['Endereço para buscar'].value,'Endereço que falhou')
+        self.assertFalse(any(getattr(item,'tooltip',None) == 'Limpar endereço' for item in descendants(screen)))
 
-    async def test_hidden_coordinates_do_not_filter_address_mode(self):
+    async def test_typed_address_search_geocodes_with_the_route_radius(self):
         app = HandlerApp()
         app.api.request.return_value = {'items':[],'total':0}
-        screen = await stations.build(app)
-        inputs = fields(screen)
-        inputs['Latitude'].value,inputs['Longitude'].value = '-23.5','-46.6'
-        await click(screen,'Buscar')(None)
-        app.go.assert_awaited_once_with('stations',lat=None,lng=None,radius=5.0,query='')
+        screen = await stations.build(app,radius=3,sort='price')
+        search = next(item for item in descendants(screen) if isinstance(item,ft.TextField))
+        search.value = '  Avenida Brasil  '
+        with patch.object(stations,'geocode_address',new=AsyncMock(return_value=(-23.5,-46.6))) as geocode:
+            await search.on_submit(None)
+        geocode.assert_awaited_once_with('Avenida Brasil')
+        app.go.assert_awaited_once_with('stations',lat=-23.5,lng=-46.6,radius=3.0,query='Avenida Brasil',sort='price')
 
-    async def test_search_is_saved_only_by_explicit_click_and_can_be_removed(self):
+    async def test_station_screen_never_reads_or_writes_saved_searches(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict('os.environ',{'FLET_APP_STORAGE_DATA':directory}):
             app = HandlerApp()
             app.profile = {'id':'user-one'}
             app.api.request.return_value = {'items':[],'total':0}
             screen = await stations.build(app,lat=-23.5,lng=-46.6)
             self.assertEqual(list(Path(directory).iterdir()),[])
-            await click(screen,'Buscar')(None)
-            self.assertEqual(list(Path(directory).iterdir()),[])
-            await click(screen,'Salvar busca neste dispositivo')(None)
-            stored = SearchLocation('user-one').load()
-            self.assertEqual(stored,{'lat':-23.5,'lng':-46.6,'radius':5.0,'query':''})
-            self.assertIsNone(SearchLocation('user-two').load())
-            await click(screen,'Remover busca salva')(None)
-            self.assertIsNone(SearchLocation('user-one').load())
-            self.assertNotIn('Usar busca salva',texts(screen))
+            for removed in ('Salvar busca neste dispositivo','Usar busca salva','Remover busca salva','Buscar perto de um endereço'):
+                self.assertNotIn(removed,texts(screen))
 
 
 class SearchLocationTests(unittest.TestCase):
