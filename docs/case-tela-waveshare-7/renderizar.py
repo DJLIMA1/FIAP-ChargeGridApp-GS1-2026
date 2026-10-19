@@ -83,30 +83,36 @@ def render(parts, fname, elev, azim, title, size=(1500, 1000), ss=2, light=(-0.3
     dr.text((28, 22), title, fill=(30, 30, 34), font=fnt)
     im.save(OUT / fname)
 
-mol, cor, base, tela, usb, chv = (load(n) for n in ['montagem-moldura.stl', 'montagem-corpo.stl', 'montagem-base.stl', 'tela-referencia.stl', 'plugues-usb-c.stl', 'montagem-chaves.stl'])
+mol, cor, tela, usb, chv = (load(n) for n in ['montagem-moldura.stl', 'montagem-corpo.stl', 'tela-referencia.stl', 'plugues-usb-c.stl', 'montagem-chaves.stl'])
+TEM_BASE = (ROOT / 'verificacao' / 'montagem-base.stl').exists()
+base = load('montagem-base.stl') if TEM_BASE else None
+def com_base(parts):   # inclui a base so quando ela existe
+    return [pc for pc in parts if pc[0] is not None]
 COL['chave'] = (0.20, 0.55, 0.85)
-asm = [(mol, COL['moldura']), (cor, COL['corpo']), (base, COL['base']), (tela, COL['vidro'])]
+asm = com_base([(mol, COL['moldura']), (cor, COL['corpo']), (base, COL['base']), (tela, COL['vidro'])])
 render(asm, '01-frente-3-4.png', 14, -62, 'Montado - frente 3/4')
 render(asm, '02-lateral.png', 0, 0, 'Lateral - tela inclinada %.0f graus' % P['tilt_deg'], light=(0.8, -0.4, 0.5))
-render(asm, '03-traseira-3-4.png', 20, 128, 'Traseira 3/4 - ventilacao e base (sem nome)', light=(0.3, 0.8, 0.6))
-render([(cor, COL['corpo']), (base, COL['base']), (mol, COL['moldura']), (tela, COL['vidro']), (usb, COL['usb'])], '04-lateral-direita-usb.png', 6, -18,
+render(asm, '03-traseira-3-4.png', 20, 128, 'Traseira 3/4 - lisa, so a ventilacao', light=(0.3, 0.8, 0.6))
+render(com_base([(cor, COL['corpo']), (base, COL['base']), (mol, COL['moldura']), (tela, COL['vidro']), (usb, COL['usb'])]), '04-lateral-direita-usb.png', 6, -18,
        'Lateral direita - furos USB-C (plugues de exemplo)', light=(0.9, -0.4, 0.4))
 nrm = np.array([0, -C_, S_])
 mol2 = mol.copy(); mol2.vertices += nrm * 75; tela2 = tela.copy(); tela2.vertices += nrm * 42
-base2 = base.copy(); base2.vertices += np.array([0, 0, -40])
-render([(mol2, COL['moldura']), (tela2, COL['pcb']), (cor, COL['corpo']), (base2, COL['base'])], '05-explodida.png', 16, -50,
-       'Explodida - moldura, tela, corpo, base (encaixe por pressao)')
+base2 = None
+if base is not None:
+    base2 = base.copy(); base2.vertices += np.array([0, 0, -40])
+render(com_base([(mol2, COL['moldura']), (tela2, COL['pcb']), (cor, COL['corpo']), (base2, COL['base'])]), '05-explodida.png', 16, -50,
+       'Explodida - moldura, tela e corpo (encaixe por pressao)')
 for x0, f, t in [(0.0, '06-corte-centro.png', 'Corte X=0 - vidro preso entre moldura e corpo'),
                  (72.0, '07-corte-molas.png', 'Corte X=72 - mola impressa apoiando o verso do LCD'),
                  (55.0, '08-corte-ganchos.png', 'Corte X=55 - ganchos superior (bolso) e inferior (janela)')]:
-    parts = [(cut(mol, x0), COL['moldura']), (cut(cor, x0), COL['corpo']), (cut(base, x0), COL['base']), (cut(tela, x0), COL['pcb'])]
+    parts = [(cut(mol, x0), COL['moldura']), (cut(cor, x0), COL['corpo']), (cut(tela, x0), COL['pcb'])]
+    if base is not None: parts.append((cut(base, x0), COL['base']))
     render(parts, f, 0, 180, t, light=(-0.9, -0.3, 0.4), cut_normal=(1, 0, 0))
-render([(cor, COL['corpo']), (base, COL['base']), (chv, COL['chave'])], '09-interior.png', 32, -72, 'Interior - molas, nervura central com 3 chaves (azul), encaixes da base')
-for f, t in [('01-MOLDURA-esquerda.stl', '10-impressao-moldura.png'), ('02-CORPO-esquerdo.stl', '11-impressao-corpo.png'),
-             ('03-BASE-esquerda.stl', '12-impressao-base.png'), ('04-CHAVES-12un.stl', '14-impressao-chaves.png')]:
-    m = trimesh.load(ROOT / 'stl' / f)
+render(com_base([(cor, COL['corpo']), (base, COL['base']), (chv, COL['chave'])]), '09-interior.png', 32, -72, 'Interior - molas e nervura central com 3 chaves (azul)')
+for f in sorted((ROOT / 'stl').glob('*.stl')):
+    if f.name.startswith('00-'): continue
+    m = trimesh.load(f)
     bed = trimesh.creation.box([180, 180, 1.0]); bed.vertices += [0, 0, -0.5]
-    render([(bed, COL['mesa']), (m, COL['peca'])], t, 30, -58, f + ' - orientacao de impressao, mesa 180 x 180')
-bm = load('montagem-base.stl')
-render([(bm, COL['base']), (chv, COL['chave'])], '13-base-por-baixo.png', -50, -60, 'Base por baixo - chaves da emenda, acessos de soltura, RESET/BOOT e pes', light=(-0.3, -0.5, -0.8))
+    render([(bed, COL['mesa']), (m, COL['peca'])], 'impressao-' + f.stem + '.png', 30, -58, f.name + ' - orientacao de impressao, mesa 180 x 180')
+render([(cor, COL['corpo']), (chv, COL['chave'])], '13-corpo-por-baixo.png', -50, -60, 'Corpo por baixo - janelas de soltura e furos RESET/BOOT', light=(-0.3, -0.5, -0.8))
 print(sorted(p.name for p in OUT.glob('*.png')))

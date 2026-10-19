@@ -1,5 +1,5 @@
 {
-  "tilt_deg": 20.0,
+  "tilt_deg": 15.0,
   "clr_glass": 0.35,
   "skirt_t": 2.0,
   "skirt_depth": 6.5,
@@ -10,7 +10,7 @@
   "lip": 2.5,
   "window_chamfer": 1.5,
   "outer_chamfer": 1.0,
-  "chin": 9.0,
+  "chin": 7.0,
   "top_depth": 28.0,
   "r_top": 13.48,
   "r_bottom": 6.0,
@@ -32,6 +32,7 @@
   "pin_d": 2.2,
   "key_clear": 0.15,
   "bed_max": 180.0,
+  "usar_base": false,
   "base_t": 4.0,
   "base_back": 50.0,
   "base_r_back": 20.0,
@@ -40,9 +41,9 @@
   "base_hook_len": 13.0,
   "medidas_case": {
     "largura": 204.16,
-    "altura_frente": 130.96,
-    "altura_mesa": 123.1,
-    "profundidade_base": 73.9,
+    "altura_frente": 128.96,
+    "altura_mesa": 124.6,
+    "profundidade_base": 63.3,
     "espessura_topo_com_moldura": 31.0
   },
   "molas": [
@@ -104,11 +105,11 @@
       "01-MOLDURA-esquerda": {
         "dimensoes_mm": [
           102.08,
-          130.96,
+          128.96,
           25.5
         ],
         "cabe_180": true,
-        "volume_cm3": 14.2,
+        "volume_cm3": 13.6,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
@@ -116,11 +117,11 @@
       "01-MOLDURA-direita": {
         "dimensoes_mm": [
           102.08,
-          130.96,
+          128.96,
           25.5
         ],
         "cabe_180": true,
-        "volume_cm3": 14.2,
+        "volume_cm3": 13.6,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
@@ -128,11 +129,11 @@
       "02-CORPO-esquerdo": {
         "dimensoes_mm": [
           102.08,
-          123.06,
-          71.1
+          124.57,
+          60.42
         ],
         "cabe_180": true,
-        "volume_cm3": 95.4,
+        "volume_cm3": 88.7,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
@@ -140,59 +141,35 @@
       "02-CORPO-direito": {
         "dimensoes_mm": [
           102.08,
-          123.06,
-          71.1
+          124.57,
+          60.42
         ],
         "cabe_180": true,
-        "volume_cm3": 92.2,
+        "volume_cm3": 85.8,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 1
       },
-      "03-BASE-esquerda": {
-        "dimensoes_mm": [
-          102.08,
-          124.22,
-          17.4
-        ],
-        "cabe_180": true,
-        "volume_cm3": 49.4,
-        "estanque": true,
-        "triangulos_nulos": 0,
-        "pecas": 1
-      },
-      "03-BASE-direita": {
-        "dimensoes_mm": [
-          102.08,
-          124.22,
-          17.4
-        ],
-        "cabe_180": true,
-        "volume_cm3": 49.4,
-        "estanque": true,
-        "triangulos_nulos": 0,
-        "pecas": 1
-      },
-      "04-CHAVES-12un": {
+      "04-CHAVES-8un": {
         "dimensoes_mm": [
           84.0,
-          94.0,
+          58.25,
           3.0
         ],
         "cabe_180": true,
-        "volume_cm3": 5.5,
+        "volume_cm3": 3.8,
         "estanque": true,
         "triangulos_nulos": 0,
-        "pecas": 12
+        "pecas": 8
       },
       "00-TESTE-encaixe-moldura": {
         "dimensoes_mm": [
           26.0,
-          130.96,
+          128.96,
           25.5
         ],
         "cabe_180": true,
-        "volume_cm3": 3.1,
+        "volume_cm3": 2.9,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 2
@@ -200,31 +177,22 @@
       "00-TESTE-encaixe-corpo": {
         "dimensoes_mm": [
           26.0,
-          130.96,
+          128.96,
           25.0
         ],
         "cabe_180": true,
-        "volume_cm3": 6.5,
+        "volume_cm3": 5.9,
         "estanque": true,
         "triangulos_nulos": 0,
         "pecas": 2
       }
     },
     "estabilidade_sem_base": {
-      "massa_g": 448,
-      "cg_y": 12.8,
-      "pivo_y": 45.2,
-      "N_topo_area_ativa": 1.6,
-      "N_centro": 3.1
-    },
-    "estabilidade_com_base": {
-      "massa_g": 521,
-      "cg_y": 16.0,
-      "pivo_y": 81.2,
-      "N_topo_area_ativa": 4.2,
-      "N_centro": 8.8
-    },
-    "base_x_corpo_mm3": 0.0,
-    "base_x_tela_mm3": 0.0
+      "massa_g": 434,
+      "cg_y": 12.7,
+      "pivo_y": 40.8,
+      "N_topo_area_ativa": 1.3,
+      "N_centro": 2.3
+    }
   }
 }

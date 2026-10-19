@@ -3,7 +3,7 @@
 Pecas impressas, unidas so por travas, chaves e cola (nenhum parafuso):
   1. MOLDURA  - frente; segura o vidro pela borda e tem 6 ganchos.
   2. CORPO    - cunha inclinada; recebe os ganchos e empurra o LCD com 6 molas impressas.
-  3. BASE     - apoio traseiro que encaixa por baixo do corpo.
+  3. BASE     - opcional (desligada por padrao): apoio traseiro que encaixa por baixo do corpo.
 Para caber em impressoras de 180 x 180 x 180 mm, cada peca sai em metades (esquerda/direita) unidas por
 chaves borboleta impressas e cola. Sem nome ou logotipo nas superficies.
 
@@ -33,19 +33,20 @@ PCB_X0, PCB_Y0 = 55.04, -47.30
 
 # ---------------------------------------------------------------- parametros do case
 P = dict(
-    tilt_deg=20.0,          # inclinacao da tela para tras
+    tilt_deg=15.0,          # inclinacao da tela para tras (pedido: entre 10 e 15 graus)
     clr_glass=0.35,         # folga vidro -> saia da moldura (por lado)
     skirt_t=2.0, skirt_depth=6.5,
     clr_fit=0.25,           # folga saia -> corpo (por lado)
     collar_wall=3.0, wall=3.0,     # paredes principais com 3 mm (recomendacao do laboratorio)
     plate_t=3.0, lip=2.5, window_chamfer=1.5, outer_chamfer=1.0,
-    chin=9.0,               # queixo inferior (abriga os ganchos inferiores com a inclinacao de 20 graus)
+    chin=7.0,               # queixo inferior (abriga os ganchos inferiores; com 15 graus o minimo e 6,4)
     top_depth=28.0,         # espessura do corpo no topo (sem a moldura)
     r_top=None, r_bottom=6.0, ch_back=6.0, ch_back_bottom=2.0,   # arestas que tocam a mesa de impressao: chanfros >= 45 graus
     hook_len=16.0, hook_t=1.6, hook_w=10.0,
     spring_t=1.2, spring_w=8.0, spring_len=16.0, spring_angle=50.0, spring_preload=0.4, post_d=8.0,
     usb_hole=[13.5, 8.5], pin_d=2.2,
     key_clear=0.15, bed_max=180.0,   # chaves borboleta; limite da impressora da faculdade
+    usar_base=False,        # a base que se estende para tras foi retirada a pedido; True a recoloca
     base_t=4.0, base_back=50.0, base_r_back=20.0, base_hook_x=40.0, base_hook_y=24.0, base_hook_len=13.0,
 )
 P.update(json.loads(os.environ.get('CASE_PARAMS', '{}')))   # para estudos: CASE_PARAMS='{"tilt_deg": 20}'
@@ -330,7 +331,8 @@ for yk in key_y_base:   # chaves borboleta por baixo da base, rentes
     acc.append(md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in key_offset(KEY_BIG, P['key_clear'])]]), 3.1).translate([0, 0, Z_TABLE - bt_ - 1.0]))
 keys_base = [md.Manifold.extrude(md.CrossSection([[(x, y + yk) for x, y in KEY_BIG]]), 2.0).translate([0, 0, Z_TABLE - bt_ + 0.1]) for yk in key_y_base]
 base = D(U([base] + base_hooks), acc)
-body = D(U([body] + [m.transform(W2S) for m in body_catch]), [m.transform(W2S) for m in body_slots])
+if P['usar_base']:   # rasgos e nervuras no piso do corpo so existem com a base
+    body = D(U([body] + [m.transform(W2S) for m in body_catch]), [m.transform(W2S) for m in body_slots])
 base_w = base
 
 # ---------------------------------------------------------------- exportar
@@ -350,16 +352,18 @@ for side, mb in zip(['esquerda', 'direita'], halves(bezel)):
     prints[f'01-MOLDURA-{side}'] = center(mb.rotate([180, 0, 0]))            # frente na mesa
 for side, mc in zip(['esquerdo', 'direito'], halves(body)):
     prints[f'02-CORPO-{side}'] = center(mc.transform(S2W).transform(TO_PRINT_BODY))
-for side, ma in zip(['esquerda', 'direita'], halves(base)):
-    prints[f'03-BASE-{side}'] = center(ma)                                   # deitada
-# chaves: 3 do corpo + 2 reservas, 1 da moldura + 2 reservas, 2 da base + 2 reservas
+if P['usar_base']:
+    for side, ma in zip(['esquerda', 'direita'], halves(base)):
+        prints[f'03-BASE-{side}'] = center(ma)                               # deitada
+# chaves: 3 do corpo + 2 reservas, 1 da moldura + 2 reservas (+ 2 da base + 2 reservas, se houver base)
 kb = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 3.0)
 kz = md.Manifold.extrude(md.CrossSection([KEY_SMALL]), 1.5)
 kbase = md.Manifold.extrude(md.CrossSection([KEY_BIG]), 2.0)
 lot = [kb.translate([-30 + 30 * (i % 3), -22 + 16 * (i // 3), 0]) for i in range(5)]
 lot += [kz.translate([-30 + 30 * i, 26, 0]) for i in range(3)]
-lot += [kbase.translate([-30 + 30 * (i % 3), 44 + 16 * (i // 3), 0]) for i in range(4)]
-prints['04-CHAVES-12un'] = center(U(lot))
+if P['usar_base']:
+    lot += [kbase.translate([-30 + 30 * (i % 3), 44 + 16 * (i // 3), 0]) for i in range(4)]
+prints[f'04-CHAVES-{len(lot)}un'] = center(U(lot))
 # cupons de teste do encaixe (faixa com um gancho de bolso em cima e um de janela embaixo)
 cx0, cx1 = 42.0, 68.0
 cup_m = bezel ^ box(cx0, cx1, -200, 200, -40, 10)
@@ -373,8 +377,10 @@ for name in prints:   # elimina arestas microscopicas que viram triangulos nulos
     mesh(prints[name]).export(ROOT / 'stl' / f'{name}.stl')
 mesh(bezel).export(ROOT / 'verificacao' / 'montagem-moldura.stl')
 mesh(body).export(ROOT / 'verificacao' / 'montagem-corpo.stl')
-mesh(base_w.transform(W2S)).export(ROOT / 'verificacao' / 'montagem-base.stl')
-keys_all = U(keys_body + [key_bezel] + [k.transform(W2S) for k in keys_base])
+(ROOT / 'verificacao' / 'montagem-base.stl').unlink(missing_ok=True)
+if P['usar_base']:
+    mesh(base_w.transform(W2S)).export(ROOT / 'verificacao' / 'montagem-base.stl')
+keys_all = U(keys_body + [key_bezel] + ([k.transform(W2S) for k in keys_base] if P['usar_base'] else []))
 mesh(keys_all).export(ROOT / 'verificacao' / 'montagem-chaves.stl')
 
 # ---------------------------------------------------------------- modelo da tela para verificacao
@@ -408,7 +414,7 @@ checks = {
 checks['folga_min_tela_corpo_mm'] = round((body - nubs_only).min_gap(screen, 5.0), 3)
 checks['folga_min_tela_moldura_mm'] = round(bezel.min_gap(screen, 5.0), 3)
 checks['cupons_teste_x_mm3'] = inter(cup_m, cup_c)
-checks['chaves_x_pecas_e_tela_mm3'] = inter(keys_all, U([bezel, body, base_w.transform(W2S), screen]))
+checks['chaves_x_pecas_e_tela_mm3'] = inter(keys_all, U([bezel, body, screen] + ([base_w.transform(W2S)] if P['usar_base'] else [])))
 checks['arquivos'] = {}
 for name, s in prints.items():
     m = trimesh.load(ROOT / 'stl' / f'{name}.stl')    # confere o arquivo gravado, nao so a geometria em memoria
@@ -435,9 +441,10 @@ def tip_force(with_base):
     return dict(massa_g=round(m_tot), cg_y=round(float(cg[1]), 1), pivo_y=round(y_piv, 1),
                 N_topo_area_ativa=at(GV - 13.04), N_centro=at(0.0))
 checks['estabilidade_sem_base'] = tip_force(False)
-checks['estabilidade_com_base'] = tip_force(True)
-checks['base_x_corpo_mm3'] = inter(base_w.transform(W2S), body)
-checks['base_x_tela_mm3'] = inter(base_w.transform(W2S), screen)
+if P['usar_base']:
+    checks['estabilidade_com_base'] = tip_force(True)
+    checks['base_x_corpo_mm3'] = inter(base_w.transform(W2S), body)
+    checks['base_x_tela_mm3'] = inter(base_w.transform(W2S), screen)
 info = dict(P, medidas_case=dict(largura=round(2 * OUT_X, 2), altura_frente=round(OUT_TOP - OUT_BOT, 2),
             altura_mesa=round(float(to_world(0, OUT_TOP, 0)[2] - Z_TABLE), 1),
             profundidade_base=round(Y_BACK - float(to_world(0, OUT_BOT, P['plate_t'])[1]), 1),

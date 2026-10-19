@@ -5,11 +5,10 @@ import trimesh
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'entrega-faculdade'
-ZIP = ROOT / 'ChargeGrid-Case-Tela7-Faculdade-v1.zip'
+ZIP = ROOT / 'ChargeGrid-Case-Tela7-Faculdade-v2.zip'
 info = json.loads((ROOT / 'parametros.json').read_text())['verificacao']['arquivos']
-GROUPS = {'1-TESTE-PRIMEIRO': ['00-TESTE-encaixe-moldura', '00-TESTE-encaixe-corpo'],
-          '2-PECAS': ['01-MOLDURA-esquerda', '01-MOLDURA-direita', '02-CORPO-esquerdo', '02-CORPO-direito',
-                      '03-BASE-esquerda', '03-BASE-direita', '04-CHAVES-12un']}
+GROUPS = {'1-TESTE-PRIMEIRO': [n for n in info if n.startswith('00-')],
+          '2-PECAS': sorted(n for n in info if not n.startswith('00-'))}
 # configuracao por arquivo: (preenchimento, adesao, pecas no arquivo, observacao)
 CFG = {'00-TESTE-encaixe-moldura': ('20%', 'brim 5 mm', 2, 'frente na mesa'),
        '00-TESTE-encaixe-corpo': ('20%', 'brim 5 mm', 2, 'tiras finas em pe'),
@@ -19,7 +18,10 @@ CFG = {'00-TESTE-encaixe-moldura': ('20%', 'brim 5 mm', 2, 'frente na mesa'),
        '02-CORPO-direito': ('20%', 'brim 5 mm', 1, 'costas na mesa'),
        '03-BASE-esquerda': ('20%', 'saia', 1, 'deitada'),
        '03-BASE-direita': ('20%', 'saia', 1, 'deitada'),
-       '04-CHAVES-12un': ('100%', 'saia', 12, 'chaves macicas')}
+}
+for n in info:
+    if n.startswith('04-CHAVES-'):
+        CFG[n] = ('100%', 'saia', int(n.split('-')[-1][:-2]), 'chaves macicas')
 
 if OUT.exists():
     shutil.rmtree(OUT)
@@ -46,7 +48,7 @@ total = sum(v['bytes'] for v in conf.values())
 for t in ['LEIA-ANTES-DE-ENVIAR.txt', 'CONFIGURACOES-DE-IMPRESSAO.txt']:
     shutil.copyfile(ROOT / 'textos-entrega' / t, OUT / t)
 with zipfile.ZipFile(ZIP, 'w', zipfile.ZIP_DEFLATED) as z:
-    for p in sorted(OUT.rglob('*')):
+    for p in sorted(OUT.rglob('*')):  # noqa
         if p.is_file():
             z.write(p, p.relative_to(OUT))
 print(f'{len(conf)} STL, {total / 1e6:.2f} MB, zip {ZIP.stat().st_size / 1e6:.2f} MB')
