@@ -22,7 +22,7 @@ def texts(screen):
 
 def without_soc(body):
     """Corpo do início sem os campos de bateria (sempre enviados; testados à parte)."""
-    return {key:value for key,value in body.items() if key not in ('soc_percent','battery_kwh','soc_source')}
+    return {key:value for key,value in body.items() if key not in ('soc_percent','battery_kwh','soc_source','max_power_kw')}
 
 
 def fields(screen):
@@ -156,6 +156,8 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.posts[0][0]['soc_source'],'simulated')
         self.assertTrue(15 <= app.posts[0][0]['soc_percent'] <= 60)
         self.assertEqual(app.posts[0][0]['battery_kwh'],44.9)
+        # Driver's general limit: the BYD Dolphin accepts 6.6 kW on an AC point.
+        self.assertEqual(app.posts[0][0]['max_power_kw'],6.6)
         self.assertIsNone(app.charging_draft)
 
     async def test_invalid_code_cannot_advance_or_post(self):

@@ -8,6 +8,8 @@ import zlib
 from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
+from chargegrid_core import power as power_rules
+
 RESERVATION_FEE = Decimal('4.90')
 TOLERANCE_MINUTES = 15
 SLOT_COUNT = 3
@@ -64,6 +66,10 @@ def group_connectors(station):
         group['connectors'].append(point)
         if is_available(station, point):
             group['free'].append(point)
+    for group in groups.values():
+        # Potência efetiva (limites do vendedor e divisão do posto, calculados pela API).
+        pool = group['free'] or group['connectors']
+        group['effective_kw'] = max(to_decimal(p.get('effective_power_kw') or p.get('power_kw')) for p in pool)
     return sorted(groups.values(), key=lambda item: (-item['power_kw'], item['type']))
 
 
@@ -82,9 +88,33 @@ def group_subtitle(group):
     return f"{free} de {total} conectores {'livre' if free == 1 else 'livres'}"
 
 
-def power_options(group):
-    """Opções de potência: máxima do conector e uma reduzida (metade)."""
-    top = group['power_kw']
+def driver_power(group, car=None):
+    """Limite geral do motorista neste grupo: ``min(efetivo do conector, carro)``.
+
+    ``car``: ``{'max_ac_kw', 'max_dc_kw'}`` (``vehicle_state.car_specs``). Devolve ``{'kw', 'by'}`` com
+    ``by`` = ``'car'`` (o carro é o gargalo), ``'station'`` (o posto limita o conector) ou ``None``."""
+    rating = group['power_kw']
+    effective = min(rating, group.get('effective_kw') or rating)
+    result = power_rules.driver_limit(effective, group['type'], max_ac_kw=(car or {}).get('max_ac_kw'),
+                                      max_dc_kw=(car or {}).get('max_dc_kw'))
+    by = 'car' if result['limited_by'] == 'car' and result['kw'] < effective else (
+        'station' if effective < rating else None)
+    return {'kw': result['kw'], 'by': by}
+
+
+POWER_BADGES = {'station': 'limitado pelo posto', 'car': 'limite do seu carro'}
+
+
+def power_title(group, key, car=None):
+    """``Até 40 kW · limitado pelo posto`` (o selo só aparece na opção máxima)."""
+    value = power_options(group, car)[key][0]
+    badge = POWER_BADGES.get(driver_power(group, car)['by']) if key == 'max' else None
+    return f'Até {fmt_number(value)} kW' + (f' · {badge}' if badge else '')
+
+
+def power_options(group, car=None):
+    """Opções de potência: máxima permitida (conector efetivo ∩ carro) e uma reduzida (metade)."""
+    top = driver_power(group, car)['kw'] if 'effective_kw' in group or car else group['power_kw']
     reduced = (top / 2).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
     return {'max': (top, 'Mais rápida'), 'reduced': (reduced, 'Reduz a potência máxima')}
 

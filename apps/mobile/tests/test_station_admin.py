@@ -1,4 +1,4 @@
-"""Vendor stations: landing list, station detail, data, connector power and battery limit."""
+"""Vendor stations: landing list, station detail, data, power limits (station + connectors) and battery limit."""
 import unittest
 from types import SimpleNamespace
 
@@ -78,16 +78,72 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((await app.api.request('GET', f'stations/{sid}'))['active'])
         await app.api.close()
 
-    async def test_power_slider_patches_connector_power(self):
+    async def _power_screen(self):
         app = await demo_app()
         station = (await app.api.request('GET', 'operator/stations'))['items'][0]
         screen = await station_admin.build(app, station_id=station['id'], page='power')
         sliders = [c for c in descendants(screen) if isinstance(c, ft.Slider)]
-        self.assertEqual(len(sliders), len(station['connectors']))
-        sliders[0].value = 22.0
-        await sliders[0].on_change_end(SimpleNamespace(control=sliders[0]))
-        point = (await app.api.request('GET', f'stations/{station["id"]}'))['connectors'][0]
-        self.assertEqual(float(point['power_kw']), 22.0)
+        return app, station, screen, sliders
+
+    async def test_power_page_shows_rating_energy_and_saves_limits(self):
+        app, station, screen, sliders = await self._power_screen()
+        copy = texts(screen)
+        self.assertIn('Limite do posto', copy)
+        self.assertIn('Potência máxima do carregador: 60 kW', copy)
+        self.assertIn('Energia entregue: 2,4 kWh', copy)
+        self.assertIn('Alocado: 104 de 104 kW', copy)
+        self.assertEqual([s.data for s in sliders], ['station_power'] + ['power'] * len(station['connectors']))
+        # Lowering the station cap below the sum shows the proportional share immediately.
+        sliders[0].value = 80.0
+        await sliders[0].on_change(SimpleNamespace(control=sliders[0]))
+        copy = texts(screen)
+        self.assertIn('Efetivo: 46,1 kW (limitado pelo posto)', copy)
+        self.assertIn('Alocado: 79,9 de 80 kW', copy)
+        sliders[1].value = 40.0
+        await sliders[1].on_change(SimpleNamespace(control=sliders[1]))
+        self.assertIn('Efetivo: 38 kW (limitado pelo posto)', texts(screen))
+        await press(screen, 'Salvar limites')(None)
+        saved = await app.api.request('GET', f'stations/{station["id"]}')
+        self.assertEqual(float(saved['max_power_kw']), 80.0)
+        self.assertEqual(float(saved['connectors'][0]['power_limit_kw']), 40.0)
+        self.assertEqual(float(saved['connectors'][0]['power_kw']), 60.0)  # rating untouched
+        self.assertEqual(app.notices[-1], 'Limites de potência salvos.')
+        detail = await station_admin.build(app, station_id=station['id'])
+        self.assertIn('Limite do posto: 80 kW · CCS2: 40 kW · Tipo 2: 22 kW', texts(detail))
+        # Restore defaults clears every limit after saving.
+        screen = await station_admin.build(app, station_id=station['id'], page='power')
+        await press(screen, 'Restaurar padrão')(None)
+        await press(screen, 'Salvar limites')(None)
+        saved = await app.api.request('GET', f'stations/{station["id"]}')
+        self.assertIsNone(saved['max_power_kw'])
+        self.assertTrue(all(p['power_limit_kw'] is None for p in saved['connectors']))
+        await app.api.close()
+
+    async def test_power_page_notify_toggle_and_partial_failure(self):
+        app, station, screen, sliders = await self._power_screen()
+        switch = next(c for c in descendants(screen) if isinstance(c, ft.Switch) and c.data == 'power_notify')
+        switch.value = True
+        await switch.on_change(SimpleNamespace(control=switch))
+        sliders[2].value = 11.0
+        await sliders[2].on_change(SimpleNamespace(control=sliders[2]))
+        original = app.api.request
+
+        async def flaky(method, path, body=None, **kwargs):
+            if method == 'PATCH' and path.startswith('connectors/'):
+                from chargegrid_app.api_client import ApiError
+                raise ApiError('Sem conexão.', 503, 'network')
+            return await original(method, path, body, **kwargs)
+        app.api.request = flaky
+        await press(screen, 'Salvar limites')(None)
+        message = app.notices[-1]
+        self.assertIn('Salvo: limite do posto.', message)
+        self.assertIn('Não salvo: Tipo 2 - Conector 02: Sem conexão.', message)
+        app.api.request = original
+        self.assertTrue((await app.api.request('GET', f'stations/{station["id"]}'))['power_limit_notify'])
+        # Retrying sends only what is still pending.
+        await press(screen, 'Salvar limites')(None)
+        saved = await app.api.request('GET', f'stations/{station["id"]}')
+        self.assertEqual(float(saved['connectors'][1]['power_limit_kw']), 11.0)
         await app.api.close()
 
     def test_battery_rule_validation(self):

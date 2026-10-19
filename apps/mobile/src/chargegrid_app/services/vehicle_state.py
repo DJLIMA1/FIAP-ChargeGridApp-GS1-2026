@@ -233,7 +233,8 @@ def car_specs(vehicle_data):
     from .driver import vehicle_profile
     profile = vehicle_profile(vehicle_data) or PRESETS[DEFAULT_PRESET]
     return {'name': profile.name, 'usable_kwh': float(profile.usable_battery_kwh),
-            'consumption': float(profile.consumption_kwh_per_100km)}
+            'consumption': float(profile.consumption_kwh_per_100km),
+            'max_ac_kw': float(profile.max_ac_kw), 'max_dc_kw': float(profile.max_dc_kw)}
 
 
 async def snapshot(app):
@@ -249,5 +250,14 @@ async def start_fields(app, car=None):
     return {'soc_percent': round(float(car['soc']), 1), 'battery_kwh': round(usable, 1),
             'soc_source': 'phone' if car.get('source') == 'phone' else 'simulated'}
 
-# Campos de início de recarga ligados à bateria do carro (omitidos se a API ainda não os aceita).
-START_KEYS = ('soc_percent', 'battery_kwh', 'soc_source')
+async def power_limit(app, connector_type, chosen=None):
+    """Limite geral do motorista para ``POST charging-sessions`` (``max_power_kw``): o menor entre o
+    carro (DC: ``max_dc_kw``; AC: ``max_ac_kw``) e a escolha do assistente. ``None`` se nada limita."""
+    from chargegrid_core import power as power_rules
+    specs = car_specs(await vehicle(app))
+    car = power_rules.car_limit(connector_type, max_ac_kw=specs['max_ac_kw'], max_dc_kw=specs['max_dc_kw'])
+    values = [value for value in (car, power_rules.to_kw(chosen)) if value is not None and value > 0]
+    return float(min(values)) if values else None
+
+# Campos de início de recarga adicionados depois (omitidos se a API ainda não os aceita).
+START_KEYS = ('soc_percent', 'battery_kwh', 'soc_source', 'max_power_kw')

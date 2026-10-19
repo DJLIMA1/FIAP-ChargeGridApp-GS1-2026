@@ -1,4 +1,8 @@
+from decimal import Decimal
+
 from sqlalchemy import func, select
+
+from chargegrid_core import power as power_rules
 
 from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
@@ -14,7 +18,7 @@ from .service import (
 
 def update(obj, data):
     for key, value in data.model_dump(exclude_unset=True).items():
-        if value is None and key not in ("phone", "vehicle_description"):
+        if value is None and key not in ("phone", "vehicle_description", "max_power_kw", "power_limit_kw"):
             fail("null_not_allowed", "Campo não aceita null", 422)
         setattr(obj, key, value)
 
@@ -29,6 +33,9 @@ def _retired_ids(db, connector_ids):
             Command.status == "applied",
         ).distinct()
     ))
+
+
+retired_ids = _retired_ids
 
 
 def _point_state(db, connectors):
@@ -57,7 +64,42 @@ def _point_state(db, connectors):
     return devices, reservations, sessions, _retired_ids(db, ids)
 
 
-def _render_point(db, connector, station, devices, reservations, sessions, retired):
+KW = Decimal("0.001")
+
+
+def _kw(value):
+    return None if value is None else str(Decimal(value).quantize(KW))
+
+
+def allocation(station, connectors, retired):
+    """Effective power of every point of one station (``chargegrid_core.power``)."""
+    return power_rules.allocate(
+        [
+            {
+                "id": point.id,
+                "power_kw": point.power_kw,
+                "power_limit_kw": point.power_limit_kw,
+                "participates": bool(point.active) and point.id not in retired,
+            }
+            for point in connectors
+        ],
+        station.max_power_kw if station is not None else None,
+    )
+
+
+def energy_totals(db, connector_ids):
+    """kWh delivered per point (all its sessions) in one grouped query."""
+    if not connector_ids:
+        return {}
+    rows = db.execute(
+        select(ChargingSession.connector_id, func.coalesce(func.sum(ChargingSession.energy_wh), 0))
+        .where(ChargingSession.connector_id.in_(connector_ids))
+        .group_by(ChargingSession.connector_id)
+    ).all()
+    return {connector_id: Decimal(total) / 1000 for connector_id, total in rows}
+
+
+def _render_point(db, connector, station, devices, reservations, sessions, retired, power=None, energy=None):
     result = row(connector)
     device = devices.get(connector.id)
     result.update(availability(
@@ -69,16 +111,38 @@ def _render_point(db, connector, station, devices, reservations, sessions, retir
         physical_state=device.physical_state if device else "unknown",
         retired=connector.id in retired,
     )
+    allocated = (power or {}).get(connector.id)
+    if allocated:
+        result.update(
+            effective_power_kw=_kw(allocated["effective_kw"]),
+            power_limited=allocated["power_limited"],
+            power_limited_by=allocated["limited_by"],
+        )
+    if energy is not None:
+        # Owner-only: total energy delivered by this point.
+        result["energy_kwh_total"] = _kw(energy.get(connector.id, Decimal(0)))
     return result
 
 
-def point_row(db, connector):
+def _owner_view(station, viewer):
+    return viewer is not None and station is not None and station.owner_id == getattr(viewer, "id", None)
+
+
+def point_row(db, connector, viewer=None):
     station = db.get(Station, connector.station_id)
-    return _render_point(db, connector, station, *_point_state(db, [connector]))
+    siblings = db.scalars(select(Connector).where(Connector.station_id == connector.station_id)).all()
+    retired = _retired_ids(db, [point.id for point in siblings])
+    power = allocation(station, siblings, retired)["connectors"]
+    energy = energy_totals(db, [connector.id]) if _owner_view(station, viewer) else None
+    devices, reservations, sessions, _ = _point_state(db, [connector])
+    return _render_point(db, connector, station, devices, reservations, sessions, retired, power, energy)
 
 
-def station_rows(db, stations):
-    """Serialize stations with a constant number of queries, not per point (N+1)."""
+def station_rows(db, stations, viewer=None):
+    """Serialize stations with a constant number of queries, not per point (N+1).
+
+    ``viewer``: the owner also gets ``energy_kwh_total`` per point.
+    """
     stations = list(stations)
     if not stations:
         return []
@@ -86,6 +150,9 @@ def station_rows(db, stations):
         select(Connector).where(Connector.station_id.in_([station.id for station in stations]))
     ).all()
     state = _point_state(db, connectors)
+    retired = state[3]
+    owned_stations = {station.id for station in stations if _owner_view(station, viewer)}
+    energy = energy_totals(db, [point.id for point in connectors if point.station_id in owned_stations])
     by_station = {}
     for point in connectors:
         by_station.setdefault(point.station_id, []).append(point)
@@ -95,15 +162,21 @@ def station_rows(db, stations):
         result.pop("presence_secret", None)
         result["latitude"] = float(station.latitude)
         result["longitude"] = float(station.longitude)
+        points = by_station.get(station.id, [])
+        power = allocation(station, points, retired)
+        result["allocated_power_kw"] = _kw(power["allocated_kw"])
+        result["requested_power_kw"] = _kw(power["requested_kw"])
+        result["power_shared"] = power["shared"]
+        station_energy = energy if _owner_view(station, viewer) else None
         result["connectors"] = [
-            _render_point(db, point, station, *state) for point in by_station.get(station.id, [])
+            _render_point(db, point, station, *state, power["connectors"], station_energy) for point in points
         ]
         results.append(result)
     return results
 
 
-def station_row(db, station):
-    return station_rows(db, [station])[0]
+def station_row(db, station, viewer=None):
+    return station_rows(db, [station], viewer)[0]
 
 
 def point_context(db, connector):

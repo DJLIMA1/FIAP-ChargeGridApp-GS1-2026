@@ -273,6 +273,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
     if state['slot'] not in slots:
         state['slot'] = slots[0]
     reserving = state['mode'] == 'reserve'
+    # Limite geral do motorista: potência máxima do carro do perfil (DC/AC) ∩ efetivo do conector.
+    car_power = vehicle_state.car_specs(await vehicle_state.vehicle(app)) if step >= 3 and group else None
     if state['by'] == 'autonomy' and step >= 3:
         # Carro + SoC escondido (no modo apresentação, a bateria do celular) para converter km em energia.
         state['car'] = await vehicle_state.snapshot(app)
@@ -288,7 +290,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                      car['usable_kwh'])
 
     def quote():
-        power = rules.power_options(group)[state['power'] or 'max'][0]
+        power = rules.power_options(group, car_power)[state['power'] or 'max'][0]
         if state['by'] == 'autonomy':
             result = autonomy()
             if result['energy_kwh'] <= 0:
@@ -433,14 +435,14 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                                 weight='bold')), **wizard)
 
     if step == 4:
-        options = rules.power_options(group)
+        options = rules.power_options(group, car_power)
 
         def choose_power(key):
             async def handler(event=None):
                 state['power'] = key
                 await app.go('booking', step=4, station_id=station_id)
             return handler
-        cards = [_option(f'Até {rules.fmt_number(options[key][0])} kW', options[key][1],
+        cards = [_option(rules.power_title(group, key, car_power), options[key][1],
                                      selected=state['power'] == key, on_click=choose_power(key),
                                      icon=ft.Icons.OFFLINE_BOLT_OUTLINED) for key in ('max', 'reduced')]
         return _page(*cards, title='Potência e Velocidade', on_back=app.back, steps=4, step=3, edge='c4',
@@ -484,6 +486,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             intent = {'mode': 'value', 'max_cost': str(estimate['cost'])}
         else:
             intent = {'mode': 'time', 'minutes': max(1, estimate['minutes'] or 30)}
+        # Potência escolhida (conector efetivo ∩ carro ∩ opção): a API aplica no início da recarga.
+        intent['max_power_kw'] = str(rules.power_options(group, car_power)[state['power'] or 'max'][0])
         paid = dict(amount=amount, energy_amount=estimate['cost'], method=state['pay'], station_id=station_id,
                     station_name=station.get('name', ''), connector_id=connector['id'])
         if reserving:
@@ -526,13 +530,13 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             detail = f"{estimate['minutes']} minutos"
         when = f"Horário: {state['slot']}" if reserving else f'Tolerância: {rules.TOLERANCE_MINUTES} min'
         kind = KIND_LABELS.get(state['by'], 'Por tempo')
-        power_value, power_note = rules.power_options(group)[state['power'] or 'max']
+        power_note = rules.power_options(group, car_power)[state['power'] or 'max'][1]
         pay_sub = rules.money(balance) if state['pay'] == 'balance' else None
         first = block('Recarga', row(f"{kind} | {'Reservar' if reserving else 'Agora'}", f'{detail} | {when}',
                                      ft.Icons.ACCESS_TIME, 2), 11, 18.5)
         second = block('Método de Pagamento', row(PAY_LABELS[state['pay']], pay_sub, PAY_ICONS[state['pay']], 5),
                        14, 36)
-        third = block('Potência e Velocidade', row(f'Até {rules.fmt_number(power_value)} kW', power_note,
+        third = block('Potência e Velocidade', row(rules.power_title(group, state['power'] or 'max', car_power), power_note,
                                                    ft.Icons.OFFLINE_BOLT_OUTLINED, 4), 14, 36)
         place = ft.Container(ft.Column([design.txt(f"Estação: {station.get('name', '')}", 13.4, 'bold'),
                                         design.txt(', '.join(str(station.get('address') or '').split(', ')[:2]), 12.4, 'regular',

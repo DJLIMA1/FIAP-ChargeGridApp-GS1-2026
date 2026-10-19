@@ -1,7 +1,9 @@
 """Notificações do app, montadas a partir dos dados da conta (sem backend próprio).
 
 Consumidor: meta de bateria atingida (sessão atual ou última recarga concluída).
-Vendedor: estações/pontos sem comunicação (``operator/stations``).
+Vendedor: estações/pontos sem comunicação e, com o aviso ligado no posto (``power_limit_notify``),
+recargas rodando com potência limitada (``operator/stations``: ``power_limited``/``effective_power_kw``).
+Um aviso por conector por dia; lidas/não lidas usam o mesmo mecanismo dos demais.
 Na demonstração, quando nada gera aviso, mostra os exemplos da referência.
 """
 
@@ -14,6 +16,8 @@ BATTERY_TARGET = 80
 
 KIND_BATTERY = 'battery'
 KIND_OFFLINE = 'offline'
+KIND_POWER = 'power'
+_IN_USE = ('charging', 'reconciling')
 
 
 def _parse(value):
@@ -52,6 +56,30 @@ def offline_items(stations, now=None):
     return items
 
 
+def _kw(value):
+    from chargegrid_core.power import kw_text
+    return kw_text(value)
+
+
+def power_items(stations, now=None):
+    """``Limite de potência em uso · Estação X: CCS2 a 40 kW de 60 kW`` (postos com o aviso ligado)."""
+    now = now or datetime.now().astimezone()
+    items = []
+    for station in stations or []:
+        if not station.get('power_limit_notify'):
+            continue
+        for point in station.get('connectors') or []:
+            if not point.get('power_limited') or point.get('availability_status') not in _IN_USE:
+                continue
+            kind = point.get('connector_type') or 'Conector'
+            items.append({'id': f"power-{point.get('id')}-{now.strftime('%Y%m%d')}", 'kind': KIND_POWER,
+                          'title': 'Limite de potência em uso',
+                          'subtitle': 'Estação ' + str(station.get('name') or ''),
+                          'detail': f"{kind} a {_kw(point.get('effective_power_kw'))} kW de "
+                                    f"{_kw(point.get('power_kw'))} kW", 'at': now})
+    return items
+
+
 def sample_items(now=None):
     """Exemplos da referência (somente demonstração)."""
     now = (now or datetime.now().astimezone()).replace(hour=12, minute=42)
@@ -86,7 +114,9 @@ async def collect(app):
     try:
         if vendor:
             result = await api.request('GET', 'operator/stations', params={'limit': 100, 'offset': 0})
-            items += offline_items(result.get('items') or [])
+            stations = result.get('items') or []
+            items += offline_items(stations)
+            items += power_items(stations)
         else:
             current = await api.request('GET', 'charging-sessions/current')
             item = battery_item(current) if current else None

@@ -106,6 +106,9 @@ def _metrics(session):
     percent = f'{progress*100:.0f}%' if progress is not None and label.startswith('Bateria') else '-%'
     cost = money(session.get('cost_estimate')) if session.get('cost_estimate') is not None else '-'
     power_kw = (session.get('connector') or {}).get('power_kw')
+    if power_kw is not None and session.get('power_limit_kw') is not None:
+        # Limite aplicado no início (posto ∩ motorista): é a potência máxima desta recarga.
+        power_kw = min(Decimal(str(power_kw)), Decimal(str(session['power_limit_kw'])))
     power = f"{float(power_kw):g} kW".replace('.',',') if session.get('status') == 'charging' and power_kw is not None else '- kW'
     remaining = '- minutos'
     if session.get('status') in ACTIVE:
@@ -186,12 +189,20 @@ def _car(draft):
     return draft.get('car') or DEFAULT_CAR
 
 
+def _power(draft):
+    """Potência usada nas contas: efetivo do conector (limites do posto) ∩ escolha do motorista."""
+    connector = draft['point_context'].get('connector') or {}
+    values = [Decimal(str(v)) for v in (connector.get('effective_power_kw') or connector.get('power_kw'),
+                                         draft.get('max_power_kw')) if v not in (None,'')]
+    return min(values) if values else None
+
+
 def _autonomy(draft):
     """Resultado de ``rules.autonomy_limits`` para o rascunho (levanta ``ApiError`` com a explicação)."""
     connector = draft['point_context'].get('connector') or {}
     try:
         km = rules.parse_km(draft.get('autonomy_km'))
-        return rules.autonomy_limits(km,_car(draft),connector.get('power_kw'),connector.get('price_per_kwh') or 0,
+        return rules.autonomy_limits(km,_car(draft),_power(draft),connector.get('price_per_kwh') or 0,
                                      _point_limit(draft))
     except (ValueError,ArithmeticError) as exc:
         raise ApiError(str(exc) or 'Informe a autonomia em km inteiros (ex.: 120).') from exc
@@ -428,6 +439,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         intention = planning_intent
         if not intention and connector.get('id') == saved_intent.get('connector_id'):
             intention = saved_intent.get('intent')
+        if intention and intention.get('max_power_kw'):
+            draft['max_power_kw'] = str(intention['max_power_kw'])
         if intention and intention.get('mode') == 'autonomy':
             draft.update(mode='autonomy', autonomy_km=str(intention.get('km') or ''))
         elif intention:
@@ -682,6 +695,12 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 # Bateria do carro (escondida; no modo apresentação, a do celular) e capacidade útil:
                 # a API e o totem passam a mostrar o mesmo SoC durante a recarga.
                 body.update(await vehicle_state.start_fields(app))
+                # Limite geral do motorista (carro do perfil ∩ potência escolhida); a API ainda
+                # aplica o efetivo do conector. Campo opcional: a API antiga o recusa e o app repete sem ele.
+                limit = await vehicle_state.power_limit(
+                    app,(draft['point_context'].get('connector') or {}).get('connector_type'),draft.get('max_power_kw'))
+                if limit is not None:
+                    body['max_power_kw'] = round(limit,1)
                 if draft['last_body'] is not None and body != draft['last_body']:
                     draft['key'] = app.api.new_key()
                 draft['before_session_id'] = app.api.last_session_id

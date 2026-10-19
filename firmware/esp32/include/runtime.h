@@ -15,6 +15,9 @@ extern bool panelOwned, connectorOwnershipKnown, connectorActive;
 extern uint32_t version, sequence;
 extern unsigned long lastContact, lastTick, started, nextSync, lastSaved, maxDurationMs;
 extern float maxCost, price, discount;
+// Potência simulada da sessão: min(7,2 kW nominal, max_power_kw do START). Sem o campo: nominal.
+extern float chargePowerW;
+constexpr float kBenchPowerW = 7200.0f;
 // SoC do veículo vindo da API (START/sync). socStartPercent < 0: desconhecido.
 // socSource "simulated": o ponto avança o SoC pela energia entregue e para em 100 %.
 // socSource "phone": o app envia o nível real do celular; o ponto só exibe.

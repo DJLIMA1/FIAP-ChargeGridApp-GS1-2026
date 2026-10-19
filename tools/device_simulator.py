@@ -26,6 +26,16 @@ def number(value, low, high):
 
 
 SOC_SOURCES = ("simulated", "phone")
+BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
+
+
+def power_cap_w(*sources):
+    """Potência simulada: min(nominal, max_power_kw do START/sessão); sem limite = nominal."""
+    for source in sources:
+        cap = number((source or {}).get("max_power_kw"), 0.1, 1000)
+        if cap is not None:
+            return min(BENCH_POWER_W, cap * 1000)
+    return BENCH_POWER_W
 
 
 class Device:
@@ -52,6 +62,7 @@ class Device:
         self.last_tick = clock()
         self.started = None
         self.limits = {}
+        self.power_w = BENCH_POWER_W
         self.reservation_expires = None
 
     def save(self):
@@ -112,7 +123,7 @@ class Device:
             return
         # Só integra o tempo até o watchdog ou limite local.
         deadline = min(self.last_sync + 45, self.started + self.limits.get("max_duration_minutes", 60) * 60)
-        self.energy += 7200 * max(0, min(now, deadline) - (now - elapsed)) / 3600
+        self.energy += self.power_w * max(0, min(now, deadline) - (now - elapsed)) / 3600
         price = float(self.limits.get("price_per_kwh", 0)) * (1 - float(self.limits.get("discount_percent", 0)) / 100)
         cost_limit = self.limits.get("max_cost")
         energy_limit = float(cost_limit) / price * 1000 if cost_limit is not None and price > 0 else None
@@ -140,7 +151,7 @@ class Device:
         return {"boot_id": self.boot_id, "sequence": self.sequence, "firmware_version": "0.4.0",
                 "session_id": self.session_id, "physical_state": self.state, "connected": self.connected,
                 "soc_percent": round(self.soc(), 2) if report_soc else None,
-                "energy_wh": self.energy, "power_w": 7200 if self.state == "charging" else 0,
+                "energy_wh": self.energy, "power_w": self.power_w if self.state == "charging" else 0,
                 "source": "simulated", "captured_at": utc_now(), "end_reason": self.reason, "acks": list(self.acks)}
 
     def response(self, response):
@@ -198,6 +209,8 @@ class Device:
                     self.started = self.clock()
                     self.last_tick = self.clock()
                     self.limits = dict(session)
+                    # Limite de potência do posto/motorista (parameters prevalecem; API antiga: nominal).
+                    self.power_w = power_cap_w(command.get("parameters"), session)
                     self.reset_soc()
                     self.read_start_soc(session)
                     self.read_start_soc(command.get("parameters"))  # parameters prevalecem.

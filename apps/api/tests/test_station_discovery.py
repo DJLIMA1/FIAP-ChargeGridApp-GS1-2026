@@ -70,9 +70,9 @@ def test_default_discovery_only_serializes_requested_page(factory,seed,monkeypat
     rendered = []
     original = routes.station_rows
 
-    def tracked(db,stations):
+    def tracked(db,stations,*args):
         rendered.extend(station.id for station in stations)
-        return original(db,stations)
+        return original(db,stations,*args)
 
     monkeypatch.setattr(routes,'station_rows',tracked)
     client, _ = client_for(factory,seed['a'])

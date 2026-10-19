@@ -13,6 +13,8 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
+from chargegrid_core import power as power_rules
+
 from .api_client import ApiError
 from .owner_api import OwnerApiMixin
 from .services.discovery import discover
@@ -171,7 +173,7 @@ class DemoApi(OwnerApiMixin):
                 'discount_percent': 0, 'energy_wh': '2400.000', 'soc_percent': '24.00',
                 'start_soc_percent': None, 'battery_kwh': None, 'soc_source': None,
                 'source': 'simulated', 'last_measurement_at': self._iso(ended),
-                'cost_estimate': '4.5360', 'end_reason': 'duration_limit',
+                'cost_estimate': '4.5360', 'end_reason': 'duration_limit', 'power_limit_kw': None,
             }
 
     def _id(self, kind):
@@ -402,7 +404,7 @@ class DemoApi(OwnerApiMixin):
         sid = self._id('station')
         station = {'id': sid, 'owner_id': _USER, 'name': data['name'], 'address': data['address'],
                    'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
-                   'amenities': []}
+                   'amenities': [], 'max_power_kw': None, 'power_limit_notify': False}
         self._stations[sid] = station
         return station
 
@@ -411,7 +413,8 @@ class DemoApi(OwnerApiMixin):
         pid = self._id('point')
         point = {'id': pid, 'station_id': station_id, 'public_code': 'DEMO-' + pid.rsplit('-', 1)[-1],
                  'connector_type': connector_type, 'power_kw': power_kw, 'price_per_kwh': price_per_kwh,
-                 'max_duration_minutes': 120, 'active': active, 'control_version': 0, 'retired': False}
+                 'max_duration_minutes': 120, 'active': active, 'control_version': 0, 'retired': False,
+                 'power_limit_kw': None}
         self._points[pid] = point
         self._make_device(pid, online=online)
         return point
@@ -444,7 +447,30 @@ class DemoApi(OwnerApiMixin):
         if self._current('session') or (reservation and reservation['id'] != reservation_id):
             _fail('Você já tem uma reserva ou recarga ativa na demonstração.', 'user_busy', 409)
 
-    def _point_row(self, point):
+    def _power(self, station):
+        """Same allocation as the API (``chargegrid_core.power``)."""
+        points = [p for p in self._points.values() if p['station_id'] == station['id']]
+        return power_rules.allocate([{'id': p['id'], 'power_kw': p['power_kw'], 'power_limit_kw': p.get('power_limit_kw'),
+                                      'participates': p['active'] and not p['retired']} for p in points],
+                                    station.get('max_power_kw'))
+
+    def _energy_total(self, point_id):
+        return sum((Decimal(s['energy_wh']) for s in self._sessions.values() if s['connector_id'] == point_id),
+                   Decimal(0)) / 1000
+
+    def _point_row(self, point, power=None):
+        station = self._stations[point['station_id']]
+        power = power if power is not None else self._power(station)
+        row = self._availability_row(point)
+        allocated = power['connectors'].get(point['id'])
+        if allocated:
+            row.update(effective_power_kw=_decimal(allocated['effective_kw'], '0.001'),
+                       power_limited=allocated['power_limited'], power_limited_by=allocated['limited_by'])
+        if station['owner_id'] == _USER:
+            row['energy_kwh_total'] = _decimal(self._energy_total(point['id']), '0.001')
+        return row
+
+    def _availability_row(self, point):
         device = self._device_for(point['id'])
         online = bool(device and device['online'])
         reservation, session = self._current('reservation', point['id']), self._current('session', point['id'])
@@ -464,7 +490,10 @@ class DemoApi(OwnerApiMixin):
                 'reserved_until': reservation['expires_at'] if reservation and reservation['status'] == 'confirmed' else None}
 
     def _station_row(self, station):
-        return {**station, 'connectors': [self._point_row(p) for p in self._points.values() if p['station_id'] == station['id']]}
+        power = self._power(station)
+        return {**station, 'allocated_power_kw': _decimal(power['allocated_kw'], '0.001'),
+                'requested_power_kw': _decimal(power['requested_kw'], '0.001'), 'power_shared': power['shared'],
+                'connectors': [self._point_row(p, power) for p in self._points.values() if p['station_id'] == station['id']]}
 
     def _operation_row(self, record, kind):
         if record is None:
@@ -565,6 +594,14 @@ class DemoApi(OwnerApiMixin):
                 changes = self._station_fields(body)
                 if changes.get('active') is False and any(self._busy(p['id']) for p in self._points.values() if p['station_id'] == station['id']):
                     _fail('Encerre reservas e recargas antes de desativar.', 'point_busy', 409)
+                if 'max_power_kw' in changes:
+                    ratings = [p['power_kw'] for p in self._points.values()
+                               if p['station_id'] == station['id'] and p['active'] and not p['retired']]
+                    try:
+                        cap = power_rules.validate_station_max(changes['max_power_kw'], ratings)
+                    except ValueError as exc:
+                        _fail(str(exc), 'invalid_power_limit')
+                    changes['max_power_kw'] = None if cap is None else _decimal(cap, '0.001')
                 station.update(changes)
             return self._station_row(station)
         if parts[0] == 'stations' and len(parts) == 3 and parts[2] == 'connectors' and method == 'POST':
@@ -629,7 +666,8 @@ class DemoApi(OwnerApiMixin):
         _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.', 'demo_route_not_supported', 404)
 
     def _station_fields(self, body, creating=False):
-        allowed = ('name', 'address', 'latitude', 'longitude') + (() if creating else ('active', 'amenities'))
+        allowed = ('name', 'address', 'latitude', 'longitude') + (
+            () if creating else ('active', 'amenities', 'max_power_kw', 'power_limit_notify'))
         _fields(body, allowed)
         if creating and not set(allowed).issubset(body):
             _fail('Informe nome, endereço e coordenadas do posto.')
@@ -642,6 +680,12 @@ class DemoApi(OwnerApiMixin):
                 result[key] = float(_number(value, key, -bound, bound))
             elif key == 'amenities':
                 result[key] = _amenities(value)
+            elif key == 'max_power_kw':
+                result[key] = value  # validated against the active points in _patch_station
+            elif key == 'power_limit_notify':
+                if not isinstance(value, bool):
+                    _fail('Informe se o aviso de limite de potência está ligado.')
+                result[key] = value
             elif isinstance(value, bool):
                 result[key] = value
             else:
@@ -651,11 +695,13 @@ class DemoApi(OwnerApiMixin):
     def _patch_point(self, identifier, body):
         point = self._get(self._points, identifier)
         self._owned(point['station_id'])
-        if self._busy(identifier):
+        # Like the API: a power limit applies to the next start, so it may change while busy.
+        if set(body) - {'power_limit_kw'} and self._busy(identifier):
             _fail('Encerre reservas e recargas antes de editar o ponto.', 'point_busy', 409)
         if body.get('active') is True and (point['retired'] or any(r['status'] == 'pending' for did, r in self._resets.items() if self._devices[did]['connector_id'] == identifier)):
             _fail('Este equipamento está sendo restaurado. Adicione outro equipamento simulado.', 'point_retired', 409)
-        _fields(body, ('public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes', 'active'))
+        _fields(body, ('public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes', 'active',
+                       'power_limit_kw'))
         changes = {}
         for name, value in body.items():
             if name in ('public_code', 'connector_type'):
@@ -664,6 +710,8 @@ class DemoApi(OwnerApiMixin):
                 changes[name] = _decimal(_number(value, 'potência', 0, 1000, positive=True), '0.001')
                 if Decimal(changes[name]) <= 0:
                     _fail('A potência deve ser de pelo menos 0,001 kW.')
+            elif name == 'power_limit_kw':
+                continue  # validated below, against the (possibly new) rating
             elif name == 'price_per_kwh':
                 changes[name] = _decimal(_number(value, 'tarifa', 0, 10000), '0.0001')
             elif name == 'max_duration_minutes':
@@ -674,6 +722,15 @@ class DemoApi(OwnerApiMixin):
                 _fail('Informe se o ponto está ativo.')
         if 'public_code' in changes and any(p['id'] != identifier and p['public_code'] == changes['public_code'] for p in self._points.values()):
             _fail('Código público já usado na demonstração.', 'conflict', 409)
+        rating = changes.get('power_kw', point['power_kw'])
+        if 'power_limit_kw' in body:
+            try:
+                limit = power_rules.validate_port_limit(rating, body['power_limit_kw'])
+            except ValueError as exc:
+                _fail(str(exc), 'invalid_power_limit')
+            changes['power_limit_kw'] = None if limit is None else _decimal(limit, '0.001')
+        elif 'power_kw' in changes and point.get('power_limit_kw') and Decimal(point['power_limit_kw']) >= Decimal(rating):
+            changes['power_limit_kw'] = None
         point.update(changes)
         return self._point_row(point)
 
@@ -814,7 +871,9 @@ class DemoApi(OwnerApiMixin):
 
     def _start(self, body):
         _fields(body, ('public_code', 'presence_code', 'reservation_id', 'coupon_code', 'max_duration_minutes', 'max_cost',
-                       'soc_percent', 'battery_kwh', 'soc_source'))
+                       'soc_percent', 'battery_kwh', 'soc_source', 'max_power_kw'))
+        driver_kw = (_number(body['max_power_kw'], 'a potência máxima', 0, 1000, positive=True)
+                     if body.get('max_power_kw') is not None else None)
         start_soc = (_decimal(_number(body['soc_percent'], 'o nível da bateria', 0, 100), '0.01')
                      if body.get('soc_percent') is not None else None)
         battery = (_decimal(_number(body['battery_kwh'], 'a capacidade da bateria', 5, 250), '0.01')
@@ -867,9 +926,14 @@ class DemoApi(OwnerApiMixin):
                    'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': start_soc,
                    'start_soc_percent': start_soc, 'battery_kwh': battery, 'soc_source': soc_source, 'source': 'simulated',
                    'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None}
+        # Same as the API: effective point power (rating, port limit, station share) ∩ driver limit.
+        effective = self._power(self._stations[point['station_id']])['connectors'][point['id']]['effective_kw']
+        applied = power_rules.applied_limit(effective, driver_kw).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
+        session['power_limit_kw'] = _decimal(applied, '0.001') if applied > 0 else None
         self._sessions[sid] = session
         self._event(sid, 'start_requested')
-        self._session_runtime[sid] = {'start_at': self._elapsed + 1, 'power_kw': Decimal(point['power_kw'])}
+        self._session_runtime[sid] = {'start_at': self._elapsed + 1,
+                                      'power_kw': applied if applied > 0 else Decimal(point['power_kw'])}
         if reservation:
             reservation['status'] = 'consumed'
         return self._operation_row(session, 'session')

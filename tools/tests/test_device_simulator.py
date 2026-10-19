@@ -207,3 +207,24 @@ def test_phone_source_switch_mid_session():
     stop = response(kind="STOP", version=2, identifier="stop")
     device.response(stop)
     assert device.reason == "battery_full"
+
+
+def test_start_power_limit_caps_simulated_power():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    data = response()
+    data["commands"][0]["parameters"] = {"max_power_kw": 3.6}
+    device.response(data)
+    now[0] = 10
+    payload = device.payload()
+    assert payload["power_w"] == 3600
+    assert payload["energy_wh"] == 10  # 3.6 kW for 10 s
+    # Older API (no field): bench rating; a limit above the rating keeps the rating.
+    legacy = Device(clock=lambda: 0)
+    legacy.response(response())
+    assert legacy.payload()["power_w"] == 7200
+    above = Device(clock=lambda: 0)
+    data = response()
+    data["authorized"]["session"]["max_power_kw"] = "60.0"
+    above.response(data)
+    assert above.payload()["power_w"] == 7200

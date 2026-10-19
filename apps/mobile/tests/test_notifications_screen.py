@@ -59,6 +59,23 @@ class NotificationsScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Estação Posto Real', visible)
         self.assertIn('Meta de bateria atingida', visible)
 
+    async def test_vendor_power_limit_in_use_when_notify_is_on(self):
+        point = {'id': 'p1', 'connector_type': 'CCS2', 'power_kw': '60.000', 'effective_power_kw': '40.000',
+                 'power_limited': True, 'availability_status': 'charging', 'online': True}
+        idle = {**point, 'id': 'p2', 'availability_status': 'available'}
+        listing = {'items': [{'id': 's', 'name': 'Marginal Pinheiros', 'power_limit_notify': True,
+                              'connectors': [point, idle]},
+                             {'id': 'quiet', 'name': 'Sem aviso', 'power_limit_notify': False,
+                              'connectors': [{**point, 'id': 'p3'}]}]}
+        app = self.app(demo=False, session=listing)
+        app.browsing_mode = 'vendor'
+        visible = texts(await notifications.build(app))
+        self.assertIn('Limite de potência em uso', visible)
+        self.assertIn('CCS2 a 40 kW de 60 kW', visible)
+        self.assertEqual(visible.count('Limite de potência em uso'), 1)
+        items = notifications.service.power_items(listing['items'])
+        self.assertRegex(items[0]['id'], r'^power-p1-\d{8}$')  # one item per point per day
+
 
 if __name__ == '__main__':
     unittest.main()

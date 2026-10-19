@@ -35,6 +35,9 @@ class StationPatch(Input):
     longitude: Decimal | None = Field(default=None, ge=-180, le=180)
     active: bool | None = None
     amenities: list[AmenityInput] | None = Field(default=None, max_length=12)
+    # Teto de potência compartilhado pelos conectores (null remove); validado em chargegrid_core.power.
+    max_power_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    power_limit_notify: bool | None = None
 
 
 class ConnectorInput(Input):
@@ -52,6 +55,8 @@ class ConnectorPatch(Input):
     price_per_kwh: Decimal | None = Field(default=None, ge=0, le=10000)
     max_duration_minutes: int | None = Field(default=None, ge=1, le=1440)
     active: bool | None = None
+    # Limite do vendedor para este conector (null remove); nunca acima de power_kw.
+    power_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
 
 
 class ProfilePatch(Input):
@@ -75,6 +80,8 @@ class StartInput(Input):
     soc_percent: Decimal | None = Field(default=None, ge=0, le=100)
     battery_kwh: Decimal | None = Field(default=None, ge=5, le=250)
     soc_source: Literal["simulated", "phone"] | None = None
+    # Limite geral do motorista (carro/escolha no app); a API aplica min(efetivo do conector, este).
+    max_power_kw: Decimal | None = Field(default=None, gt=0, le=1000)
 
 
 class SocInput(Input):

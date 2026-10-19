@@ -66,6 +66,20 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(rules.money('1234.5'), 'R$1.234,50')
         self.assertEqual(rules.fmt_number('7.200'), '7,2')
 
+    def test_power_options_use_effective_and_car_limit(self):
+        station = {**STATION, 'connectors': [dict(p) for p in STATION['connectors']]}
+        for point in station['connectors'][:2]:
+            point['effective_power_kw'] = '40.000'
+        ccs, ac = rules.group_connectors(station)
+        car = {'max_ac_kw': 6.6, 'max_dc_kw': 60}
+        self.assertEqual(rules.power_title(ccs, 'max', car), 'Até 40 kW · limitado pelo posto')
+        self.assertEqual(rules.power_options(ccs, car)['reduced'][0], Decimal('20.0'))
+        self.assertEqual(rules.power_title(ac, 'max', car), 'Até 6,6 kW · limite do seu carro')
+        self.assertEqual(rules.power_title(ac, 'max'), 'Até 22 kW')  # sem carro: o conector
+        # A estimativa usa a potência do motorista: 30 min a 40 kW = 20 kWh.
+        quote = rules.estimate(rules.power_options(ccs, car)['max'][0], ccs['price'], minutes=30)
+        self.assertEqual(quote['energy_kwh'], Decimal('20.00'))
+
     def test_time_slots_are_future_half_hours(self):
         self.assertEqual(rules.time_slots(datetime(2026, 10, 18, 12, 5)), ['12:30', '13:00', '13:30'])
         self.assertEqual(rules.time_slots(datetime(2026, 10, 18, 12, 25)), ['13:00', '13:30', '14:00'])
@@ -143,6 +157,18 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         screen = await self.screen(5)
         with self.assertRaises(ApiError):
             await tap(screen, 'Continuar')()
+
+    async def test_power_step_shows_station_limit_and_hands_it_to_charging(self):
+        for point in self.app.api._points.values():
+            if point['station_id'] == self.sid and point['connector_type'] == 'CCS2':
+                point['power_limit_kw'] = '40.000'
+        await self.screen(1, pick=1)
+        screen = await self.screen(4)
+        self.assertIn('Até 40 kW · limitado pelo posto', texts(screen))
+        self.app.booking.update(mode='now', minutes_text='20', pay='pix')
+        await tap(await self.screen(6), 'Confirmar Recarga')()
+        await tap(await self.screen(7), 'Já paguei (Confirmar)')()
+        self.assertEqual(self.app.go.await_args.kwargs['planning_intent']['max_power_kw'], '40.000')
 
     async def test_now_hands_off_to_charging(self):
         await self.screen(1)

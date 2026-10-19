@@ -6,9 +6,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 
+from chargegrid_core import power as power_rules
+
 from ...database import db_session
 from ...errors import fail
-from ...http_helpers import page, point_row, station_row, station_rows, update
+from ...http_helpers import page, point_row, retired_ids, station_row, station_rows, update
 from ...models import ChargingSession, Connector, Reservation, Station
 from ...schemas import (
     ConnectorInput,
@@ -69,7 +71,7 @@ def stations(
             if sort == "distance":
                 query = query.order_by(None).order_by(distance, Station.id)
             def render(items):
-                return [discover([item], lat=lat, lng=lng)[0] for item in station_rows(db, items)]
+                return [discover([item], lat=lat, lng=lng)[0] for item in station_rows(db, items, user)]
             return page(db, query, limit, offset, many=render)
     # Narrow by static point attributes before materializing authoritative states.
     # Availability itself also includes reservations, watchdog and reconciliation.
@@ -86,7 +88,7 @@ def stations(
     # Availability includes device reconciliation and active operations. Use the
     # authoritative serializer before pagination, rather than a weaker SQL guess.
     records = discover(
-        station_rows(db, db.scalars(query).all()),
+        station_rows(db, db.scalars(query).all(), user),
         connector_type=connector_type, available_only=available_only,
         max_price_per_kwh=max_price_per_kwh, sort=sort, lat=lat, lng=lng,
     )
@@ -98,7 +100,7 @@ def station(station_id: UUID, user=Depends(current_user), db=Depends(db_session)
     obj = db.get(Station, station_id)
     if not obj:
         fail("not_found", "Posto não encontrado", 404)
-    return station_row(db, obj)
+    return station_row(db, obj, user)
 
 
 @router.post("/stations", status_code=201)
@@ -107,7 +109,7 @@ def create_station(data: StationInput, user=Depends(current_user), db=Depends(db
     obj = Station(owner_id=user.id, **data.model_dump())
     db.add(obj)
     db.flush()
-    return station_row(db, obj)
+    return station_row(db, obj, user)
 
 
 @router.patch("/stations/{station_id}")
@@ -128,8 +130,18 @@ def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_use
         for p in points
     ):
         fail("point_busy", "Encerre reservas/recargas antes de desativar")
+    if "max_power_kw" in data.model_fields_set:
+        # The cap is a next-start setting: running charges keep the power they started with.
+        retired = retired_ids(db, [point.id for point in points])
+        ratings = [point.power_kw for point in points if point.active and point.id not in retired]
+        try:
+            data.max_power_kw = power_rules.validate_station_max(data.max_power_kw, ratings)
+        except ValueError as exc:
+            fail("invalid_power_limit", str(exc), 422)
     update(obj, data)
-    return station_row(db, obj)
+    db.flush()
+    db.refresh(obj)
+    return station_row(db, obj, user)
 
 
 @router.post("/stations/{station_id}/connectors", status_code=201)
@@ -146,14 +158,26 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     owned(db, user, obj.station_id)
     if data.active is True and reset_blocks_point(db, obj.id):
         fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
-    if db.scalar(
+    limit_only = data.model_fields_set <= {"power_limit_kw"}
+    # A power limit only affects the next start (a running charge keeps the power it
+    # started with), so it may change while the point is busy; other edits may not.
+    if not limit_only and (db.scalar(
         select(ChargingSession.id).where(
             ChargingSession.connector_id == obj.id, ChargingSession.status.in_(SESSION_ACTIVE)
         )
     ) or db.scalar(
         select(Reservation.id).where(Reservation.connector_id == obj.id, Reservation.status.in_(RES_ACTIVE))
-    ):
+    )):
         fail("point_busy", "Encerre reservas/recargas antes de alterar o ponto")
+    rating = data.power_kw if data.power_kw is not None else obj.power_kw
+    if "power_limit_kw" in data.model_fields_set:
+        try:
+            data.power_limit_kw = power_rules.validate_port_limit(rating, data.power_limit_kw)
+        except ValueError as exc:
+            fail("invalid_power_limit", str(exc), 422)
+    elif data.power_kw is not None and obj.power_limit_kw is not None and obj.power_limit_kw >= data.power_kw:
+        # A new rating at or below the old limit makes that limit meaningless: clear it.
+        obj.power_limit_kw = None
     if data.public_code is not None and db.scalar(
         select(Connector.id).where(Connector.public_code == data.public_code, Connector.id != obj.id)
     ):
@@ -161,7 +185,8 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
         fail("public_code_taken", "Já existe um ponto com este código público. Escolha outro.", 409)
     update(obj, data)
     db.flush()
-    return point_row(db, obj)
+    db.refresh(obj)
+    return point_row(db, obj, user)
 
 
 @router.get("/operator/stations")
@@ -177,5 +202,5 @@ def operator_stations(
         select(Station).where(Station.owner_id == user.id).order_by(Station.id),
         limit,
         offset,
-        many=lambda items: station_rows(db, items),
+        many=lambda items: station_rows(db, items, user),
     )

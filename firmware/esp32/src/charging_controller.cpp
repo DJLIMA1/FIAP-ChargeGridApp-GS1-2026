@@ -28,6 +28,12 @@ static void readStartSoc(JsonObjectConst source) {
   const char* kind = source["soc_source"].as<const char*>();
   if (validSocSource(kind)) socSource = kind;
 }
+// max_power_kw do START (parameters prevalecem sobre a sessão); ausente/inválido: nominal.
+static float readPowerCap(JsonObjectConst parameters, JsonObjectConst session) {
+  float cap = jsonNumber(parameters["max_power_kw"], -1);
+  if (!(cap >= 0.1f && cap <= 1000)) cap = jsonNumber(session["max_power_kw"], -1);
+  return cap >= 0.1f && cap <= 1000 ? min(kBenchPowerW, cap * 1000.0f) : kBenchPowerW;
+}
 static void persistSessionSoc() {
   store.putFloat("soc0", socStartPercent);
   store.putFloat("batt", batteryKwh);
@@ -100,17 +106,17 @@ void tick() {
     bool costCapped = false, fullCapped = false;
     if (maxCost >= 0 && effectivePrice > 0) {
       const float remainingWh = max(0.0f, maxCost * 1000 / effectivePrice - reading.energyWh);
-      const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / 7200);
+      const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
       if (costElapsed < permittedElapsed) { permittedElapsed = costElapsed; costCapped = true; }
     }
     // Bateria simulada: não entrega energia além dos 100 %, mesmo com a rede bloqueada.
     const float fullWh = batteryFullWh();
     if (fullWh >= 0) {
       const float remainingWh = max(0.0f, fullWh - reading.energyWh);
-      const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / 7200);
+      const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
       if (fullElapsed < permittedElapsed) { permittedElapsed = fullElapsed; fullCapped = true; }
     }
-    reading = sensors.read(true, permittedElapsed);
+    reading = sensors.read(true, permittedElapsed, chargePowerW);
     reading.socPercent = currentSessionSoc(reading.energyWh);
     if (now - lastSaved >= 30000) { persist(); lastSaved = now; }
     if (now - lastContact >= 45000) stop("communication_lost");
@@ -208,10 +214,11 @@ bool apply(JsonDocument& response) {
         resetSessionSoc();
         readStartSoc(session);
         readStartSoc(command["parameters"].as<JsonObjectConst>()); // parameters prevalecem.
+        chargePowerW = readPowerCap(command["parameters"].as<JsonObjectConst>(), session);
         if (socStartPercent >= 0 && !socSource.length()) socSource = "simulated";
         if (socSource == "phone") phoneSocPercent = socStartPercent;
         reading.energyWh = 0; persistSessionSoc(); persist(); // Sessão salva antes de autorizar a bancada.
-        sensors.start(); reading = sensors.read(true, 0);
+        sensors.start(); reading = sensors.read(true, 0, chargePowerW);
         reading.socPercent = currentSessionSoc(reading.energyWh);
         started = lastTick = millis(); state = "charging"; endReason = "";
       }

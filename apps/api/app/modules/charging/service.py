@@ -1,8 +1,11 @@
-from decimal import ROUND_HALF_UP
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
 
+from chargegrid_core import power as power_rules
+
 from ...errors import fail
+from ...http_helpers import allocation, retired_ids
 from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, now
 from ...presence_code import valid_code
 from ...service import (
@@ -21,7 +24,8 @@ from ...service import (
 )
 from ..devices.service import battery_parameters
 
-_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source")
+# Optional start keys added after the first release: omitted from the idempotency hash when absent.
+_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw")
 
 
 def _point_for_code(db, user, data):
@@ -76,6 +80,17 @@ def _battery_fields(data):
         if data.battery_kwh is not None else None,
         "soc_source": source,
     }
+
+
+def session_power_limit(db, connector, requested=None):
+    """Power cap applied at start: the point's effective power (rating, vendor limit and
+    station share) intersected with the driver's limit. A later vendor change does not
+    affect this session; it applies to the next start."""
+    station = db.get(Station, connector.station_id)
+    siblings = db.scalars(select(Connector).where(Connector.station_id == connector.station_id)).all()
+    effective = allocation(station, siblings, retired_ids(db, [point.id for point in siblings]))
+    applied = power_rules.applied_limit(effective["connectors"][connector.id]["effective_kw"], requested)
+    return applied.quantize(Decimal("0.001"), rounding=ROUND_DOWN) if applied > 0 else None
 
 
 def start(db, user, data, key):
@@ -142,6 +157,7 @@ def start(db, user, data, key):
         max_cost=data.max_cost,
         price_per_kwh=connector.price_per_kwh,
         discount_percent=discount,
+        power_limit_kw=session_power_limit(db, connector, data.max_power_kw),
         **_battery_fields(data),
     )
     db.add(session)
@@ -152,6 +168,8 @@ def start(db, user, data, key):
         "max_cost": str(session.max_cost) if session.max_cost else None,
         "price_per_kwh": str(session.price_per_kwh),
         "discount_percent": discount,
+        # Older firmware ignores it; newer firmware/simulator cap the simulated power.
+        "max_power_kw": float(session.power_limit_kw) if session.power_limit_kw is not None else None,
         **battery_parameters(session),
     }
     issue(db, connector, device, "START", session=session, parameters=limits)

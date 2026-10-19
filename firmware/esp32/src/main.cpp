@@ -39,6 +39,7 @@ uint32_t version = 0, sequence = 0;
 unsigned long lastContact, lastTick, started, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
 float maxCost = -1, price = 0, discount = 0;
+float chargePowerW = kBenchPowerW;
 float socStartPercent = -1, batteryKwh = 0, phoneSocPercent = -1;
 String socSource;
 time_t reservationDeadline = 0;

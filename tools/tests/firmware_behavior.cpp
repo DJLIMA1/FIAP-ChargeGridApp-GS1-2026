@@ -47,6 +47,7 @@ uint32_t version = 0, sequence = 0;
 unsigned long lastContact = 1000, lastTick = 1000, started = 1000, nextSync = 0, lastSaved = 0;
 unsigned long maxDurationMs = 3600000;
 float maxCost = -1, price = 1, discount = 0;
+float chargePowerW = kBenchPowerW;
 float socStartPercent = -1, batteryKwh = 0, phoneSocPercent = -1;
 String socSource;
 time_t reservationDeadline = 0;
@@ -191,6 +192,17 @@ int main(int argc, char** argv) {
   assert(state == "stopped" && endReason == "cost_limit");
   assert(reading.energyWh <= 5.001); // Money limit is enforced during a blocked network call.
   assert(!sensors.read(false, 0).connected);
+  // Station/driver power limit: max_power_kw caps the simulated power (text Decimal accepted).
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  auto limited = startResponse();
+  limited["commands"][0]["parameters"]["max_power_kw"] = "3.6";
+  apply(limited); lastContact = testMillis;
+  assert(state == "charging" && std::abs(chargePowerW - 3600) < 0.01);
+  testMillis += 10000; tick();
+  assert(std::abs(reading.powerW - 3600) < 0.01 && std::abs(reading.energyWh - 10) < 0.01);
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle";
+  limited["commands"][0]["parameters"]["max_power_kw"] = 60; // Above the bench rating: rating wins.
+  apply(limited); assert(std::abs(chargePowerW - 7200) < 0.01);
 
   // Car SoC: legacy START (no fields) keeps the old bench behaviour and no battery stop.
   sessionId = ""; lastCommand = ""; version = 0; state = "idle";

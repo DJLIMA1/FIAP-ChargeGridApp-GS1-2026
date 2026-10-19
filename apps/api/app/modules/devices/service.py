@@ -420,7 +420,10 @@ def battery_parameters(session):
 
 
 def _battery(session):
-    return battery_parameters(session) | {"start_soc_percent": _number(session.start_soc_percent)}
+    return battery_parameters(session) | {
+        "start_soc_percent": _number(session.start_soc_percent),
+        "max_power_kw": _number(session.power_limit_kw),
+    }
 
 
 def response(db, connector, device):

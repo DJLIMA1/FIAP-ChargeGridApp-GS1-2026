@@ -53,7 +53,14 @@ class Station(Base):
     )
     # Comodidades públicas do posto (restaurante, café...): [{"kind", "name", "distance_m"}].
     amenities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
-    __table_args__ = (CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),)
+    # Limites de potência (migração c3a9e5f1d204): teto compartilhado pelos conectores
+    # ativos e aviso ao vendedor quando uma recarga roda limitada (chargegrid_core.power).
+    max_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    power_limit_notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    __table_args__ = (
+        CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
+        CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
+    )
 
 
 class Connector(Base):
@@ -67,7 +74,15 @@ class Connector(Base):
     max_duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     control_version: Mapped[int] = mapped_column(Integer, default=0)
-    __table_args__ = (CheckConstraint("power_kw > 0 AND price_per_kwh >= 0 AND max_duration_minutes > 0"),)
+    # Limite do vendedor para este conector; ``power_kw`` continua sendo a nominal.
+    power_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    __table_args__ = (
+        CheckConstraint("power_kw > 0 AND price_per_kwh >= 0 AND max_duration_minutes > 0"),
+        CheckConstraint(
+            "power_limit_kw IS NULL OR (power_limit_kw > 0 AND power_limit_kw <= power_kw)",
+            name="connector_power_limit_range",
+        ),
+    )
 
 
 class Device(Base):
@@ -144,6 +159,8 @@ class ChargingSession(Base):
     start_soc_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
     battery_kwh: Mapped[float | None] = mapped_column(Numeric(6, 2))
     soc_source: Mapped[str | None] = mapped_column(String(20))
+    # Potência máxima aplicada no início (efetivo do conector ∩ limite do motorista).
+    power_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     last_measurement_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cost_estimate: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     end_reason: Mapped[str | None] = mapped_column(String(100))
@@ -156,6 +173,7 @@ class ChargingSession(Base):
         ),
         CheckConstraint("battery_kwh IS NULL OR battery_kwh BETWEEN 5 AND 250", name="session_battery_kwh_range"),
         CheckConstraint("soc_source IS NULL OR soc_source IN ('simulated', 'phone')", name="session_soc_source"),
+        CheckConstraint("power_limit_kw IS NULL OR power_limit_kw > 0", name="session_power_limit_positive"),
         Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(

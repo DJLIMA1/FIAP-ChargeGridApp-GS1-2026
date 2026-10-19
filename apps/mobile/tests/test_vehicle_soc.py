@@ -293,7 +293,7 @@ class DemoChargingTests(StorageCase):
         pix = await booking.build(self.app, step=7, station_id=sid)
         await tap(pix, 'Já paguei (Confirmar)')()
         kwargs = self.app.go.await_args.kwargs
-        self.assertEqual(kwargs['planning_intent'], {'mode': 'autonomy', 'km': 80})
+        self.assertEqual(kwargs['planning_intent'], {'mode': 'autonomy', 'km': 80, 'max_power_kw': '60.0'})
         rows = prepaid.records(self.app)
         self.assertEqual((len(rows), rows[0]['method'], rows[0]['status']), (1, 'pix', 'open'))
         draft_screen = await charging.build(self.app, **kwargs)

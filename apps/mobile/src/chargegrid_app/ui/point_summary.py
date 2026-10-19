@@ -111,8 +111,8 @@ def point_context(station, connector):
         'station_address': station['address'],
         'connector': {key: connector.get(key) for key in (
             'id', 'public_code', 'connector_type', 'power_kw',
-            'price_per_kwh', 'max_duration_minutes',
-        )},
+            'price_per_kwh', 'max_duration_minutes', 'effective_power_kw',
+        ) if connector.get(key) is not None or key != 'effective_power_kw'},
     }
 
 
