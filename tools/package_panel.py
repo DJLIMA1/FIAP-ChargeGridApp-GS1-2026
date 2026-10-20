@@ -3,23 +3,29 @@ import hashlib
 import zipfile
 from pathlib import Path
 
+# Deve ser igual a CHARGEGRID_FIRMWARE_VERSION em firmware/esp32/include/runtime.h.
+FIRMWARE_VERSION = "0.7.0"
+
 
 def main():
     root = Path(__file__).resolve().parents[1]
     build = root / "firmware/esp32/.pio/build/waveshare_panel_ui"
-    output = root / "builds/chargegrid-waveshare-7-0.3.6.zip"
+    output = root / f"builds/chargegrid-waveshare-7-{FIRMWARE_VERSION}.zip"
     files = {name: (build / name).read_bytes() for name in
              ("firmware.bin", "bootloader.bin", "partitions.bin")}
     for name in ("panel-idle.png", "panel-charging.png", "panel-maintenance.png"):
         path = root / "tmp/panel-validation" / name
         if path.exists():
             files[name] = path.read_bytes()
-    files["README.md"] = b"""# ChargeGrid panel 0.3.6
+    files["README.md"] = f"""# ChargeGrid panel {FIRMWARE_VERSION}
 
 Only for Waveshare ESP32-S3-Touch-LCD-7 (not 7B), 800x480,
 ESP32-S3, 16 MB flash, 8 MB OPI PSRAM, DIO/40 MHz.
-Version 0.3.6 displays the rotating #F station code with a countdown and
+Version {FIRMWARE_VERSION} displays the rotating #F station code with a countdown and
 progress bar. The server validates this code when a user starts charging.
+It applies live power changes (SET_POWER, 0 W pauses), keeps the simulated cable
+connected after a stop when the driver accepted the overstay fee (unplug with
+"Desconectar"), and shows the Stripe test-mode payment QR on the Ready screen.
 The device key stays private. Seller-confirmed factory reset preserves Wi-Fi,
 replaces the device identity and shows a fresh private ownership QR.
 
@@ -45,7 +51,7 @@ Build and behavioral checks from repository root:
 
     pio run -d firmware/esp32 -e waveshare_panel_ui
     python tools/validate_firmware.py
-"""
+""".encode()
     files["SHA256SUMS.txt"] = "".join(
         f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()).encode()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:

@@ -11,6 +11,9 @@ from uuid import uuid4
 import serial
 from qa_live import Acceptance
 
+# Deve ser igual a CHARGEGRID_FIRMWARE_VERSION em firmware/esp32/include/runtime.h.
+FIRMWARE_VERSION = '0.7.0'
+
 
 def run(api, state, serial_path):
     qa = Acceptance(api, state)
@@ -42,10 +45,11 @@ def run(api, state, serial_path):
                 line = port.readline().decode(errors='replace').strip()
                 if line.startswith('ESP-ROM:esp32s3'):
                     boot_seen = True
-                if (boot_seen and line.startswith('[status]') and 'firmware=0.3.0' in line
+                if (boot_seen and line.startswith('[status]') and f'firmware={FIRMWARE_VERSION}' in line
                         and f'state={expected} ' in line and 'http=200' in line
                         and 'wifi=connected' in line and 'synced=yes' in line):
-                    print('PASS physical panel', expected, 'firmware 0.3.0, HTTP 200, Wi-Fi connected', flush=True)
+                    print('PASS physical panel', expected, f'firmware {FIRMWARE_VERSION}, HTTP 200, Wi-Fi connected',
+                          flush=True)
                     return
             raise AssertionError('Panel failed to reach expected synchronized state: ' + expected)
 
