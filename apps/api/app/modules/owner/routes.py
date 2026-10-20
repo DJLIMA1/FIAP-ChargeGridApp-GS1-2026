@@ -19,6 +19,7 @@ from ...errors import fail
 from ...models import now
 from ...security import current_user
 from ...service import operator, owned
+from ..payments.funding import attach_owner_payments
 from . import service
 
 router = APIRouter(prefix="/owner", tags=["owner"])
@@ -109,7 +110,9 @@ def sessions(
     scope = scope_for(db, user, station_id)
     query = service.session_query(scope, window_for(start, end), statuses(status, analytics.SESSION_STATUSES), q)
     moment = now()
-    return service.paginate(db, query, lambda row: service.session_item(row, moment), limit, offset)
+    return attach_owner_payments(
+        db, service.paginate(db, query, lambda row: service.session_item(row, moment), limit, offset)
+    )
 
 
 @router.get("/reservations")

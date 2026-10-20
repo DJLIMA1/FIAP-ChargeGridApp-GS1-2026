@@ -22,6 +22,9 @@ from .modules.driver.routes import router as driver_router
 from .modules.geo.routes import router as geo_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
+from .modules.payments import service as payments_service
+from .modules.payments.kiosk import router as payments_pages
+from .modules.payments.routes import router as payments_router
 from .modules.pricing.routes import router as pricing_router
 from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
@@ -49,8 +52,10 @@ for router in (
     pricing_router,
     ai_router,
     app_updates_router,
+    payments_router,
 ):
     app.include_router(router, prefix="/v1")
+app.include_router(payments_pages)
 
 
 @app.get("/health")
@@ -65,6 +70,12 @@ def keepalive(authorization: str | None = Header(default=None), db=Depends(db_se
         raise HTTPException(status_code=401, detail="Unauthorized")
     for model in (Station, Connector, Profile):
         db.execute(select(model.id).limit(1)).first()
+    # O cron diário também conclui pagamentos pendentes (expirar, acertar, devolver); nunca falha por isso.
+    if payments_service.enabled():
+        try:
+            payments_service.sweep(db)
+        except Exception:
+            db.rollback()
     return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
 
 
@@ -123,12 +134,15 @@ async def database_conflict(request: Request, error: IntegrityError):
 @app.middleware("http")
 async def body_limit(request: Request, call_next):
     if request.method in ("POST", "PATCH", "PUT"):
+        # Eventos da Stripe podem passar de 16 KB; só o webhook assinado recebe mais espaço.
+        maximum = 65536 if request.url.path == "/v1/webhooks/stripe" else 16384
         body = bytearray()
         async for chunk in request.stream():
             body.extend(chunk)
-            if len(body) > 16384:
+            if len(body) > maximum:
                 return JSONResponse(
-                    {"error": {"code": "body_too_large", "message": "Corpo excede 16 KB"}}, status_code=413
+                    {"error": {"code": "body_too_large", "message": f"Corpo excede {maximum // 1024} KB"}},
+                    status_code=413,
                 )
         request._body = bytes(body)
     return await call_next(request)

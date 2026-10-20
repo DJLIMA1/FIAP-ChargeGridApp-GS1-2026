@@ -31,6 +31,8 @@ from ...service import (
     stop_if_battery_full,
 )
 from ...session_events import record as record_session_event
+from ..payments.funding import device_fields as payment_device_fields
+from ..payments.funding import prepare_recent_settlements
 
 
 def sync(db, authenticated_device, data):
@@ -254,6 +256,7 @@ def sync(db, authenticated_device, data):
             stop_if_battery_full(db, connector, device, reported)
     recover_safety_command(db, connector, device, reservation, session)
     restore_reservation(db, connector, device, reservation, session, reboot)
+    prepare_recent_settlements(db, connector)
     pending = db.scalar(
         select(Command.id).where(
             Command.device_id == device.id,
@@ -456,6 +459,7 @@ def response(db, connector, device):
             "active": bool(connector.active and station.active),
             "presence_code": presence_code if connector.active and station.active and station.owner_id else None,
             "presence_expires_at": presence_expires_at.isoformat(),
+            **payment_device_fields(db, connector, station),
         },
         "authorized": {
             "reservation": (

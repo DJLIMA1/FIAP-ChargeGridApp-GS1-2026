@@ -24,10 +24,11 @@ from ...service import (
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
+from ..payments.funding import attach_payment, claim_for_start, funded_input, locked_terms
 from ..pricing.service import current_terms
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
-_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw")
+_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw", "payment_id")
 
 
 def _point_for_code(db, user, data):
@@ -60,6 +61,28 @@ def _point_for_code(db, user, data):
     if len(available) == 1:
         return available[0]
     fail("ambiguous_presence_code", "Há mais de um ponto com este código. Escolha o ponto na lista antes de iniciar.", 422)
+
+
+def coupon_discount(db, connector, code):
+    """Desconto do cupom digitado para este ponto (0 sem cupom); 422 quando inválido."""
+    if not code:
+        return 0
+    typed = code.strip().upper()
+    # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
+    coupon = db.scalar(
+        select(Coupon)
+        .where(func.upper(Coupon.code) == typed, Coupon.active.is_(True), Coupon.valid_until > now())
+        .order_by((Coupon.code == code.strip()).desc(), Coupon.id)
+        .limit(1)
+    )
+    station = db.get(Station, connector.station_id)
+    if (
+        not coupon
+        or coupon.operator_id != station.owner_id
+        or (coupon.station_id and coupon.station_id != station.id)
+    ):
+        fail("invalid_coupon", "Cupom inválido", 422)
+    return coupon.discount_percent
 
 
 def _start_body(data):
@@ -129,28 +152,17 @@ def start(db, user, data, key):
             fail("point_unavailable", "Ponto sem confirmação recente")
     elif not free(db, connector):
         fail("point_unavailable", "Ponto indisponível")
+    payment = claim_for_start(db, user, connector, data.payment_id)
+    if payment:
+        data = funded_input(data, payment)
     if data.max_duration_minutes > connector.max_duration_minutes:
         fail("duration_limit", "Duração acima do limite do ponto", 422)
-    discount = 0
-    if data.coupon_code:
-        typed = data.coupon_code.strip().upper()
-        # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
-        coupon = db.scalar(
-            select(Coupon)
-            .where(func.upper(Coupon.code) == typed, Coupon.active.is_(True), Coupon.valid_until > now())
-            .order_by((Coupon.code == data.coupon_code.strip()).desc(), Coupon.id)
-            .limit(1)
-        )
-        station = db.get(Station, connector.station_id)
-        if (
-            not coupon
-            or coupon.operator_id != station.owner_id
-            or (coupon.station_id and coupon.station_id != station.id)
-        ):
-            fail("invalid_coupon", "Cupom inválido", 422)
-        discount = coupon.discount_percent
+    discount = coupon_discount(db, connector, data.coupon_code)
     # Tarifa: base do horário × demanda, travadas ao reservar (termos da reserva) ou agora.
     base, multiplier = current_terms(db, connector, reservation)
+    if payment:
+        # Pré-pago: valem os termos travados no orçamento pago, não os do momento.
+        base, multiplier, discount = locked_terms(payment)
     if reservation:
         reservation.status = "consumed"
     session = ChargingSession(
@@ -179,6 +191,8 @@ def start(db, user, data, key):
         **battery_parameters(session),
     }
     issue(db, connector, device, "START", session=session, parameters=limits)
+    if payment:
+        attach_payment(payment, session)
     remember(db, user, "start", key, body_hash, session)
     return session
 
