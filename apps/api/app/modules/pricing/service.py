@@ -115,3 +115,56 @@ def current_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal]:
         return scheduled_base(station, connector, reservation.created_at), multiplier
     status = station_demand(db, station)
     return pricing.connector_price(status, connector.id, connector.price_per_kwh)[0], Decimal(status["multiplier"])
+
+
+# ------------------------------------------------- explicação do preço travado (recibo)
+
+def reservation_terms(db, connector) -> tuple[Decimal, dict]:
+    """``(multiplicador, termos)`` travados ao reservar: o multiplicador de ``current_multiplier``
+    e a explicação (motivo e fatores da demanda, horário) gravada em ``reservations.price_terms``."""
+    from chargegrid_core import receipt  # evita custo de import nas rotas de consulta
+
+    station = db.get(Station, connector.station_id)
+    status = station_demand(db, station)
+    multiplier = Decimal(status["multiplier"])
+    base, _ = pricing.connector_price(status, connector.id, connector.price_per_kwh)
+    terms = receipt.price_terms(locked_at=now(), locked_by="reservation", connector_base=connector.price_per_kwh,
+                                base=base, multiplier=multiplier, status=status,
+                                interval=status.get("schedule_now"), connector_id=connector.id)
+    return multiplier, terms
+
+
+def locked_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal, dict]:
+    """``(base, multiplicador, termos)`` travados ao iniciar: os mesmos valores de
+    ``current_terms`` mais a explicação gravada em ``charging_sessions.price_terms`` (sem cupom).
+
+    Com reserva, valem o multiplicador e o motivo gravados nela e a base do horário em
+    ``reservation.created_at``. Sem reserva, o status de demanda de agora (um único cálculo,
+    de onde saem o multiplicador e o motivo).
+    """
+    from chargegrid_core import receipt  # evita custo de import nas rotas de consulta
+
+    station = db.get(Station, connector.station_id)
+    demand = None
+    if reservation is not None:
+        status = None
+        saved = reservation.price_terms if isinstance(reservation.price_terms, dict) else {}
+        demand = saved.get("demand") if isinstance(saved.get("demand"), dict) else None
+        if reservation.demand_multiplier is not None:
+            multiplier = Decimal(reservation.demand_multiplier)
+        else:
+            status = station_demand(db, station)
+            multiplier = Decimal(status["multiplier"])
+        interval = pricing.active_interval(pricing.stored_rules(station.pricing), local_time(reservation.created_at))
+        base = scheduled_base(station, connector, reservation.created_at)
+        locked_by, locked_at = "reservation", reservation.created_at
+    else:
+        status = station_demand(db, station)
+        multiplier = Decimal(status["multiplier"])
+        interval = status.get("schedule_now")
+        base = pricing.connector_price(status, connector.id, connector.price_per_kwh)[0]
+        locked_by, locked_at = "start", now()
+    terms = receipt.price_terms(locked_at=locked_at, locked_by=locked_by, connector_base=connector.price_per_kwh,
+                                base=base, multiplier=multiplier, status=status, demand=demand,
+                                interval=interval, connector_id=connector.id)
+    return base, multiplier, terms

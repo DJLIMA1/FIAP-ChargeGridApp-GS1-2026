@@ -24,7 +24,8 @@ from ...service import (
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
-from ..pricing.service import current_terms
+from ..economics.service import snapshot_session
+from ..pricing.service import locked_terms
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
 _BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw")
@@ -131,7 +132,7 @@ def start(db, user, data, key):
         fail("point_unavailable", "Ponto indisponível")
     if data.max_duration_minutes > connector.max_duration_minutes:
         fail("duration_limit", "Duração acima do limite do ponto", 422)
-    discount = 0
+    discount, coupon = 0, None
     if data.coupon_code:
         typed = data.coupon_code.strip().upper()
         # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
@@ -150,7 +151,7 @@ def start(db, user, data, key):
             fail("invalid_coupon", "Cupom inválido", 422)
         discount = coupon.discount_percent
     # Tarifa: base do horário × demanda, travadas ao reservar (termos da reserva) ou agora.
-    base, multiplier = current_terms(db, connector, reservation)
+    base, multiplier, terms = locked_terms(db, connector, reservation)
     if reservation:
         reservation.status = "consumed"
     session = ChargingSession(
@@ -168,6 +169,8 @@ def start(db, user, data, key):
     )
     db.add(session)
     db.flush()
+    # Recibo e resultado do dono: explicação do preço, custo do kWh e comissão travados agora.
+    snapshot_session(db, session, connector, terms, coupon)
     limits = {
         "session_id": str(session.id),
         "max_duration_minutes": session.max_duration_minutes,
