@@ -55,7 +55,7 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
         copy = texts(screen)
         for label in ('Tarifa', 'Tarifa atual', 'R$ 1,89/kWh', 'Tarifa base: R$ 1,89/kWh', 'Preço normal', 'Detalhes',
                       'Tarifa base', 'Tarifação por horário', 'Nenhum horário', 'Tarifa por demanda', 'Até +50%',
-                      'Taxa de rotatividade'):
+                      'Taxa de permanência'):
             self.assertIn(label, copy)
         for hidden in ('Ocupação agora', 'Recargas na última hora', 'Pressão de demanda', 'Horário de pico'):
             self.assertNotIn(hidden, copy)
@@ -177,7 +177,7 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rotation_fields(self):
         rotation = await tariffs.build(self.app, station_id=self.sid, page='rotation')
-        after, every, amount = number_fields(rotation)
+        after, every, amount = number_fields(rotation)[:3]  # + Teto quando a API devolve max_amount
         self.assertEqual([after.suffix.value.strip(), every.suffix.value.strip(), amount.prefix.value.strip()],
                          ['min', 'min', 'R$'])
         self.assertIn('2 intervalos × R$ 1,00 = R$ 2,00', texts(rotation))

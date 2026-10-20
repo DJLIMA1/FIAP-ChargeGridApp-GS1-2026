@@ -1,6 +1,8 @@
 """Notificações do app, montadas a partir dos dados da conta (sem backend próprio).
 
-Consumidor: meta de bateria atingida (sessão atual ou última recarga concluída).
+Consumidor: meta de bateria atingida (sessão atual ou última recarga concluída) e, com a taxa de
+permanência do posto (``GET overstays/current``), a tolerância correndo ("desconecte em mm:ss") e a
+cobrança em andamento. API sem a rota: nenhum aviso de permanência.
 Vendedor: estações/pontos sem comunicação e, com o aviso ligado no posto (``power_limit_notify``),
 recargas rodando com potência limitada (``operator/stations``: ``power_limited``/``effective_power_kw``).
 Um aviso por conector por dia; lidas/não lidas usam o mesmo mecanismo dos demais.
@@ -17,6 +19,7 @@ BATTERY_TARGET = 80
 KIND_BATTERY = 'battery'
 KIND_OFFLINE = 'offline'
 KIND_POWER = 'power'
+KIND_OVERSTAY = 'overstay'
 _IN_USE = ('charging', 'reconciling')
 
 
@@ -40,6 +43,39 @@ def battery_item(session, now=None):
     return {'id': f"battery-{session.get('id')}", 'kind': KIND_BATTERY, 'title': 'Meta de bateria atingida',
             'subtitle': 'Estação ' + str(session.get('station_name') or 'ChargeGrid'),
             'detail': f"Bateria atingiu {BATTERY_TARGET}% - {when.strftime('%H:%M')}", 'at': when}
+
+
+def _brl(value):
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+    try:
+        amount = Decimal(str(value or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        amount = Decimal('0.00')
+    return f"R$ {str(amount).replace('.', ',')}"
+
+
+def overstay_item(overstay, now=None):
+    """Aviso da permanência aberta: tolerância (``grace``) ou cobrança (``billing``/``capped``); senão ``None``."""
+    if not isinstance(overstay, dict):
+        return None
+    state = overstay.get('status')
+    session_id = overstay.get('session_id') or (overstay.get('session') or {}).get('id') or 'atual'
+    station = overstay.get('station_name') or (overstay.get('session') or {}).get('station_name') or 'ChargeGrid'
+    when = now or datetime.now().astimezone()
+    base = {'kind': KIND_OVERSTAY, 'subtitle': f'Estação {station}', 'at': when}
+    if state == 'grace':
+        try:
+            seconds = max(0, int(overstay.get('grace_remaining_seconds') or 0))
+        except (TypeError, ValueError):
+            seconds = 0
+        return {**base, 'id': f'overstay-grace-{session_id}', 'title': 'Recarga concluída: desconecte o carro',
+                'detail': f'A tolerância termina em {seconds // 60:02d}:{seconds % 60:02d}. Depois, há taxa de '
+                          'permanência.'}
+    if state in ('billing', 'capped'):
+        capped = ' (teto atingido)' if state == 'capped' else ''
+        return {**base, 'id': f'overstay-fee-{session_id}', 'title': 'Taxa de permanência em cobrança',
+                'detail': f"{_brl(overstay.get('fee_due'))} até agora{capped}. Desconecte o carro para encerrar."}
+    return None
 
 
 def offline_items(stations, now=None):
@@ -124,6 +160,13 @@ async def collect(app):
                 items.append(item)
     except Exception:  # noqa: BLE001 - aviso é opcional; a tela segue sem ele
         pass
+    if not vendor and not demo:
+        try:
+            item = overstay_item(await api.request('GET', 'overstays/current'))
+        except Exception:  # noqa: BLE001 - API sem permanência (404) ou rede: sem aviso
+            item = None
+        if item:
+            items.append(item)
     return items or (sample_items() if demo else [])
 
 

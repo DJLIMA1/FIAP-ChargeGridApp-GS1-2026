@@ -186,30 +186,31 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         await self.screen(1, pick=1)
         screen = await self.screen(4)
         self.assertIn('Até 40 kW · limitado pelo posto', texts(screen))
-        self.app.booking.update(mode='now', minutes_text='20', pay='pix')
+        self.app.booking.update(mode='now', minutes_text='20', pay='balance')
         await tap(await self.screen(6), 'Confirmar e iniciar no ponto')()
-        await tap(await self.screen(7), 'Já paguei (Confirmar)')()
         self.assertEqual(self.app.go.await_args.kwargs['planning_intent']['max_power_kw'], '40.000')
 
     async def test_now_hands_off_to_charging(self):
         await self.screen(1)
-        self.app.booking.update(mode='now', minutes_text='20', pay='pix')
+        self.app.booking.update(mode='now', minutes_text='20', pay='balance')
         screen = await self.screen(6)
         await tap(screen, 'Confirmar reserva' if self.app.booking['mode'] == 'reserve' else 'Confirmar e iniciar no ponto')()
-        self.assertEqual(self.app.go.await_args.kwargs['step'], 7)
-        screen = await self.screen(7)
-        await tap(screen, 'Já paguei (Confirmar)')()
         self.assertEqual(self.app.go.await_args.args[0], 'charging')
         self.assertIn('point_context', self.app.go.await_args.kwargs)
 
-    async def test_card_form_never_keeps_card_data(self):
+    async def test_payment_step_offers_balance_and_stripe_and_never_a_card_form(self):
         await self.screen(1)
-        self.app.booking.update(mode='now', minutes_text='20', pay='card')
-        screen = await self.screen(7)
-        with self.assertRaises(ApiError):
-            await tap(screen, 'Efetuar Pagamento')()
-        for name in ('number', 'cvv'):
-            self.assertNotIn(name, self.app.booking)
+        self.app.booking.update(mode='now', minutes_text='20', pay='card')  # atalho antigo vira Stripe
+        options = texts(await self.screen(5))
+        self.assertIn('Saldo Disponível', options)  # Saldo: só na conta demo
+        self.assertIn('Cartão ou Pix · Stripe (teste)', options)
+        for removed in ('Pix', 'Cartão de Crédito / Débito'):
+            self.assertNotIn(removed, options)
+        self.assertEqual(self.app.booking['pay'], 'stripe')
+        waiting = await self.screen(7)  # sem pagamento criado: volta para a revisão, sem formulário
+        self.assertFalse([c for c in descendants(waiting) if isinstance(c, ft.TextField)])
+        for removed in ('Número do cartão', 'CVV', 'Validade', 'Efetuar Pagamento'):
+            self.assertNotIn(removed, texts(waiting))
 
 
 if __name__ == '__main__':
