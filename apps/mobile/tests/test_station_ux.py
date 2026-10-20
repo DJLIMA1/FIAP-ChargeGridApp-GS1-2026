@@ -7,7 +7,7 @@ import flet as ft
 
 from chargegrid_app.screens import stations
 from test_behavior import HandlerApp, click, descendants
-from test_consumer_flows import CONTEXT, POINT, STATION, texts
+from test_consumer_flows import POINT, STATION, texts
 
 
 def search_box(screen):
@@ -67,42 +67,28 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
         app.go.assert_awaited_once_with('stations', station_id=STATION['id'])
         self.assertTrue(all(call.args[0] == 'GET' for call in app.api.request.call_args_list))
 
-    async def test_detail_has_one_heading_local_code_instruction_and_distinct_actions(self):
+    async def test_detail_has_one_heading_and_two_distinct_flows_without_repetition(self):
         app = HandlerApp()
         app.api.request.return_value = STATION
         with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))) as render:
             screen = await stations.build(app, station_id=STATION['id'])
         render.assert_awaited_once()
         self.assertEqual(render.call_args.kwargs['variant'], 'detail')
-        self.assertIn('Reservar estação', texts(screen))
         self.assertIn('Conectores', texts(screen))
         await open_station(screen, 'Reservar estação')(None)
-        app.go.assert_awaited_once_with('booking', station_id=STATION['id'], step=1)
+        app.go.assert_awaited_once_with('booking', station_id=STATION['id'], step=1, kind='reserve')
         app.go.reset_mock()
+        await open_station(screen, 'Carregar agora')(None)
+        app.go.assert_awaited_once_with('booking', station_id=STATION['id'], step=1, kind='now')
         self.assertNotIn('Ver mapa dos postos',texts(screen))
-        self.assertNotIn('Postos no mapa',texts(screen))
         values = [item.value for item in descendants(screen) if isinstance(item, ft.Text)]
         self.assertEqual(values.count(STATION['name']), 1)
         self.assertEqual(values.count(STATION['address']), 1)
-        self.assertNotIn('Tenho o código', texts(screen))
-        self.assertIn('Leia o código #F atual na tela do equipamento', texts(screen))
-        self.assertIn('muda periodicamente', texts(screen))
-        self.assertNotIn('Buscar perto de um endereço', texts(screen))
-        self.assertIn('Pontos de recarga', values)
-        self.assertIn(f"{float(POINT['power_kw']):g} kW".replace('.', ','), texts(screen))
-        await click(screen, 'Já estou aqui: iniciar')(None)
-        app.go.assert_awaited_once_with('charging', public_code=POINT['public_code'],
-                                       max_duration=min(30, POINT['max_duration_minutes']), point_context=CONTEXT)
+        # Sem o aviso do código #F nem a lista "Pontos de recarga" (o assistente já escolhe o conector).
+        for removed in ('Leia o código #F', 'Pontos de recarga', 'Já estou aqui: iniciar', 'Reservar para chegar',
+                        f"{POINT['public_code']} · "):
+            self.assertNotIn(removed, texts(screen))
         self.assertTrue(all(call.args[0] == 'GET' for call in app.api.request.call_args_list))
-
-    async def test_detail_keeps_reservation_for_the_selected_point(self):
-        app = HandlerApp()
-        app.api.request.return_value = STATION
-        with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
-            screen = await stations.build(app, station_id=STATION['id'])
-        await click(screen, 'Reservar para chegar')(None)
-        app.api.request.assert_awaited_with('POST', 'reservations', {'connector_id':POINT['id']}, key='intent')
-        app.go.assert_awaited_once_with('reservations')
 
     async def test_poll_detects_in_place_changes_and_preserves_typed_search(self):
         app = HandlerApp()

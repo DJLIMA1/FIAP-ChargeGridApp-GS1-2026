@@ -1,5 +1,4 @@
 import hashlib
-import secrets
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -20,10 +19,12 @@ from ...models import (
 from ...presence_code import current_code
 from ...service import (
     BATTERY_FULL,
+    RESERVATION_MINUTES,
     active_res,
     active_session,
     derived_soc,
     issue,
+    new_public_code,
     online,
     reconcile_expiry,
     row,
@@ -160,7 +161,7 @@ def sync(db, authenticated_device, data):
             db.flush()
             factory_point = Connector(
                 station_id=factory_station.id,
-                public_code="CG-" + secrets.token_hex(6).upper(),
+                public_code=new_public_code(db),
                 connector_type=connector.connector_type,
                 power_kw=connector.power_kw,
                 price_per_kwh=0,
@@ -187,7 +188,7 @@ def sync(db, authenticated_device, data):
         ):
             if reservation.status == "pending_device":
                 reservation.status = "confirmed"
-                reservation.expires_at = now() + timedelta(minutes=10)
+                reservation.expires_at = now() + timedelta(minutes=RESERVATION_MINUTES)
             compatible = True
         elif (
             cmd.type == "START"
@@ -389,7 +390,7 @@ def restore_reservation(db, connector, device, reservation, session, reboot):
         device,
         "RESERVE",
         reservation=reservation,
-        parameters={"expires_at": (reservation.expires_at or now() + timedelta(minutes=10)).isoformat()},
+        parameters={"expires_at": (reservation.expires_at or now() + timedelta(minutes=RESERVATION_MINUTES)).isoformat()},
     )
 
 

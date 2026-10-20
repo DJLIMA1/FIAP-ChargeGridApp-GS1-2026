@@ -41,7 +41,7 @@ GET `/operator/charging-sessions` lista o histórico de todos os postos do opera
 
 GET `/coupons` filtro station_id; POST {code,description,discount_percent,station_id?:UUID,valid_until}; PATCH `/coupons/{id}` aceita description,discount_percent,valid_until,active. Cupom global vale somente nos postos de seu operador. Criar, alterar a validade ou reativar um cupom exige validade futura com fuso horário. Editar descrição/desconto ou desativar cupom vencido continua permitido sem reenviar a validade; campos omitidos permanecem intactos. Valores monetários serializados como strings decimais; nenhum pagamento real.
 
-Idempotência reserva/início/parada: mesmo usuário/operação/chave/corpo devolve recurso original; corpo diferente retorna 409. Cancelamento é naturalmente idempotente. Sem contato por 45s proíbe novas autorizações. Reserva vence chegada 10 minutos após ACK, confirmação 30s; expiração inicia liberação, disponibilidade só retorna após reconciliação física. Reiniciar o ESP32 não cancela uma reserva válida: a API reaplica a reserva com seu prazo original, sem estender o vencimento. Isso é diferente de uma recarga em andamento, que é interrompida com segurança após reboot.
+Idempotência reserva/início/parada: mesmo usuário/operação/chave/corpo devolve recurso original; corpo diferente retorna 409. Cancelamento é naturalmente idempotente. Sem contato por 45s proíbe novas autorizações. Reserva vence chegada 15 minutos após ACK (`RESERVATION_MINUTES`, o mesmo prazo exibido no app), confirmação 30s; expiração inicia liberação, disponibilidade só retorna após reconciliação física. Reiniciar o ESP32 não cancela uma reserva válida: a API reaplica a reserva com seu prazo original, sem estender o vencimento. Isso é diferente de uma recarga em andamento, que é interrompida com segurança após reboot.
 
 ## Bateria do carro (SoC) e bateria cheia
 
@@ -91,6 +91,19 @@ Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`).
 - **Tarifas:** tarifa base de cada conector e tarifa dinâmica.
 
 Saíram "Configurações adicionais" e a antiga tela "Pontos e equipamentos". O preço por kWh existe só em **Tarifas**. Latitude e longitude não aparecem mais: o cadastro (onboarding e novo posto) e a edição do endereço gravam as coordenadas da sugestão escolhida ou da busca pela API própria. Em conta real, um endereço sem resultado é recusado com "Não encontramos este endereço…". Na demo, usa-se o centro de São Paulo.
+
+## Código público do ponto
+
+Pontos novos recebem um código curto: `CG-` + 4 caracteres sem 0/O e 1/I (`app.service.new_public_code`, ex.: `CG-L6MX`). Antes eram `CG-` + 12 hexadecimais. A migração `d1e8f3a2c7b5` encurta os códigos longos existentes; outros formatos (`CG-PAINEL-03`, códigos da demo) ficam iguais. O totem recebe o código novo na próxima sincronização.
+
+## Fluxos do motorista no posto
+
+A tela do posto mostra os conectores e dois botões; não lista mais os pontos nem o aviso do código #F, que ficava repetido.
+
+- **Reservar estação** (`booking`, `kind=reserve`): conector → reserva (ponto guardado por 15 min a partir da confirmação do posto + taxa) → cobrança (tempo, valor ou autonomia) → potência → pagamento → revisar → **Confirmar reserva**. Em **Recarga Agendada**, o app mostra "Chegue até" e o botão **Cheguei: informar código**. Os horários fictícios (00:00, 00:30…) saíram, porque a API reserva a partir de agora.
+- **Carregar agora** (`kind=now`): conector → cobrança → potência → pagamento → revisar → **Confirmar e iniciar no ponto** → código #F → início. Não há etapa de reserva nem taxa.
+
+O plano da busca (por valor, tempo ou autonomia) chega ao assistente já preenchido.
 
 ## Autocomplete de endereço
 

@@ -93,18 +93,15 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.go.call_args.kwargs['planning_intent'],plan)
         app.api.request.return_value = deepcopy(STATION)
         screen = await stations.build(app,**app.go.call_args.kwargs)
-        await click(screen,'Já estou aqui: iniciar')(None)
-        self.assertEqual(app.go.call_args.kwargs['planning_intent'],plan)
-        back_route,back_data = parent_route('charging',app.go.call_args.kwargs)
-        self.assertEqual(back_route,'stations')
-        self.assertEqual(back_data['planning_intent'],plan)
-        self.assertEqual(back_data['sort'],'price')
-        search_route,search_data = parent_route(back_route,back_data)
+        await open_station(screen,'Carregar agora')(None)
+        # O plano da busca chega ao assistente já preenchido (Por valor, R$ 8).
+        self.assertEqual(app.go.call_args.args[0],'booking')
+        self.assertEqual({k: app.go.call_args.kwargs[k] for k in ('kind','by','amount')},
+                         {'kind':'now','by':'value','amount':'8'})
+        # Voltar do posto mantém a busca e o plano.
+        search_route,search_data = parent_route('stations',{'station_id':STATION['id'],'sort':'price','planning_intent':plan})
         self.assertEqual(search_route,'stations')
         self.assertEqual(search_data,{'sort':'price','planning_intent':plan})
-        await click(screen,'Reservar para chegar')(None)
-        self.assertEqual(app.planning_intent,{'connector_id':POINT['id'],'intent':plan,
-                                               'station_search':{'sort':'price','planning_intent':plan}})
 
     async def test_invalid_budget_and_distance_have_clear_errors(self):
         app = sheet_app()

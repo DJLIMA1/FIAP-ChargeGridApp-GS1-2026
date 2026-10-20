@@ -2,7 +2,16 @@ from datetime import timedelta
 
 from ...errors import fail
 from ...models import Reservation, now
-from ...service import device_for, ensure_user_free, free, idempotent, issue, lock_point, remember
+from ...service import (
+    RESERVATION_MINUTES,
+    device_for,
+    ensure_user_free,
+    free,
+    idempotent,
+    issue,
+    lock_point,
+    remember,
+)
 from ..pricing.service import current_multiplier
 
 
@@ -27,7 +36,7 @@ def reserve(db, user, data, key):
         device_for(db, connector),
         "RESERVE",
         reservation=reservation,
-        parameters={"expires_at": (now() + timedelta(minutes=10)).isoformat()},
+        parameters={"expires_at": (now() + timedelta(minutes=RESERVATION_MINUTES)).isoformat()},
     )
     remember(db, user, "reserve", key, body_hash, reservation)
     return reservation

@@ -109,9 +109,30 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_step_one_requires_a_connector(self):
         screen = await self.screen(1)
-        self.assertIn('Qual conector deseja usar?', texts(screen))
+        self.assertIn('Qual conector deseja reservar?', texts(screen))  # padrão: Reservar estação
         with self.assertRaises(AssertionError):  # desabilitado: sem ação até escolher um conector
             tap(screen, 'Continuar')
+
+    async def test_two_flows_reserve_holds_fifteen_minutes_and_now_skips_the_reservation_step(self):
+        reserve = await self.screen(2, kind='reserve')
+        copy = ' '.join(texts(reserve))
+        self.assertIn('Reservar estação', copy)
+        self.assertIn('Ponto reservado por 15 minutos', copy)
+        spans = [span.text for item in descendants(reserve) if isinstance(item, ft.Text) for span in item.spans or []]
+        self.assertEqual(spans, ['Taxa de reserva: ', rules.money(rules.RESERVATION_FEE)])
+        for removed in ('Horários disponíveis', 'Agora'):  # sem horários fictícios e sem alternar o fluxo aqui
+            self.assertNotIn(removed, texts(reserve))
+        now = await self.screen(1, kind='now', pick=1)
+        self.assertIn('Qual conector deseja usar?', texts(now))
+        await tap(now, 'Continuar')()
+        self.assertEqual(self.app.go.await_args.kwargs['step'], 3)  # Carregar agora: direto para a cobrança
+        back = await self.screen(2)  # voltar da cobrança não mostra a etapa de reserva
+        self.assertIn('Qual conector deseja usar?', texts(back))
+        self.app.booking['minutes_text'] = '30'
+        review = await self.screen(6)
+        self.assertIn('Por tempo | Carregar agora', texts(review))
+        self.assertIn('30 minutos | Início no ponto com o código #F', texts(review))
+        self.assertIn('Confirmar e iniciar no ponto', texts(review))
 
     async def test_capture_presets_open_selected_and_unselected_states(self):
         picked = await self.screen(1, pick=1)  # estado da referência «estacao_5»: CCS2 marcado, Continuar ativo
@@ -133,10 +154,10 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.app.go.await_args.kwargs['step'], 2)
         self.app.booking['minutes_text'] = '30'
         screen = await self.screen(6)
-        self.assertIn('Confirmar Recarga', texts(screen))
+        self.assertIn('Confirmar reserva', texts(screen))
         self.assertFalse(any('taxa de reserva' in t for t in texts(screen)))  # sem linha extra (igual à referência)
         self.assertEqual(wallet.balance(self.app), before)
-        await tap(screen, 'Confirmar Recarga')()
+        await tap(screen, 'Confirmar reserva' if self.app.booking['mode'] == 'reserve' else 'Confirmar e iniciar no ponto')()
         self.assertEqual(self.app.go.await_args.args[0], 'booking')
         self.assertEqual(self.app.go.await_args.kwargs['step'], 8)
         result = self.app.booking['result']
@@ -166,7 +187,7 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         screen = await self.screen(4)
         self.assertIn('Até 40 kW · limitado pelo posto', texts(screen))
         self.app.booking.update(mode='now', minutes_text='20', pay='pix')
-        await tap(await self.screen(6), 'Confirmar Recarga')()
+        await tap(await self.screen(6), 'Confirmar e iniciar no ponto')()
         await tap(await self.screen(7), 'Já paguei (Confirmar)')()
         self.assertEqual(self.app.go.await_args.kwargs['planning_intent']['max_power_kw'], '40.000')
 
@@ -174,7 +195,7 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         await self.screen(1)
         self.app.booking.update(mode='now', minutes_text='20', pay='pix')
         screen = await self.screen(6)
-        await tap(screen, 'Confirmar Recarga')()
+        await tap(screen, 'Confirmar reserva' if self.app.booking['mode'] == 'reserve' else 'Confirmar e iniciar no ponto')()
         self.assertEqual(self.app.go.await_args.kwargs['step'], 7)
         screen = await self.screen(7)
         await tap(screen, 'Já paguei (Confirmar)')()

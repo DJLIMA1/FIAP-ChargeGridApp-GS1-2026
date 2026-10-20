@@ -945,7 +945,7 @@ class DemoApi(OwnerApiMixin):
                        'created_at': self._iso(), 'confirmation_deadline': self._iso(self._elapsed + 30), 'expires_at': None,
                        'demand_multiplier': self._demand(self._stations[point['station_id']])['multiplier']}
         self._reservations[rid] = reservation
-        self._reservation_runtime[rid] = {'confirm_at': self._elapsed + 1, 'expires_at': self._elapsed + 601}
+        self._reservation_runtime[rid] = {'confirm_at': self._elapsed + 1, 'expires_at': self._elapsed + 1 + 15 * 60}  # 15 min, como a API
         return self._operation_row(reservation, 'reservation')
 
     def _start(self, body):

@@ -289,7 +289,7 @@ class DemoChargingTests(StorageCase):
         visible = [str(c.value) for c in descendants(review) if isinstance(c, ft.Text)]
         self.assertTrue(any(text.startswith('Por autonomia') for text in visible))
         self.assertTrue(any(text.startswith('80 km |') for text in visible))
-        await tap(review, 'Confirmar Recarga')()
+        await tap(review, 'Confirmar e iniciar no ponto')()
         pix = await booking.build(self.app, step=7, station_id=sid)
         await tap(pix, 'Já paguei (Confirmar)')()
         kwargs = self.app.go.await_args.kwargs

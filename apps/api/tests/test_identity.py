@@ -180,3 +180,13 @@ def test_recovery_link_updates_exact_password_and_revokes_sessions(identity_clie
     assert calls[1][0] == "POST"
     assert calls[1][1].endswith("/logout?scope=global")
     assert payload["password"] not in response.text
+
+
+def test_new_public_codes_are_short_readable_and_unique(factory, seed):
+    import re
+
+    from app.service import PUBLIC_CODE_ALPHABET, new_public_code
+    with factory() as db:
+        codes = {new_public_code(db) for _ in range(50)}
+    assert all(re.fullmatch(rf"CG-[{PUBLIC_CODE_ALPHABET}]{{4}}", code) for code in codes)
+    assert not set("01OI") & set("".join(code[3:] for code in codes))

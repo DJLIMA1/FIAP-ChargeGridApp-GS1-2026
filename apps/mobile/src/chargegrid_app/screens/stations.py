@@ -86,6 +86,18 @@ def _number(value):
     return f'{float(value):g}'.replace('.', ',')
 
 
+def _booking_presets(intention):
+    """Plano da busca (por valor, tempo ou autonomia) já preenchido no assistente de recarga."""
+    intention = intention or {}
+    if intention.get('mode') == 'value' and intention.get('max_cost'):
+        return {'by':'value','amount':str(intention['max_cost']).replace('.',',')}
+    if intention.get('mode') == 'autonomy' and intention.get('km'):
+        return {'by':'autonomy','amount':intention['km']}
+    if intention.get('mode') == 'time' and intention.get('minutes'):
+        return {'by':'time','amount':intention['minutes']}
+    return {}
+
+
 def _filter_summary(connector_type, available_only, max_price_per_kwh, sort, intention):
     """Active filters in reading order (one entry per filter: the badge shows how many)."""
     summary = []
@@ -304,15 +316,17 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                     ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=16)),
                     D.section_label('Conectores'),ft.Column(group_rows,spacing=16.5),
                     ft.Container(height=6.5),route_row,
-                    D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1),height=55,size=16),
-                    ft.Container(height=40),  # o restante fica abaixo da dobra, como na referência
-                    *amenity_row,
-                    card(ft.Row([
-                        ft.Icon(ft.Icons.LOCATION_ON_OUTLINED,color=theme.RED,size=23),
-                        ft.Text('Para iniciar, você precisa estar no ponto. Leia o código #F atual na tela do equipamento; ele muda periodicamente.',
-                                size=13,color=theme.TEXT_COLOR,expand=True),
-                    ],spacing=12),padding=14),
-                    ft.Text('Pontos de recarga',size=20,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR,font_family='BarlowCondensedBold')]
+                    # Dois caminhos, cada um com o seu assistente (conector, cobrança, potência e pagamento):
+                    # reservar segura o ponto por 15 min até a chegada; carregar agora começa no ponto (código #F).
+                    ft.Row([D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1,kind='reserve',
+                                                                          **_booking_presets(intention)),
+                                             height=55,size=15,expand=True),
+                            D.secondary_button('Carregar agora',app.link('booking',station_id=station_id,step=1,kind='now',
+                                                                         **_booking_presets(intention)),
+                                               height=55,size=15,expand=True)],spacing=10),
+                    D.txt('Reservar guarda o ponto por 15 minutos até você chegar. Carregar agora é para quem já está no posto.',
+                          11,'regular',theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
+                    *amenity_row]
         # The reference puts the map right under the title.
         map_slot_index = 2
     else:
@@ -381,8 +395,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     result_count = ft.Text(size=12,color=theme.GRAY_TEXT,visible=not bool(station_id))
     listing = ft.Column(spacing=16 if not station_id else 10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     if station_id:
+        # Sem lista de pontos aqui: a escolha do conector acontece no assistente (sem repetir a tela).
         controls.insert(map_slot_index-1,map_section)
-        controls.append(listing)
     list_heading = D.txt('Perto de Você',15,'bold')
     page_head = D.txt('Encontre uma estação',15,'bold')
     page_head_box = ft.Container(page_head,margin=ft.Margin(left=0,top=2,right=0,bottom=0))

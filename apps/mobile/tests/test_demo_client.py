@@ -125,7 +125,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.client.request('GET', 'reservations/current'))
         self.assertEqual((await self.client.request('POST', f"reservations/{reservation['id']}/cancel"))['status'], 'cancelled')
         await self.client.request('POST', 'reservations', {'connector_id': self.point['id']}, key='new-reservation')
-        self.clock.advance(602)
+        self.clock.advance(15 * 60 + 2)  # reserva segura o ponto por 15 min, como a API
         self.assertIsNone(await self.client.request('GET', 'reservations/current'))
         points = (await self.client.request('GET', f"stations/{self.station['id']}"))['connectors']
         self.assertTrue(next(p for p in points if p['id'] == self.point['id'])['available'])

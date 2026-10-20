@@ -45,7 +45,10 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             first_station = (await app.api.request('GET','stations'))['items'][0]
             screen = await stations.build(app,station_id=first_station['id'])
             self.assertIn('Reservar estação',texts(screen))
-            await click(screen,'Reservar para chegar')(None)
+            self.assertIn('Carregar agora',texts(screen))
+            # A reserva em si é criada pelo assistente (test_booking); aqui segue a jornada até o histórico.
+            point = next(p for p in first_station['connectors'] if p.get('available'))
+            await app.api.request('POST','reservations',{'connector_id':point['id']},key='demo-reserve')
             reservation_screen = await reservations.build(app,detail=True)
             self.assertIn('Aguardando confirmação simulada',texts(reservation_screen))
             clock[0] += 2

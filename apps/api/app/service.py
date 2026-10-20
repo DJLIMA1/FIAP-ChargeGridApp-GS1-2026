@@ -1,5 +1,6 @@
 import hashlib
 import json
+import secrets
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -19,6 +20,19 @@ from .models import (
     now,
 )
 from .session_events import record as record_session_event
+
+# Tempo que o ponto fica guardado depois que o posto confirma a reserva (o app mostra o mesmo prazo).
+RESERVATION_MINUTES = 15
+# Código público curto do ponto: "CG-" + 4 caracteres sem 0/O e 1/I (fáceis de ler e ditar).
+PUBLIC_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def new_public_code(db, length=4):
+    """Código público curto e único (``CG-7KQ2``)."""
+    while True:
+        code = "CG-" + "".join(secrets.choice(PUBLIC_CODE_ALPHABET) for _ in range(length))
+        if not db.scalar(select(Connector.id).where(Connector.public_code == code)):
+            return code
 
 RES_ACTIVE = ("pending_device", "confirmed", "cancelling")
 SESSION_ACTIVE = ("starting", "charging", "stopping")

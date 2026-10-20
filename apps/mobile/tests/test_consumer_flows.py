@@ -253,10 +253,11 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(stations, 'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app,station_id=STATION['id'])
         self.assertNotIn('Endereço para buscar',fields(screen))
-        self.assertIn('CG-ONE · Tipo 2',texts(screen))
-        await click(screen,'Já estou aqui: iniciar')(None)
-        self.assertEqual(app.go.call_args.kwargs['point_context'],CONTEXT)
-        self.assertEqual(app.go.call_args.kwargs['public_code'],'CG-ONE')
+        self.assertNotIn('CG-ONE · Tipo 2',texts(screen))  # o conector é escolhido no assistente
+        await next(item.on_click for item in descendants(screen) if isinstance(item, ft.Container) and item.on_click
+                   and isinstance(item.content, ft.Row) and 'Carregar agora' in texts(item))(None)
+        self.assertEqual((app.go.call_args.args[0], app.go.call_args.kwargs),
+                         ('booking', {'station_id': STATION['id'], 'step': 1, 'kind': 'now'}))
 
     async def test_station_poll_updates_pagination_even_when_items_unchanged(self):
         app = HandlerApp()
