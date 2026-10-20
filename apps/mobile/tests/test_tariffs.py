@@ -50,15 +50,32 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.app.api.close()
 
-    async def test_overview_shows_live_demand_base_tariff_and_rules(self):
+    async def test_overview_shows_current_and_base_tariff_with_reason_and_hides_the_math(self):
         screen = await tariffs.build(self.app, station_id=self.sid)
         copy = texts(screen)
-        for label in ('Tarifas', 'Demanda agora', 'Baixa', 'Preço agora: R$ 1,89/kWh', 'Ocupação agora',
-                      'Recargas na última hora', 'Tarifa base', 'Tarifa por demanda', 'Até +50%',
-                      'Horário de pico', '18:00–21:00 · Todos os dias', 'Taxa de rotatividade'):
+        for label in ('Tarifa', 'Tarifa atual', 'R$ 1,89/kWh', 'Tarifa base: R$ 1,89/kWh', 'Preço normal', 'Detalhes',
+                      'Tarifa base', 'Tarifação por horário', 'Nenhum horário', 'Tarifa por demanda', 'Até +50%',
+                      'Taxa de rotatividade'):
             self.assertIn(label, copy)
+        for hidden in ('Ocupação agora', 'Recargas na última hora', 'Pressão de demanda', 'Horário de pico'):
+            self.assertNotIn(hidden, copy)
+        self.assertEqual(number_fields(screen), [])  # sem campos na visão geral
         self.assertEqual(self.app.poll[1], tariffs.REFRESH_SECONDS)
-        # Tarifa base: campo numérico com R$ … /kWh (não um texto livre).
+        toggle = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'tariff-details')
+        toggle.on_click(None)
+        copy = texts(screen)
+        for label in ('Como chegamos a este valor', 'Tarifa base R$ 1,89 × demanda 1× = R$ 1,89 por kWh',
+                      'Ocupação agora', 'Pressão de demanda', 'Tarifação por horário Nenhum horário'):
+            self.assertIn(label, copy)
+        await self.app.poll[0]()  # a atualização de 30 s mantém os detalhes abertos
+        self.assertIn('Como chegamos a este valor', texts(screen))
+        opened = await tariffs.build(self.app, station_id=self.sid, details=True)
+        self.assertIn('Ocupação agora', texts(opened))
+        legacy = await tariffs.build(self.app, station_id=self.sid, page='peak')  # link antigo
+        self.assertIn('Tarifa atual', texts(legacy))
+
+    async def test_base_tariff_subpage_uses_numeric_fields(self):
+        screen = await tariffs.build(self.app, station_id=self.sid, page='base')
         field = number_fields(screen)[0]
         self.assertEqual((field.value, field.prefix.value.strip(), field.suffix.value.strip()), ('1,89', 'R$', '/kWh'))
         field.value = '2,10'
@@ -72,6 +89,7 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((field.value, field.prefix.value.strip(), field.suffix.value.strip()), ('50', 'até +', '%'))
         self.assertIn('Simulação (4 conectores)', texts(screen))
         self.assertIn('1,4×  R$ 2,65/kWh', texts(screen))  # lotado com procura em alta, teto de 50%
+        self.assertNotIn('pico', texts(screen))
         field.value = '20'
         field.on_change(None)
         self.assertNotIn('1,4×', texts(screen))
@@ -82,15 +100,82 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
         await button(screen, 'Salvar regra').on_click(None)
         self.assertIn('0% a 100%', texts(screen))
 
-    async def test_peak_days_toggle_and_rotation_fields(self):
-        screen = await tariffs.build(self.app, station_id=self.sid, page='peak')
-        chips = [c for c in descendants(screen) if isinstance(c, ft.Container) and c.on_click
-                 and isinstance(c.content, ft.Text) and c.content.value in ('Sáb', 'Dom')]
-        for chip in chips:
-            chip.on_click(None)
-        await button(screen, 'Salvar regra').on_click(None)
+    async def _pick(self, screen, label, value):
+        box = next(c for c in descendants(screen) if getattr(c, 'data', None) == f'time-{label}')
+        await box.on_click(None)
+        self.app.dialog.on_change(SimpleNamespace(control=SimpleNamespace(value=value)))
+
+    async def test_schedule_interval_is_added_edited_validated_and_removed(self):
+        from datetime import time
+        listing = await tariffs.build(self.app, station_id=self.sid, page='schedule')
+        self.assertIn('Nenhum horário cadastrado', texts(listing))
+        editor = await tariffs.build(self.app, station_id=self.sid, page='schedule', interval='new')
+        self.assertIn('Novo horário', texts(editor))
+        await self._pick(editor, 'Início', time(22, 0))
+        await self._pick(editor, 'Fim', time(6, 0))
+        for chip in [c for c in descendants(editor) if getattr(c, 'data', None) in ('day-5', 'day-6')]:
+            chip.on_click(None)  # Seg a Sex já vêm marcados; marca Sáb e Dom
+        prices = number_fields(editor)  # um campo por conector, já com a tarifa base
+        self.assertEqual([(f.value, f.prefix.value.strip(), f.suffix.value.strip()) for f in prices][0],
+                         ('1,89', 'R$', '/kWh'))
+        for field in prices:
+            field.value = '1,20'
+        await button(editor, 'Salvar horário').on_click(None)
         saved = await self.app.api.request('GET', f'stations/{self.sid}/pricing')
-        self.assertEqual(saved['rules']['peak']['days'], [0, 1, 2, 3, 4])
+        self.assertEqual(saved['rules']['schedule']['intervals'],
+                         [{'start': '22:00', 'end': '06:00', 'days': [0, 1, 2, 3, 4, 5, 6],
+                           'prices': {p['id']: '1.2000' for p in saved['connectors']}}])
+        listing = await tariffs.build(self.app, station_id=self.sid, page='schedule')
+        self.assertIn('22:00–06:00', texts(listing))
+        self.assertIn('Todos os dias · R$ 1,20/kWh', texts(listing))
+        overview = await tariffs.build(self.app, station_id=self.sid)
+        self.assertIn('1 horário', texts(overview))
+        # Um segundo horário que se sobrepõe: a mensagem da API aparece no editor.
+        second = await tariffs.build(self.app, station_id=self.sid, page='schedule', interval='new')
+        await self._pick(second, 'Início', time(5, 0))
+        await self._pick(second, 'Fim', time(8, 0))
+        await button(second, 'Salvar horário').on_click(None)
+        self.assertIn('se sobrepõem', texts(second))
+        await self._pick(second, 'Fim', time(5, 0))
+        await button(second, 'Salvar horário').on_click(None)
+        self.assertIn('devem ser diferentes', texts(second))
+        edit = await tariffs.build(self.app, station_id=self.sid, page='schedule', interval=0)
+        self.assertEqual(number_fields(edit)[0].value, '1,20')
+        await button(edit, 'Remover horário').on_click(None)
+        saved = await self.app.api.request('GET', f'stations/{self.sid}/pricing')
+        self.assertEqual(saved['rules']['schedule']['intervals'], [])
+
+    async def test_active_interval_and_demand_show_in_the_reason_and_details(self):
+        point = (await self.app.api.request('GET', f'stations/{self.sid}/pricing'))['connectors'][0]
+        whole_week = [{'start': start, 'end': end, 'days': [0, 1, 2, 3, 4, 5, 6], 'prices': {point['id']: '1.20'}}
+                      for start, end in (('00:00', '12:00'), ('12:00', '00:00'))]
+        await self.app.api.request('PUT', f'stations/{self.sid}/pricing', {'schedule': {'intervals': whole_week}})
+        screen = await tariffs.build(self.app, station_id=self.sid, details=True)
+        copy = texts(screen)
+        self.assertIn('R$ 1,20/kWh', copy)
+        self.assertIn('Tarifa base: R$ 1,89/kWh', copy)
+        self.assertRegex(copy, r'Horário (00:00–12:00|12:00–00:00)')
+        self.assertRegex(copy, r'Tarifa do horário \S+ R\$ 1,20 × demanda 1× = R\$ 1,20 por kWh')
+        real = self.app.api._demand
+        self.app.api._demand = lambda station: {**real(station), 'multiplier': '1.30', 'level': 'high',
+                                                'level_label': 'Alta', 'increase_percent': 30,
+                                                'reason': 'demand_schedule',
+                                                'reason_label': 'Alta demanda · Horário 12:00–00:00'}
+        screen = await tariffs.build(self.app, station_id=self.sid)
+        self.assertIn('Alta demanda · Horário 12:00–00:00', texts(screen))
+        self.assertIn('R$ 1,56/kWh', texts(screen))  # 1,20 × 1,3
+        # Status da tarifação por horário: inativa volta à tarifa base.
+        listing = await tariffs.build(self.app, station_id=self.sid, page='schedule')
+        inactive = next(c for c in descendants(listing) if isinstance(c, ft.Container) and c.on_click
+                        and isinstance(c.content, ft.Text) and c.content.value == 'Inativa')
+        await inactive.on_click(None)
+        await button(listing, 'Salvar regra').on_click(None)
+        self.app.api._demand = real
+        saved = await self.app.api.request('GET', f'stations/{self.sid}/pricing')
+        self.assertFalse(saved['rules']['schedule']['enabled'])
+        self.assertEqual(saved['connectors'][0]['current_price_per_kwh'], '1.8900')
+
+    async def test_rotation_fields(self):
         rotation = await tariffs.build(self.app, station_id=self.sid, page='rotation')
         after, every, amount = number_fields(rotation)
         self.assertEqual([after.suffix.value.strip(), every.suffix.value.strip(), amount.prefix.value.strip()],
@@ -123,4 +208,30 @@ class DriverDynamicPriceTests(unittest.IsolatedAsyncioTestCase):
             'presence_code': '#F12345', 'public_code': point['public_code'], 'max_duration_minutes': 30}, key='surge')
         self.assertEqual((session['demand_multiplier'], session['price_per_kwh'], session['base_price_per_kwh']),
                          ('1.30', point['dynamic_price_per_kwh'], point['price_per_kwh']))
+        await app.api.close()
+
+    async def test_schedule_price_without_demand_is_not_labelled_as_demand(self):
+        from chargegrid_app.ui.point_summary import point_context, point_summary
+
+        station_settings.reset_demo()
+        app = await demo_app()
+        sid = (await app.api.request('GET', 'operator/stations'))['items'][0]['id']
+        points = (await app.api.request('GET', f'stations/{sid}/pricing'))['connectors']
+        whole_week = [{'start': start, 'end': end, 'days': [0, 1, 2, 3, 4, 5, 6],
+                       'prices': {p['id']: '1.20' for p in points}} for start, end in (('00:00', '12:00'), ('12:00', '00:00'))]
+        await app.api.request('PUT', f'stations/{sid}/pricing', {'schedule': {'intervals': whole_week}})
+        station = await app.api.request('GET', f'stations/{sid}')
+        point = station['connectors'][0]
+        self.assertEqual((point['current_base_price_per_kwh'], point['dynamic_price_per_kwh']), ('1.2000', '1.2000'))
+        self.assertEqual(station['demand']['reason'], 'schedule')
+        context = point_context(station, point)
+        self.assertNotIn('demand_multiplier', context)
+        copy = texts(point_summary(context))
+        self.assertIn('(tarifa do horário)', copy)
+        self.assertNotIn('demanda 1×', copy)
+        # Recarga sem reserva trava a base do horário.
+        session = await app.api.request('POST', 'charging-sessions', {
+            'presence_code': '#F12345', 'public_code': point['public_code'], 'max_duration_minutes': 30}, key='night')
+        self.assertEqual((session['base_price_per_kwh'], session['price_per_kwh'], session['demand_multiplier']),
+                         ('1.2000', '1.2000', '1.00'))
         await app.api.close()

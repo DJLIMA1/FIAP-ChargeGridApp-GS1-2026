@@ -1,5 +1,7 @@
 """Public point identity shared by selection, reservations and charging."""
 
+from decimal import Decimal, InvalidOperation
+
 import flet as ft
 
 from ..api_client import ApiError
@@ -104,9 +106,18 @@ def journey_summary(record, *, reservation=False, demo=False):
     return card(controls)
 
 
+def _surge(multiplier):
+    """Multiplicador de demanda acima de 1× (``'1.00'``/``None`` não é acréscimo)."""
+    try:
+        return multiplier is not None and Decimal(str(multiplier)) > 1
+    except (InvalidOperation, ValueError):
+        return False
+
+
 def point_context(station, connector):
     """Contexto do ponto para o assistente de início. ``price_per_kwh`` é o preço que o motorista paga
-    agora (tarifa base × demanda); ``base_price_per_kwh`` aparece quando a demanda mudou o preço."""
+    agora (tarifa base do horário × demanda); ``base_price_per_kwh`` aparece quando o horário ou a
+    demanda mudou o preço, e ``demand_multiplier`` só quando a demanda mudou."""
     result = {
         'station_id': station['id'],
         'station_name': station['name'],
@@ -119,7 +130,9 @@ def point_context(station, connector):
     charged = connector.get('dynamic_price_per_kwh')
     if charged is not None and str(charged) != str(connector.get('price_per_kwh')):
         result['connector'].update(price_per_kwh=charged, base_price_per_kwh=connector.get('price_per_kwh'))
-        result['demand_multiplier'] = (station.get('demand') or {}).get('multiplier')
+        multiplier = (station.get('demand') or {}).get('multiplier')
+        if _surge(multiplier):
+            result['demand_multiplier'] = multiplier
     return result
 
 
@@ -145,10 +158,13 @@ def point_summary(data, heading='Ponto selecionado'):
         # the immutable session snapshot describes that session's tariff.
         terms.append(f"Tarifa da sessão: {money(data['price_per_kwh'])}/kWh")
     elif connector.get('price_per_kwh') is not None:
-        dynamic = connector.get('base_price_per_kwh') is not None and data.get('demand_multiplier')
-        terms.append(f"{money(connector['price_per_kwh'])}/kWh"
-                     + (f" (demanda {str(data['demand_multiplier']).rstrip('0').rstrip('.').replace('.', ',')}×)"
-                        if dynamic else ''))
+        adjusted = connector.get('base_price_per_kwh') is not None
+        note = ''
+        if adjusted and _surge(data.get('demand_multiplier')):
+            note = f" (demanda {str(data['demand_multiplier']).rstrip('0').rstrip('.').replace('.', ',')}×)"
+        elif adjusted:
+            note = ' (tarifa do horário)'  # tarifação por horário do posto, sem acréscimo de demanda
+        terms.append(f"{money(connector['price_per_kwh'])}/kWh{note}")
     if session_terms and data.get('max_duration_minutes') is not None:
         terms.append(f"limite de {data['max_duration_minutes']} min")
     elif connector.get('max_duration_minutes') is not None:

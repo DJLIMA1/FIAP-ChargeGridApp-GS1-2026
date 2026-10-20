@@ -1,4 +1,4 @@
-"""Tarifa dinâmica por demanda (estilo "preço dinâmico" de app de corrida).
+"""Tarifa do posto: base por horário × demanda (estilo "preço dinâmico" de app de corrida).
 
 O dono do posto só define dados base; o cálculo é do ChargeGrid e é o mesmo na API,
 na conta demo e no app. Tudo determinístico, stdlib e ``Decimal``.
@@ -7,10 +7,16 @@ Dados base do dono (``rules``)
 ------------------------------
 * ``demand``: ``enabled``, ``max_increase_percent`` (teto do acréscimo, 0–100 %) e
   ``sensitivity`` (``low`` | ``medium`` | ``high``: quão cedo o preço reage).
-* ``peak``: janela de maior procura na região (``start``/``end`` ``HH:MM`` e ``days``,
-  0 = segunda). É um sinal do cálculo, não um valor fixo.
+* ``schedule``: tarifação por horário. ``intervals`` = ``[{start, end, days, prices}]``:
+  ``start``/``end`` ``HH:MM``, ``days`` (0 = segunda) é o dia em que o horário **começa**
+  (``Seg 22:00–06:00`` vai de segunda à noite até terça de manhã) e ``prices`` é a tarifa
+  base de cada conector nesse horário (``{connector_id: "1.2000"}``). Fora dos horários,
+  ou para um conector sem preço no horário, vale a tarifa base do conector. Horários não
+  podem se sobrepor.
 * ``rotation``: taxa de ocupação após a recarga (tolerância, intervalo e valor). Fica
   registrada com as regras; não entra no preço por kWh.
+* ``peak`` (legado): o antigo "horário de pico". Continua aceito e devolvido para apps
+  antigos, mas não entra mais no cálculo (``peak_now`` é sempre ``False``).
 
 Sinais (``signals``), medidos pelo servidor em cada posto
 ---------------------------------------------------------
@@ -20,7 +26,7 @@ Sinais (``signals``), medidos pelo servidor em cada posto
   ponderada pelo tempo — suaviza o preço para ele não oscilar a cada recarga;
 * ``starts_60m``: recargas iniciadas na última hora; ``baseline_60m``: média de
   inícios no mesmo dia da semana e horário nas 4 semanas anteriores;
-* ``local_now``: horário local do posto (janela de pico).
+* ``local_now``: horário local do posto (tarifação por horário).
 
 Cálculo
 -------
@@ -30,11 +36,11 @@ Cálculo
    Laplace: poucas recargas não disparam o preço). 1× = normal; 3× ou mais = pressão 1.
 3. Fila: posto lotado com reserva aguardando soma 0,15.
 4. Pressão ``p = 0,65·ocupação + 0,35·tendência + fila`` (0–1).
-5. Pico do dono: dentro da janela, ``p`` é amplificada (``1,25·p + 0,10`` se houver procura).
-   Com o posto vazio, o pico sozinho não muda o preço.
-6. ``p`` é curvada pela sensibilidade (``p^1,6`` baixa, ``p`` média, ``p^0,6`` alta).
-7. Multiplicador ``1 + teto·p``, arredondado para baixo em passos de 0,05×; abaixo de
-   1,05× fica 1,00× (sem acréscimo por ruído). Preço = base × multiplicador.
+5. ``p`` é curvada pela sensibilidade (``p^1,6`` baixa, ``p`` média, ``p^0,6`` alta).
+6. Multiplicador ``1 + teto·p``, arredondado para baixo em passos de 0,05×; abaixo de
+   1,05× fica 1,00× (sem acréscimo por ruído).
+7. Preço = base do horário (ou base do conector) × multiplicador. O motivo exibido
+   (``reason_label``) é "Alta demanda", "Horário 22:00–06:00", os dois ou "Preço normal".
 
 O preço é travado quando o motorista reserva (vale até a recarga) ou, sem reserva,
 quando a recarga começa: mudanças posteriores não alteram uma recarga em curso.
@@ -48,7 +54,8 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 DEFAULT_RULES = {
     "demand": {"enabled": True, "max_increase_percent": 50, "sensitivity": "medium"},
-    "peak": {"enabled": True, "start": "18:00", "end": "21:00", "days": [0, 1, 2, 3, 4, 5, 6]},
+    "schedule": {"enabled": True, "intervals": []},
+    "peak": {"enabled": True, "start": "18:00", "end": "21:00", "days": [0, 1, 2, 3, 4, 5, 6]},  # legado
     "rotation": {"enabled": True, "start_after_min": 30, "interval_min": 10, "amount": "0.20"},
 }
 SENSITIVITY = {"low": Decimal("1.6"), "medium": Decimal("1"), "high": Decimal("0.6")}
@@ -62,6 +69,10 @@ LEVELS = (  # (pressão mínima, chave, rótulo)
 STEP = Decimal("0.05")
 WINDOW_MINUTES = 15
 DAY_LABELS = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+MAX_INTERVALS = 12
+MAX_PRICE = Decimal(100)
+DAY = 24 * 60
+WEEK = 7 * DAY
 
 
 def _dec(value) -> Decimal:
@@ -91,7 +102,7 @@ def clean_rules(raw) -> dict:
         if isinstance(raw.get(key), dict):
             rules[key].update({field: raw[key][field] for field in rules[key] if field in raw[key]})
     demand, peak, rotation = rules["demand"], rules["peak"], rules["rotation"]
-    for rule in (demand, peak, rotation):
+    for rule in (demand, peak, rotation, rules["schedule"]):
         if not isinstance(rule["enabled"], bool):
             raise ValueError("Status da regra inválido.")
     try:
@@ -123,7 +134,92 @@ def clean_rules(raw) -> dict:
     if not amount.is_finite() or not Decimal(0) <= amount <= Decimal(100):
         raise ValueError("O valor da rotatividade vai de R$ 0,00 a R$ 100,00.")
     rotation["amount"] = str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    rules["schedule"] = _clean_schedule(rules["schedule"])
     return rules
+
+
+def _minutes(text: str) -> int:
+    hour, minute = text.split(":")
+    return int(hour) * 60 + int(minute)
+
+
+def window_label(interval) -> str:
+    return f"{interval['start']}–{interval['end']}"
+
+
+def _segments(interval):
+    """Trechos ``[início, fim)`` em minutos da semana (0 = segunda 00:00) de um horário."""
+    start = _minutes(interval["start"])
+    length = (_minutes(interval["end"]) - start) % DAY
+    result = []
+    for day in interval["days"]:
+        begin = day * DAY + start
+        finish = begin + length
+        result += [(begin, finish)] if finish <= WEEK else [(begin, WEEK), (0, finish - WEEK)]
+    return result
+
+
+def _clean_interval(raw) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("Horário da tarifa inválido.")
+    start, end = _time(raw.get("start")), _time(raw.get("end"))
+    if start == end:
+        raise ValueError("O início e o fim de cada horário devem ser diferentes.")
+    days = raw.get("days")
+    if not isinstance(days, list) or not all(
+            isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in days):
+        raise ValueError("Dias do horário inválidos.")
+    if not days:
+        raise ValueError("Escolha ao menos um dia para cada horário.")
+    prices = raw.get("prices")
+    if not isinstance(prices, dict) or not prices:
+        raise ValueError("Informe a tarifa de cada horário.")
+    cleaned = {}
+    for connector_id, value in prices.items():
+        try:
+            amount = _dec(value)
+        except (TypeError, ValueError, InvalidOperation):
+            amount = Decimal("NaN")
+        if isinstance(value, bool) or not amount.is_finite() or not Decimal(0) <= amount <= MAX_PRICE:
+            raise ValueError("A tarifa de cada horário vai de R$ 0,00 a R$ 100,00.")
+        cleaned[str(connector_id)] = str(amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    return {"start": start, "end": end, "days": sorted(set(days)), "prices": cleaned}
+
+
+def _clean_schedule(schedule) -> dict:
+    intervals = schedule.get("intervals")
+    if not isinstance(intervals, list):
+        raise ValueError("Horários da tarifa inválidos.")
+    if len(intervals) > MAX_INTERVALS:
+        raise ValueError(f"Cadastre no máximo {MAX_INTERVALS} horários.")
+    intervals = sorted((_clean_interval(item) for item in intervals),
+                       key=lambda item: (item["days"][0], item["start"], item["end"]))
+    for index, first in enumerate(intervals):
+        for second in intervals[index + 1:]:
+            overlap = [max(a, c) for a, b in _segments(first) for c, d in _segments(second) if a < d and c < b]
+            if overlap:
+                raise ValueError(f"Os horários {window_label(first)} e {window_label(second)} se sobrepõem "
+                                 f"({DAY_LABELS[min(overlap) // DAY]}).")
+    return {"enabled": schedule["enabled"], "intervals": intervals}
+
+
+def merge_rules(stored, body, connector_ids) -> dict:
+    """Regras de um PUT sobre as salvas, campo a campo (o que faltar continua como está).
+
+    Preços de horário de conectores fora de ``connector_ids`` (outro posto) são descartados.
+    O resultado ainda passa por ``clean_rules``.
+    """
+    merged = deepcopy(stored)
+    for key, value in (body if isinstance(body, dict) else {}).items():
+        merged[key] = ({**merged[key], **deepcopy(value)} if isinstance(value, dict) and isinstance(merged.get(key), dict)
+                       else deepcopy(value))
+    schedule = merged.get("schedule")
+    intervals = schedule.get("intervals") if isinstance(schedule, dict) else None
+    allowed = {str(item) for item in connector_ids}
+    for interval in intervals if isinstance(intervals, list) else ():
+        if isinstance(interval, dict) and isinstance(interval.get("prices"), dict):
+            interval["prices"] = {key: value for key, value in interval["prices"].items() if str(key) in allowed}
+    return merged
 
 
 def stored_rules(raw) -> dict:
@@ -134,17 +230,41 @@ def stored_rules(raw) -> dict:
         return deepcopy(DEFAULT_RULES)
 
 
-def in_peak(rule, local_now: datetime | None) -> bool:
-    if not rule or not rule.get("enabled") or local_now is None or local_now.weekday() not in rule.get("days", []):
-        return False
+def active_interval(rules, local_now: datetime | None) -> dict | None:
+    """Horário da tarifação vigente em ``local_now`` (com ``index``) ou ``None``."""
+    schedule = (rules or {}).get("schedule") or {}
+    if not schedule.get("enabled") or local_now is None:
+        return None
+    minute = local_now.weekday() * DAY + local_now.hour * 60 + local_now.minute
+    for index, interval in enumerate(schedule.get("intervals") or []):
+        if any(begin <= minute < end for begin, end in _segments(interval)):
+            return {**interval, "index": index}
+    return None
 
-    def minutes(text):
-        hour, minute = text.split(":")
-        return int(hour) * 60 + int(minute)
-    start, end, current = minutes(rule["start"]), minutes(rule["end"]), local_now.hour * 60 + local_now.minute
-    if start == end:
-        return False
-    return start <= current < end if start < end else (current >= start or current < end)
+
+def base_now(interval, connector_id, base) -> Decimal:
+    """Tarifa base do conector agora: a do horário vigente ou, sem ela, a base do conector."""
+    price = ((interval or {}).get("prices") or {}).get(str(connector_id))
+    return _dec(price if price is not None else base).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+def connector_price(status, connector_id, base) -> tuple[Decimal, Decimal]:
+    """``(base agora, preço agora)`` de um conector a partir de ``demand_status``."""
+    current = base_now(status.get("schedule_now"), connector_id, base)
+    return current, dynamic_price(current, status["multiplier"])
+
+
+def tariff_reason(multiplier, level, interval) -> tuple[str, str]:
+    """Motivo da tarifa atual: ``(chave, rótulo)`` — demanda, horário, os dois ou preço normal."""
+    surge = _dec(multiplier) > 1
+    demand = "Demanda muito alta" if level == "very_high" else "Alta demanda"
+    if surge and interval:
+        return "demand_schedule", f"{demand} · Horário {window_label(interval)}"
+    if surge:
+        return "demand", demand
+    if interval:
+        return "schedule", f"Horário {window_label(interval)}"
+    return "normal", "Preço normal"
 
 
 def busy_fraction(intervals, now: datetime, connectors: int, minutes: int = WINDOW_MINUTES) -> Decimal:
@@ -179,7 +299,7 @@ def demand_status(rules, signals) -> dict:
     busy_15m = _clamp(_dec(signals.get("busy_15m") or 0))
     starts = max(0, int(signals.get("starts_60m") or 0))
     baseline = max(Decimal(0), _dec(signals.get("baseline_60m") or 0))
-    peak_now = in_peak(rules["peak"], signals.get("local_now"))
+    interval = active_interval(rules, signals.get("local_now"))
 
     occupancy_now = _clamp(Decimal(in_use + reserved) / connectors) if connectors else Decimal(0)
     utilization = occupancy_now * Decimal("0.6") + busy_15m * Decimal("0.4")
@@ -188,8 +308,6 @@ def demand_status(rules, signals) -> dict:
     trend_pressure = _clamp((trend - 1) / 2)
     queue = Decimal("0.15") if connectors and in_use + reserved >= connectors and reserved else Decimal(0)
     raw = _clamp(occupancy_pressure * Decimal("0.65") + trend_pressure * Decimal("0.35") + queue)
-    if peak_now and raw > 0:
-        raw = _clamp(raw * Decimal("1.25") + Decimal("0.10"))
     shaped = _clamp(Decimal(str(float(raw) ** float(SENSITIVITY[demand["sensitivity"]])))) if raw else Decimal(0)
 
     cap = Decimal(demand["max_increase_percent"]) / 100
@@ -210,9 +328,8 @@ def demand_status(rules, signals) -> dict:
          "value": f"{int((busy_15m * 100).to_integral_value(rounding=ROUND_HALF_UP))}%", "detail": None},
         {"key": "trend", "label": "Recargas na última hora",
          "value": str(starts), "detail": f"normal neste horário: {baseline.quantize(Decimal('0.1'))}".replace(".", ",")},
-        {"key": "peak", "label": "Seu horário de pico",
-         "value": "Agora" if peak_now else "Fora do horário", "detail": None},
     ]
+    reason, reason_label = tariff_reason(multiplier, level, interval)
     return {
         "enabled": demand["enabled"],
         "multiplier": str(multiplier),
@@ -221,7 +338,10 @@ def demand_status(rules, signals) -> dict:
         "pressure": int((shaped * 100).to_integral_value(rounding=ROUND_HALF_UP)),
         "level": level,
         "level_label": label,
-        "peak_now": peak_now,
+        "peak_now": False,  # legado (app 0.6.8): o horário de pico não entra mais no cálculo
+        "schedule_now": interval,
+        "reason": reason,
+        "reason_label": reason_label,
         "factors": factors,
     }
 

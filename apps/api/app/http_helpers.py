@@ -166,7 +166,8 @@ def station_rows(db, stations, viewer=None):
         result.pop("presence_secret", None)
         result.pop("pricing", None)  # dados base do dono: GET /stations/{id}/pricing
         status = demand[station.id]
-        result["demand"] = {key: status[key] for key in ("multiplier", "level", "level_label", "increase_percent")}
+        result["demand"] = {key: status[key] for key in ("multiplier", "level", "level_label", "increase_percent",
+                                                          "reason", "reason_label")}
         result["latitude"] = float(station.latitude)
         result["longitude"] = float(station.longitude)
         points = by_station.get(station.id, [])
@@ -179,8 +180,10 @@ def station_rows(db, stations, viewer=None):
             _render_point(db, point, station, *state, power["connectors"], station_energy) for point in points
         ]
         for point in result["connectors"]:
-            # Preço que o motorista paga agora (base × demanda); travado ao reservar ou iniciar.
-            point["dynamic_price_per_kwh"] = str(pricing.dynamic_price(point["price_per_kwh"], status["multiplier"]))
+            # Preço que o motorista paga agora (base do horário × demanda); travado ao reservar ou iniciar.
+            current, price = pricing.connector_price(status, point["id"], point["price_per_kwh"])
+            point["current_base_price_per_kwh"] = str(current)
+            point["dynamic_price_per_kwh"] = str(price)
         results.append(result)
     return results
 
@@ -202,15 +205,20 @@ def point_context(db, connector):
 
 
 def reservation_row(db, reservation):
+    from .modules.pricing.service import scheduled_base  # evita import circular
+
     result = row(reservation)
     if result:
-        result.update(point_context(db, db.get(Connector, reservation.connector_id)))
-        multiplier = reservation.demand_multiplier
-        if multiplier is not None and Decimal(multiplier) != 1:
-            # O ponto da reserva mostra o preço travado ao reservar (base × multiplicador).
+        point = db.get(Connector, reservation.connector_id)
+        result.update(point_context(db, point))
+        multiplier = Decimal(reservation.demand_multiplier) if reservation.demand_multiplier is not None else Decimal(1)
+        locked = pricing.dynamic_price(scheduled_base(db.get(Station, point.station_id), point, reservation.created_at),
+                                       multiplier)
+        if locked != Decimal(point.price_per_kwh):
+            # O ponto da reserva mostra o preço travado ao reservar (base do horário × multiplicador).
             connector = result["connector"]
             connector["base_price_per_kwh"] = connector["price_per_kwh"]
-            connector["price_per_kwh"] = str(pricing.dynamic_price(connector["price_per_kwh"], multiplier))
+            connector["price_per_kwh"] = str(locked)
     return result
 
 

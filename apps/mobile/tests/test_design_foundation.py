@@ -79,6 +79,11 @@ class RouteContractTests(unittest.TestCase):
         self.assertEqual(parent_route('payout', {}, 'vendor'), ('home', {}))
         self.assertEqual(parent_route('tariffs', {'station_id': 's'}, 'vendor'), ('station_admin', {'station_id': 's'}))
         self.assertEqual(parent_route('tariffs', {}, 'vendor'), ('home', {}))
+        # Editor de horário -> lista de horários -> Tarifa -> posto.
+        self.assertEqual(parent_route('tariffs', {'station_id': 's', 'page': 'schedule', 'interval': 0}, 'vendor'),
+                         ('tariffs', {'station_id': 's', 'page': 'schedule'}))
+        self.assertEqual(parent_route('tariffs', {'station_id': 's', 'page': 'schedule'}, 'vendor'),
+                         ('tariffs', {'station_id': 's'}))
         self.assertEqual(parent_route('station_admin', {'station_id': 's', 'page': 'power'}, 'vendor'),
                          ('station_admin', {'station_id': 's'}))
         self.assertEqual(parent_route('station_admin', {'station_id': 's'}, 'vendor'), ('operator', {}))

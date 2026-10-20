@@ -52,34 +52,36 @@ No início, `soc_percent` (SoC inicial do carro), `battery_kwh` (capacidade úti
 
 Ao chegar a 100 % com a sessão ativa (energia derivada, equipamento ou `/soc`), a API faz o mesmo que uma parada solicitada: sessão `stopping`, `end_reason: "battery_full"` já registrado e um único `STOP` com `parameters.reason = "battery_full"`. Após a confirmação física a sessão termina `completed` com `end_reason: "battery_full"`, independentemente do motivo informado pelo equipamento. Chamadas repetidas não emitem nova parada. Detalhes do protocolo do equipamento em [esp32-protocol.md](esp32-protocol.md).
 
-## Tarifa dinâmica por demanda
+## Tarifa: base, por horário e por demanda
 
-O dono define só dados base; o cálculo é do ChargeGrid (`chargegrid_core.pricing`, o mesmo na API e na conta demo do app). `GET /stations/{id}/pricing` (dono) devolve `{rules, status, connectors}` e `PUT /stations/{id}/pricing` grava `rules` validadas (`422 invalid_pricing` com a mensagem em pt-BR):
+O dono define só dados base; o cálculo é do ChargeGrid (`chargegrid_core.pricing`, o mesmo na API e na conta demo do app). `GET /stations/{id}/pricing` (dono) devolve `{rules, status, connectors}`. `PUT /stations/{id}/pricing` grava `rules` validadas (`422 invalid_pricing` com a mensagem em pt-BR). O PUT é parcial: o corpo é aplicado campo a campo sobre as regras salvas, e o que não vier continua como está (o app 0.6.8 não conhece `schedule` e não o apaga).
 
 - `demand`: `enabled`, `max_increase_percent` (0–100) e `sensitivity` (`low`/`medium`/`high`);
-- `peak`: janela `start`/`end` (`HH:MM`) e `days` (0 = segunda). É um sinal do cálculo, não um valor fixo;
-- `rotation`: `start_after_min`, `interval_min` e `amount` da taxa de ocupação. Fica registrada; ainda não é cobrada automaticamente.
+- `schedule` (**tarifação por horário**): `enabled` e `intervals` (até 12) `[{start, end, days, prices}]`. `start`/`end` em `HH:MM`, diferentes. `days` (0 = segunda, ao menos um) é o dia em que o horário **começa**: `Seg 22:00–06:00` vai de segunda à noite até terça de manhã, e domingo à noite continua na segunda. `prices` é a tarifa base de cada conector nesse horário (`{connector_id: "1.2000"}`, R$ 0 a R$ 100). Preços de conectores de outro posto são descartados. Horários não podem se sobrepor ("Os horários 18:00–21:00 e 20:00–22:00 se sobrepõem (Sáb)."). Fora dos horários, com a tarifação inativa ou para um conector sem preço no horário, vale `connectors.price_per_kwh`;
+- `rotation`: `start_after_min`, `interval_min` e `amount` da taxa de ocupação. Fica registrada; ainda não é cobrada automaticamente;
+- `peak` (legado): o antigo "horário de pico". Continua aceito e devolvido para o app 0.6.8, mas **não entra mais no cálculo**; `status.peak_now` é sempre `false`. Regras antigas salvas no banco continuam válidas (sem `schedule`, vale o padrão: ativa e sem horários).
 
-**Sinais medidos pelo servidor em cada posto:** conectores publicados e online; recargas ativas e reservas; ocupação média dos últimos 15 min, ponderada pelo tempo; recargas iniciadas na última hora; média de inícios no mesmo dia da semana e horário nas 4 semanas anteriores; e o horário local (pico).
+**Sinais medidos pelo servidor em cada posto:** conectores publicados e online; recargas ativas e reservas; ocupação média dos últimos 15 min, ponderada pelo tempo; recargas iniciadas na última hora; média de inícios no mesmo dia da semana e horário nas 4 semanas anteriores; e o horário local (`America/Sao_Paulo`, para a tarifação por horário).
 
-**Cálculo:**
+**Cálculo da demanda:**
 1. Ocupação combinada = 60% a de agora + 40% a média.
 2. Abaixo de 50% de ocupação não há pressão.
 3. A tendência compara a última hora com a média histórica, com suavização de Laplace.
 4. Posto lotado com reserva aguardando soma pressão.
-5. O horário de pico amplifica a procura existente; com o posto vazio, não muda nada.
-6. A sensibilidade curva a pressão.
-7. Multiplicador = `1 + teto × pressão`, em passos de 0,05× para baixo. Abaixo de 1,05× fica 1×.
+5. A sensibilidade curva a pressão.
+6. Multiplicador = `1 + teto × pressão`, em passos de 0,05× para baixo. Abaixo de 1,05× fica 1×.
 
-`status` traz `multiplier`, `increase_percent`, `pressure` (0–100), `level` (`low`/`normal`/`high`/`very_high`) com `level_label`, `peak_now` e `factors`, os valores exibidos ao dono.
+**Preço:** tarifa base do horário (ou base do conector) × multiplicador. O teto da demanda vale sobre a base do horário.
 
-**Para o motorista:** `GET /stations` e `GET /stations/{id}` trazem `demand` e, em cada conector, `dynamic_price_per_kwh` (base × multiplicador). As regras do dono (`pricing`) não são públicas.
+`status` traz `multiplier`, `increase_percent`, `pressure` (0–100), `level` (`low`/`normal`/`high`/`very_high`) com `level_label`, `factors`, `schedule_now` (o horário vigente com `index`, `start`, `end`, `days`, `prices`, ou `null`) e o motivo `reason`/`reason_label`: `demand_schedule` ("Alta demanda · Horário 22:00–06:00"; "Demanda muito alta" no nível `very_high`), `demand` ("Alta demanda"), `schedule` ("Horário 22:00–06:00") ou `normal` ("Preço normal"). Cada conector traz `base_price_per_kwh` (do conector), `current_base_price_per_kwh` (do horário) e `current_price_per_kwh` (× demanda).
 
-**Trava do preço:** o preço é travado como num app de corrida. `POST /reservations` grava `demand_multiplier`, e a recarga daquela reserva usa esse valor. Sem reserva, `POST /charging-sessions` usa o multiplicador do momento. A sessão guarda `base_price_per_kwh`, `demand_multiplier` e `price_per_kwh` = base × multiplicador. É esse preço que o totem recebe e que a API usa no custo, de modo que mudanças posteriores de demanda não alteram uma recarga em curso.
+**Para o motorista:** `GET /stations` e `GET /stations/{id}` trazem `demand` (`multiplier`, `level`, `level_label`, `increase_percent`, `reason`, `reason_label`). Em cada conector há `price_per_kwh` (base do conector), `current_base_price_per_kwh` e `dynamic_price_per_kwh` (base do horário × multiplicador). As regras do dono (`pricing`) e os preços dos horários não são públicos.
 
-Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`).
+**Trava do preço:** o preço é travado como num app de corrida. `POST /reservations` grava `demand_multiplier`. A recarga daquela reserva usa esse multiplicador e a base do horário vigente em `reservations.created_at` (sem coluna nova; se o dono editar o horário durante os 15 min da reserva, vale a regra editada para aquele momento). Sem reserva, `POST /charging-sessions` usa a base do horário e o multiplicador de agora. A sessão guarda `base_price_per_kwh` (a base do horário), `demand_multiplier` e `price_per_kwh` = base × multiplicador. É esse preço que o totem recebe e que a API usa no custo, de modo que mudanças posteriores não alteram uma recarga em curso. A reserva (`GET /reservations/current`) mostra o preço travado quando ele difere da base do conector.
 
-**No app:** a tela **Tarifas** do posto mostra a demanda agora (nível, multiplicador, preço atual, pressão e fatores, atualizada a cada 30 s). Ela também tem a tarifa base de cada conector e as regras, com campos numéricos de prefixo e sufixo (`R$ … /kWh`, `até + … %`, `… min`), horário pelo seletor do sistema e dias por botões. O motorista vê "Demanda alta agora: tarifa 1,3× a base" ao escolher o conector, e o resumo e a estimativa da recarga já usam o preço dinâmico.
+Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`). A tarifação por horário não precisa de migração: fica em `stations.pricing`.
+
+**No app:** a tela **Tarifa** do posto mostra a tarifa atual, a tarifa base e o motivo (atualizada a cada 30 s). O cálculo (base do horário × demanda, nível, pressão e fatores) só aparece ao tocar em **Detalhes**. Abaixo ficam quatro entradas, sem campos na visão geral: **Tarifa base** (`R$ … /kWh` por conector), **Tarifação por horário** (lista, Status e editor de cada horário: início e fim pelo seletor do sistema, dias por botões e `R$ … /kWh` por conector), **Tarifa por demanda** (`até + … %`, sensibilidade e simulação) e **Taxa de rotatividade** (`… min`, `R$`). O voltar segue editor → lista de horários → Tarifa → posto; o antigo `page=peak` abre a Tarifa. O motorista vê "Demanda alta agora: tarifa 1,3× a base" ao escolher o conector quando há acréscimo de demanda; com só a tarifa do horário, o resumo do ponto mostra "(tarifa do horário)", nunca "demanda 1×". O resumo e a estimativa da recarga usam o preço dinâmico.
 
 ## Telas do posto no app (vendedor)
 
@@ -88,9 +90,9 @@ Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`).
 - **Dados da estação:** nome, endereço com sugestões e status.
 - **Conectores:** pontos de recarga do posto. Cada um tem a edição de tipo, potência, tempo por recarga e equipamento (credencial e restauração). Também ficam aqui "Revisar e ativar ponto" e "Vincular outra tela a este posto".
 - **Potência por conector.**
-- **Tarifas:** tarifa base de cada conector e tarifa dinâmica.
+- **Tarifa:** tarifa atual, base e motivo; tarifa base por conector, tarifação por horário, tarifa por demanda e taxa de rotatividade.
 
-Saíram "Configurações adicionais" e a antiga tela "Pontos e equipamentos". O preço por kWh existe só em **Tarifas**. Latitude e longitude não aparecem mais: o cadastro (onboarding e novo posto) e a edição do endereço gravam as coordenadas da sugestão escolhida ou da busca pela API própria. Em conta real, um endereço sem resultado é recusado com "Não encontramos este endereço…". Na demo, usa-se o centro de São Paulo.
+Saíram "Configurações adicionais" e a antiga tela "Pontos e equipamentos". O preço por kWh existe só em **Tarifa**. Latitude e longitude não aparecem mais: o cadastro (onboarding e novo posto) e a edição do endereço gravam as coordenadas da sugestão escolhida ou da busca pela API própria. Em conta real, um endereço sem resultado é recusado com "Não encontramos este endereço…". Na demo, usa-se o centro de São Paulo.
 
 ## Código público do ponto
 
