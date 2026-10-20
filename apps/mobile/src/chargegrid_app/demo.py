@@ -17,7 +17,7 @@ from chargegrid_core import overstay as overstay_rules
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
-from . import demo_receipt
+from . import demo_receipt, demo_site
 from .api_client import ApiError
 from .owner_api import OwnerApiMixin
 from .services.discovery import discover
@@ -179,6 +179,7 @@ class DemoApi(OwnerApiMixin):
         self._pricing = {}  # dados base da tarifa dinâmica por posto (como stations.pricing)
         self._idempotency = {}
         self._payments = {}  # pagamentos Stripe (teste) simulados: demo_payments
+        self._power_decisions = {}  # registro de decisões do rebalanceamento por posto: demo_site
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
@@ -374,18 +375,23 @@ class DemoApi(OwnerApiMixin):
                 self._event(sid, 'start_applied', at=session['started_at'])
             effective_price = Decimal(session['price_per_kwh']) * (100 - session['discount_percent']) / 100
             power = runtime['power_kw']
+            # Rebalanceamento ao vivo (demo_site): a energia até a última mudança fica em ``energy_base_wh``
+            # e o trecho atual é contado na potência nova desde ``power_since``.
+            since = max(start, runtime.get('power_since', start))
+            base = runtime.get('energy_base_wh', Decimal(0))
             deadlines = [(float(start + session['max_duration_minutes'] * 60), 'duration_limit')]
-            if session['max_cost'] is not None and effective_price > 0:
-                deadlines.append((start + float(Decimal(session['max_cost']) * 3600 / (effective_price * power)), 'cost_limit'))
+            if session['max_cost'] is not None and effective_price > 0 and power > 0:
+                remaining = Decimal(session['max_cost']) - base / 1000 * effective_price
+                deadlines.append((since + float(remaining * 3600 / (effective_price * power)), 'cost_limit'))
             if runtime.get('stop_at') is not None:
                 deadlines.append((runtime['stop_at'], runtime.get('stop_reason', 'requested')))
-            full_at = self._battery_full_at(session, start, power)
+            full_at = self._battery_full_at(session, since, power, base)
             if full_at is not None:
                 deadlines.append((full_at, 'battery_full'))
             deadline, reason = min(deadlines, key=lambda item: item[0])
             observed = min(self._elapsed, deadline)
-            seconds = Decimal(str(max(0, observed - start)))
-            energy = (power * 1000 * seconds / 3600).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
+            seconds = Decimal(str(max(0, observed - since)))
+            energy = base + (power * 1000 * seconds / 3600).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
             cost = energy / 1000 * effective_price
             if session['max_cost'] is not None:
                 cost = min(cost, Decimal(session['max_cost']))
@@ -399,6 +405,7 @@ class DemoApi(OwnerApiMixin):
                 reset['status'] = 'applied'
                 self._devices[device_id]['revoked'] = True
                 self._points[self._devices[device_id]['connector_id']]['retired'] = True
+        demo_site.tick(self)  # rebalanceamento ao vivo dos postos com a chave ligada
 
     @staticmethod
     def _soc(session, energy):
@@ -414,13 +421,15 @@ class DemoApi(OwnerApiMixin):
         return _decimal(min(Decimal(100), Decimal(20) + energy / 600), '0.01')
 
     @staticmethod
-    def _battery_full_at(session, start, power):
-        """Elapsed second at which a simulated battery reaches 100 % (None if unknown)."""
+    def _battery_full_at(session, start, power, base_wh=Decimal(0)):
+        """Elapsed second at which a simulated battery reaches 100 % (None if unknown).
+
+        ``start``/``base_wh``: start of the current power segment and the energy delivered before it."""
         if (session.get('soc_source') != 'simulated' or session.get('start_soc_percent') is None
                 or not session.get('battery_kwh') or not power):
             return None
         missing_kwh = (100 - Decimal(session['start_soc_percent'])) / 100 * Decimal(session['battery_kwh'])
-        return start + float(missing_kwh / power * 3600)
+        return start + float((missing_kwh - base_wh / 1000) / power * 3600)
 
     def _report_soc(self, session_id, body):
         _fields(body, ('soc_percent',))
@@ -450,7 +459,11 @@ class DemoApi(OwnerApiMixin):
         sid = self._id('station')
         station = {'id': sid, 'owner_id': _USER, 'name': data['name'], 'address': data['address'],
                    'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
-                   'amenities': [], 'max_power_kw': None, 'power_limit_notify': False}
+                   'amenities': [], 'max_power_kw': None, 'power_limit_notify': False,
+                   # Pagamento (Stripe, teste) e energia do estabelecimento: padrões da API (desligados).
+                   'prepay_required': False, 'kiosk_payments': False, 'rebalance_enabled': False,
+                   'site_limit_kw': None, 'building_load_kw': None, 'building_load_source': None,
+                   'building_load_updated_at': None}
         self._stations[sid] = station
         return station
 
@@ -529,6 +542,8 @@ class DemoApi(OwnerApiMixin):
             status = 'charging' if session['status'] == 'charging' else 'reconciling'
         elif reservation:
             status = 'reserved' if reservation['status'] == 'confirmed' else 'reconciling'
+        elif demo_site.open_overstay(self, point['id']):
+            status = 'occupied'  # recarga terminou e o carro simulado continua conectado (permanência)
         else:
             status = 'available'
         return {**point, 'online': online, 'physical_state': state, 'available': status == 'available',
@@ -555,15 +570,11 @@ class DemoApi(OwnerApiMixin):
         """Termos vigentes da taxa de permanência do posto (``None`` desligada), como ``station_terms``."""
         return overstay_rules.terms_from_rotation(pricing.stored_rules(self._pricing.get(station['id']))['rotation'])
 
-    @staticmethod
-    def _overstay_view(session):
-        """Bloco ``overstay`` da sessão (``app.overstay.view``). A demo não simula o cabo conectado depois da
-        recarga: a permanência nunca abre (``status: none``), mas os termos aceitos aparecem."""
-        terms = overstay_rules.clean_terms(session.get('overstay_terms'))
-        return {'status': 'none', 'fee_applies': terms is not None, 'started_at': None, 'ended_at': None,
-                'end_reason': None, 'billable_seconds': 0, 'billable_minutes': 0, 'grace_remaining_seconds': 0,
-                'fee_due': '0.00', 'max_fee': terms['max_amount'] if terms else None, 'as_of': None,
-                'terms': overstay_rules.public(terms) if terms else None}
+    def _overstay_view(self, session):
+        """Bloco ``overstay`` da sessão (``app.overstay.view``). As recargas do motorista da demo não deixam o
+        cabo conectado depois do fim (``status: none``, com os termos aceitos); só o movimento simulado do
+        posto (``demo_site``) tem permanência."""
+        return demo_site.overstay_view(self, session)
 
     def _demand(self, station):
         """Mesmo cálculo da API (chargegrid_core.pricing) sobre o estado simulado do posto."""
@@ -620,8 +631,10 @@ class DemoApi(OwnerApiMixin):
                 result.setdefault(key, None)
             # Como a API: colunas internas da permanência viram o bloco calculado ``overstay``.
             result.pop('overstay_terms', None)
+            for key in [name for name in result if name.startswith('_')]:
+                result.pop(key)  # dados internos da simulação (motorista fictício, contagem da permanência)
             result['overstay'] = self._overstay_view(record)
-            result['settlement_ready'] = record['status'] in _TERMINAL
+            result['settlement_ready'] = record['status'] in _TERMINAL and demo_site.overstay_final(self, record)
             # Pré-pagamento Stripe (teste) simulado desta recarga, ou None.
             from . import demo_payments
             result['payment'] = demo_payments.for_session(self, record['id'])
@@ -645,6 +658,9 @@ class DemoApi(OwnerApiMixin):
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'best-times' and method == 'GET':
             from .services import forecast_demo
             return forecast_demo.best_times(self, parts[1], min(24, max(3, int((params or {}).get('hours') or 12))))
+        if len(parts) == 3 and parts[0] == 'stations' and parts[2] in ('power', 'power-site', 'building-load',
+                                                                       'demo-traffic'):
+            return demo_site.route(self, method, parts, body)
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'pricing' and method in ('GET', 'PUT'):
             station = self._owned(parts[1])
             if method == 'PUT':
@@ -813,7 +829,8 @@ class DemoApi(OwnerApiMixin):
 
     def _station_fields(self, body, creating=False):
         allowed = ('name', 'address', 'latitude', 'longitude') + (
-            () if creating else ('active', 'amenities', 'max_power_kw', 'power_limit_notify'))
+            () if creating else ('active', 'amenities', 'max_power_kw', 'power_limit_notify', 'prepay_required',
+                                 'kiosk_payments'))
         _fields(body, allowed)
         if creating and not set(allowed).issubset(body):
             _fail('Informe nome, endereço e coordenadas do posto.')
@@ -831,6 +848,10 @@ class DemoApi(OwnerApiMixin):
             elif key == 'power_limit_notify':
                 if not isinstance(value, bool):
                     _fail('Informe se o aviso de limite de potência está ligado.')
+                result[key] = value
+            elif key in ('prepay_required', 'kiosk_payments'):
+                if not isinstance(value, bool):
+                    _fail('Campo não aceita null', 'null_not_allowed')
                 result[key] = value
             elif isinstance(value, bool):
                 result[key] = value
@@ -1054,6 +1075,11 @@ class DemoApi(OwnerApiMixin):
         if reservation and (not point['active'] or not self._stations[point['station_id']]['active'] or not self._point_row(point)['online']):
             _fail('O ponto reservado não está disponível.', 'point_unavailable', 409)
         from . import demo_payments
+        station = self._stations[point['station_id']]
+        if not body.get('payment_id') and station.get('prepay_required') and Decimal(point['price_per_kwh']) > 0:
+            _fail('Este posto exige pagamento antes de iniciar. Pague pelo app (teste) e tente de novo.',
+                  'payment_required', 402)
+        demo_site.start_check(self, station, point)
         payment = demo_payments.claim_for_start(self, point, body['payment_id']) if body.get('payment_id') else None
         if payment and payment.get('max_power_kw') is not None:
             driver_kw = Decimal(payment['max_power_kw'])  # potência do orçamento pago, como a API
@@ -1101,6 +1127,7 @@ class DemoApi(OwnerApiMixin):
                                       'power_kw': applied if applied > 0 else Decimal(point['power_kw'])}
         if reservation:
             reservation['status'] = 'consumed'
+        demo_site.tick(self)  # potência inicial com o rebalanceamento ligado
         return self._operation_row(session, 'session')
 
     def _terms_for_start(self, point, body, payment):

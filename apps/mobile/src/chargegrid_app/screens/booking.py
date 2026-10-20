@@ -232,11 +232,25 @@ def _secure_note(text='Pagamento seguro e criptografado'):
                    design.txt(text, 11.5, 'regular', theme.GRAY_TEXT, expand=True)], spacing=14)
 
 
-def pay_options(demo, stripe_enabled):
-    """Formas de pagamento da etapa 5: Saldo (simulado) só na demo ou sem Stripe na API."""
+def pay_options(demo, stripe_enabled, prepay=False):
+    """Formas de pagamento da etapa 5: Saldo (simulado) só na demo ou sem Stripe na API.
+
+    ``prepay``: o posto exige pagamento antecipado (``prepay_required``); com a Stripe ligada só ela vale
+    (o início sem pagamento seria recusado com 402 ``payment_required``)."""
+    if prepay and stripe_enabled:
+        return ['stripe']
     if demo:
         return ['balance', 'stripe'] if stripe_enabled else ['balance']
     return ['stripe'] if stripe_enabled else ['balance']
+
+
+def prepay_note(stripe_enabled):
+    """Aviso do posto que exige pagamento antecipado (``prepay_required``)."""
+    text = ('Este posto exige pagamento antecipado pelo app (Stripe · teste): a recarga só começa depois da '
+            'confirmação.' if stripe_enabled else
+            'Este posto exige pagamento antecipado, mas o pagamento pelo app está indisponível agora: '
+            'a recarga não poderá começar.')
+    return ft.Container(design.warning_box(text), data='prepay-required')
 
 
 def overstay_terms(station):
@@ -347,7 +361,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
 
     demo = getattr(app.api, 'is_demo', False) is True
     stripe_config = await payments.config(app) if step >= 2 else {}
-    options = pay_options(demo, stripe_config.get('enabled') is True)
+    prepay = station.get('prepay_required') is True
+    options = pay_options(demo, stripe_config.get('enabled') is True, prepay)
     if state['pay'] in ('pix', 'card'):  # atalhos antigos: o formulário falso de cartão/Pix saiu
         state['pay'] = 'stripe'
     if state['pay'] is not None and state['pay'] not in options:
@@ -488,6 +503,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         cards = [_option(PAY_LABELS[key], rules.money(balance) if key == 'balance' else STRIPE_SUBTITLE,
                                      selected=state['pay'] == key, on_click=choose_pay(key), icon=PAY_ICONS[key])
                  for key in options]
+        if prepay:
+            cards.append(prepay_note(stripe_config.get('enabled') is True))
 
         async def pay_next():
             if not state['pay']:
