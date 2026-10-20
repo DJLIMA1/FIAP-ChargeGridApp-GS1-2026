@@ -84,6 +84,8 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
         ], spacing=15)
     if manage and not station_id and page == 'energy':
         return await history_owner.energy_page(app, days=int(days or 7))
+    if manage and not station_id and page == 'forecast':
+        return await history_owner.forecast_page(app, station=_.get('station'))
     path = (f'stations/{station_id}/charging-sessions' if station_id else
             'operator/charging-sessions' if manage else 'me/charging-sessions')
     result = await app.api.request('GET',path,params={'limit':PAGE,'offset':offset})

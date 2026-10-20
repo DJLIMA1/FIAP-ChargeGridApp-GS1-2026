@@ -607,6 +607,9 @@ class DemoApi(OwnerApiMixin):
         parts = path.split('/')
         if (method, path) == ('GET', 'geo/address-suggestions'):
             return demo_address_suggestions((params or {}).get('q') or '')
+        if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'best-times' and method == 'GET':
+            from .services import forecast_demo
+            return forecast_demo.best_times(self, parts[1], min(24, max(3, int((params or {}).get('hours') or 12))))
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'pricing' and method in ('GET', 'PUT'):
             station = self._owned(parts[1])
             if method == 'PUT':

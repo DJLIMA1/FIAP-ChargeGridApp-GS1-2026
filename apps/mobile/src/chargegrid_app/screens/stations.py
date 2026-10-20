@@ -15,6 +15,7 @@ from ..ui import theme
 from ..ui.availability import point_status, station_map_record
 from ..ui.components import badge, button, card, money, pill
 from ..ui.deferred import fill_when_ready, skeleton
+from ..ui.forecast import best_time_card
 from ..ui.point_summary import point_context
 
 CONNECTOR_LABELS = {'type2':'Tipo 2','ccs2':'CCS2','chademo':'CHAdeMO','bench':'Bancada'}
@@ -312,10 +313,20 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                                         spacing=12,vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                  bgcolor=theme.CARD,border_radius=D.RADIUS_BTN,height=43,
                                  padding=ft.Padding(left=17,right=14,top=0,bottom=0),url=_map_url(first),ink=True)
+        # "Melhor horário para carregar" (previsão + tarifa por horário); some se a API falhar.
+        best_slot = ft.Container(data='best-time-slot')
+
+        async def load_best_time():
+            try:
+                payload = await app.api.request('GET',f'stations/{station_id}/best-times',params={'hours':12})
+            except ApiError:
+                return ft.Container(visible=False)
+            return best_time_card(payload) or ft.Container(visible=False)
+        await fill_when_ready(app,best_slot,load_best_time,placeholder=ft.Container(height=0))
         controls = [ft.Container(D.txt('Detalhes da estação',19,'bold'),margin=ft.Margin(left=0,top=2,right=0,bottom=0)),
                     ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=16)),
                     D.section_label('Conectores'),ft.Column(group_rows,spacing=16.5),
-                    ft.Container(height=6.5),route_row,
+                    ft.Container(height=6.5),route_row,best_slot,
                     # Dois caminhos, cada um com o seu assistente (conector, cobrança, potência e pagamento):
                     # reservar segura o ponto por 15 min até a chegada; carregar agora começa no ponto (código #F).
                     ft.Row([D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1,kind='reserve',

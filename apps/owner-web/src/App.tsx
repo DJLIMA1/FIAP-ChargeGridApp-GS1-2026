@@ -19,6 +19,7 @@ const Sessions = lazy(() => import('./pages/Sessions'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const Coupons = lazy(() => import('./pages/Coupons'))
 const Insights = lazy(() => import('./pages/Insights'))
+const Forecast = lazy(() => import('./pages/Forecast'))
 
 function Splash() {
   return (
@@ -95,6 +96,7 @@ function Gate() {
           <Route path="alertas" element={<Suspense fallback={<PageFallback />}><Alerts /></Suspense>} />
           <Route path="cupons" element={<Suspense fallback={<PageFallback />}><Coupons /></Suspense>} />
           <Route path="insights" element={<Suspense fallback={<PageFallback />}><Insights /></Suspense>} />
+          <Route path="previsao" element={<Suspense fallback={<PageFallback />}><Forecast /></Suspense>} />
           {AUTH_PATHS.map((path) => (
             <Route key={path} path={path} element={<Navigate to="/" replace />} />
           ))}

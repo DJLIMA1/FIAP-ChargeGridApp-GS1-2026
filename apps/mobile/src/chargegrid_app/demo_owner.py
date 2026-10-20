@@ -162,10 +162,29 @@ class DemoOwner:
         resource = path.split('/', 1)[1]
         handler = {'overview': self.overview, 'timeseries': self.timeseries, 'heatmap': self.heatmap,
                    'sessions': self.sessions, 'reservations': self.reservations, 'alerts': self.alerts,
-                   'live': self.live}.get(resource)
+                   'live': self.live, 'forecast': self.forecast, 'occupancy-history': self.occupancy_history}.get(resource)
         if handler is None:
             _fail('Esta operação não está disponível na demonstração.', 'demo_route_not_supported', 404)
         return handler(params)
+
+    def _forecast_station(self, params):
+        station_id = self._station(params)
+        if station_id:
+            return station_id
+        owned = sorted(s['id'] for s in self.api._stations.values() if s['owner_id'] == self.api._profile.get('id'))
+        if not owned:
+            _fail('Posto demonstrativo não encontrado.', 'not_found', 404)
+        return owned[0]
+
+    def forecast(self, params):
+        from .services import forecast_demo
+        horizon = min(36, max(1, int(params.get('horizon_hours') or 36)))
+        return forecast_demo.forecast(self.api, self._forecast_station(params), horizon)
+
+    def occupancy_history(self, params):
+        from .services import forecast_demo
+        weeks = min(8, max(1, int(params.get('weeks') or 4)))
+        return forecast_demo.history(self.api, self._forecast_station(params), weeks)
 
     def overview(self, params):
         station_id = self._station(params)

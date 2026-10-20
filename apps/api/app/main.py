@@ -1,3 +1,4 @@
+import logging
 import os
 from secrets import compare_digest
 
@@ -20,6 +21,8 @@ from .modules.coupons.routes import router as coupons_router
 from .modules.devices.routes import router as devices_router
 from .modules.driver.routes import router as driver_router
 from .modules.economics.routes import router as economics_router
+from .modules.forecast.rollup import rollup as forecast_rollup
+from .modules.forecast.routes import router as forecast_router
 from .modules.geo.routes import router as geo_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
@@ -33,6 +36,7 @@ from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
 from .modules.users.routes import router as users_router
 
+logger = logging.getLogger(__name__)
 app = FastAPI(title="ChargeGrid API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +62,7 @@ for router in (
     receipts_router,
     economics_router,
     payments_router,
+    forecast_router,
 ):
     app.include_router(router, prefix="/v1")
 app.include_router(payments_pages)
@@ -83,7 +88,17 @@ def keepalive(authorization: str | None = Header(default=None), db=Depends(db_se
             payments_service.sweep(db)
         except Exception:
             db.rollback()
-    return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"status": "ok", "rollup": _daily_rollup(db)}, headers={"Cache-Control": "no-store"})
+
+
+def _daily_rollup(db):
+    """Agregados horários duráveis (previsão); uma falha não derruba o keepalive."""
+    try:
+        with db.begin_nested():
+            return forecast_rollup(db)
+    except Exception:  # noqa: BLE001 - o keepalive continua respondendo; o próximo dia recupera
+        logger.exception("Rollup diário dos agregados horários falhou")
+        return {"status": "failed"}
 
 
 @app.get("/auth/confirmed", response_class=HTMLResponse)

@@ -15,6 +15,7 @@ const NAV: { to: string; label: string; icon: IconName; short?: string }[] = [
   { to: '/alertas', label: 'Alertas', icon: 'bell' },
   { to: '/cupons', label: 'Cupons', icon: 'ticket' },
   { to: '/insights', label: 'Insights IA', icon: 'sparkles' },
+  { to: '/previsao', label: 'Previsão', icon: 'trendUp' },
 ]
 
 function useAlertCount() {
