@@ -670,6 +670,22 @@ def _capture_params(raw):
     return result
 
 
+async def _capture_setup(app, raw):
+    """Demo requests that put the account in the state to capture (never runs outside the demo capture)."""
+    try:
+        steps = json.loads(raw) if raw else []
+    except ValueError:
+        return
+    owned = None
+    for method, path, *rest in steps if isinstance(steps, list) else []:
+        if '@owned_station' in path:
+            if owned is None:
+                listing = await app.api.request('GET', 'operator/stations')
+                owned = ((listing or {}).get('items') or [{}])[0].get('id')
+            path = path.replace('@owned_station', str(owned))
+        await app.api.request(method, path, rest[0] if rest else None)
+
+
 async def capture_boot(app):
     """Screenshot harness hook (tools/screen_capture.py): demo account straight to a route.
 
@@ -677,6 +693,9 @@ async def capture_boot(app):
     ``CHARGEGRID_CAPTURE_MODE`` consumer|vendor, ``CHARGEGRID_CAPTURE_PARAMS`` JSON object,
     ``CHARGEGRID_CAPTURE_THEME`` dark|light. A param value ``@first_station`` becomes the first
     station id and ``@first_connector`` the first connector id of the demo account.
+    ``CHARGEGRID_CAPTURE_SETUP`` (optional) is a JSON list of ``[method, path, body]`` demo requests run
+    before navigating (``@owned_station`` in the path = the vendor's first station), e.g. the simulated
+    station traffic: ``[["POST", "stations/@owned_station/demo-traffic", {}]]``.
     """
     route = os.getenv('CHARGEGRID_CAPTURE_ROUTE')
     if not route or not demo_enabled():
@@ -687,6 +706,7 @@ async def capture_boot(app):
     app.browsing_mode = 'vendor' if os.getenv('CHARGEGRID_CAPTURE_MODE') == 'vendor' else 'consumer'
     app.dark_mode = os.getenv('CHARGEGRID_CAPTURE_THEME', 'dark') != 'light'
     theme.set_dark(app.dark_mode)
+    await _capture_setup(app, os.getenv('CHARGEGRID_CAPTURE_SETUP'))
     params = _capture_params(os.getenv('CHARGEGRID_CAPTURE_PARAMS'))
     if '@first_station' in params.values() or '@first_connector' in params.values():
         async def listing(path):

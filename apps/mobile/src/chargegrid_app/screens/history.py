@@ -2,6 +2,7 @@ import flet as ft
 
 from chargegrid_core.formatting import kwh
 
+from ..services import owner_sessions
 from ..ui import theme
 from ..ui.ai_features import ai_supported, session_insight_control
 from ..ui.components import button, date_time, money, title
@@ -30,6 +31,23 @@ def _when(value):
     """(``dd/mm/aaaa``, ``hh:mm``) em horário local, ou (—, —)."""
     stamp = date_time(value)
     return tuple(stamp.split(' ')) if ' ' in stamp else ('—', '—')
+
+
+def money_lines(session):
+    """Pagamento (status, capturado e devolvido/liberado) e permanência (minutos/taxa) da sessão para o vendedor.
+
+    Lista vazia quando a API não manda ``payment`` nem ``overstay`` (ou a sessão não teve nenhum dos dois)."""
+    lines = []
+    payment = owner_sessions.payment_summary(session.get('payment'))
+    if payment:
+        label, detail = payment
+        lines.append(txt(f'Pagamento: Stripe · {label}', 11, 'semibold'))
+        if detail:
+            lines.append(txt(detail, 10.5, 'regular', theme.GRAY_TEXT))
+    overstay = owner_sessions.overstay_summary(session)
+    if overstay:
+        lines.append(txt(f'Permanência: {overstay}', 11, 'semibold'))
+    return lines
 
 
 def _summary(app, session, *, demo, events):
@@ -71,8 +89,13 @@ def _summary(app, session, *, demo, events):
                             spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER),
                   *trailing],
                  spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    # Vendedor (histórico dos postos): pagamento e permanência visíveis sem abrir os detalhes.
+    extra = [] if events else money_lines(session)
+    money_box = [ft.Container(ft.Column(extra, spacing=3), data='session-money',
+                              padding=ft.Padding(left=60, right=0, top=10, bottom=0))] if extra else []
     return ft.Column([head, card_box(ft.Column([ft.Container(row, on_click=toggle, ink=False,
-                                                              tooltip='Detalhes da sessão'), panel], spacing=0),
+                                                              tooltip='Detalhes da sessão'), *money_box, panel],
+                                               spacing=0),
                                      padding=16, radius=18)], spacing=12.5)
 
 

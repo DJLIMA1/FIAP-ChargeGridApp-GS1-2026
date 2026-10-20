@@ -1,8 +1,10 @@
 """Estação do vendedor: um único lugar para cada posto.
 
-Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'). A tela do
-posto leva a Dados da estação, Conectores (pontos, edição e vincular outra tela), Potência por conector
-e Tarifa (``tariffs``: tarifa base, por horário e por demanda). Nome, endereço e status usam ``PATCH stations``; a
+Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power' | 'live' | 'energy' |
+'payments'). A tela do posto leva a Dados da estação, Conectores (pontos, edição e vincular outra tela), Potência
+por conector, Tarifa (``tariffs``: tarifa base, por horário e por demanda) e às páginas de operação de
+``station_ops``: Ao vivo, Energia do estabelecimento e Pagamentos (teste), estas duas só quando a API manda os
+campos do posto. Nome, endereço e status usam ``PATCH stations``; a
 localização vem do endereço (sem latitude/longitude na tela). A página de potência edita o teto do posto
 (``PATCH stations``: ``max_power_kw``, ``power_limit_notify``) e o limite de cada conector
 (``PATCH connectors``: ``power_limit_kw``). ``power_kw`` é a potência nominal do carregador e nunca é
@@ -22,6 +24,7 @@ from chargegrid_core.formatting import kwh
 from ..api_client import ApiError
 from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
+from . import station_ops
 
 NEXT_START_NOTE = ('Recargas em andamento mantêm a potência com que começaram; '
                    'os novos limites valem a partir da próxima recarga.')
@@ -119,6 +122,12 @@ async def build(app, station_id=None, page=None, **params):
         return _power_page(app, station)
     if page == 'connectors':
         return _connectors_page(app, station)
+    if page == 'live':
+        return await station_ops.live_page(app, station)
+    if page == 'energy':
+        return await station_ops.energy_page(app, station)
+    if page == 'payments':
+        return station_ops.payments_page(app, station)
     return _main_page(app, station, code)
 
 
@@ -146,6 +155,12 @@ def _main_page(app, station, code):
             menu_row('Potência por conector', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
+            menu_row('Ao vivo', 'Pontos agora, potência aplicada e vaga após a recarga', ft.Icons.SENSORS,
+                     go('live')),
+            *([menu_row('Energia do estabelecimento', station_ops.energy_subtitle(station),
+                        ft.Icons.ELECTRICAL_SERVICES, go('energy'))] if station_ops.has_energy(station) else []),
+            *([menu_row('Pagamentos · teste', station_ops.payments_subtitle(station), ft.Icons.CREDIT_CARD,
+                        go('payments'))] if station_ops.has_payments(station) else []),
         ], spacing=29),
         ft.Container(height=18),
         chatbot_button(app, 38), gap=14)
