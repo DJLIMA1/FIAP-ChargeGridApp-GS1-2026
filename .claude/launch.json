@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "painel-mock",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/owner-web", "run", "dev:mock", "--", "--port", "5179", "--strictPort"],
+      "port": 5179
+    }
+  ]
+}
