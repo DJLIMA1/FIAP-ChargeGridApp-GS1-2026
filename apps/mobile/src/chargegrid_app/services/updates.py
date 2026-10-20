@@ -1,38 +1,41 @@
-"""Atualização do APK sem servidor próprio: cada versão é uma release pública no GitHub.
+"""Atualização do APK pelo nosso servidor.
 
-``tools/release_apk.py`` publica a release ``app-v<versão>`` com ``chargegrid-<versão>.apk``. Ao abrir,
-o app Android consulta ``releases/latest``; se houver versão maior que a empacotada, oferece o
-download. O Android baixa o arquivo e o usuário instala por cima (mesma assinatura: dados mantidos).
-Qualquer falha (sem rede, limite da API do GitHub, release sem APK) é silenciosa.
+``tools/release_apk.py`` envia o APK e o manifesto ``app/latest.json`` ao Vercel Blob; a API
+devolve o manifesto em ``GET /v1/app/latest`` (sem login). Ao abrir (e ao voltar ao app), o app
+Android compara ``version`` com a versão empacotada e, se houver uma maior, oferece o download.
+O Android baixa o APK e o usuário instala por cima (mesma assinatura: dados mantidos).
+Qualquer falha (sem rede, sem versão publicada) é silenciosa.
 """
 import re
 
 import httpx
 
-REPOSITORY = 'DJLIMA1/FIAP-ChargeGridApp-GS1-2026'
-LATEST_URL = f'https://api.github.com/repos/{REPOSITORY}/releases/latest'
-TAG_PREFIX = 'app-v'
+from ..config import api_url
+
 TIMEOUT_SECONDS = 6
 
 
+def latest_url():
+    return api_url() + '/app/latest'
+
+
 def parse_version(text):
-    """``'app-v0.6.10'`` / ``'0.6.10'`` -> ``(0, 6, 10)``; ``None`` se não for uma versão."""
+    """``'0.6.10'`` (ou ``'app-v0.6.10'``) -> ``(0, 6, 10)``; ``None`` se não for uma versão."""
     match = re.fullmatch(r'(?:app-)?v?(\d+)\.(\d+)\.(\d+)', str(text or '').strip())
     return tuple(int(part) for part in match.groups()) if match else None
 
 
 def release_info(data):
-    """Versão, link do APK e notas de uma resposta de ``releases/latest`` (ou ``None``)."""
-    if not isinstance(data, dict) or data.get('draft') or data.get('prerelease'):
+    """Versão, link do APK, tamanho e notas do manifesto da API (ou ``None`` se inválido)."""
+    if not isinstance(data, dict):
         return None
-    tag = str(data.get('tag_name') or '')
-    version = parse_version(tag) if tag.startswith(TAG_PREFIX) else None
-    apk = next((asset for asset in data.get('assets') or []
-                if str(asset.get('name', '')).endswith('.apk') and asset.get('browser_download_url')), None)
-    if not version or not apk:
+    version, url = parse_version(data.get('version')), str(data.get('url') or '')
+    if not version or not url.startswith('https://') or not url.endswith('.apk'):
         return None
-    return {'version': '.'.join(map(str, version)), 'url': apk['browser_download_url'],
-            'size_mb': round((apk.get('size') or 0) / 1_048_576), 'notes': str(data.get('body') or '').strip()}
+    size = data.get('size_bytes')
+    return {'version': '.'.join(map(str, version)), 'url': url,
+            'size_mb': round(size / 1_048_576) if isinstance(size, int) and size > 0 else None,
+            'notes': str(data.get('notes') or '').strip()}
 
 
 def is_newer(latest, current):
@@ -41,15 +44,15 @@ def is_newer(latest, current):
 
 
 async def available_update(current_version, client=None):
-    """Release mais nova que ``current_version``; ``None`` se não houver ou se a consulta falhar."""
+    """Versão publicada mais nova que ``current_version``; ``None`` se não houver ou se a consulta falhar."""
     if not parse_version(current_version):
         return None
     try:
         if client is None:
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as own:
-                response = await own.get(LATEST_URL, headers={'Accept': 'application/vnd.github+json'})
+                response = await own.get(latest_url())
         else:
-            response = await client.get(LATEST_URL, headers={'Accept': 'application/vnd.github+json'})
+            response = await client.get(latest_url())
         response.raise_for_status()
         info = release_info(response.json())
     except (httpx.HTTPError, ValueError):

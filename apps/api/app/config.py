@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     openrouter_reasoning_effort: str = "low"
     openrouter_site_url: str = "https://github.com/DJLIMA1/FIAP-ChargeGridApp-GS1-2026"
     ai_enabled: bool = True
+    # Atualização do APK: manifesto público no Vercel Blob (tools/release_apk.py o publica).
+    app_manifest_url: str = "https://9x2lhsbjqbuqehzd.public.blob.vercel-storage.com/app/latest.json"
     # Environment variables supplied by Vercel or the shell take precedence over
     # this optional local-development file.
     model_config = SettingsConfigDict(env_file=ROOT_ENV_FILE, extra="ignore")

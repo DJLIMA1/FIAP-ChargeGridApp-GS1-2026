@@ -38,15 +38,26 @@ O primeiro comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/
 
 #### Publicar uma versão (atualização automática)
 
-A partir da 0.6.4, não é preciso enviar o APK manualmente. Um comando faz tudo:
+Um comando faz tudo, sem enviar o APK manualmente:
 
 ```bash
-.venv/bin/python tools/release_apk.py 0.6.5 "O que mudou nesta versão"
+.venv/bin/python tools/release_apk.py 0.6.8 "O que mudou nesta versão"
 ```
 
-Ele sobe `version` e `build_number`, grava o config empacotado (URL da API, versão e build), roda `flet build apk`, copia para `builds/chargegrid-<versão>.apk`, apaga `apps/mobile/build`, registra o SHA-256 aqui, faz commit e push e cria a release pública `app-v<versão>` no GitHub com o APK (`gh` autenticado). `--dry-run` mostra os passos; `--skip-build` publica um APK já gerado.
+O comando faz, em ordem:
 
-No celular, ao abrir (e ao voltar do segundo plano, no máximo a cada 15 min; o Android costuma só retomar o app), o app Android consulta `releases/latest` do repositório (API pública do GitHub, sem chave). Se houver uma versão maior que a instalada, mostra **Atualização disponível** com as notas e o tamanho. **Baixar** abre o APK no navegador; ao terminar, a pessoa toca na notificação e instala por cima. A assinatura é a mesma, então conta e dados continuam. Sem rede, sem release ou com limite da API do GitHub, nada aparece. Só tags `app-v*` contam, então outras releases do repositório não interferem. A 0.6.4 é a última versão instalada manualmente; as seguintes chegam pelo aviso. A partir da 0.6.6, **Conta → Versão X · Verificar atualização** mostra a versão instalada e consulta na hora.
+1. Sobe `version` e `build_number` e grava o config empacotado (URL da API, versão e build).
+2. Roda `flet build apk`, copia para `builds/chargegrid-<versão>.apk` e apaga `apps/mobile/build`.
+3. Envia o APK e o manifesto `app/latest.json` (versão, build, URL, tamanho, SHA-256 e notas) ao Vercel Blob público `chargegrid-apps` (região gru1, ligado ao projeto `chargegrid-api`).
+4. Registra o SHA-256 aqui e faz commit e push.
+
+O token do Blob vem de `BLOB_READ_WRITE_TOKEN` ou de `apps/api/.env.local` (`vercel env pull`, ignorado pelo Git) e nunca é impresso. `--dry-run` mostra os passos; `--skip-build` publica um APK já gerado. O build pede pelo menos 4 GB livres.
+
+A API expõe o manifesto em `GET /v1/app/latest`. É público, porque o aviso aparece antes do login. A API valida a versão e exige um link `https://….apk`, com cache de 60 s. Sem versão publicada, responde 404 `updates_unavailable`.
+
+O app Android consulta esse endpoint ao abrir e ao voltar do segundo plano, no máximo a cada 15 min, já que o Android costuma só retomar o app. Se houver uma versão maior que a instalada, mostra **Atualização disponível** com as notas e o tamanho. **Baixar** abre o APK no navegador; ao terminar, a pessoa toca na notificação e instala por cima. A assinatura é a mesma, então conta e dados continuam. **Conta → Versão X · Verificar atualização** consulta na hora.
+
+Até a 0.6.6, o app consultava as releases do GitHub. Depois que o repositório ficou privado, essas versões não enxergam mais atualizações, por isso a 0.6.7 precisa ser instalada manualmente uma última vez.
 
 O APK 0.6.6 (build 34) está em `builds/chargegrid-0.6.6.apk` (SHA-256 `05b0ad60579dea7c95cedd437e9d0ff39ee5fad13f39dac3d747ce705efa0498`). Publicado em 20/10/2026 na release `app-v0.6.6` do GitHub; os apps instalados oferecem a atualização ao abrir. O aviso de atualização agora também aparece ao voltar para o app (não só ao abrir do zero), e a tela Conta mostra a versão instalada com o botão Verificar atualização.
 

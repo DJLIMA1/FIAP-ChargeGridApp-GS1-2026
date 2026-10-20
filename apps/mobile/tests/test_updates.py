@@ -9,10 +9,8 @@ import httpx
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.services import updates
 
-RELEASE = {'tag_name': 'app-v0.6.10', 'draft': False, 'prerelease': False, 'body': 'Autocomplete de endereço.',
-           'assets': [{'name': 'notas.txt', 'browser_download_url': 'https://example.test/n.txt'},
-                      {'name': 'chargegrid-0.6.10.apk', 'size': 172486490,
-                       'browser_download_url': 'https://github.com/x/releases/download/app-v0.6.10/chargegrid-0.6.10.apk'}]}
+RELEASE = {'version': '0.6.10', 'build': 38, 'size_bytes': 172486490, 'notes': 'Autocomplete de endereço.',
+           'url': 'https://9x2lhsbjqbuqehzd.public.blob.vercel-storage.com/app/chargegrid-0.6.10.apk'}
 
 
 def client_for(handler):
@@ -21,21 +19,28 @@ def client_for(handler):
 
 class UpdateServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_versions_compare_numerically(self):
-        self.assertEqual(updates.parse_version('app-v0.6.10'), (0, 6, 10))
+        self.assertEqual(updates.parse_version('0.6.10'), (0, 6, 10))
         self.assertTrue(updates.is_newer('0.6.10', '0.6.9'))
         self.assertFalse(updates.is_newer('0.6.3', '0.6.3'))
         self.assertFalse(updates.is_newer('lixo', '0.6.3'))
 
     async def test_newer_release_returns_apk_link_and_notes(self):
-        async with client_for(lambda request: httpx.Response(200, json=RELEASE)) as client:
+        seen = []
+
+        def handler(request):
+            seen.append(str(request.url))
+            return httpx.Response(200, json=RELEASE)
+        async with client_for(handler) as client:
             info = await updates.available_update('0.6.9', client)
         self.assertEqual(info['version'], '0.6.10')
         self.assertTrue(info['url'].endswith('chargegrid-0.6.10.apk'))
         self.assertEqual((info['size_mb'], info['notes']), (164, 'Autocomplete de endereço.'))
+        self.assertTrue(seen[0].endswith('/v1/app/latest'))  # nosso servidor, não o GitHub
 
     async def test_same_version_other_tags_failures_are_silent(self):
-        cases = [httpx.Response(200, json=RELEASE), httpx.Response(200, json={**RELEASE, 'tag_name': 'firmware-v1.0.0'}),
-                 httpx.Response(200, json={**RELEASE, 'assets': []}), httpx.Response(403, json={'message': 'rate limit'}),
+        cases = [httpx.Response(200, json=RELEASE), httpx.Response(200, json={**RELEASE, 'version': 'latest'}),
+                 httpx.Response(200, json={**RELEASE, 'url': 'https://x/arquivo.zip'}),
+                 httpx.Response(404, json={'error': {'code': 'updates_unavailable'}}),
                  httpx.Response(200, text='não é json')]
         for response in cases:
             async with client_for(lambda request, r=response: r) as client:
