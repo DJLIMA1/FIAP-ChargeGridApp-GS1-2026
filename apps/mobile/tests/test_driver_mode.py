@@ -254,7 +254,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
         recommendation = self.app.driver_state['next']['recommendation']
         self.assertEqual(recommendation['action'], 'stop_now')
         await click(screen, 'Reservar')(None)
-        self.app.go.assert_awaited_with('reservations')
+        self.app.go.assert_awaited_with('reservations', detail=True)
         current = await self.api.request('GET', 'reservations/current')
         self.assertEqual(current['connector_id'], recommendation['connector_id'])
 

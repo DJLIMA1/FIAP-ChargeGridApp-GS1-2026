@@ -5,7 +5,7 @@ import flet as ft
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import stations
-from test_behavior import HandlerApp, descendants
+from test_behavior import HandlerApp, descendants, station_responses
 
 
 class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
@@ -13,10 +13,10 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         station = {'id': 's', 'name': 'Posto', 'address': 'Rua', 'latitude': 0,
                    'longitude': 0, 'connectors': []}
-        app.api.request.side_effect = [
+        app.api.request.side_effect = station_responses(
             {'items': [station], 'total': 21},
             {'items': [], 'total': 19},
-        ]
+        )
         with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app, offset=20)
             await app.poll()

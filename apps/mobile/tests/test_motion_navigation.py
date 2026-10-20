@@ -224,12 +224,12 @@ class MotionNavigationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(editable_controls(controls)), [visible])
 
     async def test_back_preserves_reservation_and_station_context(self):
-        self.assertEqual(parent_route('charging', {'reservation_id': 'r'}), ('reservations', {}))
+        self.assertEqual(parent_route('charging', {'reservation_id': 'r'}), ('reservations', {'detail': True}))
         self.assertEqual(parent_route('coupons', {'station_id': 's'}), ('stations', {'station_id': 's'}))
         self.app.route, self.app.data = 'charging', {'reservation_id': 'r'}
         self.app.go = AsyncMock()
         await self.app.back()
-        self.app.go.assert_awaited_once_with('reservations')
+        self.app.go.assert_awaited_once_with('reservations', detail=True)
         self.client.request.assert_not_called()
 
 

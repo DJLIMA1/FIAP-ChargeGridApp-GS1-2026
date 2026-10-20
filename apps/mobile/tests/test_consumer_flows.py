@@ -11,7 +11,7 @@ from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import charging, history, home, reservations, stations
 from chargegrid_app.services.search_location import SearchLocation
 from chargegrid_app.ui.point_summary import point_context
-from test_behavior import HandlerApp, click, descendants
+from test_behavior import HandlerApp, click, descendants, station_responses
 
 POINT = {'id':'point-one','public_code':'CG-ONE','connector_type':'Tipo 2',
          'power_kw':'6','price_per_kwh':'2','max_duration_minutes':10,'available':True}
@@ -261,7 +261,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_station_poll_updates_pagination_even_when_items_unchanged(self):
         app = HandlerApp()
-        app.api.request.side_effect = [{'items':[STATION],'total':20},{'items':[STATION],'total':21},{'items':[STATION],'total':20}]
+        app.api.request.side_effect = station_responses({'items':[STATION],'total':20},{'items':[STATION],'total':21},{'items':[STATION],'total':20})
         with patch.object(stations, 'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))) as draw:
             screen = await stations.build(app)
             self.assertNotIn('Mais postos',texts(screen))
@@ -273,10 +273,10 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_station_search_preserves_poll_state_and_map_is_inline_not_redundant(self):
         app = HandlerApp()
-        app.api.request.side_effect = [
+        app.api.request.side_effect = station_responses(
             {'items':[STATION],'total':1},
             {'items':[{**STATION,'connectors':[{**POINT,'available':False}]}],'total':1},
-        ]
+        )
         with patch.object(stations, 'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app)
             self.assertFalse(any(isinstance(item,ft.ExpansionTile) for item in descendants(screen)))

@@ -11,7 +11,7 @@ from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.navigation import parent_route
 from chargegrid_app.preferences import Preferences
 from chargegrid_app.screens import history, home, stations
-from test_behavior import HandlerApp, click, descendants
+from test_behavior import HandlerApp, click, descendants, station_responses
 
 
 class PreferencesTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class NavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_station_poll_updates_empty_state_when_first_station_appears(self):
         app = HandlerApp()
         station = {'id':'s','name':'Posto','address':'Rua','latitude':0,'longitude':0,'connectors':[]}
-        app.api.request.side_effect = [{'items':[],'total':0}, {'items':[station],'total':1}, {'items':[],'total':0}]
+        app.api.request.side_effect = station_responses({'items':[],'total':0}, {'items':[station],'total':1}, {'items':[],'total':0})
         screen = await stations.build(app)
         empty = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.value == 'Nenhum posto encontrado para esta busca.')
         self.assertTrue(empty.visible)

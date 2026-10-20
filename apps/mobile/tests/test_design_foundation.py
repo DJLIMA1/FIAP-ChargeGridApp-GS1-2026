@@ -90,7 +90,7 @@ class RouteContractTests(unittest.TestCase):
         self.assertIsNone(parent_route('home', {}))
 
     def test_active_tabs(self):
-        self.assertEqual(active_tab('booking', {}, 'consumer'), 'reservations')
+        self.assertEqual(active_tab('booking', {}, 'consumer'), 'stations')
         self.assertEqual(active_tab('wallet', {}, 'consumer'), 'profile')
         self.assertEqual(active_tab('payout', {}, 'vendor'), 'operator')
         self.assertEqual(active_tab('tariffs', {}, 'vendor'), 'operator')

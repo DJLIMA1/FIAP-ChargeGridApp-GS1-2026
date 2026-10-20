@@ -24,6 +24,19 @@ def descendants(item):
         yield from descendants(child)
 
 
+def station_responses(*responses, reservation=None, session=None):
+    """Side effect for station-list tests: the Recarga tab also asks for the active reservation/session."""
+    queue = list(responses)
+
+    async def respond(method, path, *args, **kwargs):
+        if path == 'reservations/current':
+            return reservation
+        if path == 'charging-sessions/current':
+            return session
+        return queue.pop(0)
+    return respond
+
+
 def click(screen, label):
     return next(item.on_click for item in descendants(screen)
                 if getattr(item, 'on_click', None)

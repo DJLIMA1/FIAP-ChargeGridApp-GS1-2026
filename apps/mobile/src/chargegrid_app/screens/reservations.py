@@ -1,6 +1,8 @@
-"""Aba Recarga: "Minhas recargas" (Próximas / Em andamento) e o detalhe de uma recarga agendada.
+"""Detalhe de uma recarga agendada e o cartão de recarga ativa da aba Recarga.
 
-``build(app)`` é a lista; ``build(app, detail=True)`` abre a reserva atual ("Recarga Agendada").
+A aba Recarga abre direto a busca de estações (``stations``); a antiga lista "Minhas recargas" foi removida.
+``build(app, detail=True)`` abre a reserva atual ("Recarga Agendada"); ``active_recharge_cards`` mostra no topo
+da busca o acesso à reserva ativa / recarga em andamento.
 ``recharge_detail`` (layout carro + indicador + valores) é compartilhado com ``charging.py``
 ("Recarga em andamento").
 """
@@ -163,13 +165,56 @@ def station_tile_row(name, subtitle, on_click):
                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
-def _recharge_card(when, address, name, subtitle, on_click):
+def _recharge_card(label, when, address, name, subtitle, on_click, data=None):
+    """Cartão compacto no estilo dos cartões de recarga do app: rótulo, horário/endereço e o posto."""
+    lines = [d.txt(label, 11, 'bold', theme.ACCENT), d.txt(when, 9.3, 'regular')]
+    if street_line(address):
+        lines.append(d.txt(street_line(address), 9.3, 'regular'))
     return ft.Container(
-        ft.Column([d.txt(when, 9.3, 'regular'), d.txt(street_line(address), 9.3, 'regular'),
-                   ft.Container(station_tile_row(name, subtitle, on_click), margin=ft.Margin(0, 11.5, 0, 0))],
-                  spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        bgcolor=theme.CARD, border_radius=24, padding=ft.Padding(left=15, right=15, top=12.5, bottom=17.5),
-        on_click=on_click, ink=True, margin=ft.Margin(0, 0, -2, -2))
+        ft.Column([*lines, ft.Container(station_tile_row(name, subtitle, on_click), margin=ft.Margin(0, 9, 0, 0))],
+                  spacing=2, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        bgcolor=theme.CARD, border_radius=24, padding=ft.Padding(left=15, right=15, top=12, bottom=14),
+        on_click=on_click, ink=True, data=data)
+
+
+async def active_recharge(app):
+    """``(reserva ativa, sessão em andamento)`` do motorista; ``None`` no que não houver (ou se a API falhar)."""
+    try:
+        reservation = await app.api.request('GET', 'reservations/current')
+        session = await app.api.request('GET', 'charging-sessions/current')
+    except Exception:  # noqa: BLE001 - o cartão é opcional: a busca de estações nunca quebra por ele
+        return None, None
+    if not isinstance(reservation, dict) or reservation.get('status') not in UPCOMING:
+        reservation = None
+    if not isinstance(session, dict) or session.get('status') not in RUNNING:
+        session = None
+    return reservation, session
+
+
+def active_snapshot(reservation, session):
+    return (reservation or {}).get('id'), (reservation or {}).get('status'), (session or {}).get('id'), (session or {}).get('status')
+
+
+def active_recharge_cards(app, reservation, session, demo=False):
+    """Cartões "Recarga em andamento" / "Reserva ativa" do topo da aba Recarga (lista vazia se não houver)."""
+    cards = []
+    if session:
+        from .charging import DEMO_LABELS as SESSION_DEMO
+        from .charging import LABELS as SESSION_LABELS
+        session_labels = SESSION_DEMO if demo else SESSION_LABELS
+        cards.append(_recharge_card(
+            'Recarga em andamento', when_text(session.get('started_at') or session.get('created_at')),
+            session.get('station_address'), session.get('station_name') or 'Posto',
+            area_line(session.get('station_address')) or session_labels.get(session['status'], session['status']),
+            app.link('charging', session_id=session['id']), data='active-session'))
+    if reservation:
+        labels = DEMO_LABELS if demo else LABELS
+        cards.append(_recharge_card(
+            'Reserva ativa', when_text(reservation.get('expires_at') or reservation.get('created_at')),
+            reservation.get('station_address'), reservation.get('station_name') or 'Posto reservado',
+            area_line(reservation.get('station_address')) or labels.get(reservation['status'], reservation['status']),
+            app.link('reservations', detail=True), data='active-reservation'))
+    return cards
 
 
 async def seed_demo(app, kind):
@@ -201,66 +246,20 @@ async def seed_demo(app, kind):
 
 
 # ---------------------------------------------------------------- telas
-async def build(app, detail=False, demo_seed=None, **_):
-    demo = getattr(app.api, 'is_demo', False) is True
+async def build(app, detail=False, demo_seed=None, **params):
+    """``detail=True``: "Recarga Agendada". Sem ``detail`` (rota antiga da lista removida) abre a busca de estações."""
+    if not detail:
+        from . import stations
+        return await stations.build(app, demo_seed=demo_seed, **params)
     await seed_demo(app, demo_seed)
-    if detail:
-        return await _detail(app, demo)
-    reservation = await app.api.request('GET', 'reservations/current')
-    if reservation and reservation.get('status') not in UPCOMING:
-        reservation = None
-    session = await app.api.request('GET', 'charging-sessions/current')
-    if session and session.get('status') not in RUNNING:
-        session = None
-
-    def snapshot(res, ses):
-        return (res or {}).get('id'), (res or {}).get('status'), (ses or {}).get('id'), (ses or {}).get('status')
-    shown = snapshot(reservation, session)
-
-    async def update():
-        current_res = await app.api.request('GET', 'reservations/current')
-        if current_res and current_res.get('status') not in UPCOMING:
-            current_res = None
-        current_ses = await app.api.request('GET', 'charging-sessions/current')
-        if current_ses and current_ses.get('status') not in RUNNING:
-            current_ses = None
-        if snapshot(current_res, current_ses) != shown:
-            await app.go('reservations')
-    if reservation or session:
-        app.set_poll(update, 5)
-
-    labels = DEMO_LABELS if demo else LABELS
-    upcoming, running = [], []
-    if reservation:
-        upcoming.append(_recharge_card(
-            when_text(reservation.get('expires_at') or reservation.get('created_at')),
-            reservation.get('station_address'), reservation.get('station_name') or 'Posto reservado',
-            area_line(reservation.get('station_address')) or labels.get(reservation['status'], reservation['status']),
-            app.link('reservations', detail=True)))
-    if session:
-        from .charging import DEMO_LABELS as SESSION_DEMO
-        from .charging import LABELS as SESSION_LABELS
-        session_labels = SESSION_DEMO if demo else SESSION_LABELS
-        running.append(_recharge_card(
-            when_text(session.get('started_at') or session.get('created_at')),
-            session.get('station_address'), session.get('station_name') or 'Posto',
-            area_line(session.get('station_address')) or session_labels.get(session['status'], session['status']),
-            app.link('charging', session_id=session['id'])))
-    body = [d.txt('Minhas recargas', 18.5, 'bold'), ft.Container(height=3.5),
-            d.txt('Próximas', 14.6, 'bold'), *upcoming,
-            d.txt('Em andamento', 14.6, 'bold'), *running]
-    search = ft.Container(btn('Buscar mais estações', app.link('stations'), 'danger'), margin=ft.Margin(8, 0, 3, -6))
-    if upcoming or running:
-        # Com recargas listadas a referência não prende o botão à barra: ele segue o conteúdo.
-        return d.page(*body, ft.Container(height=234), search, gap=14.5)
-    return d.page(*body, footer=ft.Container(search.content, margin=ft.Margin(8, 0, 8, -6)), gap=14.5)
+    return await _detail(app, getattr(app.api, 'is_demo', False) is True)
 
 
 async def _detail(app, demo):
     reservation = await app.api.request('GET', 'reservations/current')
     if not reservation:
         return d.page(d.txt('Nenhuma reserva ativa.', 14, 'regular', theme.GRAY_TEXT),
-                      title='Recarga Agendada', on_back=app.link('reservations'),
+                      title='Recarga Agendada', on_back=app.link('stations'),
                       footer=btn('Buscar um ponto', app.link('stations')))
 
     async def update():
@@ -272,7 +271,7 @@ async def _detail(app, demo):
     async def cancel():
         await app.api.request('POST', f"reservations/{reservation['id']}/cancel")
         app.planning_intent = None
-        await app.go('reservations')
+        await app.go('stations')
     labels = DEMO_LABELS if demo else LABELS
     status = reservation['status']
     connector = reservation.get('connector') or {}
@@ -305,5 +304,5 @@ async def _detail(app, demo):
     return recharge_detail(
         app, 'Recarga Agendada', when=when_text(reservation.get('expires_at') or reservation.get('created_at')),
         address=reservation.get('station_address'), percent='-%', cost='-', power='- kW', remaining='- minutos',
-        action=cancel_button or arrive or ft.Container(), on_back=app.link('reservations'), status=status_line,
+        action=cancel_button or arrive or ft.Container(), on_back=app.link('stations'), status=status_line,
         secondary=[arrive] if arrive and cancel_button else (), extra=extra)

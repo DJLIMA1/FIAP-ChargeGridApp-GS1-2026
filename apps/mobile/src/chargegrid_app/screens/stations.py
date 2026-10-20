@@ -277,12 +277,15 @@ def _filter_sheet(app, current, location, *, close):
 
 async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, offset=0,
                 connector_type=None, available_only=False, max_price_per_kwh=None, sort='default', planning_intent=None,
-                typed_query='', filters_open=False, **_):
+                typed_query='', filters_open=False, demo_seed=None, **_):
     intention = deepcopy(planning_intent) if planning_intent else {}
     route_state = dict(lat=lat,lng=lng,radius=radius,query=query,connector_type=connector_type,
                        available_only=available_only,max_price_per_kwh=max_price_per_kwh,sort=sort,planning_intent=intention)
     route_state = {key:value for key,value in route_state.items() if value != DEFAULTS[key]}
     demo = getattr(app.api,'is_demo',False) is True
+    if demo_seed:
+        from .reservations import seed_demo
+        await seed_demo(app,demo_seed)
     if station_id:
         stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
         total = 1
@@ -296,6 +299,29 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             params.update(lat=lat,lng=lng,radius_km=radius)
         result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
+    # Aba Recarga: a busca é a tela da aba; a reserva ativa / recarga em andamento aparece no topo.
+    show_active = not station_id and getattr(app,'browsing_mode','consumer') != 'vendor'
+    active_box = ft.Column(spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,data='active-recharge')
+    active_seen = [None]
+
+    async def refresh_active():
+        from .reservations import (
+            active_recharge,
+            active_recharge_cards,
+            active_snapshot,
+        )
+        reservation, session = await active_recharge(app)
+        snapshot = active_snapshot(reservation, session)
+        if snapshot == active_seen[0]:
+            return False
+        active_seen[0] = snapshot
+        active_box.controls = active_recharge_cards(app,reservation,session,demo)
+        active_box.visible = bool(active_box.controls)
+        return True
+    if show_active:
+        await refresh_active()
+    else:
+        active_box.visible = False
     if station_id:
         first = stations[0]
         station_heading = ft.Column([D.txt(first['name'],21.5,'bold'),D.txt(_street(first['address']),11.5,'regular',theme.GRAY_TEXT)],spacing=5)
@@ -493,7 +519,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 async def reserve(c=connector,k=key):
                     await app.api.request('POST','reservations',{'connector_id':c['id']},key=k)
                     app.planning_intent = {'connector_id':c['id'],'intent':deepcopy(intention),'station_search':deepcopy(route_state)} if intention or route_state else None
-                    await app.go('reservations')
+                    await app.go('reservations',detail=True)
                 status, status_color = point_status(connector)
                 if station.get('active') is False or connector.get('active') is False or connector.get('retired'):
                     status,status_color = 'Desativado',theme.SLATE
@@ -557,7 +583,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         elif not shown_items:
             empty_state.value = ('Nenhum posto nesta página. Volte para a página anterior.'
                                  if offset and total else 'Nenhum posto encontrado para esta busca.')
-        head = [page_head_box,
+        head = [*([active_box] if active_box.visible and not searching else []),page_head_box,
                 ft.Container(search_field,margin=ft.Margin(left=0,top=5 if searching else -1,right=0,bottom=0))]
         if location_chip is not None:
             head.append(ft.Container(location_chip,margin=ft.Margin(left=0,top=-6,right=0,bottom=0)))
@@ -566,7 +592,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         # Contagem e paginação ficam abaixo da dobra: o primeiro ecrã segue a referência.
         rows = len(shown_items)
         used = (95 + 24 + 63 + (16 + 158 if shown_items else 0) + 40 + rows * 101
-                + (44 if location_chip is not None else 0))
+                + (44 if location_chip is not None else 0)
+                + (110 * len(active_box.controls) if active_box.visible and not searching else 0))
         fold = ft.Container(height=max(0,800 - used))
         body.controls = [*head,*top,ft.Container(list_heading,margin=ft.Margin(left=0,top=-2 if searching else 0,right=0,bottom=0)),
                          listing,empty_state,*bottom,fold,result_count,pagination]
@@ -601,6 +628,11 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
 
     async def update():
         nonlocal current_stations,total
+        # Só acompanha o cartão enquanto ele existe (some quando a reserva/recarga termina);
+        # uma reserva nova chega pelo próprio fluxo de reserva, que reconstrói a tela.
+        if show_active and active_box.visible and await refresh_active():
+            layout_list()
+            app.page.update()
         if station_id:
             fresh = [deepcopy(await app.api.request("GET",f"stations/{station_id}"))]
             fresh_total = 1

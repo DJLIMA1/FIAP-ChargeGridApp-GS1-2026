@@ -18,6 +18,7 @@ from .navigation import (
     form_route,
     nav_visible,
     parent_route,
+    resolve_route,
     screen_params,
     tab_entries,
 )
@@ -314,6 +315,7 @@ class ChargeGridApp:
         self.cancel_screen()
         theme.set_dark(self.dark_mode)
         motion.set_reduced(self.reduced_motion)
+        route, data = resolve_route(route, data)
         if route not in SCREENS:
             route, data = 'home', {}
         if route != 'auth' and not self.api.session.access_token:

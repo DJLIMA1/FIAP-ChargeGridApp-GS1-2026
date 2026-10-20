@@ -17,7 +17,7 @@ from chargegrid_app.screens import charging, history, home, reservations, statio
 from chargegrid_app.services import maps
 from chargegrid_app.services.location import geocode_demo_address
 from chargegrid_app.services.search_location import SearchLocation
-from test_behavior import HandlerApp, click, descendants
+from test_behavior import HandlerApp, click, descendants, station_responses
 from test_consumer_flows import (
     CONTEXT,
     STATION,
@@ -99,10 +99,10 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.is_demo = True
         app.profile = {'id':'demo-profile'}
-        app.api.request.side_effect = [
+        app.api.request.side_effect = station_responses(
             {'items':[STATION],'total':1},
             {'items':[{**STATION,'connectors':[{**STATION['connectors'][0],'available':False}]}],'total':1},
-        ]
+        )
         with patch.object(SearchLocation,'__init__',side_effect=AssertionError('persistent storage')) as storage, \
                 patch.object(maps,'build_map_png',side_effect=AssertionError('network tiles')) as render, \
                 patch('httpx.AsyncClient',side_effect=AssertionError('network client')):
