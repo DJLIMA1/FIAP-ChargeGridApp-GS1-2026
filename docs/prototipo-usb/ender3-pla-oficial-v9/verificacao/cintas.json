@@ -1,0 +1,21 @@
+{
+  "quantity": 2,
+  "nominal_strap_mm": [
+    2.5,
+    1.0
+  ],
+  "reserved_buckle_mm": [
+    5,
+    4.8,
+    4
+  ],
+  "printed_slot_mm": [
+    3.2,
+    1.8
+  ],
+  "release": "Cut ties from front, remove rigid stops, raise tray 5 mm then withdraw",
+  "needs_new_ties_after_service": true,
+  "actual_tie_dimensions_to_confirm": true,
+  "reference": "HellermannTyton T18R 111-01711",
+  "datasheet": "https://www.hellermanntyton.com.br/produtos/abracadeiras-com-serrilhado-interno/t18r/111-01711"
+}

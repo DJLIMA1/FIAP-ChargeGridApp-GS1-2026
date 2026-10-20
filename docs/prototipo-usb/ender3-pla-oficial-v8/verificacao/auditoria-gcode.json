@@ -1,0 +1,308 @@
+{
+  "slicer": "PrusaSlicer 2.9.6",
+  "physical_print_tested": false,
+  "files": [
+    {
+      "file": "01CHAVE.gcode",
+      "grams_slicer": 2.88,
+      "time_slicer": "18m 11s",
+      "seconds_slicer": 1091.0,
+      "layers": 12,
+      "extrusion_segments": 6601,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        162.384,
+        210.0,
+        10.0
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 4.663,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "02TRSUP.gcode",
+      "grams_slicer": 50.96,
+      "time_slicer": "5h 56m 16s",
+      "seconds_slicer": 21376.0,
+      "layers": 214,
+      "extrusion_segments": 210521,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        164.992,
+        210.0,
+        39.8
+      ],
+      "support_grams_from_paths": 2.69,
+      "max_nominal_flow_mm3_s": 6.001,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "03TRINF7.gcode",
+      "grams_slicer": 57.95,
+      "time_slicer": "7h 51m 23s",
+      "seconds_slicer": 28283.0,
+      "layers": 368,
+      "extrusion_segments": 299977,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        156.079,
+        210.0,
+        50.84
+      ],
+      "support_grams_from_paths": 11.89,
+      "max_nominal_flow_mm3_s": 6.013,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "04QDSUP.gcode",
+      "grams_slicer": 38.92,
+      "time_slicer": "4h 54m 46s",
+      "seconds_slicer": 17686.0,
+      "layers": 246,
+      "extrusion_segments": 168841,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        167.178,
+        210.0,
+        37.88
+      ],
+      "support_grams_from_paths": 8.71,
+      "max_nominal_flow_mm3_s": 6.008,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "05QDINF8.gcode",
+      "grams_slicer": 74.97,
+      "time_slicer": "10h 52m 56s",
+      "seconds_slicer": 39176.0,
+      "layers": 1038,
+      "extrusion_segments": 417445,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        158.435,
+        210.0,
+        129.8
+      ],
+      "support_grams_from_paths": 33.73,
+      "max_nominal_flow_mm3_s": 6.116,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "06TAMPA.gcode",
+      "grams_slicer": 44.79,
+      "time_slicer": "5h 25m 29s",
+      "seconds_slicer": 19529.0,
+      "layers": 259,
+      "extrusion_segments": 211463,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        165.814,
+        210.0,
+        34.04
+      ],
+      "support_grams_from_paths": 16.16,
+      "max_nominal_flow_mm3_s": 6.006,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "07PTAMP.gcode",
+      "grams_slicer": 0.74,
+      "time_slicer": "9m 12s",
+      "seconds_slicer": 552.0,
+      "layers": 20,
+      "extrusion_segments": 8097,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        148.343,
+        210.0,
+        10.0
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 3.322,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "08PTINF.gcode",
+      "grams_slicer": 0.24,
+      "time_slicer": "3m 17s",
+      "seconds_slicer": 197.0,
+      "layers": 20,
+      "extrusion_segments": 2038,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        118.343,
+        210.0,
+        10.0
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 2.388,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "09PINO.gcode",
+      "grams_slicer": 4.48,
+      "time_slicer": "36m 27s",
+      "seconds_slicer": 2187.0,
+      "layers": 65,
+      "extrusion_segments": 12216,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        163.759,
+        210.0,
+        16.52
+      ],
+      "support_grams_from_paths": 0.95,
+      "max_nominal_flow_mm3_s": 5.531,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "10BERCO8.gcode",
+      "grams_slicer": 28.59,
+      "time_slicer": "2h 47m 58s",
+      "seconds_slicer": 10078.0,
+      "layers": 27,
+      "extrusion_segments": 50519,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        180.194,
+        210.0,
+        10.52
+      ],
+      "support_grams_from_paths": 0.04,
+      "max_nominal_flow_mm3_s": 6.006,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "11TRAVA8.gcode",
+      "grams_slicer": 3.07,
+      "time_slicer": "32m 13s",
+      "seconds_slicer": 1933.0,
+      "layers": 27,
+      "extrusion_segments": 14654,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        149.194,
+        210.0,
+        11.48
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 5.531,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "12CABO.gcode",
+      "grams_slicer": 6.98,
+      "time_slicer": "1h 3m 53s",
+      "seconds_slicer": 3833.0,
+      "layers": 23,
+      "extrusion_segments": 32935,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        190.194,
+        210.0,
+        10.52
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 5.725,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    }
+  ],
+  "total_grams": 314.57,
+  "total_seconds": 145921.0
+}

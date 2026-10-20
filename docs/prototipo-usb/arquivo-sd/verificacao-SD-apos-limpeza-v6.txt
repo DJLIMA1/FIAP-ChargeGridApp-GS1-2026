@@ -1,0 +1,12 @@
+Started file system verification on disk4s1 (NO NAME)
+Verifying file system
+Volume was successfully unmounted
+Performing fsck_msdos -n /dev/rdisk4s1
+** /dev/rdisk4s1
+** Phase 1 - Preparing FAT
+** Phase 2 - Checking Directories
+** Phase 3 - Checking for Orphan Clusters
+Warning: 459 files, 6863520 KiB free (214485 clusters)
+File system check exit code is 0
+Restoring the original state found as mounted
+Finished file system verification on disk4s1 (NO NAME)

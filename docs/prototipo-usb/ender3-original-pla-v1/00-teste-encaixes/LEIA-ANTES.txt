@@ -1,0 +1,28 @@
+00-teste-encaixes
+Ender 3 original · PLA · bico 0,4 mm · escala 100%
+
+Abrir o 3MF OU o STL: ambos têm as mesmas peças. Não abrir ambos juntos.
+3MF contém geometria, não configurações de fatiamento.
+Manter orientação e posições; imprimir por camadas, não por objeto.
+
+camada_mm: 0.16
+perimetros: 4
+topo_fundo_mm: 0.96
+preenchimento_percent: 100
+velocidade_mm_s: 25
+parede_externa_mm_s: 20
+brim_mm: 5
+
+Suporte localizado sob abas do pino 07 e teto horizontal do cupom 16. Revisar cavidades; não preencher os encaixes com suporte inacessível.
+
+Configuração comum inicial: bico 200 °C, mesa 60 °C, primeira camada 0,20 mm a 15 mm/s; seguir fabricante do filamento.
+Gerar suportes conforme necessidade, revisar camada a camada e então exportar G-code no perfil Ender-3 original.
+
+Peças:
+16-cupom-quarto-volta: 1
+17-cupom-bucha-tampa: 1
+18-cupom-placa-tampa: 1
+20-cupom-trilho-berco: 1
+21-cupom-macho-berco: 1
+07-pino-quarto-volta: 1
+08-pino-tampa-1: 1

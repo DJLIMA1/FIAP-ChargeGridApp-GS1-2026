@@ -1,0 +1,106 @@
+{
+  "volume_uuid": "5D4EEFBC-2500-3F9A-B4FA-BCBCA63DC2A3",
+  "whole_disk": "disk4",
+  "rewritten": [
+    "03TRINF.gcode"
+  ],
+  "cycles": [
+    {
+      "cycle": 1,
+      "failures": []
+    },
+    {
+      "cycle": 2,
+      "failures": []
+    }
+  ],
+  "sha256_readback_passed": true,
+  "prior_corruption_observed": true,
+  "files": [
+    {
+      "path": "CGFINAL/01CHAVE.gcode",
+      "sha256": "46540b833edb2bca9635e41bdfe087557519e2a0b510116b972465811f3848a0"
+    },
+    {
+      "path": "CGFINAL/02TRSUP.gcode",
+      "sha256": "576aa286ee78c7b045e2c6308b40f01f8666e90f0dfe7ecf2161947dd5c7c367"
+    },
+    {
+      "path": "CGFINAL/03TRINF.gcode",
+      "sha256": "aa9a57ec61cfd16354d7c1b1112e8160481540814ec945a7db2c34b1af7c4e90"
+    },
+    {
+      "path": "CGFINAL/04QDSUP.gcode",
+      "sha256": "1927cf15e09fe21cb47d9c259a0ea709cf7498f3153ef9ca4e846d3c285a8a8e"
+    },
+    {
+      "path": "CGFINAL/05QDINF.gcode",
+      "sha256": "148c2362e8bf871461fbaaea7954596c6889f684278686da2a50325ce895da07"
+    },
+    {
+      "path": "CGFINAL/06TAMPA.gcode",
+      "sha256": "2fac4734e88af5d3b986053b93cf6d574d6be9c1387a46c7933c03457157a787"
+    },
+    {
+      "path": "CGFINAL/07PTAMP.gcode",
+      "sha256": "d03f9fbb13b75b1d2b9cf5fb5dc58022db1ec9557fbfb63e27feac3c57549b83"
+    },
+    {
+      "path": "CGFINAL/08PTINF.gcode",
+      "sha256": "5fb34ca3a3f179b472cb19a848f73b9742a74b227481bddc967e30a177359ac1"
+    },
+    {
+      "path": "CGFINAL/09PINO.gcode",
+      "sha256": "5f78bfdcdfbda27204f2ed3b86ab691680a2cc541fe621b41681a1bac6efa2dd"
+    },
+    {
+      "path": "CGFINAL/10BERCO.gcode",
+      "sha256": "1e788df53d46a388c81d624b9517c148eb652956d3026e37cdcdabf6071c6912"
+    },
+    {
+      "path": "CGFINAL/11TRAVA.gcode",
+      "sha256": "fe710b59700fd00e12c096c0eee6a86967add4bce568622059afb79395d5ba41"
+    },
+    {
+      "path": "CGFINAL/OPCIONAL/12CABO.gcode",
+      "sha256": "b6ffc13da73d8f98254b57a9278e740fa2f5f3d1ffb8aa131a4fa171e45206b9"
+    },
+    {
+      "path": "COMECE.txt",
+      "sha256": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0"
+    },
+    {
+      "path": "CGDOC6/ORDEM.txt",
+      "sha256": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0"
+    },
+    {
+      "path": "CGDOC6/GUIA.md",
+      "sha256": "f48d3795ffbd9c00575423ba33fb875df345971a262610fc7a6d615967bde7fb"
+    },
+    {
+      "path": "CGDOC6/montagem-travas.png",
+      "sha256": "1fbe419fcefc237fdd3a660749b2a62b007e3bfcc0c5aeb81df4627198f15c0c"
+    },
+    {
+      "path": "CGDOC6/TEMPOS.csv",
+      "sha256": "4e3ac370982a90fbafafc4104a23cfc7cacda332aea8d2168800ded1a645e345"
+    },
+    {
+      "path": "CGDOC6/ChargeGrid-OFICIAL-v6.zip",
+      "sha256": "e756620d1da5b0298f7487cd07802cbdd31f553dc8381855f7192cad3318fb91"
+    }
+  ],
+  "remaining_root": [
+    ".Spotlight-V100",
+    ".Trashes",
+    "._CGDOC6",
+    "._CGFINAL",
+    "._COMECE.txt",
+    ".fseventsd",
+    "CGDOC6",
+    "CGFINAL",
+    "COMECE.txt",
+    "System Volume Information"
+  ],
+  "ejected_safely": true
+}

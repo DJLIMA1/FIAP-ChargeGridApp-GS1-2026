@@ -1,0 +1,290 @@
+{
+  "gcodes": [
+    {
+      "file": "01CHAVE.gcode",
+      "compared_with_v6": "01CHAVE.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "46540b833edb2bca9635e41bdfe087557519e2a0b510116b972465811f3848a0"
+    },
+    {
+      "file": "02TRSUP.gcode",
+      "compared_with_v6": "02TRSUP.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "576aa286ee78c7b045e2c6308b40f01f8666e90f0dfe7ecf2161947dd5c7c367"
+    },
+    {
+      "file": "03TRINF7.gcode",
+      "compared_with_v6": "03TRINF.gcode",
+      "unchanged_from_v6": false,
+      "sha256": "669643b6a2ff6ed8afa97c7d00f9998d3b9613ae150c5f4051b464f05a66664c"
+    },
+    {
+      "file": "04QDSUP.gcode",
+      "compared_with_v6": "04QDSUP.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "1927cf15e09fe21cb47d9c259a0ea709cf7498f3153ef9ca4e846d3c285a8a8e"
+    },
+    {
+      "file": "05QDINF8.gcode",
+      "compared_with_v6": "05QDINF.gcode",
+      "unchanged_from_v6": false,
+      "sha256": "b9607a2b36b8186820e68b22ec88bd814f8d5fc9392b4c6f4332787817ee355a"
+    },
+    {
+      "file": "06TAMPA.gcode",
+      "compared_with_v6": "06TAMPA.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "2fac4734e88af5d3b986053b93cf6d574d6be9c1387a46c7933c03457157a787"
+    },
+    {
+      "file": "07PTAMP.gcode",
+      "compared_with_v6": "07PTAMP.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "d03f9fbb13b75b1d2b9cf5fb5dc58022db1ec9557fbfb63e27feac3c57549b83"
+    },
+    {
+      "file": "08PTINF.gcode",
+      "compared_with_v6": "08PTINF.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "5fb34ca3a3f179b472cb19a848f73b9742a74b227481bddc967e30a177359ac1"
+    },
+    {
+      "file": "09PINO.gcode",
+      "compared_with_v6": "09PINO.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "5f78bfdcdfbda27204f2ed3b86ab691680a2cc541fe621b41681a1bac6efa2dd"
+    },
+    {
+      "file": "10BERCO8.gcode",
+      "compared_with_v6": "10BERCO.gcode",
+      "unchanged_from_v6": false,
+      "sha256": "2da0a50597167ff69c51d673fd2bdc557eb8394846dc3730bee1f3af599bfb34"
+    },
+    {
+      "file": "11TRAVA8.gcode",
+      "compared_with_v6": "11TRAVA.gcode",
+      "unchanged_from_v6": false,
+      "sha256": "d8bcb145666b698253fe3969765170dbfd975128a09f37fa31731b22df7585bc"
+    },
+    {
+      "file": "12CABO.gcode",
+      "compared_with_v6": "12CABO.gcode",
+      "unchanged_from_v6": true,
+      "sha256": "b6ffc13da73d8f98254b57a9278e740fa2f5f3d1ffb8aa131a4fa171e45206b9"
+    }
+  ],
+  "changed_individual_stls_from_v7": [
+    "09-bandeja-removivel.stl",
+    "12-pino-trava-berco.stl",
+    "13-trava-bandeja.stl"
+  ],
+  "part_05_geometry_unchanged_support_only": true,
+  "already_printed_keys_and_job02_preserved_in_all_formats": true,
+  "job_parts": [
+    {
+      "file": "01CHAVE",
+      "quantity": 4,
+      "bounds_mm": [
+        [
+          63.0,
+          99.0,
+          0.0
+        ],
+        [
+          157.0,
+          121.0,
+          3.0
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "02TRSUP",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          57.86749267578125,
+          60.050567626953125,
+          0.0
+        ],
+        [
+          162.13250732421875,
+          159.94943237304688,
+          34.88557434082031
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "03TRINF7",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          66.83474731445312,
+          47.56367874145508,
+          0.0
+        ],
+        [
+          153.16525268554688,
+          172.4363250732422,
+          45.92680740356445
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "04QDSUP",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          57.86814880371094,
+          60.050506591796875,
+          0.0
+        ],
+        [
+          162.13185119628906,
+          159.94949340820312,
+          32.94999694824219
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "05QDINF8",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          66.84965515136719,
+          82.84771728515625,
+          0.0
+        ],
+        [
+          153.1503448486328,
+          137.15228271484375,
+          124.86612701416016
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "06TAMPA",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          58.0238037109375,
+          39.49003601074219,
+          0.0
+        ],
+        [
+          161.9761962890625,
+          180.5099639892578,
+          29.00003433227539
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "07PTAMP",
+      "quantity": 4,
+      "bounds_mm": [
+        [
+          76.5999984741211,
+          105.2249984741211,
+          0.0
+        ],
+        [
+          143.39999389648438,
+          114.7750015258789,
+          4.800000190734863
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "08PTINF",
+      "quantity": 1,
+      "bounds_mm": [
+        [
+          106.5999984741211,
+          105.0999984741211,
+          0.0
+        ],
+        [
+          113.4000015258789,
+          114.9000015258789,
+          4.800000190734863
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "09PINO",
+      "quantity": 4,
+      "bounds_mm": [
+        [
+          59.80000305175781,
+          94.1500015258789,
+          0.0
+        ],
+        [
+          160.1999969482422,
+          125.8499984741211,
+          11.600006103515625
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "10BERCO8",
+      "quantity": 3,
+      "bounds_mm": [
+        [
+          45.0,
+          50.5,
+          0.0
+        ],
+        [
+          175.0,
+          169.5,
+          5.550000190734863
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "11TRAVA8",
+      "quantity": 12,
+      "bounds_mm": [
+        [
+          76.0,
+          73.0,
+          0.0
+        ],
+        [
+          144.0,
+          147.0,
+          6.5
+        ]
+      ],
+      "all_meshes_closed": true
+    },
+    {
+      "file": "12CABO",
+      "quantity": 6,
+      "bounds_mm": [
+        [
+          35.0,
+          89.0,
+          0.0
+        ],
+        [
+          185.0,
+          131.0,
+          5.599999904632568
+        ]
+      ],
+      "all_meshes_closed": true
+    }
+  ],
+  "physical_full_assembly_pending": true
+}

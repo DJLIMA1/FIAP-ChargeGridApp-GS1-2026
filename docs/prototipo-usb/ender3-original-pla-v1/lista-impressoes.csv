@@ -1,0 +1,13 @@
+impressao,pecas,camada_mm,preenchimento_percent,observacao
+00-teste-encaixes,7,0.16,100,Suporte localizado sob abas do pino 07 e teto horizontal do cupom 16. Revisar cavidades; não preencher os encaixes com suporte inacessível.
+01-tampa-branca,1,0.2,25,Face externa curva voltada à mesa. Suportes sob a face e saliências; interface de suporte. Haverá marcas que podem exigir acabamento.
+02-traseira-superior,1,0.2,25,Manter emenda plana na mesa. Revisar suportes nas saliências internas e postes.
+03-traseira-inferior,1,0.2,25,Manter emenda plana na mesa. Revisar suportes nas saliências internas e saída de cabos.
+04-quadro-superior,1,0.2,25,"Manter emenda plana na mesa. Revisar suportes em alojamentos, ressaltos e saliências internas."
+05-quadro-inferior,1,0.2,25,Manter emenda plana na mesa. Revisar suportes em alojamentos e saliências internas.
+06-chaves-das-emendas,4,0.16,100,Bases planas sobre a mesa; em princípio sem suporte.
+07-pinos-quarto-de-volta,4,0.16,100,Cabeças sobre a mesa. Suporte localizado sob as abas; brim individual. Liberar abas antes de testar o giro.
+08-pinos-tampa-branca,5,0.16,100,Cabeças sobre a mesa. Inspecionar pequenas pontas salientes no fatiador. Pino 5 é diferente: manter identificação.
+09-bandeja-e-bercos,3,0.2,35,"Bases planas. Revisar pontes e trilhos; evitar suporte preso dentro dos trilhos. Berços genéricos, eletrônica ainda não definida."
+10-travas-e-espacadores,12,0.16,100,"Bases planas. Conferir pequenas saliências; calços são alternativas conforme a placa, não empilhar automaticamente."
+11-cabos-duplos-5mm-OPCIONAL,6,0.16,100,Somente para dois cabos com diâmetro compatível com 5 mm nominal. Conferir canais e suportes. Outros diâmetros em pecas-individuais/.

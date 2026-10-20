@@ -1,0 +1,182 @@
+[
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/01CHAVE.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/01CHAVE.gcode",
+    "source_hash": "46540b833edb2bca9635e41bdfe087557519e2a0b510116b972465811f3848a0",
+    "sd_hash": "46540b833edb2bca9635e41bdfe087557519e2a0b510116b972465811f3848a0",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/02TRSUP.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/02TRSUP.gcode",
+    "source_hash": "576aa286ee78c7b045e2c6308b40f01f8666e90f0dfe7ecf2161947dd5c7c367",
+    "sd_hash": "ae6382900b6f5651bad5fb4325462494ce681c52fd55eec5169c7bf777d19551",
+    "match": false,
+    "bytes_changed": 32687,
+    "first_differences": [
+      5963776,
+      5963777,
+      5963778,
+      5963779,
+      5963780,
+      5963781,
+      5963782,
+      5963783,
+      5963784,
+      5963785
+    ],
+    "last_differences": [
+      5996534,
+      5996535,
+      5996536,
+      5996537,
+      5996538,
+      5996539,
+      5996540,
+      5996541,
+      5996542,
+      5996543
+    ],
+    "expected_size": 8678047,
+    "actual_size": 8678047
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/03TRINF.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/03TRINF.gcode",
+    "source_hash": "aa9a57ec61cfd16354d7c1b1112e8160481540814ec945a7db2c34b1af7c4e90",
+    "sd_hash": "7978e7cb8d69b47fe7d34de861c04e6fb9513330f20e33c14388d60c495a3926",
+    "match": false,
+    "bytes_changed": 81694,
+    "first_differences": [
+      1146880,
+      1146881,
+      1146882,
+      1146883,
+      1146884,
+      1146885,
+      1146886,
+      1146887,
+      1146888,
+      1146889
+    ],
+    "last_differences": [
+      1277942,
+      1277943,
+      1277944,
+      1277945,
+      1277946,
+      1277947,
+      1277948,
+      1277949,
+      1277950,
+      1277951
+    ],
+    "expected_size": 12388189,
+    "actual_size": 12388189
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/04QDSUP.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/04QDSUP.gcode",
+    "source_hash": "1927cf15e09fe21cb47d9c259a0ea709cf7498f3153ef9ca4e846d3c285a8a8e",
+    "sd_hash": "1927cf15e09fe21cb47d9c259a0ea709cf7498f3153ef9ca4e846d3c285a8a8e",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/05QDINF.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/05QDINF.gcode",
+    "source_hash": "148c2362e8bf871461fbaaea7954596c6889f684278686da2a50325ce895da07",
+    "sd_hash": "148c2362e8bf871461fbaaea7954596c6889f684278686da2a50325ce895da07",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/06TAMPA.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/06TAMPA.gcode",
+    "source_hash": "2fac4734e88af5d3b986053b93cf6d574d6be9c1387a46c7933c03457157a787",
+    "sd_hash": "2fac4734e88af5d3b986053b93cf6d574d6be9c1387a46c7933c03457157a787",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/07PTAMP.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/07PTAMP.gcode",
+    "source_hash": "d03f9fbb13b75b1d2b9cf5fb5dc58022db1ec9557fbfb63e27feac3c57549b83",
+    "sd_hash": "d03f9fbb13b75b1d2b9cf5fb5dc58022db1ec9557fbfb63e27feac3c57549b83",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/08PTINF.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/08PTINF.gcode",
+    "source_hash": "5fb34ca3a3f179b472cb19a848f73b9742a74b227481bddc967e30a177359ac1",
+    "sd_hash": "5fb34ca3a3f179b472cb19a848f73b9742a74b227481bddc967e30a177359ac1",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/09PINO.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/09PINO.gcode",
+    "source_hash": "5f78bfdcdfbda27204f2ed3b86ab691680a2cc541fe621b41681a1bac6efa2dd",
+    "sd_hash": "5f78bfdcdfbda27204f2ed3b86ab691680a2cc541fe621b41681a1bac6efa2dd",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/10BERCO.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/10BERCO.gcode",
+    "source_hash": "1e788df53d46a388c81d624b9517c148eb652956d3026e37cdcdabf6071c6912",
+    "sd_hash": "1e788df53d46a388c81d624b9517c148eb652956d3026e37cdcdabf6071c6912",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/11TRAVA.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/11TRAVA.gcode",
+    "source_hash": "fe710b59700fd00e12c096c0eee6a86967add4bce568622059afb79395d5ba41",
+    "sd_hash": "fe710b59700fd00e12c096c0eee6a86967add4bce568622059afb79395d5ba41",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/gcode/12CABO.gcode",
+    "destination": "/Volumes/NO NAME/CGFINAL/OPCIONAL/12CABO.gcode",
+    "source_hash": "b6ffc13da73d8f98254b57a9278e740fa2f5f3d1ffb8aa131a4fa171e45206b9",
+    "sd_hash": "b6ffc13da73d8f98254b57a9278e740fa2f5f3d1ffb8aa131a4fa171e45206b9",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/COMECE.txt",
+    "destination": "/Volumes/NO NAME/COMECE.txt",
+    "source_hash": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0",
+    "sd_hash": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/COMECE.txt",
+    "destination": "/Volumes/NO NAME/CGDOC6/ORDEM.txt",
+    "source_hash": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0",
+    "sd_hash": "3eb1c58d8b64a0b5f8e9bd6b7c3ff4e63b170d7efab75cd278254a1f79f65ae0",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/LEIA-PRIMEIRO.md",
+    "destination": "/Volumes/NO NAME/CGDOC6/GUIA.md",
+    "source_hash": "f48d3795ffbd9c00575423ba33fb875df345971a262610fc7a6d615967bde7fb",
+    "sd_hash": "f48d3795ffbd9c00575423ba33fb875df345971a262610fc7a6d615967bde7fb",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/montagem-travas.png",
+    "destination": "/Volumes/NO NAME/CGDOC6/montagem-travas.png",
+    "source_hash": "1fbe419fcefc237fdd3a660749b2a62b007e3bfcc0c5aeb81df4627198f15c0c",
+    "sd_hash": "1fbe419fcefc237fdd3a660749b2a62b007e3bfcc0c5aeb81df4627198f15c0c",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v6/verificacao/estimativas.csv",
+    "destination": "/Volumes/NO NAME/CGDOC6/TEMPOS.csv",
+    "source_hash": "4e3ac370982a90fbafafc4104a23cfc7cacda332aea8d2168800ded1a645e345",
+    "sd_hash": "4e3ac370982a90fbafafc4104a23cfc7cacda332aea8d2168800ded1a645e345",
+    "match": true
+  },
+  {
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ChargeGrid-Ender3-PLA-OFICIAL-v6.zip",
+    "destination": "/Volumes/NO NAME/CGDOC6/ChargeGrid-OFICIAL-v6.zip",
+    "source_hash": "e756620d1da5b0298f7487cd07802cbdd31f553dc8381855f7192cad3318fb91",
+    "sd_hash": "e756620d1da5b0298f7487cd07802cbdd31f553dc8381855f7192cad3318fb91",
+    "match": true
+  }
+]

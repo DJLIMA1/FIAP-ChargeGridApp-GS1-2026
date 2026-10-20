@@ -1,0 +1,230 @@
+[
+  {
+    "id": "01CHAVE",
+    "label": "Quatro chaves das emendas",
+    "quantity": 4,
+    "support": false,
+    "infill": "100%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 4,
+      "size_mm": [
+        94.0,
+        22.0,
+        3.0
+      ]
+    },
+    "source_previous_job": "06CHAVE"
+  },
+  {
+    "id": "02TRSUP",
+    "label": "Traseira superior",
+    "quantity": 1,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        104.2650146484375,
+        99.89886474609375,
+        34.88557434082031
+      ]
+    },
+    "source_previous_job": "02TRSUP"
+  },
+  {
+    "id": "03TRINF7",
+    "label": "Traseira inferior — alojamentos das chaves corrigidos",
+    "quantity": 1,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        86.33050537109375,
+        124.87264633178711,
+        45.92681121826172
+      ]
+    },
+    "source_previous_job": "03TRINF"
+  },
+  {
+    "id": "04QDSUP",
+    "label": "Quadro superior",
+    "quantity": 1,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        104.26370239257812,
+        99.89898681640625,
+        32.94999694824219
+      ]
+    },
+    "source_previous_job": "04QDSUP"
+  },
+  {
+    "id": "05QDINF8",
+    "label": "Quadro inferior, suporte ajustado ao contorno",
+    "quantity": 1,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        86.30068969726562,
+        54.3045654296875,
+        124.86612701416016
+      ]
+    },
+    "source_previous_job": "05QDINF"
+  },
+  {
+    "id": "06TAMPA",
+    "label": "Tampa frontal branca",
+    "quantity": 1,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        103.952392578125,
+        141.01992797851562,
+        29.00003433227539
+      ]
+    },
+    "source_previous_job": "01TAMPA"
+  },
+  {
+    "id": "07PTAMP",
+    "label": "Quatro travas v5 para os pontos superiores e centrais",
+    "quantity": 4,
+    "support": false,
+    "infill": "100%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 4,
+      "size_mm": [
+        66.79999542236328,
+        9.550003051757812,
+        4.800000190734863
+      ]
+    },
+    "source_previous_job": null
+  },
+  {
+    "id": "08PTINF",
+    "label": "Uma trava inferior, 0,25 mm mais longa",
+    "quantity": 1,
+    "support": false,
+    "infill": "100%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 1,
+      "size_mm": [
+        6.8000030517578125,
+        9.800003051757812,
+        4.800000190734863
+      ]
+    },
+    "source_previous_job": null
+  },
+  {
+    "id": "09PINO",
+    "label": "Quatro pinos de quarto de volta com suporte",
+    "quantity": 4,
+    "support": true,
+    "infill": "100%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 4,
+      "size_mm": [
+        100.39999389648438,
+        31.699996948242188,
+        11.600006103515625
+      ]
+    },
+    "source_previous_job": "07PINO"
+  },
+  {
+    "id": "10BERCO8",
+    "label": "Bandeja revisada e dois berços, com suporte local",
+    "quantity": 3,
+    "support": true,
+    "infill": "15%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 3,
+      "size_mm": [
+        130.0,
+        119.0,
+        5.550000190734863
+      ]
+    },
+    "source_previous_job": "10BERCO"
+  },
+  {
+    "id": "11TRAVA8",
+    "label": "Travas internas revisadas e espaçadores",
+    "quantity": 12,
+    "support": false,
+    "infill": "100%",
+    "optional": false,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 12,
+      "size_mm": [
+        68.0,
+        74.0,
+        6.5
+      ]
+    },
+    "source_previous_job": "11TRAVA"
+  },
+  {
+    "id": "12CABO",
+    "label": "Opcional: saída para dois cabos de 5 mm",
+    "quantity": 6,
+    "support": false,
+    "infill": "100%",
+    "optional": true,
+    "geometry": {
+      "watertight": true,
+      "consistent": true,
+      "quantity": 6,
+      "size_mm": [
+        150.0,
+        42.0,
+        5.599999904632568
+      ]
+    },
+    "source_previous_job": "11CABO"
+  }
+]

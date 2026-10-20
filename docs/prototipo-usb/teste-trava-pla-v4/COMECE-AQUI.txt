@@ -1,0 +1,11 @@
+CHARGEGRID - TRAVA V4
+
+Imprimir 00FLEX4.gcode: A e B, 5min18s, 0.41 g.
+A: 1 risco na cabeca. B: 2 riscos.
+Comecar pela A, na placa 18 sozinha: apos a ponta atravessar, a haste deve deslizar sem prender.
+Depois montar 17 embaixo (furo cego para cima) e 18 por cima. Pressionar reto pelo 18.
+A ponta deve reter no 17. Nao girar, colar ou forcar.
+Se A deslizar mas ficar frouxa na montagem, testar B.
+Se a haste de A prender na placa, parar e informar; nao tentar resolver com B.
+Ver LEIA-PRIMEIRO.md e como-testar.png.
+Ainda nao imprimir toda a carcaca.

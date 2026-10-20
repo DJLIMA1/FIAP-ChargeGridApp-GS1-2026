@@ -1,0 +1,28 @@
+{
+  "files": {
+    "COMECE-AQUI.txt": "2bdec02ec23968750c6fd08ab4d78795f4f695b15092b5b39bd0bdff442e0f86",
+    "LEIA-PRIMEIRO.md": "b9d6c4f0ad5d81575833ddebc5fce21ade1061f5761d2289b429d599f01ed528",
+    "como-testar.png": "51880b979e6a86e2ab8f056706ab2bb3f533d1720fba143b92b95435477aef55",
+    "feedback-e-proxima-etapa.json": "a5feb331c192937169e3d5ed6da8b1e8e1f7fec7ed16f867a11f5caa7b87c254",
+    "gcode/00FIXA5.gcode": "51a08c27d9dc32e9944054b65bbff87491423b62e94d5357f770dfbe7879bc32",
+    "gerar.py": "3d4b33aef934628e6bc08a90ee99ae6c4722c9b43b14c69385add31fb53c1eb4",
+    "ilustrar.py": "fb48a667c2fc606719ff3f39a6033d64d73ae284c589953ddbdc95e41be7ab73",
+    "medidas-dos-cupons.json": "c63e66d221c06d8c8a76f7012f2f5b906ba66ed0c31d8ee2c8ac73bde5a2cfd3",
+    "medidas-gcode-cupons.json": "76be231486d8bd58e069fa47ab279e2753bd31ee899a005f0c3a3893ce1536f8",
+    "medir-gcode-cupons.py": "30dbbc0ec0920282da2497c657c8897ce15adb38c1ac7a68606d436f5d6838d6",
+    "modelos-fatiados/00FIXA5.stl": "395cd4824e8826db4172cf9cb495d80f98d72f560afbf08f87078f0c1511d50b",
+    "perfis/00FIXA5.ini": "9a3cab27b752d6da0097dc3e671db2d5ff1682a15e9e8f1075cd21a9054d9e31",
+    "previas/00FIXA5.png": "d9b67f0f94131124c86225489cc2ed45cb7081c838659063c48c84ea8e091e68",
+    "projetos/00FIXA5.3mf": "0112557e146b2c509e03ea5c13485f811775b8f6326c3d8844f2bcc1a0e201cb",
+    "stl/08-trava-C-PLA-v5.stl": "c25c409c832965f271ffc6dcd2d26f43b8e8166dceeb8e0bf779f0c170c1b4fb",
+    "validar-perfil.py": "0c54c0ce4df5150bdfce16f12e7f232aa362a38dd9c7e48a210707db25f6e114",
+    "verificacao/00FIXA5-3mf.log": "b5d3c55b84f900c0f53657df2ed6955c04f9940f8aad0415749cfce8b182b1e9",
+    "verificacao/00FIXA5-gcode.log": "83d0d540622ff9b55999a2266b4ee00a90b64faaf8e8dd072f750588181cf6e4",
+    "verificacao/00FIXA5-reaberto.log": "2a31068683848974e89b1251a8397c90a345fc51b59d6fc89cb8132b5baa3d01",
+    "verificacao/auditoria-gcode.json": "d009d78569fdb166553f7f9d492e8d0dc0e6e1f4d83284c8e5430669334d29c2",
+    "verificacao/estimativas.csv": "9877a5ed8723031f0841e79aa6fddf0e6fb239e1f547d8148687812cbee6fe33",
+    "verificacao/geometria.json": "4cfdd0655800d8f42d2712091bdcf48bc7c87b8050631b4976aca050fbc6557d",
+    "verificacao/perfil-validado.json": "a7e420675ff78183fcc9587040989dcddb189918f52d89fde8572c9572d5df44",
+    "verificar-gcode.py": "c797b73616073b61c731a531936cdc266aca72281f7e1cead2e1dfc7bf003a06"
+  }
+}

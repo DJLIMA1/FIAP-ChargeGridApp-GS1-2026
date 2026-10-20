@@ -1,0 +1,11 @@
+CHARGEGRID - TRAVA V5
+
+No SD: CGTRAVA5 / 00FIXA5.gcode
+Duas copias iguais da trava C, com 3 riscos na cabeca.
+Estimativa: 5min18s, 0.40 g.
+Usar os mesmos blocos 17 e 18 do teste anterior.
+17 embaixo, abertura do furo cego para cima; 18 por cima.
+Inserir reto pelo 18. Nao girar ou colar.
+Conferir: cabeca encostou? blocos ficaram juntos? segurou melhor que B? saiu inteira?
+Ver LEIA-PRIMEIRO.md e como-testar.png.
+Esta revisao ainda precisa de teste fisico antes da carcaca completa.

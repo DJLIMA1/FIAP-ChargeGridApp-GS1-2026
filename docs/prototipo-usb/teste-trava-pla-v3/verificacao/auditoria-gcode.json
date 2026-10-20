@@ -1,0 +1,58 @@
+{
+  "slicer": "PrusaSlicer 2.9.6",
+  "physical_print_tested": false,
+  "files": [
+    {
+      "file": "00TRAVA.gcode",
+      "grams_slicer": 0.5,
+      "time_slicer": "5m 39s",
+      "seconds_slicer": 339.0,
+      "layers": 21,
+      "extrusion_segments": 4134,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        127.603,
+        210.0,
+        10.04
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 3.416,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    },
+    {
+      "file": "01ENCAIX.gcode",
+      "grams_slicer": 2.15,
+      "time_slicer": "15m 1s",
+      "seconds_slicer": 901.0,
+      "layers": 18,
+      "extrusion_segments": 6782,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        137.194,
+        210.0,
+        10.0
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 4.664,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    }
+  ],
+  "total_grams": 2.65,
+  "total_seconds": 1240.0
+}

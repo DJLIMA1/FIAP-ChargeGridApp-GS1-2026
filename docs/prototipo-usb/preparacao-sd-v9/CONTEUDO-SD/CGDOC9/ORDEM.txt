@@ -1,0 +1,40 @@
+CHARGEGRID V9 - ENDER-3 ORIGINAL - PLA - BICO 0,4 MM
+
+01CHAVE e 02TRSUP ja foram impressos: NAO PRECISA REIMPRIMIR.
+Os arquivos dessas duas pecas sao identicos aos enviados anteriormente.
+As pecas atuais foram verificadas digitalmente com essas versoes antigas.
+
+PROXIMA IMPRESSAO: CGFINAL/03TRINF7.gcode
+Imprima um arquivo por vez. Remova a peca e prepare a mesa entre arquivos.
+Nao altere a escala nem o perfil. G-codes ja incluem os suportes indicados.
+
+ORDEM:
+01CHAVE.gcode - chaves - JA IMPRESSO, preservado para recuperacao
+02TRSUP.gcode - traseira superior - JA IMPRESSO, preservado para recuperacao
+03TRINF7.gcode - Traseira inferior  alojamentos das chaves corrigidos - 7h 51m 23s
+04QDSUP.gcode - Quadro superior - 4h 54m 46s
+05QDINF8.gcode - Quadro inferior, suporte ajustado ao contorno - 10h 52m 56s
+06TAMPA.gcode - Tampa frontal branca - 5h 25m 29s
+07PTAMP.gcode - Quatro travas v5 para os pontos superiores e centrais - 9m 12s
+08PTINF.gcode - Uma trava inferior, 0,25 mm mais longa - 3m 17s
+09PINO.gcode - Quatro pinos de quarto de volta com suporte - 36m 27s
+10BERCO9.gcode - Bandeja com canais das cintas e dois bercos - 2h 49m 46s
+11TRAVA9.gcode - Pinos dos bercos, bloqueios rigidos e espacadores - 34m 57s
+12CABO.gcode - Opcional: saida para dois cabos de 5 mm - 1h 3m 53s
+
+12CABO fica em CGFINAL/OPCIONAL e so serve para dois cabos de aproximadamente 5mm.
+
+RETENCAO INTERNA ATUAL:
+10BERCO9 e 11TRAVA9 devem ser usados juntos.
+Dois bloqueios D rigidos substituem as travas curtas flexiveis antigas.
+Usar duas cintas de nylon 100x2,5mm, espessura de referencia 1,0mm.
+Referencia dimensional e sequencia ilustrada: CGDOC9/LEIA-PRIMEIRO.md.
+Apertar apenas a mao; para manutencao, cortar as fivelas e usar cintas novas.
+
+Versoes antigas 03TRINF, 05QDINF, 10BERCO, 11TRAVA, 10BERCO8 e 11TRAVA8
+nao devem permanecer junto dos arquivos atuais no cartao.
+00TESTE e os outros testes antigos nao fazem parte desta fila de impressao.
+
+A revisao digital passou. Montagem completa e resistencia fisica ainda
+precisam ser conferidas na impressao real; apresentar emendas a seco antes de colar.
+Documentos e pacote completo de recuperacao: CGDOC9 (abrir no computador).

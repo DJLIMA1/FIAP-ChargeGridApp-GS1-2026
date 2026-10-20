@@ -1,0 +1,19 @@
+{
+  "source": "feedback do usuario nesta conversa",
+  "successful_profile": "ender3-pla-gcode-v2",
+  "extrusion_test": "funcionou segundo o usuario",
+  "bayonet_07": {
+    "fit_in_coupon_16": "validado pelo usuario",
+    "tip": "deformada sem suporte",
+    "next_production": "mesma geometria; adicionar suporte; nao repetir no proximo teste"
+  },
+  "cap_pin_08": {
+    "old": "quebrou; nao validado",
+    "fracture_location": "na uniao dos dois bracos separados com a cabeca, conforme esclarecimento do usuario",
+    "revision": "v3 prototipo em PLA",
+    "physical_validation": "pendente",
+    "response_to_location": "mantida a revisao v3 para ensaio: impressao deitada com bracos lado a lado, cabeca mais espessa, haste maior, raiz arredondada e menor interferencia de insercao; resistencia ainda nao validada fisicamente"
+  },
+  "next_print": "somente 00TRAVA; cupons 17/18 anteriores reutilizaveis; 01ENCAIX opcional",
+  "complete_enclosure": "aguardar teste de insercao, retencao e retirada da trava v3; depois revisar suportes e fatiar pacote de producao"
+}

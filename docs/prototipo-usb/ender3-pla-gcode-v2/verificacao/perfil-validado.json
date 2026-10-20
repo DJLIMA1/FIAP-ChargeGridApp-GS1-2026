@@ -1,0 +1,410 @@
+[
+  {
+    "file": "00TESTE.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        67,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "01TAMPA.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        121,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "02TRSUP.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        145,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "03TRINF.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        191,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "04QDSUP.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        137,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "05QDINF.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        520,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "06CHAVE.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        12,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "07PINO.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        48,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "08PTAMP.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        39,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "09BERCO.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        23,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "10TRAVA.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        46,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  },
+  {
+    "file": "11CABO.gcode",
+    "checked_settings": 65,
+    "settings_match": true,
+    "embedded_3mf_matches": true,
+    "temperature_commands": [
+      [
+        0,
+        "M104 S150"
+      ],
+      [
+        0,
+        "M109 S210"
+      ],
+      [
+        2,
+        "M104 S205 ; set temperature"
+      ],
+      [
+        23,
+        "M104 S0"
+      ]
+    ],
+    "first_fan_commands": [
+      [
+        3,
+        "M106 S127.5"
+      ],
+      [
+        4,
+        "M106 S255"
+      ]
+    ]
+  }
+]

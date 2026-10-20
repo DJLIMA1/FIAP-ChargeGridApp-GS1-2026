@@ -1,0 +1,10 @@
+[
+  {
+    "project": "00TESTE",
+    "settings_match_after_reslicing": true
+  },
+  {
+    "project": "01TAMPA",
+    "settings_match_after_reslicing": true
+  }
+]

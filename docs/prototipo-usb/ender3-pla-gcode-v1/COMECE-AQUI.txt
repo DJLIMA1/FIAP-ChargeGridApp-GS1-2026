@@ -1,0 +1,20 @@
+CHARGEGRID - ENDER 3 ORIGINAL - PLA - BICO 0.4 mm
+
+Comece por 00TESTE.gcode. Imprima um arquivo por vez.
+G-code ja fatiado, com suportes onde necessarios.
+Mesa 60 C; bico 205 C primeira camada e 200 C demais.
+Nivelamento manual; nao exige sensor.
+Leia CGDOCS/LEIA-PRIMEIRO.md para montagem e limites.
+
+00TESTE.gcode              14.0 g      2h29   Teste dos encaixes
+01TAMPA.gcode              45.3 g      6h03   Tampa branca
+02TRSUP.gcode              47.9 g      5h35   Traseira superior
+03TRINF.gcode              57.7 g      7h40   Traseira inferior
+04QDSUP.gcode              39.2 g      4h56   Quadro superior
+05QDINF.gcode              65.5 g     10h06   Quadro inferior
+06CHAVE.gcode               2.9 g      0h30   Chaves das emendas
+07PINO.gcode                4.3 g      0h52   Pinos de fechamento
+08PTAMP.gcode               0.9 g      0h19   Pinos da tampa
+09BERCO.gcode              27.8 g      3h53   Bandeja e berços
+10TRAVA.gcode               3.0 g      0h46   Travas e calços
+11CABO.gcode                6.9 g      1h33   Cabos de 5 mm — opcional

@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-14",
+  "user_reported_snap_and_prior_tests_passed": true,
+  "join_keys_printed_fit_not_physically_confirmed": true,
+  "validated_snap_revision": "v5 C",
+  "printer": "Ender-3 original 4.2.2 Bowden 0.4 mm",
+  "material": "PLA 1.75 mm",
+  "official_delivery": "v7",
+  "corrected_rear_join_sockets": true,
+  "only_changed_production_job": "03TRINF7",
+  "already_printed_keys_unchanged": true,
+  "job_02_in_progress_unchanged": true,
+  "standard_snap_stl_unchanged": true,
+  "bottom_pin_adjustment_mm": 0.25,
+  "bottom_pin_verified_in_assembly_cad": true,
+  "body_print_and_complete_assembly_pending": true,
+  "supports_enabled_for_jobs": [
+    "02TRSUP",
+    "03TRINF7",
+    "04QDSUP",
+    "05QDINF",
+    "06TAMPA",
+    "09PINO"
+  ]
+}

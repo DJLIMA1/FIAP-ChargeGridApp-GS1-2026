@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-16",
+  "release": "v9-STL-faculdade",
+  "geometry_changed": false,
+  "walls_changed": false,
+  "scale_changed": false,
+  "copies_byte_identical": true,
+  "units_intended": "mm",
+  "import_scale_percent": 100,
+  "all_files_fit_180mm_per_axis": true,
+  "supports_and_brim_in_stl": false,
+  "total_stl_bytes": 8584508,
+  "pending_stl_bytes": 7188156,
+  "zip_bytes": 3230649,
+  "zip_sha256": "fd45a9a94a7d73cf768c6a14e7a2b1ce1603ebc74450869a29904deeb6430420",
+  "wall_guideline_over_3mm_met_everywhere": false,
+  "files": [
+    {
+      "file": "01CHAVE.stl",
+      "folder": "JA-IMPRESSOS",
+      "label": "Chaves das emendas",
+      "pieces_in_file": 4,
+      "dimensions_mm": [
+        94.0,
+        22.0,
+        3.0
+      ],
+      "bytes": 4084,
+      "sha256": "cd9c890ecdb1622c47ecdfce1fc8f32556eabc93150189b9694771c2ae5a71a5",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "02TRSUP.stl",
+      "folder": "JA-IMPRESSOS",
+      "label": "Traseira superior",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        104.2650146484375,
+        99.89886474609375,
+        34.88557434082031
+      ],
+      "bytes": 1335784,
+      "sha256": "31e110c4eed0fada7952fdc21de346f9cab15c6d5020cc7dcb69d29c2a7a5274",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "03TRINF7.stl",
+      "folder": "PENDENTES",
+      "label": "Traseira inferior",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        86.33050537109375,
+        124.87264633178711,
+        45.92680740356445
+      ],
+      "bytes": 1931084,
+      "sha256": "2bf5a45149932b6b0f4538ac630402480c04651aa88eca8f47d781b79ebdb863",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "04QDSUP.stl",
+      "folder": "PENDENTES",
+      "label": "Moldura frontal superior",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        104.26370239257812,
+        99.89898681640625,
+        32.94999694824219
+      ],
+      "bytes": 2055484,
+      "sha256": "2bbfddcc5f6338b88773fd49f1444c2339d69169ab3ebbd816997ce37553dd8f",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "05QDINF8.stl",
+      "folder": "PENDENTES",
+      "label": "Moldura frontal inferior",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        86.30068969726562,
+        54.3045654296875,
+        124.86612701416016
+      ],
+      "bytes": 1663684,
+      "sha256": "58563a5ac18056980cc6734f69a4f8b775df591a2fffbeb86f32a860ce73378c",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "06TAMPA.stl",
+      "folder": "PENDENTES",
+      "label": "Tampa frontal",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        103.952392578125,
+        141.01992797851562,
+        29.00003433227539
+      ],
+      "bytes": 852784,
+      "sha256": "5ca456fb2e0541112c9d14487492e317f4ed11257bbf3b522e03a40199052666",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "07PTAMP.stl",
+      "folder": "PENDENTES",
+      "label": "Travas superiores e centrais da tampa",
+      "pieces_in_file": 4,
+      "dimensions_mm": [
+        66.79999542236328,
+        9.550003051757812,
+        4.800000190734863
+      ],
+      "bytes": 277684,
+      "sha256": "1a04d8ba3d977c8ddfc4ab10d17cf42c1caaaabd2cbc678ae077b1907d4d4481",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "08PTINF.stl",
+      "folder": "PENDENTES",
+      "label": "Trava inferior da tampa",
+      "pieces_in_file": 1,
+      "dimensions_mm": [
+        6.8000030517578125,
+        9.800003051757812,
+        4.800000190734863
+      ],
+      "bytes": 70384,
+      "sha256": "6740bd889c5d92620d17584cb15bfdf585c8018c0fc26f5b502c8ef49635ef86",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "09PINO.stl",
+      "folder": "PENDENTES",
+      "label": "Pinos de fechamento de quarto de volta",
+      "pieces_in_file": 4,
+      "dimensions_mm": [
+        100.39999389648438,
+        31.699996948242188,
+        11.600006103515625
+      ],
+      "bytes": 85684,
+      "sha256": "ac9ccb878031460b6e93e762103419170dc50efdc0d361ef3cc44240208c5341",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "10BERCO9.stl",
+      "folder": "PENDENTES",
+      "label": "Bandeja e dois berços internos",
+      "pieces_in_file": 3,
+      "dimensions_mm": [
+        130.0,
+        119.0,
+        5.550000190734863
+      ],
+      "bytes": 149684,
+      "sha256": "38a6514e8d29fb2160ce2204dc96a39b9aef110924ccfee64ca1b4314fc56d11",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "11TRAVA9.stl",
+      "folder": "PENDENTES",
+      "label": "Pinos dos berços, bloqueios e espaçadores",
+      "pieces_in_file": 12,
+      "dimensions_mm": [
+        68.0,
+        74.0,
+        6.5
+      ],
+      "bytes": 101684,
+      "sha256": "231dc64f75483c533cfdac6b1a8210f5bd4a0701a99a0bfefdefa5dbff9f5176",
+      "unchanged_from_official_v9": true
+    },
+    {
+      "file": "12CABO.stl",
+      "folder": "OPCIONAL",
+      "label": "Inserto e presilhas de cabos de aproximadamente 5 mm",
+      "pieces_in_file": 6,
+      "dimensions_mm": [
+        150.0,
+        42.0,
+        5.599999904632568
+      ],
+      "bytes": 56484,
+      "sha256": "0eaf3a5e82907fda907d4c0542834748871031da6495cefc99ef68ead4d40278",
+      "unchanged_from_official_v9": true
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "file": "00FIXA5.gcode",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid trava PLA v5 C - cabeca assentada"
+      ]
+    },
+    "restores_verified": true,
+    "embedded_profile_matches": true
+  }
+]

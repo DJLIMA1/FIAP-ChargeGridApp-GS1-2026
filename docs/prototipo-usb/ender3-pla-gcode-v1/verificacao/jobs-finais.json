@@ -1,0 +1,122 @@
+[
+  {
+    "id": "00TESTE",
+    "source": "modelos-fatiados/00TESTE.stl",
+    "profile": "perfis/00TESTE.ini",
+    "layer_height": "0.16",
+    "support": "1",
+    "kind": "teste",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": true
+  },
+  {
+    "id": "01TAMPA",
+    "source": "modelos-fatiados/01TAMPA.stl",
+    "profile": "perfis/01TAMPA.ini",
+    "layer_height": "0.20",
+    "support": "1",
+    "kind": "casca",
+    "x_rotation_from_previous_stl_degrees": 180,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "02TRSUP",
+    "source": "modelos-fatiados/02TRSUP.stl",
+    "profile": "perfis/02TRSUP.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca",
+    "x_rotation_from_previous_stl_degrees": -90,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "03TRINF",
+    "source": "modelos-fatiados/03TRINF.stl",
+    "profile": "perfis/03TRINF.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca",
+    "x_rotation_from_previous_stl_degrees": 90,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "04QDSUP",
+    "source": "modelos-fatiados/04QDSUP.stl",
+    "profile": "perfis/04QDSUP.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca",
+    "x_rotation_from_previous_stl_degrees": 90,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "05QDINF",
+    "source": "modelos-fatiados/05QDINF.stl",
+    "profile": "perfis/05QDINF.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "06CHAVE",
+    "source": "modelos-fatiados/06CHAVE.stl",
+    "profile": "perfis/06CHAVE.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "07PINO",
+    "source": "modelos-fatiados/07PINO.stl",
+    "profile": "perfis/07PINO.ini",
+    "layer_height": "0.16",
+    "support": "1",
+    "kind": "fixacao",
+    "x_rotation_from_previous_stl_degrees": 90,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "08PTAMP",
+    "source": "modelos-fatiados/08PTAMP.stl",
+    "profile": "perfis/08PTAMP.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "09BERCO",
+    "source": "modelos-fatiados/09BERCO.stl",
+    "profile": "perfis/09BERCO.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "interno",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "10TRAVA",
+    "source": "modelos-fatiados/10TRAVA.stl",
+    "profile": "perfis/10TRAVA.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  },
+  {
+    "id": "11CABO",
+    "source": "modelos-fatiados/11CABO.stl",
+    "profile": "perfis/11CABO.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao",
+    "x_rotation_from_previous_stl_degrees": 0,
+    "coupon_pin_matches_horizontal_production_pin": false
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "slicer": "PrusaSlicer 2.9.6",
+  "physical_print_tested": false,
+  "files": [
+    {
+      "file": "00FLEX4.gcode",
+      "grams_slicer": 0.41,
+      "time_slicer": "5m 18s",
+      "seconds_slicer": 318.0,
+      "layers": 20,
+      "extrusion_segments": 3688,
+      "xyz_motion_min_mm": [
+        0.0,
+        0.0,
+        0.24
+      ],
+      "xyz_motion_max_mm": [
+        128.343,
+        210.0,
+        10.0
+      ],
+      "support_grams_from_paths": 0.0,
+      "max_nominal_flow_mm3_s": 2.473,
+      "nozzle_max_c": 210.0,
+      "bed_max_c": 60.0,
+      "bounds_pass": true,
+      "home_and_shutdown_pass": true,
+      "no_abl_or_eeprom_commands": true
+    }
+  ],
+  "total_grams": 0.41,
+  "total_seconds": 318.0
+}

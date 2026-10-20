@@ -1,0 +1,14 @@
+CHARGEGRID - CORRECAO DA PECA 03
+
+01CHAVE: suas quatro chaves continuam iguais e podem ser usadas.
+02TRSUP: a traseira superior que esta imprimindo continua igual.
+03TRINF7.gcode: substitui o antigo 03TRINF.gcode.
+
+Alteracao somente nos dois alojamentos internos da traseira inferior.
+Chaves, exterior e perfil de impressao preservados. Suportes incluidos.
+Estimativa: 57,95 g de PLA e 7h51m23s.
+
+So retire o SD da impressora depois que a impressao atual terminar.
+Apague o antigo CGFINAL/03TRINF.gcode e copie 03TRINF7.gcode para CGFINAL.
+O arquivo novo foi conferido digitalmente; o encaixe fisico das emendas
+ainda sera conferido com a carcaça impressa.

@@ -1,0 +1,254 @@
+{
+  "key_stl_mm": [
+    10.0,
+    22.0,
+    3.0
+  ],
+  "key_gcode_commanded_top_mm": 2.88,
+  "key_count": 4,
+  "joint_gap_mm": 0.25,
+  "nominal_pocket_max_width_mm": 10.7,
+  "nominal_pocket_neck_width_mm": 6.42,
+  "nominal_key_neck_width_mm": 6.0,
+  "nominal_pocket_length_mm": 22.55,
+  "checks": [
+    {
+      "key": "chave--22-90.8",
+      "interference_bounds_xyz_mm": [
+        -27.0,
+        90.8,
+        47.05,
+        -22.12154678607977,
+        93.8,
+        48.2
+      ],
+      "assembled_bounds_xyz_mm": [
+        [
+          -27.0,
+          90.8,
+          47.05
+        ],
+        [
+          -17.0,
+          93.8,
+          69.05
+        ]
+      ],
+      "nominal_installed_intersection_mm3": 12.541612343736162,
+      "printed_height_envelope_intersection_mm3": 12.039947849986698,
+      "insertion_withdrawal": [
+        {
+          "withdrawal_mm": 0,
+          "intersection_mm3": 12.541612343736162
+        },
+        {
+          "withdrawal_mm": 0.25,
+          "intersection_mm3": 12.123558598944925
+        },
+        {
+          "withdrawal_mm": 0.5,
+          "intersection_mm3": 11.078424236966901
+        },
+        {
+          "withdrawal_mm": 1,
+          "intersection_mm3": 8.98815551301087
+        },
+        {
+          "withdrawal_mm": 2,
+          "intersection_mm3": 4.807618065098826
+        },
+        {
+          "withdrawal_mm": 3,
+          "intersection_mm3": 0.627080617186782
+        },
+        {
+          "withdrawal_mm": 4,
+          "intersection_mm3": 0.5642528349923094
+        },
+        {
+          "withdrawal_mm": 6,
+          "intersection_mm3": 1.795349929521006
+        },
+        {
+          "withdrawal_mm": 10,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "key": "chave-22-90.8",
+      "interference_bounds_xyz_mm": [
+        22.12154678607977,
+        90.8,
+        47.05,
+        27.0,
+        93.8,
+        48.2
+      ],
+      "assembled_bounds_xyz_mm": [
+        [
+          17.0,
+          90.8,
+          47.05
+        ],
+        [
+          27.0,
+          93.8,
+          69.05
+        ]
+      ],
+      "nominal_installed_intersection_mm3": 12.541612343736158,
+      "printed_height_envelope_intersection_mm3": 12.039947849986707,
+      "insertion_withdrawal": [
+        {
+          "withdrawal_mm": 0,
+          "intersection_mm3": 12.541612343736158
+        },
+        {
+          "withdrawal_mm": 0.25,
+          "intersection_mm3": 12.12355859894493
+        },
+        {
+          "withdrawal_mm": 0.5,
+          "intersection_mm3": 11.078424236966905
+        },
+        {
+          "withdrawal_mm": 1,
+          "intersection_mm3": 8.98815551301086
+        },
+        {
+          "withdrawal_mm": 2,
+          "intersection_mm3": 4.807618065098836
+        },
+        {
+          "withdrawal_mm": 3,
+          "intersection_mm3": 0.6270806171867793
+        },
+        {
+          "withdrawal_mm": 4,
+          "intersection_mm3": 0.5642528349923112
+        },
+        {
+          "withdrawal_mm": 6,
+          "intersection_mm3": 1.7953499295210071
+        },
+        {
+          "withdrawal_mm": 10,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "key": "chave--22-57.2",
+      "interference_bounds_xyz_mm": null,
+      "assembled_bounds_xyz_mm": [
+        [
+          -27.0,
+          57.2,
+          47.05
+        ],
+        [
+          -17.0,
+          60.2,
+          69.05
+        ]
+      ],
+      "nominal_installed_intersection_mm3": 0,
+      "printed_height_envelope_intersection_mm3": 0,
+      "insertion_withdrawal": [
+        {
+          "withdrawal_mm": 0,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 0.25,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 0.5,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 1,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 2,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 3,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 4,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 6,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 10,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "key": "chave-22-57.2",
+      "interference_bounds_xyz_mm": null,
+      "assembled_bounds_xyz_mm": [
+        [
+          17.0,
+          57.2,
+          47.05
+        ],
+        [
+          27.0,
+          60.2,
+          69.05
+        ]
+      ],
+      "nominal_installed_intersection_mm3": 0,
+      "printed_height_envelope_intersection_mm3": 0,
+      "insertion_withdrawal": [
+        {
+          "withdrawal_mm": 0,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 0.25,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 0.5,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 1,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 2,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 3,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 4,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 6,
+          "intersection_mm3": 0
+        },
+        {
+          "withdrawal_mm": 10,
+          "intersection_mm3": 0
+        }
+      ]
+    }
+  ]
+}

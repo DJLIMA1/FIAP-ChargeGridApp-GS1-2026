@@ -1,0 +1,164 @@
+[
+  {
+    "assembly": "trava-bandeja-5",
+    "delivered_stl": "13-trava-bandeja",
+    "rigid_vertex_cloud_max_error_mm": 7.535533479024313e-07,
+    "pass": true
+  },
+  {
+    "assembly": "trava-bandeja-55",
+    "delivered_stl": "13-trava-bandeja",
+    "rigid_vertex_cloud_max_error_mm": 7.535533479024313e-07,
+    "pass": true
+  },
+  {
+    "assembly": "trava-berco-8",
+    "delivered_stl": "12-pino-trava-berco",
+    "rigid_vertex_cloud_max_error_mm": 4.6669579848785886e-07,
+    "pass": true
+  },
+  {
+    "assembly": "trava-berco-54",
+    "delivered_stl": "12-pino-trava-berco",
+    "rigid_vertex_cloud_max_error_mm": 4.6669579848785886e-07,
+    "pass": true
+  },
+  {
+    "assembly": "01-traseira-superior",
+    "delivered_stl": "01-traseira-superior",
+    "rigid_vertex_cloud_max_error_mm": 5.422287583534739e-06,
+    "pass": true
+  },
+  {
+    "assembly": "01-traseira-inferior",
+    "delivered_stl": "01-traseira-inferior",
+    "rigid_vertex_cloud_max_error_mm": 7.907893615281118e-06,
+    "pass": true
+  },
+  {
+    "assembly": "03-quadro-superior",
+    "delivered_stl": "03-quadro-superior",
+    "rigid_vertex_cloud_max_error_mm": 5.436002295727434e-06,
+    "pass": true
+  },
+  {
+    "assembly": "03-quadro-inferior",
+    "delivered_stl": "03-quadro-inferior",
+    "rigid_vertex_cloud_max_error_mm": 6.986422798676634e-06,
+    "pass": true
+  },
+  {
+    "assembly": "05-tampa-frontal",
+    "delivered_stl": "05-tampa-frontal",
+    "rigid_vertex_cloud_max_error_mm": 8.474284565419813e-06,
+    "pass": true
+  },
+  {
+    "assembly": "08-pino-tampa-1",
+    "delivered_stl": "08-pino-tampa-1",
+    "rigid_vertex_cloud_max_error_mm": 3.454108584044184e-07,
+    "pass": true
+  },
+  {
+    "assembly": "08-pino-tampa-2",
+    "delivered_stl": "08-pino-tampa-2",
+    "rigid_vertex_cloud_max_error_mm": 3.454108577452856e-07,
+    "pass": true
+  },
+  {
+    "assembly": "08-pino-tampa-3",
+    "delivered_stl": "08-pino-tampa-3",
+    "rigid_vertex_cloud_max_error_mm": 3.454108577452856e-07,
+    "pass": true
+  },
+  {
+    "assembly": "08-pino-tampa-4",
+    "delivered_stl": "08-pino-tampa-4",
+    "rigid_vertex_cloud_max_error_mm": 3.454108577452856e-07,
+    "pass": true
+  },
+  {
+    "assembly": "08-pino-tampa-5",
+    "delivered_stl": "08-pino-tampa-5",
+    "rigid_vertex_cloud_max_error_mm": 3.4541085912651704e-07,
+    "pass": true
+  },
+  {
+    "assembly": "09-bandeja-removivel",
+    "delivered_stl": "09-bandeja-removivel",
+    "rigid_vertex_cloud_max_error_mm": 4.016359886667923e-06,
+    "pass": true
+  },
+  {
+    "assembly": "10-berco-potencia",
+    "delivered_stl": "10-berco-potencia",
+    "rigid_vertex_cloud_max_error_mm": 2.1579186457674926e-06,
+    "pass": true
+  },
+  {
+    "assembly": "11-berco-esp32",
+    "delivered_stl": "11-berco-esp32",
+    "rigid_vertex_cloud_max_error_mm": 2.157918640743197e-06,
+    "pass": true
+  },
+  {
+    "assembly": "19-inserto-duplo-5mm-a",
+    "delivered_stl": "19-inserto-duplo-5mm-a",
+    "rigid_vertex_cloud_max_error_mm": 1.0139859279594184e-06,
+    "pass": true
+  },
+  {
+    "assembly": "19-inserto-duplo-5mm-b",
+    "delivered_stl": "19-inserto-duplo-5mm-b",
+    "rigid_vertex_cloud_max_error_mm": 1.0240268999422874e-06,
+    "pass": true
+  },
+  {
+    "assembly": "pino-casca-0",
+    "delivered_stl": "07-pino-quarto-volta",
+    "rigid_vertex_cloud_max_error_mm": 1.6458402248660999e-06,
+    "pass": true
+  },
+  {
+    "assembly": "pino-casca-1",
+    "delivered_stl": "07-pino-quarto-volta",
+    "rigid_vertex_cloud_max_error_mm": 1.6458402248660999e-06,
+    "pass": true
+  },
+  {
+    "assembly": "pino-casca-2",
+    "delivered_stl": "07-pino-quarto-volta",
+    "rigid_vertex_cloud_max_error_mm": 1.6458402298517004e-06,
+    "pass": true
+  },
+  {
+    "assembly": "pino-casca-3",
+    "delivered_stl": "07-pino-quarto-volta",
+    "rigid_vertex_cloud_max_error_mm": 1.6458402303200739e-06,
+    "pass": true
+  },
+  {
+    "assembly": "chave--22-90.8",
+    "delivered_stl": "06-chave-emenda",
+    "rigid_vertex_cloud_max_error_mm": 0.0,
+    "pass": true
+  },
+  {
+    "assembly": "chave--22-57.2",
+    "delivered_stl": "06-chave-emenda",
+    "rigid_vertex_cloud_max_error_mm": 0.0,
+    "pass": true
+  },
+  {
+    "assembly": "chave-22-90.8",
+    "delivered_stl": "06-chave-emenda",
+    "rigid_vertex_cloud_max_error_mm": 0.0,
+    "pass": true
+  },
+  {
+    "assembly": "chave-22-57.2",
+    "delivered_stl": "06-chave-emenda",
+    "rigid_vertex_cloud_max_error_mm": 0.0,
+    "pass": true
+  }
+]

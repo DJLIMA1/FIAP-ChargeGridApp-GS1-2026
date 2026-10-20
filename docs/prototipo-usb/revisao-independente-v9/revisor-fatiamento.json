@@ -1,0 +1,106 @@
+[
+  {
+    "job": "10BERCO9",
+    "project_volume": 24649.462124154674,
+    "stl_volume": 24649.462136702572,
+    "project_count": 3,
+    "stl_count": 3,
+    "project_extents": [
+      130.0,
+      119.0,
+      5.55000019
+    ],
+    "stl_extents": [
+      130.0,
+      119.0,
+      5.550000190734863
+    ],
+    "profiles": {
+      "layer_height": {
+        "gcode": "0.24",
+        "project": "0.24"
+      },
+      "fill_density": {
+        "gcode": "15%",
+        "project": "15%"
+      },
+      "support_material": {
+        "gcode": "1",
+        "project": "1"
+      },
+      "temperature": {
+        "gcode": "205",
+        "project": "205"
+      },
+      "first_layer_temperature": {
+        "gcode": "210",
+        "project": "210"
+      },
+      "bed_temperature": {
+        "gcode": "60",
+        "project": "60"
+      },
+      "nozzle_diameter": {
+        "gcode": "0.4",
+        "project": "0.4"
+      },
+      "filament_diameter": {
+        "gcode": "1.75",
+        "project": "1.75"
+      }
+    },
+    "gcode_sha256": "05cccf3fc24380b2c1639b42152a7b0a79c374c606704f30823bd77f3dde544a"
+  },
+  {
+    "job": "11TRAVA9",
+    "project_volume": 2260.1828399211063,
+    "stl_volume": 2260.182841424177,
+    "project_count": 12,
+    "stl_count": 12,
+    "project_extents": [
+      68.0,
+      74.0,
+      6.5
+    ],
+    "stl_extents": [
+      68.0,
+      74.0,
+      6.5
+    ],
+    "profiles": {
+      "layer_height": {
+        "gcode": "0.24",
+        "project": "0.24"
+      },
+      "fill_density": {
+        "gcode": "100%",
+        "project": "100%"
+      },
+      "support_material": {
+        "gcode": "0",
+        "project": "0"
+      },
+      "temperature": {
+        "gcode": "205",
+        "project": "205"
+      },
+      "first_layer_temperature": {
+        "gcode": "210",
+        "project": "210"
+      },
+      "bed_temperature": {
+        "gcode": "60",
+        "project": "60"
+      },
+      "nozzle_diameter": {
+        "gcode": "0.4",
+        "project": "0.4"
+      },
+      "filament_diameter": {
+        "gcode": "1.75",
+        "project": "1.75"
+      }
+    },
+    "gcode_sha256": "1dfa6ceb018f9951e184383ecb68fd4b9e044ba0492c93b9787d5e2017a818c3"
+  }
+]

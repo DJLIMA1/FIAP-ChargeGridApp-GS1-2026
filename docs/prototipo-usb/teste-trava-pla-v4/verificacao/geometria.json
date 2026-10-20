@@ -1,0 +1,132 @@
+[
+  {
+    "label": "A",
+    "head_marks": 1,
+    "bead_diameter_mm": 4.8,
+    "shaft_diameter_mm": 3.8,
+    "root_transition_max_diameter_mm": 3.9,
+    "slot_mm": 1.4,
+    "slot_root_radius_mm": 0.7,
+    "slot_root_center_from_head_outer_face_mm": 2.8,
+    "head_thickness_mm": 2.4,
+    "length_mm": 9.8,
+    "entry_diameter_mm": 4.6,
+    "nominal_radial_tip_deflection_mm": 0.10000000000000009,
+    "nominal_bead_to_socket_radial_clearance_mm": 0.25,
+    "tip_y_extent_limited_mm": 2.8,
+    "geometric_tip_closure_per_arm_mm": 0.12295089522972269,
+    "geometric_envelope_check_only_not_elastic_simulation": true,
+    "tip_to_blind_floor_clearance_mm": 0.1,
+    "physical_fit_passed": false,
+    "geometry": {
+      "name": "08-trava-A-PLA-v4",
+      "size_mm": [
+        6.800000190734863,
+        9.800000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 108.06277073514711,
+      "watertight": true,
+      "one_part": true
+    },
+    "installed_checks": {
+      "socket_installed_mm3": 0,
+      "plate_installed_mm3": 0
+    },
+    "pull_checks": [
+      {
+        "distance_mm": 0,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.1,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.2,
+        "interference_with_socket_mm3": 0.0401853789219027
+      },
+      {
+        "distance_mm": 0.3,
+        "interference_with_socket_mm3": 0.10164141718899526
+      },
+      {
+        "distance_mm": 0.5,
+        "interference_with_socket_mm3": 0.16389409593666546
+      },
+      {
+        "distance_mm": 0.7,
+        "interference_with_socket_mm3": 0.16389409593666546
+      },
+      {
+        "distance_mm": 1.0,
+        "interference_with_socket_mm3": 0.16389409593666548
+      }
+    ]
+  },
+  {
+    "label": "B",
+    "head_marks": 2,
+    "bead_diameter_mm": 5.0,
+    "shaft_diameter_mm": 3.8,
+    "root_transition_max_diameter_mm": 3.9,
+    "slot_mm": 1.4,
+    "slot_root_radius_mm": 0.7,
+    "slot_root_center_from_head_outer_face_mm": 2.8,
+    "head_thickness_mm": 2.4,
+    "length_mm": 9.8,
+    "entry_diameter_mm": 4.6,
+    "nominal_radial_tip_deflection_mm": 0.20000000000000018,
+    "nominal_bead_to_socket_radial_clearance_mm": 0.1499999999999999,
+    "tip_y_extent_limited_mm": 2.8,
+    "geometric_tip_closure_per_arm_mm": 0.24590945634860217,
+    "geometric_envelope_check_only_not_elastic_simulation": true,
+    "tip_to_blind_floor_clearance_mm": 0.1,
+    "physical_fit_passed": false,
+    "geometry": {
+      "name": "08-trava-B-PLA-v4",
+      "size_mm": [
+        6.800000190734863,
+        9.800000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 107.90990899628552,
+      "watertight": true,
+      "one_part": true
+    },
+    "installed_checks": {
+      "socket_installed_mm3": 0,
+      "plate_installed_mm3": 0
+    },
+    "pull_checks": [
+      {
+        "distance_mm": 0,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.1,
+        "interference_with_socket_mm3": 6.079398623826047e-06
+      },
+      {
+        "distance_mm": 0.2,
+        "interference_with_socket_mm3": 0.09122880302469084
+      },
+      {
+        "distance_mm": 0.3,
+        "interference_with_socket_mm3": 0.21228132137582348
+      },
+      {
+        "distance_mm": 0.5,
+        "interference_with_socket_mm3": 0.3798645573802241
+      },
+      {
+        "distance_mm": 0.7,
+        "interference_with_socket_mm3": 0.3833370039310058
+      },
+      {
+        "distance_mm": 1.0,
+        "interference_with_socket_mm3": 0.3833370039310057
+      }
+    ]
+  }
+]

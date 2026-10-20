@@ -1,0 +1,240 @@
+{
+  "data": "2026-10-14",
+  "fisicamente_testado": false,
+  "suportes_gerados": false,
+  "impressoes": [
+    {
+      "impressao": "00-teste-encaixes",
+      "perfil": "teste",
+      "pecas": {
+        "16-cupom-quarto-volta": 1,
+        "17-cupom-bucha-tampa": 1,
+        "18-cupom-placa-tampa": 1,
+        "20-cupom-trilho-berco": 1,
+        "21-cupom-macho-berco": 1,
+        "07-pino-quarto-volta": 1,
+        "08-pino-tampa-1": 1
+      },
+      "quantidade": 7,
+      "dimensoes_conjunto_xyz_mm": [
+        158.0,
+        45.600006103515625,
+        31.700000762939453
+      ],
+      "margem_minima_xy_mm": 31.0,
+      "suportes": "Suporte localizado sob abas do pino 07 e teto horizontal do cupom 16. Revisar cavidades; não preencher os encaixes com suporte inacessível.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "01-tampa-branca",
+      "perfil": "casca",
+      "pecas": {
+        "05-tampa-frontal": 1
+      },
+      "quantidade": 1,
+      "dimensoes_conjunto_xyz_mm": [
+        103.952392578125,
+        141.01992797851562,
+        29.00003433227539
+      ],
+      "margem_minima_xy_mm": 39.49003601074219,
+      "suportes": "Face externa curva voltada à mesa. Suportes sob a face e saliências; interface de suporte. Haverá marcas que podem exigir acabamento.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "02-traseira-superior",
+      "perfil": "casca",
+      "pecas": {
+        "01-traseira-superior": 1
+      },
+      "quantidade": 1,
+      "dimensoes_conjunto_xyz_mm": [
+        104.26501846313477,
+        34.88557434082031,
+        99.89886474609375
+      ],
+      "margem_minima_xy_mm": 57.867488861083984,
+      "suportes": "Manter emenda plana na mesa. Revisar suportes nas saliências internas e postes.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "03-traseira-inferior",
+      "perfil": "casca",
+      "pecas": {
+        "01-traseira-inferior": 1
+      },
+      "quantidade": 1,
+      "dimensoes_conjunto_xyz_mm": [
+        86.33050537109375,
+        45.92681121826172,
+        124.87264251708984
+      ],
+      "margem_minima_xy_mm": 66.83474731445312,
+      "suportes": "Manter emenda plana na mesa. Revisar suportes nas saliências internas e saída de cabos.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "04-quadro-superior",
+      "perfil": "casca",
+      "pecas": {
+        "03-quadro-superior": 1
+      },
+      "quantidade": 1,
+      "dimensoes_conjunto_xyz_mm": [
+        104.26370239257812,
+        32.94999694824219,
+        99.89898681640625
+      ],
+      "margem_minima_xy_mm": 57.86814880371094,
+      "suportes": "Manter emenda plana na mesa. Revisar suportes em alojamentos, ressaltos e saliências internas.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "05-quadro-inferior",
+      "perfil": "casca",
+      "pecas": {
+        "03-quadro-inferior": 1
+      },
+      "quantidade": 1,
+      "dimensoes_conjunto_xyz_mm": [
+        86.30068969726562,
+        54.3045654296875,
+        124.86612701416016
+      ],
+      "margem_minima_xy_mm": 66.84965515136719,
+      "suportes": "Manter emenda plana na mesa. Revisar suportes em alojamentos e saliências internas.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "06-chaves-das-emendas",
+      "perfil": "fixacao",
+      "pecas": {
+        "06-chave-emenda": 4
+      },
+      "quantidade": 4,
+      "dimensoes_conjunto_xyz_mm": [
+        94.0,
+        22.0,
+        3.0
+      ],
+      "margem_minima_xy_mm": 63.0,
+      "suportes": "Bases planas sobre a mesa; em princípio sem suporte.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "07-pinos-quarto-de-volta",
+      "perfil": "fixacao",
+      "pecas": {
+        "07-pino-quarto-volta": 4
+      },
+      "quantidade": 4,
+      "dimensoes_conjunto_xyz_mm": [
+        100.39999771118164,
+        11.600006103515625,
+        31.700000762939453
+      ],
+      "margem_minima_xy_mm": 59.79999923706055,
+      "suportes": "Cabeças sobre a mesa. Suporte localizado sob as abas; brim individual. Liberar abas antes de testar o giro.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "08-pinos-tampa-branca",
+      "perfil": "fixacao",
+      "pecas": {
+        "08-pino-tampa-1": 1,
+        "08-pino-tampa-2": 1,
+        "08-pino-tampa-3": 1,
+        "08-pino-tampa-4": 1,
+        "08-pino-tampa-5": 1
+      },
+      "quantidade": 5,
+      "dimensoes_conjunto_xyz_mm": [
+        106.0,
+        6.8000030517578125,
+        9.25
+      ],
+      "margem_minima_xy_mm": 57.0,
+      "suportes": "Cabeças sobre a mesa. Inspecionar pequenas pontas salientes no fatiador. Pino 5 é diferente: manter identificação.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "09-bandeja-e-bercos",
+      "perfil": "interno",
+      "pecas": {
+        "09-bandeja-removivel": 1,
+        "11-berco-esp32": 1,
+        "10-berco-potencia": 1
+      },
+      "quantidade": 3,
+      "dimensoes_conjunto_xyz_mm": [
+        120.0,
+        165.0,
+        5.550000190734863
+      ],
+      "margem_minima_xy_mm": 27.5,
+      "suportes": "Bases planas. Revisar pontes e trilhos; evitar suporte preso dentro dos trilhos. Berços genéricos, eletrônica ainda não definida.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "10-travas-e-espacadores",
+      "perfil": "fixacao",
+      "pecas": {
+        "12-pino-trava-berco": 2,
+        "13-trava-bandeja": 2,
+        "14-espacador-3mm": 4,
+        "14-espacador-5mm": 4
+      },
+      "quantidade": 12,
+      "dimensoes_conjunto_xyz_mm": [
+        164.79999351501465,
+        31.0,
+        11.0
+      ],
+      "margem_minima_xy_mm": 27.600000381469727,
+      "suportes": "Bases planas. Conferir pequenas saliências; calços são alternativas conforme a placa, não empilhar automaticamente.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    },
+    {
+      "impressao": "11-cabos-duplos-5mm-OPCIONAL",
+      "perfil": "fixacao",
+      "pecas": {
+        "19-inserto-duplo-5mm-a": 1,
+        "19-inserto-duplo-5mm-b": 1,
+        "15-prensa-cabo-5mm-meia": 4
+      },
+      "quantidade": 6,
+      "dimensoes_conjunto_xyz_mm": [
+        150.0,
+        42.0,
+        5.599999904632568
+      ],
+      "margem_minima_xy_mm": 35.0,
+      "suportes": "Somente para dois cabos com diâmetro compatível com 5 mm nominal. Conferir canais e suportes. Outros diâmetros em pecas-individuais/.",
+      "stl_fechado": true,
+      "3mf_verificado": true,
+      "fatiado": false
+    }
+  ]
+}

@@ -1,8 +1,10 @@
 # Plano consolidado do protótipo ChargeGrid Mini
 
-Atualizado em 9 de outubro de 2026. O ChargeGrid Mini será um emulador físico com ESP32 WROOM próprio, API local para o painel existente, carcaça derivada do STEP original e recarga real de telefone USB-C. O teto permanece R$ 250 por unidade, sem impressão e sem o painel.
+Atualizado em 15 de outubro de 2026. O ChargeGrid Mini será um emulador físico com ESP32 WROOM próprio, API local para o painel existente, carcaça derivada do STEP original e recarga real de telefone USB-C. O teto permanece R$ 250 por unidade, sem impressão e sem o painel.
 
-**Revisão mecânica ativa: 50% do corpo original, aproximadamente 225 × 104 × 82 mm.** O [pacote de impressão v1](prototipo-usb/ChargeGrid-Mini-50-impressao-v1.zip) contém carcaça, interiores modulares, fixações e cupons. Seguir o [guia da revisão de 50%](prototipo-usb/cad-impressao-50-v1/README.md); os arquivos já estão na escala final e devem ser importados a 100%. Verificação digital concluída; impressão e montagem física pendentes.
+**Entrega mecânica revisada: v9, após revisão independente por subagente.** A [última revisão completa de 15/10](prototipo-usb/ender3-pla-oficial-v9/REVISAO-FINAL-2026-10-15.md) repetiu as verificações e reabriu os 12 projetos sem mudar nenhum arquivo técnico; 01 e 02 já foram impressos e estão preservados. Ender-3 original 4.2.2, Bowden, PLA e bico 0,4 mm. Usar o [guia e ordem](prototipo-usb/ender3-pla-oficial-v9/LEIA-PRIMEIRO.md), o [relatório integral](prototipo-usb/ender3-pla-oficial-v9/RELATORIO-REVISAO.md), o [parecer independente](prototipo-usb/ender3-pla-oficial-v9/REVISAO-INDEPENDENTE.md) e o [pacote completo](prototipo-usb/ChargeGrid-Ender3-PLA-OFICIAL-v9.zip). O revisor encontrou rigidez excessiva nas travas D curtas da v8; elas foram substituídas por bloqueios rígidos com duas cintas de nylon, canais e reforços na bandeja. A segunda revisão não deixou defeitos digitais confirmados em aberto nos casos conferidos. **01CHAVE e 02TRSUP foram preservados byte a byte.** Em relação ao SD v6: usar 03TRINF7, 05QDINF8, 10BERCO9 e 11TRAVA9. Montagem completa, pinos dos berços e cintas precisam de ensaio físico; o SD ainda não foi atualizado.
+
+**Escala: 50% do corpo original, aproximadamente 225 × 104 × 82 mm.** Arquivos já na escala final, importar a 100%. A geometria principal da carcaça deriva da revisão v1; a v9 atualiza fixações, montagem digital, fatiamento e documentação. Entregas anteriores ficam como histórico no Mac e são retiradas do cartão SD.
 
 **Decisão mais recente do grupo: usar somente módulos prontos, sem montagem SMD ou fabricação de placa própria.** O ESP32 WROOM genérico permanece escolhido; a placa RoboCore não é requisito. TPS25810 e INA260 avulsos saíram da seleção de compra. O controle variável de capacidade é obrigatório, mas ainda não há uma combinação pronta, documentada, com envio nacional e dentro do orçamento comprovada pela pesquisa. **O usuário reafirmou que controle variável é obrigatório; a versão somente liga/desliga foi descartada como solução final.**
 
@@ -10,8 +12,8 @@ Atualizado em 9 de outubro de 2026. O ChargeGrid Mini será um emulador físico 
 
 ## O que já pode avançar
 
-- [Arquivos de impressão de 50%](prototipo-usb/cad-impressao-50-v1/README.md): 35 variantes STL, oito pranchas 3MF, modelo montado e guia. Começar pela [prancha de ensaios](prototipo-usb/cad-impressao-50-v1/pranchas/00-ensaios.3mf).
-- [Verificação geométrica](prototipo-usb/cad-impressao-50-v1/verificacao/relatorio.json): malhas fechadas, 97 verificações de interferência/movimento e reservas genéricas para placas. Não substitui teste físico.
+- [Impressão revisada v9](prototipo-usb/ender3-pla-oficial-v9/LEIA-PRIMEIRO.md): G-code, 3MF com perfis, STL e montagem atualizados. Preservar 01 e 02 já em produção; conferir pinos dos berços e bloqueios com cintas nos lotes 10/11.
+- [Revisão geométrica atual](prototipo-usb/ender3-pla-oficial-v9/RELATORIO-REVISAO.md): malhas, percursos, retenção, acessórios e fatiamento. O relatório inicial v1 é histórico e não cobre as correções posteriores.
 - [Arquitetura mecânica anterior](prototipo-usb/arquitetura-mecanica.md) e [cupons anteriores](prototipo-usb/cad-cupons/README.md): histórico do estudo de 70%; não misturar com os encaixes da revisão atual.
 - [Roteiro de montagem e validação](prototipo-usb/roteiro-de-validacao.md): ordem de montagem, medições, testes e recuperação.
 - [Estudo histórico de perfis QC comutados](prototipo-usb/estudo-perfis-comutados.md): retirado da rota ativa por depender de protocolos específicos dos telefones.
@@ -35,11 +37,11 @@ Continuam válidos os princípios do contrato: capacidades consultáveis, comand
 
 ## Casca e recuperação
 
-O usuário definiu escala de 50%, com envelope do corpo de aproximadamente 225 × 104 × 82 mm. A revisão v1 conserva as superfícies externas principais trianguladas do STEP e adapta regiões internas. São cinco peças principais: traseira e quadro em duas partes cada, mais tampa branca inteira. As emendas usam chaves e cola; a abertura de manutenção usa quatro pinos de quarto de volta, sem parafusos. A referência de preparo é mesa de 220 × 220 mm, PETG e bico de 0,4 mm; a impressora real ainda não foi informada.
+O usuário definiu escala de 50%, com envelope do corpo de aproximadamente 225 × 104 × 82 mm. A revisão v1 conserva as superfícies externas principais trianguladas do STEP e adapta regiões internas. São cinco peças principais: traseira e quadro em duas partes cada, mais tampa branca inteira. As emendas usam chaves e cola; a abertura de manutenção usa quatro pinos de quarto de volta, sem parafusos. O preparo atual usa Ender-3 original, mesa de 220 × 220 mm, PLA e bico de 0,4 mm; PETG era apenas a referência inicial.
 
 A bandeja atual mede 60 × 112 mm e recebe dois berços substituíveis. As reservas geométricas verificadas são 32 × 58 × 8 mm para ESP32 e 48 × 29 × 15 mm para potência, acima do plano de apoio. Não representam placas compradas. Plugs, fios, alturas inferiores e antena precisam ser conferidos na variante real. O inserto de cabo é bipartido, com variantes para diâmetros diferentes e presilhas de retenção separadas.
 
-Os [volumes STEP iniciais](prototipo-usb/cad-estudo/cassette-volumes-CONCEITO.step) e a [reserva r2 de 70%](prototipo-usb/cad-referencia/README.md) permanecem como histórico. A revisão de impressão atual é baseada em malhas; não foi entregue um novo STEP paramétrico da carcaça adaptada. Preparar as peças atuais no fatiador e imprimir primeiro seus próprios cupons.
+Os [volumes STEP iniciais](prototipo-usb/cad-estudo/cassette-volumes-CONCEITO.step) e a [reserva r2 de 70%](prototipo-usb/cad-referencia/README.md) permanecem como histórico. A revisão de impressão atual é baseada em malhas; não foi entregue um novo STEP paramétrico da carcaça adaptada. Os G-codes oficiais estão fatiados na revisão v9 após revisão independente, com validação física completa ainda pendente.
 
 Pinos, travas, bandeja, berços e insertos são separados para facilitar recuperação sem reimprimir o corpo. Os trilhos dos berços fazem parte da bandeja substituível. Guardar parâmetros CAD, perfil do fatiador, registro de ensaio e firmware estável. Recuperar configuração não autoriza religar a porta automaticamente.
 

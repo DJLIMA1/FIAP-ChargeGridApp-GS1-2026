@@ -1,0 +1,98 @@
+[
+  {
+    "id": "00TESTE",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/00-teste-encaixes/00-teste-encaixes.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/00TESTE.ini",
+    "layer_height": "0.16",
+    "support": "1",
+    "kind": "teste"
+  },
+  {
+    "id": "01TAMPA",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/01-tampa-branca/01-tampa-branca.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/01TAMPA.ini",
+    "layer_height": "0.20",
+    "support": "1",
+    "kind": "casca"
+  },
+  {
+    "id": "02TRSUP",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/02-traseira-superior/02-traseira-superior.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/02TRSUP.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca"
+  },
+  {
+    "id": "03TRINF",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/03-traseira-inferior/03-traseira-inferior.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/03TRINF.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca"
+  },
+  {
+    "id": "04QDSUP",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/04-quadro-superior/04-quadro-superior.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/04QDSUP.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca"
+  },
+  {
+    "id": "05QDINF",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/05-quadro-inferior/05-quadro-inferior.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/05QDINF.ini",
+    "layer_height": "0.24",
+    "support": "1",
+    "kind": "casca"
+  },
+  {
+    "id": "06CHAVE",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/06-chaves-das-emendas/06-chaves-das-emendas.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/06CHAVE.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao"
+  },
+  {
+    "id": "07PINO",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/07-pinos-quarto-de-volta/07-pinos-quarto-de-volta.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/07PINO.ini",
+    "layer_height": "0.16",
+    "support": "1",
+    "kind": "fixacao"
+  },
+  {
+    "id": "08PTAMP",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/08-pinos-tampa-branca/08-pinos-tampa-branca.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/08PTAMP.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao"
+  },
+  {
+    "id": "09BERCO",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/09-bandeja-e-bercos/09-bandeja-e-bercos.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/09BERCO.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "interno"
+  },
+  {
+    "id": "10TRAVA",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/10-travas-e-espacadores/10-travas-e-espacadores.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/10TRAVA.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao"
+  },
+  {
+    "id": "11CABO",
+    "source": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-original-pla-v1/11-cabos-duplos-5mm-OPCIONAL/11-cabos-duplos-5mm-OPCIONAL.stl",
+    "profile": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-gcode-v1/perfis/11CABO.ini",
+    "layer_height": "0.16",
+    "support": "0",
+    "kind": "fixacao"
+  }
+]

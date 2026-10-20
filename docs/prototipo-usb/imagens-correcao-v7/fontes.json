@@ -1,0 +1,10 @@
+{
+  "current_file": "ender3-pla-oficial-v7/modelos-fatiados/02TRSUP.stl",
+  "before_assembly": "ender3-pla-oficial-v6/montagem/ChargeGrid-50-OFICIAL-nao-fatiar.3mf",
+  "after_assembly": "ender3-pla-oficial-v7/montagem/ChargeGrid-50-OFICIAL-nao-fatiar.3mf",
+  "section_x_mm": -25,
+  "red_material_in_full_view": "old body minus new body",
+  "red_material_in_section": "old body intersecting assembled join key",
+  "section_is_illustration_only": true,
+  "removed_volume_mm3": 48.70450810962017
+}

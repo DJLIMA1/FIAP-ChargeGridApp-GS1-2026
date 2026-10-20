@@ -1,0 +1,100 @@
+{
+  "17-cupom-bucha-tampa": {
+    "xyz_size_mm": [
+      16.0,
+      16.0,
+      4.25
+    ],
+    "vertex_z_levels_mm": [
+      0.0,
+      1.2000000476837158,
+      2.700000047683716,
+      4.25
+    ],
+    "sections": [
+      {
+        "z_mm": 1.0,
+        "hole_diameters_mm": []
+      },
+      {
+        "z_mm": 1.3,
+        "hole_diameters_mm": [
+          5.298588949952132
+        ]
+      },
+      {
+        "z_mm": 2.6,
+        "hole_diameters_mm": [
+          5.29858895156849
+        ]
+      },
+      {
+        "z_mm": 2.8,
+        "hole_diameters_mm": [
+          4.598812030900849
+        ]
+      },
+      {
+        "z_mm": 4.0,
+        "hole_diameters_mm": [
+          4.597336533947292
+        ]
+      }
+    ]
+  },
+  "18-cupom-placa-tampa": {
+    "xyz_size_mm": [
+      16.0,
+      16.0,
+      4.349999904632568
+    ],
+    "vertex_z_levels_mm": [
+      0.0,
+      4.349999904632568
+    ],
+    "sections": [
+      {
+        "z_mm": 1.0,
+        "hole_diameters_mm": [
+          4.596513666770495
+        ]
+      },
+      {
+        "z_mm": 1.3,
+        "hole_diameters_mm": [
+          4.595873062079892
+        ]
+      },
+      {
+        "z_mm": 2.6,
+        "hole_diameters_mm": [
+          4.595263528958476
+        ]
+      },
+      {
+        "z_mm": 2.8,
+        "hole_diameters_mm": [
+          4.595482357241659
+        ]
+      },
+      {
+        "z_mm": 4.0,
+        "hole_diameters_mm": [
+          4.598543630447961
+        ]
+      }
+    ]
+  },
+  "stack_height_mm": 8.599999904632568,
+  "nominal": {
+    "floor_z_mm": 1.2,
+    "retaining_lip_underside_z_mm": 2.7,
+    "stack_height_mm": 8.6,
+    "distance_top_to_floor_mm": 7.4,
+    "distance_top_to_retaining_lip_mm": 5.9,
+    "v4_underhead_to_tip_mm": 7.4,
+    "v4_floor_clearance_at_head_contact_mm": 0,
+    "v5_underhead_to_tip_mm": 7.15,
+    "v5_floor_clearance_at_head_contact_mm": 0.25
+  }
+}

@@ -1,0 +1,1228 @@
+{
+  "results": [
+    {
+      "test": "4mm_a_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_a_flange_retains",
+      "intersection_mm3": 71.79832395109835,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_b_flange_retains",
+      "intersection_mm3": 61.603749999999835,
+      "pass": true
+    },
+    {
+      "test": "4mm_cable_at_0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "4mm_split_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_a_flange_retains",
+      "intersection_mm3": 71.79832395109835,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_b_flange_retains",
+      "intersection_mm3": 61.603749999999835,
+      "pass": true
+    },
+    {
+      "test": "5mm_cable_at_0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "5mm_split_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_a_flange_retains",
+      "intersection_mm3": 71.79832395109835,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_b_flange_retains",
+      "intersection_mm3": 61.603749999999835,
+      "pass": true
+    },
+    {
+      "test": "6mm_cable_at_0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "6mm_split_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_a_flange_retains",
+      "intersection_mm3": 71.79832395109835,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_installed",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_0.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_0.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_1.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_1.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_2.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_2.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_3.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_3.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_4.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_4.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_5.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_5.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_6.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_6.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_7.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_7.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_8.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_8.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_9.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_9.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_10.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_10.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_11.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_11.5",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_withdraw_12.0",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_b_flange_retains",
+      "intersection_mm3": 61.603749999999835,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_cable_at_-4",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_cable_at_4",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "duplo-5mm_split_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "saddle_4_halves",
+      "intersection_mm3": 1.7763568394002505e-15,
+      "pass": true
+    },
+    {
+      "test": "saddle_4_nominal_cable",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "saddle_5_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "saddle_5_nominal_cable",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "saddle_6_halves",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "saddle_6_nominal_cable",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "spacer_tab_slot_nominal_clearance",
+      "tab_mm": [
+        3,
+        3,
+        1.5
+      ],
+      "slot_mm": [
+        3.8,
+        8,
+        2
+      ],
+      "clearance_xy_mm": [
+        0.8,
+        5
+      ],
+      "pass": true
+    },
+    {
+      "test": "ESP32_generic_01-traseira-superior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "ESP32_generic_01-traseira-inferior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "ESP32_generic_03-quadro-superior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "ESP32_generic_03-quadro-inferior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "ESP32_generic_05-tampa-frontal",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "power_generic_01-traseira-superior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "power_generic_01-traseira-inferior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "power_generic_03-quadro-superior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "power_generic_03-quadro-inferior",
+      "intersection_mm3": 0,
+      "pass": true
+    },
+    {
+      "test": "power_generic_05-tampa-frontal",
+      "intersection_mm3": 0,
+      "pass": true
+    }
+  ],
+  "actual_electronics_and_cable_fit_pending": true
+}

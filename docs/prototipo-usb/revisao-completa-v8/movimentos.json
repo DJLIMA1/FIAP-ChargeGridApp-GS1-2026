@@ -1,0 +1,4279 @@
+{
+  "package": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v8",
+  "results": [
+    {
+      "test": "pino-casca-0_unlock_0_90",
+      "moving": [
+        "pino-casca-0"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-1",
+        "pino-casca-2",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 45.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 50.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 55.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 60.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 65.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 70.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 75.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 80.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 85.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 90.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-0_withdraw_unlocked",
+      "moving": [
+        "pino-casca-0"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-1",
+        "pino-casca-2",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 1.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 2.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 3.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 4.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 6.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 7.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 8.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 9.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 11.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 12.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 13.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 14.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 16.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 17.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 18.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 19.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 21.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 22.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 23.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 24.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 26.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 27.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 28.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 29.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 31.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 32.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 33.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 34.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 36.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 37.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 38.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 39.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-0_retains_locked",
+      "moving": [
+        "pino-casca-0"
+      ],
+      "obstacles": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 3.278818658976065,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            1,
+            0
+          ],
+          "intersection_mm3": 3.278818658976065
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-1_unlock_0_90",
+      "moving": [
+        "pino-casca-1"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-2",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 45.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 50.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 55.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 60.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 65.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 70.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 75.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 80.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 85.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 90.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-1_withdraw_unlocked",
+      "moving": [
+        "pino-casca-1"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-2",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 1.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 2.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 3.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 4.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 6.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 7.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 8.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 9.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 11.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 12.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 13.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 14.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 16.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 17.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 18.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 19.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 21.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 22.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 23.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 24.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 26.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 27.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 28.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 29.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 31.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 32.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 33.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 34.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 36.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 37.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 38.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 39.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-1_retains_locked",
+      "moving": [
+        "pino-casca-1"
+      ],
+      "obstacles": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 3.2788186599191604,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            1,
+            0
+          ],
+          "intersection_mm3": 3.2788186599191604
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-2_unlock_0_90",
+      "moving": [
+        "pino-casca-2"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-1",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 45.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 50.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 55.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 60.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 65.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 70.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 75.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 80.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 85.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 90.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-2_withdraw_unlocked",
+      "moving": [
+        "pino-casca-2"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-1",
+        "pino-casca-3",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 1.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 2.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 3.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 4.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 6.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 7.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 8.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 9.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 11.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 12.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 13.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 14.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 16.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 17.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 18.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 19.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 21.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 22.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 23.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 24.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 26.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 27.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 28.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 29.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 31.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 32.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 33.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 34.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 36.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 37.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 38.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 39.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-2_retains_locked",
+      "moving": [
+        "pino-casca-2"
+      ],
+      "obstacles": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 3.2788186592170003,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            1,
+            0
+          ],
+          "intersection_mm3": 3.2788186592170003
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-3_unlock_0_90",
+      "moving": [
+        "pino-casca-3"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-1",
+        "pino-casca-2",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 45.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 50.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 55.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 60.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 65.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 70.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 75.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 80.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 85.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 90.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-3_withdraw_unlocked",
+      "moving": [
+        "pino-casca-3"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "03-quadro-inferior",
+        "03-quadro-superior",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-57.2",
+        "chave--22-90.8",
+        "chave-22-57.2",
+        "chave-22-90.8",
+        "pino-casca-0",
+        "pino-casca-1",
+        "pino-casca-2",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": 0.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 1.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 2.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 3.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 4.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 5.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 6.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 7.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 8.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 9.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 10.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 11.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 12.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 13.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 14.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 15.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 16.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 17.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 18.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 19.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 20.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 21.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 22.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 23.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 24.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 25.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 26.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 27.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 28.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 29.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 30.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 31.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 32.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 33.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 34.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 35.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 36.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 37.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 38.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 39.0,
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": 40.0,
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "pino-casca-3_retains_locked",
+      "moving": [
+        "pino-casca-3"
+      ],
+      "obstacles": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 3.2788186598917646,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            1,
+            0
+          ],
+          "intersection_mm3": 3.2788186598917646
+        }
+      ]
+    },
+    {
+      "test": "front_complete_withdrawal",
+      "moving": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2",
+        "05-tampa-frontal",
+        "08-pino-tampa-1",
+        "08-pino-tampa-2",
+        "08-pino-tampa-3",
+        "08-pino-tampa-4",
+        "08-pino-tampa-5"
+      ],
+      "obstacles": [
+        "01-traseira-inferior",
+        "01-traseira-superior",
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b",
+        "chave--22-90.8",
+        "chave-22-90.8",
+        "trava-bandeja-5",
+        "trava-bandeja-55",
+        "trava-berco-54",
+        "trava-berco-8"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -2.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -3.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -4.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -5.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -6.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -7.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -8.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -9.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -10.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -11.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -12.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -13.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -14.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -15.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -16.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -17.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -18.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -19.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -20.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -21.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -22.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -23.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -24.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -25.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -26.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -27.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -28.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -29.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -30.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -31.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -32.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -33.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -34.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -35.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -36.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -37.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -38.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -39.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -40.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -41.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -42.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -43.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -44.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -45.0,
+            0
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "cap_removed_after_releasing_pins",
+      "moving": [
+        "05-tampa-frontal"
+      ],
+      "obstacles": [
+        "03-quadro-superior",
+        "03-quadro-inferior",
+        "chave--22-57.2",
+        "chave-22-57.2"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -2.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -3.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -4.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -5.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -6.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -7.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -8.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -9.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -10.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -11.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -12.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -13.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -14.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -15.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -16.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -17.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -18.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -19.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -20.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -21.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -22.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -23.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -24.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -25.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -26.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -27.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -28.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -29.0,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -30.0,
+            0
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "08-pino-tampa-1_retention",
+      "moving": [
+        "08-pino-tampa-1"
+      ],
+      "obstacles": [
+        "05-tampa-frontal"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.5448664952986925,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.1,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0.1800612350029094
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0.5448664952986925
+        }
+      ]
+    },
+    {
+      "test": "08-pino-tampa-2_retention",
+      "moving": [
+        "08-pino-tampa-2"
+      ],
+      "obstacles": [
+        "05-tampa-frontal"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.5448664952986959,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.1,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0.1800612350029109
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0.5448664952986959
+        }
+      ]
+    },
+    {
+      "test": "08-pino-tampa-3_retention",
+      "moving": [
+        "08-pino-tampa-3"
+      ],
+      "obstacles": [
+        "05-tampa-frontal"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.5448664952986945,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.1,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0.18006123500291046
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0.5448664952986945
+        }
+      ]
+    },
+    {
+      "test": "08-pino-tampa-4_retention",
+      "moving": [
+        "08-pino-tampa-4"
+      ],
+      "obstacles": [
+        "05-tampa-frontal"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.5448664952986949,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.1,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0.1800612350029106
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0.5448664952986949
+        }
+      ]
+    },
+    {
+      "test": "08-pino-tampa-5_retention",
+      "moving": [
+        "08-pino-tampa-5"
+      ],
+      "obstacles": [
+        "05-tampa-frontal"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.544866495298701,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0.1,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0.25,
+            0
+          ],
+          "intersection_mm3": 0.1800612350029201
+        },
+        {
+          "parameter": [
+            0,
+            0.5,
+            0
+          ],
+          "intersection_mm3": 0.544866495298701
+        }
+      ]
+    },
+    {
+      "test": "loaded_tray_slide_up",
+      "moving": [
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "trava-berco-8",
+        "trava-berco-54"
+      ],
+      "obstacles": [
+        "01-traseira-superior",
+        "01-traseira-inferior",
+        "chave--22-90.8",
+        "chave-22-90.8",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.0
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "loaded_tray_withdraw_after_slide",
+      "moving": [
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "trava-berco-8",
+        "trava-berco-54"
+      ],
+      "obstacles": [
+        "01-traseira-superior",
+        "01-traseira-inferior",
+        "chave--22-90.8",
+        "chave-22-90.8",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -2.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -3.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -4.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -5.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -6.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -7.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -8.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -9.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -10.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -11.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -12.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -13.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -14.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -15.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -16.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -17.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -18.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -19.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -20.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -21.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -22.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -23.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -24.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -25.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -26.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -27.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -28.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -29.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -30.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -31.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -32.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -33.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -34.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -35.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -36.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -37.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -38.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -39.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -40.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -41.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -42.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -43.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -44.0,
+            5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -45.0,
+            5
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "tray_stops_prevent_release",
+      "moving": [
+        "09-bandeja-removivel",
+        "10-berco-potencia",
+        "11-berco-esp32",
+        "trava-berco-8",
+        "trava-berco-54",
+        "trava-bandeja-5",
+        "trava-bandeja-55"
+      ],
+      "obstacles": [
+        "01-traseira-superior",
+        "01-traseira-inferior",
+        "chave--22-90.8",
+        "chave-22-90.8",
+        "19-inserto-duplo-5mm-a",
+        "19-inserto-duplo-5mm-b"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 111.60652695058928,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.0
+          ],
+          "intersection_mm3": 1.2583326953086678
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.0
+          ],
+          "intersection_mm3": 12.888472337044453
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.0
+          ],
+          "intersection_mm3": 35.204372840532564
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.0
+          ],
+          "intersection_mm3": 111.60652695058928
+        }
+      ]
+    },
+    {
+      "test": "11-berco-esp32_slide_out",
+      "moving": [
+        "11-berco-esp32"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel",
+        "10-berco-potencia"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "11-berco-esp32_withdraw_from_rails",
+      "moving": [
+        "11-berco-esp32"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel",
+        "10-berco-potencia"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -2.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -3.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -4.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -5.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -6.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -7.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -8.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -9.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -10.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -11.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -12.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -13.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -14.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -15.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "11-berco-esp32_retains_on_rails",
+      "moving": [
+        "11-berco-esp32"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 5.56113970588239,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.2,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 5.56113970588239
+        }
+      ]
+    },
+    {
+      "test": "11-berco-esp32_locking_pin_blocks_slide",
+      "moving": [
+        "11-berco-esp32"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel",
+        "trava-berco-54"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 4.726296920741686,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1
+          ],
+          "intersection_mm3": 1.097469113220048
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2
+          ],
+          "intersection_mm3": 4.726296920741686
+        }
+      ]
+    },
+    {
+      "test": "10-berco-potencia_slide_out",
+      "moving": [
+        "10-berco-potencia"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            3.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            4.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            5.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            6.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            7.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            8.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            9.75
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "10-berco-potencia_withdraw_from_rails",
+      "moving": [
+        "10-berco-potencia"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": false,
+      "passed": true,
+      "max_intersection_mm3": 0,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -2.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -3.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -4.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -5.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -6.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -7.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -8.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -9.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -10.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -11.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -12.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -13.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -14.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -15.0,
+            10.5
+          ],
+          "intersection_mm3": 0
+        }
+      ]
+    },
+    {
+      "test": "10-berco-potencia_retains_on_rails",
+      "moving": [
+        "10-berco-potencia"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 5.5611397058824545,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.2,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 5.5611397058824545
+        }
+      ]
+    },
+    {
+      "test": "10-berco-potencia_locking_pin_blocks_slide",
+      "moving": [
+        "10-berco-potencia"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel",
+        "trava-berco-8"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 4.726296920741693,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            0,
+            0.25
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            0.5
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            1
+          ],
+          "intersection_mm3": 1.0974691132200525
+        },
+        {
+          "parameter": [
+            0,
+            0,
+            2
+          ],
+          "intersection_mm3": 4.726296920741693
+        }
+      ]
+    },
+    {
+      "test": "trava-berco-8_own_retention",
+      "moving": [
+        "trava-berco-8"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.14524736430821553,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0.11362925417977099
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 0.14524736430821553
+        }
+      ]
+    },
+    {
+      "test": "trava-berco-54_own_retention",
+      "moving": [
+        "trava-berco-54"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.14524736430821492,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0.11362925417976967
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 0.14524736430821492
+        }
+      ]
+    },
+    {
+      "test": "trava-bandeja-5_own_retention",
+      "moving": [
+        "trava-bandeja-5"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.14215814224648682,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0.07406065617843449
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 0.14215814224648682
+        }
+      ]
+    },
+    {
+      "test": "trava-bandeja-55_own_retention",
+      "moving": [
+        "trava-bandeja-55"
+      ],
+      "obstacles": [
+        "09-bandeja-removivel"
+      ],
+      "expected_retention": true,
+      "passed": true,
+      "max_intersection_mm3": 0.14215814224648718,
+      "samples": [
+        {
+          "parameter": [
+            0,
+            -0.25,
+            0
+          ],
+          "intersection_mm3": 0
+        },
+        {
+          "parameter": [
+            0,
+            -0.5,
+            0
+          ],
+          "intersection_mm3": 0.07406065617843474
+        },
+        {
+          "parameter": [
+            0,
+            -1,
+            0
+          ],
+          "intersection_mm3": 0.14215814224648718
+        }
+      ]
+    }
+  ],
+  "failed": []
+}

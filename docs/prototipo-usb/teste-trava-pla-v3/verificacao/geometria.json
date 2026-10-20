@@ -1,0 +1,42 @@
+{
+  "parts": [
+    {
+      "name": "08-pino-tampa-1-a-4-PLA-v3",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.800000190734863,
+        5.099999904632568
+      ],
+      "volume_mm3": 142.6976056184211,
+      "watertight": true,
+      "one_connected_part": true
+    },
+    {
+      "name": "08-pino-tampa-5-PLA-v3",
+      "dimensions_mm": [
+        6.800000190734863,
+        10.050000190734863,
+        5.099999904632568
+      ],
+      "volume_mm3": 144.97778174215227,
+      "watertight": true,
+      "one_connected_part": true
+    }
+  ],
+  "checks": {
+    "installed_socket_overlap_mm3": 0,
+    "installed_plate_overlap_mm3": 0,
+    "tip_to_blind_floor_clearance_mm": 0.1,
+    "head_to_plate_clearance_mm": 0.1,
+    "shaft_nominal_diameter_mm": 4.3,
+    "socket_entry_diameter_mm": 4.6,
+    "bead_max_diameter_mm": 4.8,
+    "nominal_radial_deflection_to_enter_mm": 0.1,
+    "old_nominal_radial_deflection_mm": 0.18,
+    "head_thickness_mm": 2.4,
+    "old_head_thickness_mm": 1.6,
+    "physical_test_passed": false,
+    "requires_actual_retention_removal_and_repeat_cycle_test": true,
+    "pull_0_9mm_expected_interference_mm3": 0.1665785784124917
+  }
+}

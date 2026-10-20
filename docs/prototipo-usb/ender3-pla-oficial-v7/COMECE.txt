@@ -1,0 +1,28 @@
+CHARGEGRID - OFICIAL V6 - ENDER-3 ORIGINAL / PLA / BICO 0,4 MM
+
+CONTINUACAO ATUAL: 01CHAVE ja impresso; 02TRSUP em impressao.
+Deixe 02 terminar. Depois use 03TRINF7.gcode, que substitui 03TRINF.gcode.
+Nao e necessario reimprimir 01 e 02 por esta correcao.
+A lista abaixo mostra a ordem completa para referencia.
+Imprima 01 a 11 em ordem, um arquivo por vez. Retire cada lote antes do seguinte.
+
+01CHAVE.gcode - Quatro chaves das emendas - 18m 11s
+02TRSUP.gcode - Traseira superior - 5h 56m 16s
+03TRINF7.gcode - Traseira inferior - 7h 51m 23s
+04QDSUP.gcode - Quadro superior - 4h 54m 46s
+05QDINF.gcode - Quadro inferior - 10h 49m 54s
+06TAMPA.gcode - Tampa frontal branca - 5h 25m 29s
+07PTAMP.gcode - Quatro travas v5 para os pontos superiores e centrais - 9m 12s
+08PTINF.gcode - Uma trava inferior, 0,25 mm mais longa - 3m 17s
+09PINO.gcode - Quatro pinos de quarto de volta com suporte - 36m 27s
+10BERCO.gcode - Bandeja e dois bercos modulares - 2h 46m 20s
+11TRAVA.gcode - Travas internas e espacadores - 33m 42s
+12CABO.gcode - Opcional: saida para dois cabos de 5 mm - 1h 3m 53s
+
+12CABO fica em CGFINAL/OPCIONAL: apenas para dois cabos de 5 mm.
+07PTAMP: quatro travas, 3 riscos, pontos superiores e centrais.
+08PTINF: uma trava, 4 riscos, ponto inferior.
+09PINO: retirar suportes antes de usar.
+01-11: cerca de 299,50 g e 39h24. Com 12: 306,48 g e 40h28.
+PLA 210/205 C, mesa 60 C. Perfil ja configurado.
+Guia completo, imagem e projeto de recuperacao em CGDOC7.

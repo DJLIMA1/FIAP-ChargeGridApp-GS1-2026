@@ -1,0 +1,117 @@
+{
+  "user_reported_v5_test_passed": true,
+  "whole_body_physically_assembled": false,
+  "standard_pins_byte_identical_to_v5": true,
+  "pins": [
+    {
+      "position": 1,
+      "head_marks": 3,
+      "extra_length_mm": 0,
+      "head_gap_mm": 0,
+      "blind_floor_clearance_mm": 0.25,
+      "assembly_intersections_mm3": {
+        "cover": 0,
+        "frame": 0
+      },
+      "pull_retention_interference_mm3": 0.18006122303150723,
+      "geometry": {
+        "watertight": true,
+        "consistent": true,
+        "quantity": 1,
+        "size_mm": [
+          6.800000190734863,
+          9.550000190734863,
+          4.800000190734863
+        ]
+      }
+    },
+    {
+      "position": 2,
+      "head_marks": 3,
+      "extra_length_mm": 0,
+      "head_gap_mm": 0,
+      "blind_floor_clearance_mm": 0.25,
+      "assembly_intersections_mm3": {
+        "cover": 0,
+        "frame": 0
+      },
+      "pull_retention_interference_mm3": 0.180061223031509,
+      "geometry": {
+        "watertight": true,
+        "consistent": true,
+        "quantity": 1,
+        "size_mm": [
+          6.800000190734863,
+          9.550000190734863,
+          4.800000190734863
+        ]
+      }
+    },
+    {
+      "position": 3,
+      "head_marks": 3,
+      "extra_length_mm": 0,
+      "head_gap_mm": 0,
+      "blind_floor_clearance_mm": 0.25,
+      "assembly_intersections_mm3": {
+        "cover": 0,
+        "frame": 0
+      },
+      "pull_retention_interference_mm3": 0.18006122303151018,
+      "geometry": {
+        "watertight": true,
+        "consistent": true,
+        "quantity": 1,
+        "size_mm": [
+          6.800000190734863,
+          9.550000190734863,
+          4.800000190734863
+        ]
+      }
+    },
+    {
+      "position": 4,
+      "head_marks": 3,
+      "extra_length_mm": 0,
+      "head_gap_mm": 0,
+      "blind_floor_clearance_mm": 0.25,
+      "assembly_intersections_mm3": {
+        "cover": 0,
+        "frame": 0
+      },
+      "pull_retention_interference_mm3": 0.1800612230315103,
+      "geometry": {
+        "watertight": true,
+        "consistent": true,
+        "quantity": 1,
+        "size_mm": [
+          6.800000190734863,
+          9.550000190734863,
+          4.800000190734863
+        ]
+      }
+    },
+    {
+      "position": 5,
+      "head_marks": 4,
+      "extra_length_mm": 0.25,
+      "head_gap_mm": 0,
+      "blind_floor_clearance_mm": 0.25,
+      "assembly_intersections_mm3": {
+        "cover": 0,
+        "frame": 0
+      },
+      "pull_retention_interference_mm3": 0.1800612230315191,
+      "geometry": {
+        "watertight": true,
+        "consistent": true,
+        "quantity": 1,
+        "size_mm": [
+          6.800000190734863,
+          9.800000190734863,
+          4.800000190734863
+        ]
+      }
+    }
+  ]
+}

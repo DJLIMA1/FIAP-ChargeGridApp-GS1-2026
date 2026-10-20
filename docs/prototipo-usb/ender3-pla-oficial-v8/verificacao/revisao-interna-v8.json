@@ -1,0 +1,23 @@
+{
+  "upper_carrier_shift_down_mm": 6,
+  "carrier_size_preserved": true,
+  "retaining_bosses_now_reach_base_bottom": true,
+  "new_clip_and_stop_wings_and_rounded_slots": true,
+  "closing_envelopes": [
+    {
+      "part": "12",
+      "required_geometric_closure_per_arm_mm": 0.14013947041217967,
+      "slot_mm": 1.2,
+      "elastic_strength_not_simulated": true
+    },
+    {
+      "part": "13",
+      "required_geometric_closure_per_arm_mm": 0.12642577913475694,
+      "slot_mm": 1.2,
+      "elastic_strength_not_simulated": true
+    }
+  ],
+  "pin_assembly_names_retained_for_tracking": true,
+  "old_name_trava_berco_54_now_local_station": 48,
+  "physical_fit_pending": true
+}

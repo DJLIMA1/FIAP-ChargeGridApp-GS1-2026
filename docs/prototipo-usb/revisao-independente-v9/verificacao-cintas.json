@@ -1,0 +1,280 @@
+[
+  {
+    "tie": "esquerda",
+    "part": "trava-bandeja-5",
+    "overlap_mm3": 1.6784667981421323e-05
+  },
+  {
+    "tie": "esquerda",
+    "part": "trava-bandeja-55",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "trava-berco-8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "trava-berco-54",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "01-traseira-superior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "01-traseira-inferior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "03-quadro-superior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "03-quadro-inferior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "05-tampa-frontal",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "08-pino-tampa-1",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "08-pino-tampa-2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "08-pino-tampa-3",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "08-pino-tampa-4",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "08-pino-tampa-5",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "09-bandeja-removivel",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "10-berco-potencia",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "11-berco-esp32",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "19-inserto-duplo-5mm-a",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "19-inserto-duplo-5mm-b",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "pino-casca-0",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "pino-casca-1",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "pino-casca-2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "pino-casca-3",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "chave--22-90.8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "chave--22-57.2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "chave-22-90.8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "part": "chave-22-57.2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "esquerda",
+    "retains_rigid_stop_pull_0_5_mm": 2.750016784667982
+  },
+  {
+    "tie": "direita",
+    "part": "trava-bandeja-5",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "trava-bandeja-55",
+    "overlap_mm3": 1.678466799326375e-05
+  },
+  {
+    "tie": "direita",
+    "part": "trava-berco-8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "trava-berco-54",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "01-traseira-superior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "01-traseira-inferior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "03-quadro-superior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "03-quadro-inferior",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "05-tampa-frontal",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "08-pino-tampa-1",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "08-pino-tampa-2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "08-pino-tampa-3",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "08-pino-tampa-4",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "08-pino-tampa-5",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "09-bandeja-removivel",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "10-berco-potencia",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "11-berco-esp32",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "19-inserto-duplo-5mm-a",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "19-inserto-duplo-5mm-b",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "pino-casca-0",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "pino-casca-1",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "pino-casca-2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "pino-casca-3",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "chave--22-90.8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "chave--22-57.2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "chave-22-90.8",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "part": "chave-22-57.2",
+    "overlap_mm3": 0
+  },
+  {
+    "tie": "direita",
+    "retains_rigid_stop_pull_0_5_mm": 2.750016784667983
+  }
+]

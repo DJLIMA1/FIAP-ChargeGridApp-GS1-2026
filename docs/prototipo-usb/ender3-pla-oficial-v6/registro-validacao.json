@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-14",
+  "user_reports_all_tests_passed": true,
+  "validated_snap_revision": "v5 C",
+  "printer": "Ender-3 original 4.2.2 Bowden 0.4 mm",
+  "material": "PLA 1.75 mm",
+  "official_delivery": "v6",
+  "standard_snap_stl_unchanged": true,
+  "bottom_pin_adjustment_mm": 0.25,
+  "bottom_pin_verified_in_assembly_cad": true,
+  "body_print_and_complete_assembly_pending": true,
+  "supports_enabled_for_jobs": [
+    "02TRSUP",
+    "03TRINF",
+    "04QDSUP",
+    "05QDINF",
+    "06TAMPA",
+    "09PINO"
+  ]
+}

@@ -1,0 +1,13 @@
+CHARGEGRID - TESTE V2
+
+No menu do SD: CGTEST2 / 00TESTE.gcode
+Estimativa: 1h03min27s, 9.41 g.
+PLA: 210 C primeira camada, 205 C demais; mesa 60 C.
+Bico 0.4 mm; camada 0.24 mm; retracao 5 mm.
+SUPORTES DESLIGADOS, conforme solicitado: esta versao e experimental.
+Ha avisos de sustentacao/adesao, inclusive no teste. Avaliar o teste antes das outras pecas.
+
+CGTEST2: 12 G-codes novos.
+CGDOC2: perfis, projetos, modelos, previas e verificacoes novos.
+CGPRINT e CGDOCS: versao anterior preservada.
+Nao compensar falhas elevando para 260 C.

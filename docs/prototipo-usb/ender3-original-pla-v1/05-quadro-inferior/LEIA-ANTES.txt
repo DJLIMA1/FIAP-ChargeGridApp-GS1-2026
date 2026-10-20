@@ -1,0 +1,22 @@
+05-quadro-inferior
+Ender 3 original · PLA · bico 0,4 mm · escala 100%
+
+Abrir o 3MF OU o STL: ambos têm as mesmas peças. Não abrir ambos juntos.
+3MF contém geometria, não configurações de fatiamento.
+Manter orientação e posições; imprimir por camadas, não por objeto.
+
+camada_mm: 0.2
+perimetros: 4
+topo_fundo_mm: 1.0
+preenchimento_percent: 25
+velocidade_mm_s: 40
+parede_externa_mm_s: 25
+brim_mm: 6
+
+Manter emenda plana na mesa. Revisar suportes em alojamentos e saliências internas.
+
+Configuração comum inicial: bico 200 °C, mesa 60 °C, primeira camada 0,20 mm a 15 mm/s; seguir fabricante do filamento.
+Gerar suportes conforme necessidade, revisar camada a camada e então exportar G-code no perfil Ender-3 original.
+
+Peças:
+03-quadro-inferior: 1

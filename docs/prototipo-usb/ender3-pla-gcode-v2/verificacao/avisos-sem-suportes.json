@@ -1,0 +1,10 @@
+{
+  "00TESTE": "Detected print stability issues:\n\n00TESTE.stl\nFloating bridge anchors, Low bed adhesion",
+  "01TAMPA": "Detected print stability issues:\n\n01TAMPA.stl\nCollapsing overhang, Loose extrusions",
+  "02TRSUP": "Detected print stability issues:\n\n02TRSUP.stl\nCollapsing overhang, Loose extrusions, Long bridging extrusions",
+  "03TRINF": "Detected print stability issues:\n\n03TRINF.stl\nCollapsing overhang, Loose extrusions, Long bridging extrusions",
+  "04QDSUP": "Detected print stability issues:\n\n04QDSUP.stl\nFloating object part, Collapsing overhang, Loose extrusions, Long bridging extrusions",
+  "05QDINF": "Detected print stability issues:\n\n05QDINF.stl\nFloating object part, Collapsing overhang, Loose extrusions, Long bridging extrusions",
+  "07PINO": "Detected print stability issues:\n\n07PINO.stl\nLow bed adhesion, Loose extrusions",
+  "09BERCO": "Detected print stability issues:\n\n09BERCO.stl\nFloating bridge anchors"
+}

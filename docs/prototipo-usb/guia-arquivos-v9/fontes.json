@@ -1,0 +1,62 @@
+[
+  {
+    "file": "01CHAVE.gcode",
+    "pieces": 4,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/01CHAVE.stl"
+  },
+  {
+    "file": "02TRSUP.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/02TRSUP.stl"
+  },
+  {
+    "file": "03TRINF7.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/03TRINF7.stl"
+  },
+  {
+    "file": "04QDSUP.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/04QDSUP.stl"
+  },
+  {
+    "file": "05QDINF8.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/05QDINF8.stl"
+  },
+  {
+    "file": "06TAMPA.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/06TAMPA.stl"
+  },
+  {
+    "file": "07PTAMP.gcode",
+    "pieces": 4,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/07PTAMP.stl"
+  },
+  {
+    "file": "08PTINF.gcode",
+    "pieces": 1,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/08PTINF.stl"
+  },
+  {
+    "file": "09PINO.gcode",
+    "pieces": 4,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/09PINO.stl"
+  },
+  {
+    "file": "10BERCO9.gcode",
+    "pieces": 3,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/10BERCO9.stl"
+  },
+  {
+    "file": "11TRAVA9.gcode",
+    "pieces": 12,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/11TRAVA9.stl"
+  },
+  {
+    "file": "12CABO.gcode",
+    "pieces": 6,
+    "source_stl": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9/modelos-fatiados/12CABO.stl"
+  }
+]

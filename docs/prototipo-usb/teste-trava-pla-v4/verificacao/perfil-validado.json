@@ -1,0 +1,17 @@
+[
+  {
+    "file": "00FLEX4.gcode",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid trava flexivel PLA v4 A e B"
+      ]
+    },
+    "restores_verified": true,
+    "embedded_profile_matches": true
+  }
+]

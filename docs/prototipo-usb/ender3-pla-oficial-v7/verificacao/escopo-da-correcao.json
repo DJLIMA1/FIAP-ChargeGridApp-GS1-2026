@@ -1,0 +1,56 @@
+{
+  "gcodes": [
+    {
+      "file": "01CHAVE.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "02TRSUP.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "03TRINF7.gcode",
+      "unchanged_from_v6": false,
+      "replaces": "03TRINF.gcode"
+    },
+    {
+      "file": "04QDSUP.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "05QDINF.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "06TAMPA.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "07PTAMP.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "08PTINF.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "09PINO.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "10BERCO.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "11TRAVA.gcode",
+      "unchanged_from_v6": true
+    },
+    {
+      "file": "12CABO.gcode",
+      "unchanged_from_v6": true
+    }
+  ],
+  "already_printed_keys_unchanged": true,
+  "job_02_in_progress_unchanged": true,
+  "only_job_03_changed": true
+}

@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-15",
+  "official_delivery": "v9",
+  "validated_cover_snap_revision": "v5 C",
+  "user_reported_previous_coupons_passed": true,
+  "changed_jobs_since_sd_v6": [
+    "03TRINF7",
+    "05QDINF8",
+    "10BERCO9",
+    "11TRAVA9"
+  ],
+  "already_printed_keys_unchanged": true,
+  "job_02_printed_unchanged": true,
+  "user_confirmed_printed_jobs": [
+    "01CHAVE",
+    "02TRSUP"
+  ],
+  "new_internal_pins_physically_tested": false,
+  "independent_review_completed": true,
+  "short_flexible_D_stop_removed": true,
+  "new_rigid_stops_and_ties_physically_assembled": false,
+  "complete_enclosure_physically_assembled": false,
+  "physical_join_fit_pending": true,
+  "sd_updated": false,
+  "electronics_final_fit_pending": true,
+  "digital_review_complete": true
+}

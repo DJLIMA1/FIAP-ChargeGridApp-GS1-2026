@@ -1,0 +1,13 @@
+pasta,arquivo,descricao,pecas_no_arquivo,x_mm,y_mm,z_mm,bytes
+JA-IMPRESSOS,01CHAVE.stl,Chaves das emendas,4,94.000,22.000,3.000,4084
+JA-IMPRESSOS,02TRSUP.stl,Traseira superior,1,104.265,99.899,34.886,1335784
+PENDENTES,03TRINF7.stl,Traseira inferior,1,86.331,124.873,45.927,1931084
+PENDENTES,04QDSUP.stl,Moldura frontal superior,1,104.264,99.899,32.950,2055484
+PENDENTES,05QDINF8.stl,Moldura frontal inferior,1,86.301,54.305,124.866,1663684
+PENDENTES,06TAMPA.stl,Tampa frontal,1,103.952,141.020,29.000,852784
+PENDENTES,07PTAMP.stl,Travas superiores e centrais da tampa,4,66.800,9.550,4.800,277684
+PENDENTES,08PTINF.stl,Trava inferior da tampa,1,6.800,9.800,4.800,70384
+PENDENTES,09PINO.stl,Pinos de fechamento de quarto de volta,4,100.400,31.700,11.600,85684
+PENDENTES,10BERCO9.stl,Bandeja e dois berços internos,3,130.000,119.000,5.550,149684
+PENDENTES,11TRAVA9.stl,"Pinos dos berços, bloqueios e espaçadores",12,68.000,74.000,6.500,101684
+OPCIONAL,12CABO.stl,Inserto e presilhas de cabos de aproximadamente 5 mm,6,150.000,42.000,5.600,56484

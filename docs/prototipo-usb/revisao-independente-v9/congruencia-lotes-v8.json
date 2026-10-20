@@ -1,0 +1,197 @@
+[
+  {
+    "batch": "01CHAVE",
+    "part": "06-chave-emenda",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "01CHAVE",
+    "part": "06-chave-emenda",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "01CHAVE",
+    "part": "06-chave-emenda",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "01CHAVE",
+    "part": "06-chave-emenda",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "02TRSUP",
+    "part": "01-traseira-superior",
+    "error_mm": 1.1444091796875e-05
+  },
+  {
+    "batch": "03TRINF7",
+    "part": "01-traseira-inferior",
+    "error_mm": 1.2212990259996125e-05
+  },
+  {
+    "batch": "04QDSUP",
+    "part": "03-quadro-superior",
+    "error_mm": 1.199698030987656e-05
+  },
+  {
+    "batch": "05QDINF8",
+    "part": "03-quadro-inferior",
+    "error_mm": 1.375408659158321e-05
+  },
+  {
+    "batch": "06TAMPA",
+    "part": "05-tampa-frontal",
+    "error_mm": 1.225016839853776e-05
+  },
+  {
+    "batch": "07PTAMP",
+    "part": "08-pino-tampa-1",
+    "error_mm": 6.7771293657073475e-06
+  },
+  {
+    "batch": "07PTAMP",
+    "part": "08-pino-tampa-2",
+    "error_mm": 6.7771293657073475e-06
+  },
+  {
+    "batch": "07PTAMP",
+    "part": "08-pino-tampa-3",
+    "error_mm": 6.7771293657073475e-06
+  },
+  {
+    "batch": "07PTAMP",
+    "part": "08-pino-tampa-4",
+    "error_mm": 1.4158455753588322e-05
+  },
+  {
+    "batch": "08PTINF",
+    "part": "08-pino-tampa-5",
+    "error_mm": 6.7771293657073475e-06
+  },
+  {
+    "batch": "09PINO",
+    "part": "07-pino-quarto-volta",
+    "error_mm": 8.36845816363537e-06
+  },
+  {
+    "batch": "09PINO",
+    "part": "07-pino-quarto-volta",
+    "error_mm": 9.131968472486322e-06
+  },
+  {
+    "batch": "09PINO",
+    "part": "07-pino-quarto-volta",
+    "error_mm": 9.224673329426337e-06
+  },
+  {
+    "batch": "09PINO",
+    "part": "07-pino-quarto-volta",
+    "error_mm": 1.4177387950247293e-05
+  },
+  {
+    "batch": "10BERCO8",
+    "part": "09-bandeja-removivel",
+    "error_mm": 8.529922399520072e-06
+  },
+  {
+    "batch": "10BERCO8",
+    "part": "10-berco-potencia",
+    "error_mm": 7.864199877963372e-06
+  },
+  {
+    "batch": "10BERCO8",
+    "part": "11-berco-esp32",
+    "error_mm": 1.0789593218788873e-05
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "12-pino-trava-berco",
+    "error_mm": 4.554980558047962e-06
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "12-pino-trava-berco",
+    "error_mm": 4.554980558047962e-06
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "13-trava-bandeja",
+    "error_mm": 5.3947966093944364e-06
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "13-trava-bandeja",
+    "error_mm": 5.3947966093944364e-06
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-3mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-3mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-3mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-3mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-5mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-5mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-5mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "11TRAVA8",
+    "part": "14-espacador-5mm",
+    "error_mm": 0.0
+  },
+  {
+    "batch": "12CABO",
+    "part": "19-inserto-duplo-5mm-a",
+    "error_mm": 3.814697265625e-06
+  },
+  {
+    "batch": "12CABO",
+    "part": "19-inserto-duplo-5mm-b",
+    "error_mm": 5.068848520629239e-06
+  },
+  {
+    "batch": "12CABO",
+    "part": "15-prensa-cabo-5mm-meia",
+    "error_mm": 1.9073486328125e-06
+  },
+  {
+    "batch": "12CABO",
+    "part": "15-prensa-cabo-5mm-meia",
+    "error_mm": 3.337860107421875e-06
+  },
+  {
+    "batch": "12CABO",
+    "part": "15-prensa-cabo-5mm-meia",
+    "error_mm": 7.62939453125e-06
+  },
+  {
+    "batch": "12CABO",
+    "part": "15-prensa-cabo-5mm-meia",
+    "error_mm": 7.62939453125e-06
+  }
+]

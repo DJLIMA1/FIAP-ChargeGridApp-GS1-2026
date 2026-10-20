@@ -1,0 +1,274 @@
+[
+  {
+    "file": "01CHAVE",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 01CHAVE"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "02TRSUP",
+    "differences_from_successful_profile": {
+      "dont_support_bridges": [
+        "0",
+        "1"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 02TRSUP"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ],
+      "support_material_threshold": [
+        "45",
+        "40"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "03TRINF",
+    "differences_from_successful_profile": {
+      "dont_support_bridges": [
+        "0",
+        "1"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 03TRINF"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ],
+      "support_material_threshold": [
+        "45",
+        "40"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "04QDSUP",
+    "differences_from_successful_profile": {
+      "dont_support_bridges": [
+        "0",
+        "1"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 04QDSUP"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ],
+      "support_material_threshold": [
+        "45",
+        "40"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "05QDINF",
+    "differences_from_successful_profile": {
+      "dont_support_bridges": [
+        "0",
+        "1"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 05QDINF"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ],
+      "support_material_style": [
+        "snug",
+        "organic"
+      ],
+      "support_material_threshold": [
+        "45",
+        "40"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "06TAMPA",
+    "differences_from_successful_profile": {
+      "dont_support_bridges": [
+        "0",
+        "1"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 06TAMPA"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ],
+      "support_material_threshold": [
+        "45",
+        "40"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "07PTAMP",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 07PTAMP"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "08PTINF",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 08PTINF"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "09PINO",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 09PINO"
+      ],
+      "support_material": [
+        "0",
+        "1"
+      ],
+      "support_material_auto": [
+        "0",
+        "1"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "10BERCO",
+    "differences_from_successful_profile": {
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 10BERCO"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "11TRAVA",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 11TRAVA"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  },
+  {
+    "file": "12CABO",
+    "differences_from_successful_profile": {
+      "fill_density": [
+        "15%",
+        "100%"
+      ],
+      "print_settings_id": [
+        "ChargeGrid v2 perfil do usuario SEM SUPORTES",
+        "ChargeGrid OFICIAL v6 - 12CABO"
+      ]
+    },
+    "restore_balance_pass": true,
+    "support_presence_matches": true,
+    "project_embedded_profile_matches": true,
+    "reopened_project_settings_geometry_and_material_match": true
+  }
+]

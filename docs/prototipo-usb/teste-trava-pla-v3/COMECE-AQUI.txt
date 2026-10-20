@@ -1,0 +1,11 @@
+CHARGEGRID - TESTE DA TRAVA PEQUENA V3
+
+No SD: CGTRAVA3 / 00TRAVA.gcode
+Imprimir 00TRAVA.gcode: 2 pinos iguais, 5min39s, 0.50 g.
+Usar os blocos 17 (furo cego) e 18 (furo passante) do teste anterior.
+17 embaixo, abertura para cima; 18 por cima; alinhar furos.
+Inserir o pino pelo 18, reto, com os dedos. Nao girar nem colar.
+Testar entrada, retencao e retirada sem quebrar; ate 10 ciclos suaves.
+01ENCAIX.gcode somente se precisar reimprimir os dois blocos (15min).
+Ver como-testar.png e LEIA-PRIMEIRO.md.
+Ainda nao imprimir toda a carcaca; a trava precisa ser validada.

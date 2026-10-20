@@ -1,0 +1,86 @@
+[
+  {
+    "file": "00TESTE.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 14.0,
+    "filament_g_reopened": 14.0
+  },
+  {
+    "file": "01TAMPA.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 45.29,
+    "filament_g_reopened": 45.29
+  },
+  {
+    "file": "02TRSUP.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 47.94,
+    "filament_g_reopened": 47.94
+  },
+  {
+    "file": "03TRINF.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 57.69,
+    "filament_g_reopened": 57.69
+  },
+  {
+    "file": "04QDSUP.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 39.16,
+    "filament_g_reopened": 38.98
+  },
+  {
+    "file": "05QDINF.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 65.54,
+    "filament_g_reopened": 65.54
+  },
+  {
+    "file": "06CHAVE.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 2.85,
+    "filament_g_reopened": 2.85
+  },
+  {
+    "file": "07PINO.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 4.3,
+    "filament_g_reopened": 4.3
+  },
+  {
+    "file": "08PTAMP.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 0.9,
+    "filament_g_reopened": 0.9
+  },
+  {
+    "file": "09BERCO.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 27.83,
+    "filament_g_reopened": 27.83
+  },
+  {
+    "file": "10TRAVA.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 2.95,
+    "filament_g_reopened": 2.95
+  },
+  {
+    "file": "11CABO.3mf",
+    "resliced_without_external_profile": true,
+    "critical_settings_match": true,
+    "filament_g_original": 6.86,
+    "filament_g_reopened": 6.86
+  }
+]

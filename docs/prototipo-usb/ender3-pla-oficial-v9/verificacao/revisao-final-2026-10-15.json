@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-15",
+  "release": "v9",
+  "stl_files": 31,
+  "static_pairs": 351,
+  "static_collisions": 0,
+  "motion_tests": 34,
+  "independent_review_script_reexecuted_cases": 592,
+  "correction_failures": 0,
+  "accessory_checks": 242,
+  "printed_instances_matched_to_stl": 39,
+  "gcodes_audited": 12,
+  "projects_reopened_and_resliced": 12,
+  "unchanged_technical_files": 81,
+  "gcode_or_geometry_changed": false,
+  "already_printed_preserved": [
+    "01CHAVE",
+    "02TRSUP"
+  ],
+  "documentation_corrected": "Recovery guide now records both01 and02 as printed; final audit date and all12project checks updated",
+  "physical_full_assembly_validated": false,
+  "sd_written": false
+}

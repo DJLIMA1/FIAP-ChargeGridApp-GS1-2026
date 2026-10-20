@@ -1,0 +1,75 @@
+[
+  {
+    "label": "C",
+    "head_marks": 3,
+    "bead_diameter_mm": 5.1,
+    "shaft_diameter_mm": 3.8,
+    "root_transition_max_diameter_mm": 3.9,
+    "slot_mm": 1.4,
+    "slot_root_radius_mm": 0.7,
+    "slot_root_center_from_head_outer_face_mm": 2.8,
+    "head_thickness_mm": 2.4,
+    "length_mm": 9.55,
+    "entry_diameter_mm": 4.6,
+    "nominal_radial_tip_deflection_mm": 0.25,
+    "nominal_bead_to_socket_radial_clearance_mm": 0.10000000000000009,
+    "tip_y_extent_limited_mm": 2.8,
+    "geometric_tip_closure_per_arm_mm": 0.30580602555231984,
+    "geometric_envelope_check_only_not_elastic_simulation": true,
+    "tip_to_blind_floor_clearance_mm": 0.25,
+    "head_to_plate_gap_mm": 0,
+    "block_to_plate_gap_mm": 0,
+    "nominal_axial_play_before_rigid_hook_contact_mm": 0.11126890778541565,
+    "v4_B_axial_play_at_head_contact_mm": 0.19944345951080322,
+    "ideal_sliced_stack_head_gap_mm": 0,
+    "ideal_sliced_stack_floor_clearance_mm": 0.29,
+    "ideal_sliced_stack_axial_play_mm": 0.011764615774154663,
+    "ideal_sliced_stack_is_not_physical_measurement": true,
+    "physical_fit_passed": false,
+    "geometry": {
+      "name": "08-trava-C-PLA-v5",
+      "size_mm": [
+        6.800000190734863,
+        9.550000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 106.20807297972455,
+      "watertight": true,
+      "one_part": true
+    },
+    "installed_checks": {
+      "socket_installed_mm3": 0,
+      "plate_installed_mm3": 0
+    },
+    "pull_checks": [
+      {
+        "distance_mm": 0,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.025,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.05,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.075,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.1,
+        "interference_with_socket_mm3": 0
+      },
+      {
+        "distance_mm": 0.2,
+        "interference_with_socket_mm3": 0.10470404408347196
+      },
+      {
+        "distance_mm": 0.5,
+        "interference_with_socket_mm3": 0.5448665391594915
+      }
+    ]
+  }
+]

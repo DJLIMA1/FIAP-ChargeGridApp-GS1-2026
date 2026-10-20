@@ -1,0 +1,13 @@
+arquivo,gramas,tempo_estimado,suportes_g
+00TESTE.gcode,9.41,1h 3m 27s,0.0
+01TAMPA.gcode,28.59,3h 12m 35s,0.0
+02TRSUP.gcode,48.24,5h 26m 26s,0.0
+03TRINF.gcode,46.07,5h 45m 16s,0.0
+04QDSUP.gcode,30.18,3h 30m 58s,0.0
+05QDINF.gcode,41.24,5h 18m 40s,0.0
+06CHAVE.gcode,2.52,16m 37s,0.0
+07PINO.gcode,3.53,26m 21s,0.0
+08PTAMP.gcode,0.96,14m 58s,0.0
+09BERCO.gcode,28.44,2h 46m 20s,0.0
+10TRAVA.gcode,3.1,33m 39s,0.0
+11CABO.gcode,6.56,1h 1m 3s,0.0

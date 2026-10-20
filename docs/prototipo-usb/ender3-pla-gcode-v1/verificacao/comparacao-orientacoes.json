@@ -1,0 +1,82 @@
+[
+  {
+    "variant": "01TAMPA_180_snug",
+    "grams": 45.29,
+    "time": "6h 3m 17s"
+  },
+  {
+    "variant": "01TAMPA_0_snug",
+    "grams": 55.54,
+    "time": "7h 43m 30s"
+  },
+  {
+    "variant": "02TRSUP_90_snug",
+    "grams": 68.69,
+    "time": "8h 38m 0s"
+  },
+  {
+    "variant": "02TRSUP_-90_snug",
+    "grams": 47.94,
+    "time": "5h 34m 28s"
+  },
+  {
+    "variant": "02TRSUP_0_snug",
+    "grams": 91.03,
+    "time": "12h 37m 23s"
+  },
+  {
+    "variant": "03TRINF_90_snug",
+    "grams": 57.69,
+    "time": "7h 40m 8s"
+  },
+  {
+    "variant": "03TRINF_-90_snug",
+    "grams": 68.16,
+    "time": "9h 30m 14s"
+  },
+  {
+    "variant": "04QDSUP_90_snug",
+    "grams": 38.97,
+    "time": "4h 53m 55s"
+  },
+  {
+    "variant": "04QDSUP_-90_snug",
+    "grams": 52.03,
+    "time": "6h 31m 56s"
+  },
+  {
+    "variant": "05QDINF_90_snug",
+    "grams": 85.5,
+    "time": "10h 47m 57s"
+  },
+  {
+    "variant": "05QDINF_-90_snug",
+    "grams": 72.13,
+    "time": "8h 55m 31s"
+  },
+  {
+    "variant": "07PINO_90_snug",
+    "grams": 4.29,
+    "time": "51m 35s"
+  },
+  {
+    "variant": "07PINO_0_snug",
+    "grams": 4.1,
+    "time": "1h 16m 49s"
+  },
+  {
+    "variant": "01TAMPA_90_snug",
+    "grams": 59.1,
+    "time": "8h 41m 50s"
+  },
+  {
+    "variant": "01TAMPA_60_snug",
+    "grams": 79.49,
+    "time": "12h 22m 9s"
+  },
+  {
+    "variant": "05QDINF_0_snug",
+    "grams": 74.0,
+    "time": "10h 15m 55s"
+  }
+]

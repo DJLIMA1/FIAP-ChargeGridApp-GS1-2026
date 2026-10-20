@@ -1,0 +1,26 @@
+{
+  "files": {
+    "COMECE-AQUI.txt": "76b345517d26e60ce2f952d444a32d68c229397de8fd5657e9776cdd33893686",
+    "LEIA-PRIMEIRO.md": "6ba1c8c384421b3b2f158fecce505c24cd3552bd621c62a25604f4cc344dd1a9",
+    "como-testar.png": "a0612ea6c86aa76351b6bfdb03b3a899bc1d653be6a09571941207aef5db6848",
+    "feedback-e-proxima-etapa.json": "40b500351c74eb7cf2a1133ddc84187a42620b8eb8002de04bae8ffdd267552a",
+    "gcode/00FLEX4.gcode": "b4a5b5aab2ed6a48ab2ac9133e98ed204521fb7f265eb6af241dbf6abb7c6049",
+    "gerar.py": "86fac52bd8cceec868ad56cc307a17a6fb71e1a6624d21cc04de305a0f28a9f8",
+    "ilustrar.py": "2bced3dbd3b7fc1c909db8f49c5253f115eb2c923aa6e76295ac974101e24e8c",
+    "modelos-fatiados/00FLEX4.stl": "905df7b9e1e1046563098d73cf6fec5a963c813526a10e31a605621f2b19ca2f",
+    "perfis/00FLEX4.ini": "71edda2a8992572f8de5fd75f5dfa5852f5330df15f82bc1a9fc4985abc36e7f",
+    "previas/00FLEX4.png": "e0656d5d7812865cea4ab4d2570bcca3bf42f82a00dec470cfb025a3cab7f60d",
+    "projetos/00FLEX4.3mf": "f09044271c65a73d0c2d4d52ea2bb53487674bf89f6fa60d95801ced6582698a",
+    "stl/08-trava-A-PLA-v4.stl": "6a3107e5f20bcd4b152c15cf4b9cb5caa5864bddcf6ff1a9759013dfd46d5333",
+    "stl/08-trava-B-PLA-v4.stl": "0a97c56bb3e53f484337db4f0007e49b8e60a6eb39176ff29691b4eaf954b15d",
+    "validar-perfil.py": "3a5208fe0e78310ac2caf123cd62abcaa67c0eebae4088c917c22e58fec2fcc8",
+    "verificacao/00FLEX4-3mf.log": "3a284b4967dc469b156df574992afe5ba472d32068bf4b2c025606762de36ca2",
+    "verificacao/00FLEX4-gcode.log": "e8273cfa7be43c4a8a1362398202757517474da1a1c07307b3a849888f276b9e",
+    "verificacao/00FLEX4-reaberto.log": "6ce7f547c9d691f949c373eeea77314599472dca281244ee01cc6dcb3e07fc54",
+    "verificacao/auditoria-gcode.json": "a7a507184bfc55aeb66af47900908b71c76f25612b8661d04dac126658bb0c65",
+    "verificacao/estimativas.csv": "eda0f60345e8895a82cb5a3635fb1426bf4c3bdb73345514354ae385983d7639",
+    "verificacao/geometria.json": "df1613e6eb18206e53f92cb0871e6aae3ddd297a06d9208d3c0b336409daea89",
+    "verificacao/perfil-validado.json": "3dac066ef6956b3419e417743b8147132a57b7c250ce08287b33045d35f46618",
+    "verificar-gcode.py": "c797b73616073b61c731a531936cdc266aca72281f7e1cead2e1dfc7bf003a06"
+  }
+}

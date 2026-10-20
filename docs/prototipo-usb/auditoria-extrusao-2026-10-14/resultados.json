@@ -1,0 +1,746 @@
+[
+  {
+    "file": "00TESTE.gcode",
+    "sha256": "5053d817406db54928215ecd613ba5554c14e80a9eb65ec5b5ed44fd41c8a2e6",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 2779,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 81994,
+        "layer": 155,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "2h 29m 6s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 155,
+    "retract_cycles_including_shutdown": 1230,
+    "completed_restores": 1229,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 4922.0,
+    "max_cycles_one_layer": 40,
+    "cycles_first_layer": 30,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 3.5867,
+    "peak_flow_line": 23727,
+    "peak_deposition_speed_mm_s": 35.0,
+    "net_e_mm": 4687.457
+  },
+  {
+    "file": "01TAMPA.gcode",
+    "sha256": "53bfc33d122cd949a83107b44d54beaa3299eeb3bf99a83c864f1c2a71532dad",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 1721,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 346718,
+        "layer": 145,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.2",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "6h 3m 21s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 145,
+    "retract_cycles_including_shutdown": 3628,
+    "completed_restores": 3627,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 14514.0,
+    "max_cycles_one_layer": 68,
+    "cycles_first_layer": 9,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 5.5935,
+    "peak_flow_line": 325888,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 15179.702
+  },
+  {
+    "file": "02TRSUP.gcode",
+    "sha256": "d170bb0d2d9398ed6687c1576f5dc0cc4232743d1ed8116cd8c032a264a4b7b8",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 2742,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 345740,
+        "layer": 213,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.24",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "5h 35m 1s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 213,
+    "retract_cycles_including_shutdown": 5131,
+    "completed_restores": 5130,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 20526.0,
+    "max_cycles_one_layer": 123,
+    "cycles_first_layer": 18,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 6.0014,
+    "peak_flow_line": 56906,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 16068.712
+  },
+  {
+    "file": "03TRINF.gcode",
+    "sha256": "1934bede2702b7a0039324e9a155753e8900a4b9b09541511382e99c61bf5bce",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 2386,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 505020,
+        "layer": 368,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.24",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "7h 40m 12s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 368,
+    "retract_cycles_including_shutdown": 7613,
+    "completed_restores": 7612,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 30454.0,
+    "max_cycles_one_layer": 97,
+    "cycles_first_layer": 21,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 6.0113,
+    "peak_flow_line": 215347,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 19336.234
+  },
+  {
+    "file": "04QDSUP.gcode",
+    "sha256": "5ef6ccd90162c2dac0a460cbbe3efcf300f81cfd02d95dce20306bdbfc8ac4ea",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 4219,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 281709,
+        "layer": 245,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.24",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "4h 55m 38s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 245,
+    "retract_cycles_including_shutdown": 3836,
+    "completed_restores": 3835,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 15346.0,
+    "max_cycles_one_layer": 61,
+    "cycles_first_layer": 30,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 6.0101,
+    "peak_flow_line": 61188,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 13123.409
+  },
+  {
+    "file": "05QDINF.gcode",
+    "sha256": "309907dbaa8fde85a8307c613b67ec58495c82a4c114773cea8465e06ffe928f",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 3946,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 972314,
+        "layer": 520,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.24",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "10h 6m 4s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 520,
+    "retract_cycles_including_shutdown": 14178,
+    "completed_restores": 14177,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 56714.0,
+    "max_cycles_one_layer": 63,
+    "cycles_first_layer": 24,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 6.1024,
+    "peak_flow_line": 859011,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 21967.571
+  },
+  {
+    "file": "06CHAVE.gcode",
+    "sha256": "76baf4135ea95170a9c8ebcb28d049d328cc06b6eee7d2976e16129a1332ca85",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 16,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 20,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 1492,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 12723,
+        "layer": 18,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "30m 8s",
+    "first_command_lines": {
+      "G21": 29,
+      "G1": 18,
+      "M83": 14,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 18,
+    "retract_cycles_including_shutdown": 165,
+    "completed_restores": 164,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 662.0,
+    "max_cycles_one_layer": 12,
+    "cycles_first_layer": 12,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 1.9477,
+    "peak_flow_line": 9247,
+    "peak_deposition_speed_mm_s": 30.0,
+    "net_e_mm": 950.954
+  },
+  {
+    "file": "07PINO.gcode",
+    "sha256": "7b630fefc9f1b27c057971d350eaf966269114f496c7290f4885b4759579bea4",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 17,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 21,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 1480,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 30969,
+        "layer": 88,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "51m 42s",
+    "first_command_lines": {
+      "G21": 30,
+      "G1": 19,
+      "M83": 15,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 88,
+    "retract_cycles_including_shutdown": 559,
+    "completed_restores": 558,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 2238.0,
+    "max_cycles_one_layer": 26,
+    "cycles_first_layer": 26,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 3.2641,
+    "peak_flow_line": 7736,
+    "peak_deposition_speed_mm_s": 35.0,
+    "net_e_mm": 1434.056
+  },
+  {
+    "file": "08PTAMP.gcode",
+    "sha256": "e2899d9123bb91ac266bd8ba9db2860abe1de9750fde182adc3c53cb5542428f",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 16,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 20,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 2389,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 32117,
+        "layer": 58,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "19m 15s",
+    "first_command_lines": {
+      "G21": 29,
+      "G1": 18,
+      "M83": 14,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 58,
+    "retract_cycles_including_shutdown": 540,
+    "completed_restores": 539,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 2162.0,
+    "max_cycles_one_layer": 16,
+    "cycles_first_layer": 11,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 2.4964,
+    "peak_flow_line": 10805,
+    "peak_deposition_speed_mm_s": 30.0,
+    "net_e_mm": 297.24
+  },
+  {
+    "file": "09BERCO.gcode",
+    "sha256": "91e727c3342333d0af4ba6fe620b8fe82d743f8ce81ed98c40a72ef25aed3b96",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 16,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 20,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 7190,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 128040,
+        "layer": 34,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "3h 53m 0s",
+    "first_command_lines": {
+      "G21": 29,
+      "G1": 18,
+      "M83": 14,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 34,
+    "retract_cycles_including_shutdown": 1560,
+    "completed_restores": 1559,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 6242.0,
+    "max_cycles_one_layer": 104,
+    "cycles_first_layer": 69,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 4.3588,
+    "peak_flow_line": 74890,
+    "peak_deposition_speed_mm_s": 50.0,
+    "net_e_mm": 9324.352
+  },
+  {
+    "file": "10TRAVA.gcode",
+    "sha256": "7ef8299eb9d4ba92bc3b035fc94e774f70cbdf685d97e6ef38c0ab17cfcfbcf6",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 16,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 20,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 3681,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 39016,
+        "layer": 68,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "45m 48s",
+    "first_command_lines": {
+      "G21": 29,
+      "G1": 18,
+      "M83": 14,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 68,
+    "retract_cycles_including_shutdown": 822,
+    "completed_restores": 821,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 3290.0,
+    "max_cycles_one_layer": 35,
+    "cycles_first_layer": 35,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 2.479,
+    "peak_flow_line": 4223,
+    "peak_deposition_speed_mm_s": 30.0,
+    "net_e_mm": 983.914
+  },
+  {
+    "file": "11CABO.gcode",
+    "sha256": "6264209d90a8d4315c82e00f15907a5debde37a13422238c3dc5325e1cd6035d",
+    "matches_delivery_hash": true,
+    "temperatures": [
+      {
+        "line": 16,
+        "layer": 0,
+        "command": "M104 S150"
+      },
+      {
+        "line": 20,
+        "layer": 0,
+        "command": "M109 S205"
+      },
+      {
+        "line": 4080,
+        "layer": 2,
+        "command": "M104 S200"
+      },
+      {
+        "line": 78458,
+        "layer": 35,
+        "command": "M104 S0"
+      }
+    ],
+    "configuration": {
+      "nozzle_diameter": "0.4",
+      "filament_diameter": "1.75",
+      "extrusion_multiplier": "1",
+      "retract_length": "4",
+      "retract_speed": "35",
+      "layer_height": "0.16",
+      "first_layer_height": "0.2",
+      "use_volumetric_e": "0"
+    },
+    "estimated_time": "1h 33m 23s",
+    "first_command_lines": {
+      "G21": 29,
+      "G1": 18,
+      "M83": 14,
+      "M200": null,
+      "M220": null,
+      "M221": null,
+      "M92": null,
+      "M500": null
+    },
+    "layers": 35,
+    "retract_cycles_including_shutdown": 1629,
+    "completed_restores": 1628,
+    "peak_retraction_debt_mm": 6.0,
+    "shutdown_unrestored_mm": 6.0,
+    "peak_retraction_before_last_deposition_mm": 4.0,
+    "total_retracted_mm": 6518.0,
+    "max_cycles_one_layer": 64,
+    "cycles_first_layer": 37,
+    "extrusion_before_full_restore": [],
+    "peak_nominal_flow_mm3_s": 2.4751,
+    "peak_flow_line": 26396,
+    "peak_deposition_speed_mm_s": 30.0,
+    "net_e_mm": 2293.238
+  }
+]

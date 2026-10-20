@@ -1,0 +1,56 @@
+CHARGEGRID — STL PARA A FACULDADE — REVISÃO V9
+Preparado em 16/10/2026.
+
+PROJETO PRESERVADO
+Os 12 STL são cópias idênticas, byte a byte, dos modelos oficiais v9.
+Nenhuma alteração de parede, encaixe, geometria, escala ou orientação.
+Este pacote não contém G-code nem versões antigas corrigidas.
+
+ARQUIVOS PARA ENVIAR
+STL/PENDENTES: 03 a 11, conforme último estado confirmado das impressões.
+STL/OPCIONAL: 12CABO, somente para dois cabos com cerca de 5 mm.
+STL/JA-IMPRESSOS: 01CHAVE e 02TRSUP, somente para recuperação.
+01 e 02 já foram impressos: não solicitar novamente sem necessidade.
+Se outras peças já foram concluídas, retire-as da sua seleção de upload.
+Cada STL contém a quantidade total daquele lote: imprimir UMA cópia do arquivo.
+Há 12 arquivos e 39 peças contando as repetições já posicionadas nos lotes.
+
+LIMITES INFORMADOS
+Todos os arquivos, individualmente, cabem em 180 × 180 × 180 mm.
+Total dos 12 STL descompactados: 8.585 MB, abaixo de 50 MB.
+Somente os 9 arquivos em PENDENTES: 7.188 MB.
+O ZIP é apenas para transporte. Se o portal aceita somente .STL,
+extraia o ZIP e envie diretamente os arquivos .stl selecionados.
+As dimensões de cada lote estão em DIMENSOES.csv.
+O conjunto montado tem aproximadamente 225 mm de altura, mas é impresso
+em partes. O limite foi conferido por STL/lote, não para o conjunto montado.
+
+PAREDES — ORIENTAÇÃO DO LABORATÓRIO
+As espessuras foram mantidas por solicitação do usuário. O projeto tem
+regiões com menos de 3 mm: paredes originais reduzidas, berços, bandeja,
+abas e elementos flexíveis. Portanto, NÃO atende à recomendação de mais
+que 3 mm em todas as regiões. Solicitar avaliação do laboratório sobre
+essas regiões antes da fabricação. Não engrossar ou aplicar reparo
+geométrico automaticamente, pois isso pode prejudicar os encaixes.
+
+IMPORTAÇÃO E FATIAMENTO
+Importar em MILÍMETROS e escala de 100%; não ajustar a escala para a mesa.
+STL não registra unidade formalmente: a unidade pretendida é milímetro.
+Recentralizar o lote na mesa de 180 mm sem mudar seu tamanho. As coordenadas
+originais vieram de uma mesa de 220 mm; o tamanho da geometria foi conferido.
+Suportes, brim, temperatura e preenchimento não fazem parte do STL.
+A faculdade deve fatiar para a máquina e o material que usar.
+Na orientação entregue, os lotes 02, 03, 04, 05, 06, 09 e 10 usavam suportes;
+conferir especialmente abas e pinos, sem preencher os rasgos flexíveis.
+As peças 10 e 11 são da revisão v9 e devem ser usadas juntas.
+Os bloqueios internos usam duas cintas de nylon compradas, não impressas.
+Os berços são genéricos; conferir encaixe dos módulos eletrônicos reais.
+
+OBSERVAÇÃO PARA O LABORATÓRIO (texto para acompanhar o pedido)
+Solicito a impressão dos STL selecionados em PLA, em milímetros e escala
+100%. Cada arquivo já agrupa a quantidade de peças daquele lote.
+Todas as dimensões individuais são menores que 180 mm. O projeto tem
+paredes e detalhes abaixo de 3 mm, mantidos para compatibilidade com
+peças já impressas e funcionamento dos encaixes. Peço avaliação dessas
+regiões e dos suportes antes da impressão, sem alteração automática da
+geometria. Não imprimir novamente os arquivos em JA-IMPRESSOS.

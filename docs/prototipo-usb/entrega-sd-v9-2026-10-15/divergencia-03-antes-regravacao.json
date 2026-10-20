@@ -1,0 +1,35 @@
+{
+  "expected_sha256": "669643b6a2ff6ed8afa97c7d00f9998d3b9613ae150c5f4051b464f05a66664c",
+  "reads": [
+    {
+      "read": 1,
+      "expected_bytes": 12337623,
+      "actual_bytes": 12337623,
+      "sha256": "669643b6a2ff6ed8afa97c7d00f9998d3b9613ae150c5f4051b464f05a66664c",
+      "different_bytes": 0,
+      "first_offsets": [],
+      "expected_excerpt": null,
+      "actual_excerpt": null
+    },
+    {
+      "read": 2,
+      "expected_bytes": 12337623,
+      "actual_bytes": 12337623,
+      "sha256": "669643b6a2ff6ed8afa97c7d00f9998d3b9613ae150c5f4051b464f05a66664c",
+      "different_bytes": 0,
+      "first_offsets": [],
+      "expected_excerpt": null,
+      "actual_excerpt": null
+    },
+    {
+      "read": 3,
+      "expected_bytes": 12337623,
+      "actual_bytes": 12337623,
+      "sha256": "669643b6a2ff6ed8afa97c7d00f9998d3b9613ae150c5f4051b464f05a66664c",
+      "different_bytes": 0,
+      "first_offsets": [],
+      "expected_excerpt": null,
+      "actual_excerpt": null
+    }
+  ]
+}

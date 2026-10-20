@@ -1,0 +1,15 @@
+{
+  "prepared_release": "v9",
+  "prepared_files": 25,
+  "content_bytes": 87514824,
+  "zip_sha256": "c1e0951e961935e4c901d169324ed251d6962ea14aac193d355b0c06bc5296b6",
+  "zip_verified": true,
+  "local_readback_passed": true,
+  "sd_written": false,
+  "user_confirmed_printed": [
+    "01CHAVE",
+    "02TRSUP"
+  ],
+  "zip_bytes": 45040917,
+  "last_complete_review": "2026-10-15"
+}

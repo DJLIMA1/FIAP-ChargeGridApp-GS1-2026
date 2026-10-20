@@ -1,0 +1,24 @@
+CHARGEGRID V8 - ENDER-3 ORIGINAL / PLA / BICO 0,4 MM
+
+01 e 02 preservados. Se ja impressos, nao reimprimir.
+Atualizar o SD antes de seguir para 03. Este pacote ainda nao foi copiado ao SD.
+Imprimir um arquivo por vez, na ordem abaixo.
+
+01CHAVE.gcode - Quatro chaves das emendas - 18m 11s
+02TRSUP.gcode - Traseira superior - 5h 56m 16s
+03TRINF7.gcode - Traseira inferior  alojamentos das chaves corrigidos - 7h 51m 23s
+04QDSUP.gcode - Quadro superior - 4h 54m 46s
+05QDINF8.gcode - Quadro inferior, suporte ajustado ao contorno - 10h 52m 56s
+06TAMPA.gcode - Tampa frontal branca - 5h 25m 29s
+07PTAMP.gcode - Quatro travas v5 para os pontos superiores e centrais - 9m 12s
+08PTINF.gcode - Uma trava inferior, 0,25 mm mais longa - 3m 17s
+09PINO.gcode - Quatro pinos de quarto de volta com suporte - 36m 27s
+10BERCO8.gcode - Bandeja revisada e dois bercos, com suporte local - 2h 47m 58s
+11TRAVA8.gcode - Travas internas revisadas e espacadores - 32m 13s
+12CABO.gcode - Opcional: saida para dois cabos de 5 mm - 1h 3m 53s
+
+Novos: 03TRINF7, 05QDINF8, 10BERCO8, 11TRAVA8.
+12CABO opcional, so para dois cabos de aproximadamente 5 mm.
+As novas travas internas precisam de conferencia fisica nos lotes 10 e 11.
+Para desmontar os bercos: ESP32 primeiro, potencia depois.
+Leia LEIA-PRIMEIRO.md e RELATORIO-REVISAO.md antes de montar.

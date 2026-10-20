@@ -1,0 +1,2391 @@
+{
+  "package": "/Users/djmurillo/Desktop/Aulas FIAP/ChargeGridApp/docs/prototipo-usb/ender3-pla-oficial-v9",
+  "individual_stl_count": 31,
+  "assembly_instances": 27,
+  "all_static_pairs": 351,
+  "collisions": [],
+  "pairwise": [
+    {
+      "a": "trava-bandeja-5",
+      "b": "trava-bandeja-55",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "trava-berco-8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "trava-berco-54",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "01-traseira-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "01-traseira-inferior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-5",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "trava-berco-8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "trava-berco-54",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "01-traseira-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "01-traseira-inferior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-bandeja-55",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "trava-berco-54",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "01-traseira-superior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "01-traseira-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-8",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "01-traseira-superior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "01-traseira-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "trava-berco-54",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "01-traseira-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-superior",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "03-quadro-superior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "01-traseira-inferior",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "03-quadro-inferior",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-superior",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "05-tampa-frontal",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "03-quadro-inferior",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "08-pino-tampa-1",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "05-tampa-frontal",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "08-pino-tampa-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-1",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "08-pino-tampa-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-2",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "08-pino-tampa-4",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-3",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "08-pino-tampa-5",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-4",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "09-bandeja-removivel",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "08-pino-tampa-5",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "10-berco-potencia",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "09-bandeja-removivel",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "11-berco-esp32",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "10-berco-potencia",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "19-inserto-duplo-5mm-a",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "11-berco-esp32",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "19-inserto-duplo-5mm-b",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-a",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "pino-casca-0",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "19-inserto-duplo-5mm-b",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "pino-casca-1",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-0",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "pino-casca-2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-1",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-2",
+      "b": "pino-casca-3",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-2",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-2",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-2",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-2",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-3",
+      "b": "chave--22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-3",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-3",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "pino-casca-3",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave--22-90.8",
+      "b": "chave--22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave--22-90.8",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave--22-90.8",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave--22-57.2",
+      "b": "chave-22-90.8",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave--22-57.2",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    },
+    {
+      "a": "chave-22-90.8",
+      "b": "chave-22-57.2",
+      "intersection_mm3": 0.0
+    }
+  ],
+  "assembly_to_individual": [
+    {
+      "assembly": "trava-bandeja-5",
+      "stl": "13-bloqueio-bandeja-esquerda",
+      "volume_difference_mm3": 5.295220461221106e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "trava-bandeja-55",
+      "stl": "13-bloqueio-bandeja-direita",
+      "volume_difference_mm3": 6.188421423303225e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "trava-berco-8",
+      "stl": "12-pino-trava-berco",
+      "volume_difference_mm3": 2.8278001877879433e-06,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    },
+    {
+      "assembly": "trava-berco-54",
+      "stl": "12-pino-trava-berco",
+      "volume_difference_mm3": 2.8278001877879433e-06,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    },
+    {
+      "assembly": "01-traseira-superior",
+      "stl": "01-traseira-superior",
+      "volume_difference_mm3": 0.0034296629310119897,
+      "max_extent_difference_mm": 2.9778320254081336e-06,
+      "pass": true
+    },
+    {
+      "assembly": "01-traseira-inferior",
+      "stl": "01-traseira-inferior",
+      "volume_difference_mm3": 0.0015228675983962603,
+      "max_extent_difference_mm": 2.9829101464429186e-06,
+      "pass": true
+    },
+    {
+      "assembly": "03-quadro-superior",
+      "stl": "03-quadro-superior",
+      "volume_difference_mm3": 0.0007652761123608798,
+      "max_extent_difference_mm": 3.716406254739013e-06,
+      "pass": true
+    },
+    {
+      "assembly": "03-quadro-inferior",
+      "stl": "03-quadro-inferior",
+      "volume_difference_mm3": 0.00046027925418457016,
+      "max_extent_difference_mm": 2.0141601595469183e-06,
+      "pass": true
+    },
+    {
+      "assembly": "05-tampa-frontal",
+      "stl": "05-tampa-frontal",
+      "volume_difference_mm3": 0.0008304044968099333,
+      "max_extent_difference_mm": 5.678515634599535e-06,
+      "pass": true
+    },
+    {
+      "assembly": "08-pino-tampa-1",
+      "stl": "08-pino-tampa-1",
+      "volume_difference_mm3": 9.280162558411575e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "08-pino-tampa-2",
+      "stl": "08-pino-tampa-2",
+      "volume_difference_mm3": 9.280162387881319e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "08-pino-tampa-3",
+      "stl": "08-pino-tampa-3",
+      "volume_difference_mm3": 9.280162657887558e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "08-pino-tampa-4",
+      "stl": "08-pino-tampa-4",
+      "volume_difference_mm3": 9.280162771574396e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "08-pino-tampa-5",
+      "stl": "08-pino-tampa-5",
+      "volume_difference_mm3": 9.363343920654188e-06,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "09-bandeja-removivel",
+      "stl": "09-bandeja-removivel",
+      "volume_difference_mm3": 0.0006371204417519039,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "10-berco-potencia",
+      "stl": "10-berco-potencia",
+      "volume_difference_mm3": 5.272523412713781e-05,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "11-berco-esp32",
+      "stl": "11-berco-esp32",
+      "volume_difference_mm3": 1.2643598893191665e-05,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "19-inserto-duplo-5mm-a",
+      "stl": "19-inserto-duplo-5mm-a",
+      "volume_difference_mm3": 3.28887527984989e-05,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "19-inserto-duplo-5mm-b",
+      "stl": "19-inserto-duplo-5mm-b",
+      "volume_difference_mm3": 3.22176612144176e-05,
+      "max_extent_difference_mm": 1.9073486612342094e-07,
+      "pass": true
+    },
+    {
+      "assembly": "pino-casca-0",
+      "stl": "07-pino-quarto-volta",
+      "volume_difference_mm3": 2.234825012692454e-05,
+      "max_extent_difference_mm": 7.629394502828291e-07,
+      "pass": true
+    },
+    {
+      "assembly": "pino-casca-1",
+      "stl": "07-pino-quarto-volta",
+      "volume_difference_mm3": 2.2348250013237703e-05,
+      "max_extent_difference_mm": 7.629394502828291e-07,
+      "pass": true
+    },
+    {
+      "assembly": "pino-casca-2",
+      "stl": "07-pino-quarto-volta",
+      "volume_difference_mm3": 2.2348249444803514e-05,
+      "max_extent_difference_mm": 7.629394502828291e-07,
+      "pass": true
+    },
+    {
+      "assembly": "pino-casca-3",
+      "stl": "07-pino-quarto-volta",
+      "volume_difference_mm3": 2.2348249444803514e-05,
+      "max_extent_difference_mm": 7.629394502828291e-07,
+      "pass": true
+    },
+    {
+      "assembly": "chave--22-90.8",
+      "stl": "06-chave-emenda",
+      "volume_difference_mm3": 0.0,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    },
+    {
+      "assembly": "chave--22-57.2",
+      "stl": "06-chave-emenda",
+      "volume_difference_mm3": 0.0,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    },
+    {
+      "assembly": "chave-22-90.8",
+      "stl": "06-chave-emenda",
+      "volume_difference_mm3": 0.0,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    },
+    {
+      "assembly": "chave-22-57.2",
+      "stl": "06-chave-emenda",
+      "volume_difference_mm3": 0.0,
+      "max_extent_difference_mm": 0.0,
+      "pass": true
+    }
+  ],
+  "individual_parts": [
+    {
+      "file": "01-traseira-inferior.stl",
+      "dimensions_mm": [
+        86.33050537109375,
+        45.92680740356445,
+        124.87264251708984
+      ],
+      "volume_mm3": 36686.420568748625,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "3961f8d10c655c29a6088d993bf0ec59b407747f2dd5826744ea48661b3b7456"
+    },
+    {
+      "file": "01-traseira-superior.stl",
+      "dimensions_mm": [
+        104.26502227783203,
+        34.88557434082031,
+        99.89886474609375
+      ],
+      "volume_mm3": 37833.32098792733,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "3872af185100392f985d74ced754cfb73e72b81bccb76b45e807f94d913af9cf"
+    },
+    {
+      "file": "03-quadro-inferior.stl",
+      "dimensions_mm": [
+        86.30068969726562,
+        54.30457305908203,
+        124.86612701416016
+      ],
+      "volume_mm3": 33080.99255552073,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "cd964486d5620f7971c7f4b75bec5549d63d4dd084e9d5fe320d30536aa8e86b"
+    },
+    {
+      "file": "03-quadro-superior.stl",
+      "dimensions_mm": [
+        104.26370239257812,
+        32.95000076293945,
+        99.89898681640625
+      ],
+      "volume_mm3": 24164.22493493748,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "3e5080c186319bed24d5d06b6a6584d22f7fbf8e5a3560256cf47aadb4a038c8"
+    },
+    {
+      "file": "05-tampa-frontal.stl",
+      "dimensions_mm": [
+        103.952392578125,
+        141.01992797851562,
+        29.00003433227539
+      ],
+      "volume_mm3": 22354.67258254444,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "a8d645dfa111c9d686ae2af7ea6b05db3b17da537381b69adeba8843a6865fd7"
+    },
+    {
+      "file": "06-chave-emenda.stl",
+      "dimensions_mm": [
+        10.0,
+        22.0,
+        3.0
+      ],
+      "volume_mm3": 528.0,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "5dd20aa87474e4eb83f0855097f702872f2f405409387cdcdd424531109f746b"
+    },
+    {
+      "file": "07-pino-quarto-volta.stl",
+      "dimensions_mm": [
+        11.600000381469727,
+        11.600000381469727,
+        31.700000762939453
+      ],
+      "volume_mm3": 669.3926391014568,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "9634e42e6d7c3fb9f4989b5b35584bf1afdd0a46ec0c0a2988c0983895934eec"
+    },
+    {
+      "file": "08-pino-tampa-1.stl",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.550000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 106.20807297972455,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c25c409c832965f271ffc6dcd2d26f43b8e8166dceeb8e0bf779f0c170c1b4fb"
+    },
+    {
+      "file": "08-pino-tampa-2.stl",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.550000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 106.20807297972455,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c25c409c832965f271ffc6dcd2d26f43b8e8166dceeb8e0bf779f0c170c1b4fb"
+    },
+    {
+      "file": "08-pino-tampa-3.stl",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.550000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 106.20807297972455,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c25c409c832965f271ffc6dcd2d26f43b8e8166dceeb8e0bf779f0c170c1b4fb"
+    },
+    {
+      "file": "08-pino-tampa-4.stl",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.550000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 106.20807297972455,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c25c409c832965f271ffc6dcd2d26f43b8e8166dceeb8e0bf779f0c170c1b4fb"
+    },
+    {
+      "file": "08-pino-tampa-5.stl",
+      "dimensions_mm": [
+        6.800000190734863,
+        9.800000190734863,
+        4.800000190734863
+      ],
+      "volume_mm3": 107.08798393207532,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "a189d0d537aa1b061e1f479e6249f7cbd4d5aa3be046321cb33b2c294ba612d2"
+    },
+    {
+      "file": "09-bandeja-removivel.stl",
+      "dimensions_mm": [
+        60.0,
+        112.0,
+        5.550000190734863
+      ],
+      "volume_mm3": 15688.156539187199,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "e55b951a42f05fb276f7fa509de2bb635ed60ac71ca2b878c77888d2acde71ec"
+    },
+    {
+      "file": "10-berco-potencia.stl",
+      "dimensions_mm": [
+        54.0,
+        35.0,
+        4.449999809265137
+      ],
+      "volume_mm3": 3688.97030661807,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "d7c4d52ef703cd15c96f76b7d53e0b39a596615719a49642c2a668f6eaa9b573"
+    },
+    {
+      "file": "11-berco-esp32.stl",
+      "dimensions_mm": [
+        42.0,
+        64.0,
+        4.449999809265137
+      ],
+      "volume_mm3": 5272.335346699704,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "937be31b7df558eddedc204af4b18b66ee167db2b9acf7313268c57f6651f536"
+    },
+    {
+      "file": "12-pino-trava-berco.stl",
+      "dimensions_mm": [
+        7.0,
+        12.0,
+        4.5
+      ],
+      "volume_mm3": 96.44211178421783,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "5ad3646ddf95162d234f3423a31ee52b7e2f3a7c0b85e9de30285c937b78d0c7"
+    },
+    {
+      "file": "13-bloqueio-bandeja-direita.stl",
+      "dimensions_mm": [
+        15.199999809265137,
+        7.699999809265137,
+        5.099999904632568
+      ],
+      "volume_mm3": 211.64912769288085,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c0d91d412f1efed3c6d29377194571e32bfc8d95e80f8748456eb251540cd113"
+    },
+    {
+      "file": "13-bloqueio-bandeja-esquerda.stl",
+      "dimensions_mm": [
+        15.199999809265137,
+        7.699999809265137,
+        5.099999904632568
+      ],
+      "volume_mm3": 211.64912858608182,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "31a2e584c11b2a353892f647d13d0961218134a27e7518f40aefe05bc8dd218b"
+    },
+    {
+      "file": "14-espacador-3mm.stl",
+      "dimensions_mm": [
+        8.0,
+        6.0,
+        4.5
+      ],
+      "volume_mm3": 157.5,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "03bfe92827273c9f17edbb8db1f9ab43334896345f561bec1cdb1414a58ccb32"
+    },
+    {
+      "file": "14-espacador-5mm.stl",
+      "dimensions_mm": [
+        8.0,
+        6.0,
+        6.5
+      ],
+      "volume_mm3": 253.5,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "ae4cbc0dccadf84e23a3887202f9dcdbd0ff7b1f2830f2f182bf64c1c904a089"
+    },
+    {
+      "file": "15-prensa-cabo-4mm-meia.stl",
+      "dimensions_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 908.8169173843568,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "86bea3cf0f7a137c67182e14a26190be38867db6bae9d19a9c5c152937389b9d"
+    },
+    {
+      "file": "15-prensa-cabo-5mm-meia.stl",
+      "dimensions_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 866.5264292704109,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "9620c67d475f3caf66b37924a30c49afa502771268dc62d6ab3dd9d783f7c831"
+    },
+    {
+      "file": "15-prensa-cabo-6mm-meia.stl",
+      "dimensions_mm": [
+        18.0,
+        12.0,
+        5.0
+      ],
+      "volume_mm3": 814.8380588851481,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "8707620c9a2b5ad277663a06585e9723e038793bbbf1d94ceacddb48aa41d9c9"
+    },
+    {
+      "file": "19-inserto-4mm-a.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 922.912953657942,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "3ee86bc450cd70fd933d6611fdac67950d6594d850b28de472ce047e7fa97067"
+    },
+    {
+      "file": "19-inserto-4mm-b.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 922.9129459625769,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "1d521fb25b8452aff50c9e84ef29cd4b476b4d3c10a13b3aaee76ea2d49cfca4"
+    },
+    {
+      "file": "19-inserto-5mm-a.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 901.4045574923756,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "79ddba7d3db208936dfaa68e620cb43a6a61f688647e8ead074f45c17ba74154"
+    },
+    {
+      "file": "19-inserto-5mm-b.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 901.4045501663973,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "dd98fa64e8e66b7ef7ea15db3e5dc6e02fd68bb5980f1d61a6b2c93de47785b4"
+    },
+    {
+      "file": "19-inserto-6mm-a.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 875.5104676264536,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "4e33441fc85a2fe4c055443a2e3fe8f6be294d48309302f49c31b70d30822183"
+    },
+    {
+      "file": "19-inserto-6mm-b.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 875.5104562950174,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "c90d0dd73ea360ea40fb6e492d759af7ac8f0c8373383b2409da91bb5e744e96"
+    },
+    {
+      "file": "19-inserto-duplo-5mm-a.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 837.3790823931781,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "36aed8cb6c64203ea49cace3c90d2e1382b38347c90b019dc265f7eeb6a61588"
+    },
+    {
+      "file": "19-inserto-duplo-5mm-b.stl",
+      "dimensions_mm": [
+        30.0,
+        8.925000190734863,
+        5.599999904632568
+      ],
+      "volume_mm3": 837.3790817220865,
+      "watertight": true,
+      "consistent_winding": true,
+      "positive_volume": true,
+      "components": 1,
+      "sha256": "e8489d6bc1565eac04fe30f33acde9415ec0bd5a058cad2efc9f95523619dc0c"
+    }
+  ]
+}

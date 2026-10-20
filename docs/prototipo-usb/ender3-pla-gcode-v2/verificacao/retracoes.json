@@ -1,0 +1,86 @@
+[
+  {
+    "file": "00TESTE.gcode",
+    "retraction_cycles": 674,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "01TAMPA.gcode",
+    "retraction_cycles": 2820,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "02TRSUP.gcode",
+    "retraction_cycles": 5188,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "03TRINF.gcode",
+    "retraction_cycles": 5796,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "04QDSUP.gcode",
+    "retraction_cycles": 3034,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "05QDINF.gcode",
+    "retraction_cycles": 5171,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "06CHAVE.gcode",
+    "retraction_cycles": 109,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "07PINO.gcode",
+    "retraction_cycles": 326,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "08PTAMP.gcode",
+    "retraction_cycles": 392,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "09BERCO.gcode",
+    "retraction_cycles": 1072,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "10TRAVA.gcode",
+    "retraction_cycles": 600,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  },
+  {
+    "file": "11CABO.gcode",
+    "retraction_cycles": 1199,
+    "peak_debt_mm": 5.0,
+    "shutdown_retraction_mm": 5.0,
+    "all_restores_before_deposition": true
+  }
+]

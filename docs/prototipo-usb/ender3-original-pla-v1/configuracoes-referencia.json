@@ -1,0 +1,66 @@
+{
+  "comuns": {
+    "impressora": "Creality Ender-3 original, extrusor Bowden",
+    "material": "PLA 1.75 mm",
+    "bico_mm": 0.4,
+    "mesa_mm": [
+      220,
+      220
+    ],
+    "altura_maquina_mm": 250,
+    "escala_importacao_percent": 100,
+    "bico_c_inicial": 200,
+    "mesa_c_inicial": 60,
+    "primeira_camada_mm": 0.2,
+    "primeira_camada_mm_s": 15,
+    "retracao_mm_inicial": 4,
+    "retracao_mm_s_inicial": 35,
+    "fan_percent_apos_primeiras_camadas": 100,
+    "fan_primeira_camada_percent": 0,
+    "suporte_angulo_inicial_graus": 55,
+    "suporte_densidade_percent": 12,
+    "suporte_distancia_z_mm": 0.2,
+    "suporte_xy_mm": 0.4,
+    "suporte_interface": true,
+    "sequencia": "todas as pecas simultaneamente, camada por camada",
+    "nota": "Valores iniciais não ensaiados. Temperatura conforme fabricante do PLA. Retração depende do conjunto real. Suportes precisam ser gerados e revisados no fatiador."
+  },
+  "perfis": {
+    "casca": {
+      "camada_mm": 0.2,
+      "perimetros": 4,
+      "topo_fundo_mm": 1.0,
+      "preenchimento_percent": 25,
+      "velocidade_mm_s": 40,
+      "parede_externa_mm_s": 25,
+      "brim_mm": 6
+    },
+    "interno": {
+      "camada_mm": 0.2,
+      "perimetros": 4,
+      "topo_fundo_mm": 1.0,
+      "preenchimento_percent": 35,
+      "velocidade_mm_s": 35,
+      "parede_externa_mm_s": 25,
+      "brim_mm": 5
+    },
+    "fixacao": {
+      "camada_mm": 0.16,
+      "perimetros": 4,
+      "topo_fundo_mm": 0.96,
+      "preenchimento_percent": 100,
+      "velocidade_mm_s": 25,
+      "parede_externa_mm_s": 20,
+      "brim_mm": 5
+    },
+    "teste": {
+      "camada_mm": 0.16,
+      "perimetros": 4,
+      "topo_fundo_mm": 0.96,
+      "preenchimento_percent": 100,
+      "velocidade_mm_s": 25,
+      "parede_externa_mm_s": 20,
+      "brim_mm": 5
+    }
+  }
+}
