@@ -69,3 +69,29 @@ class OfferUpdateTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(updates, 'available_update', AsyncMock(return_value=None)):
             self.assertFalse(await ChargeGridApp.offer_update(app, '0.6.3', delay=0))
         app.page.show_dialog.assert_not_called()
+
+
+class UpdateTriggerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_check_reports_when_already_up_to_date(self):
+        app = shell()
+        with patch.object(updates, 'available_update', AsyncMock(return_value=None)):
+            self.assertFalse(await ChargeGridApp.offer_update(app, '0.6.5', delay=0, manual=True))
+        self.assertIn('versão mais recente (0.6.5)', app.notices[0])
+
+    async def test_returning_from_background_rechecks_on_android(self):
+        import asyncio
+        import time
+
+        from chargegrid_app import app as app_module
+        app = SimpleNamespace(backgrounded=True, closed=False, poll_callback=None, building_generation=None,
+                              page=SimpleNamespace(platform=ft.PagePlatform.ANDROID), offer_update=AsyncMock(),
+                              update_checked_at=time.monotonic() - app_module.UPDATE_RECHECK_SECONDS - 1)
+        await ChargeGridApp.lifecycle(app, SimpleNamespace(state=ft.AppLifecycleState.RESUME))
+        await asyncio.sleep(0)
+        app.offer_update.assert_awaited_once()
+        # Checado há pouco: voltar ao app não consulta de novo.
+        app.backgrounded, app.update_checked_at = True, time.monotonic()
+        app.offer_update.reset_mock()
+        await ChargeGridApp.lifecycle(app, SimpleNamespace(state=ft.AppLifecycleState.RESUME))
+        await asyncio.sleep(0)
+        app.offer_update.assert_not_awaited()

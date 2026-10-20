@@ -7,6 +7,7 @@ from pathlib import Path
 import flet as ft
 
 from ..api_client import ApiError
+from ..config import packaged_version
 from ..services import driver as helpers
 from ..services import vehicle_state
 from ..services.driver_profile import save_vehicle
@@ -168,6 +169,11 @@ async def build(app, mode=None, **_):
                          ft.Icons.BATTERY_CHARGING_FULL, None, chevron=False,
                          trailing=ft.Switch(value=vehicle_state.presentation_mode(app), on_change=presentation,
                                             data='presentation', active_color=theme.RED)))
+    version = packaged_version()
+    if version and hasattr(app, 'offer_update'):
+        # Versão instalada + checagem na hora (o aviso automático roda ao abrir e ao voltar ao app).
+        rows.append(_row(f'Versão {version}', 'Verificar atualização', ft.Icons.SYSTEM_UPDATE_OUTLINED,
+                         app.action(lambda: app.offer_update(version, delay=0, manual=True))))
     notes = [design.demo_note(app)]
     if demo:
         notes.append(design.txt('Senha pública: demo1234 · os dados simulados reiniciam ao sair', 10,

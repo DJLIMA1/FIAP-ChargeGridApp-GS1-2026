@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from .ui.components import button, title
 
 ASSETS_DIR = str(Path(__file__).resolve().parents[2] / 'assets')
 POLL_BACKOFF_MAX = 60
+UPDATE_RECHECK_SECONDS = 15 * 60
 
 
 class ChargeGridApp:
@@ -243,11 +245,20 @@ class ChargeGridApp:
     def notice(self, message):
         self.page.show_dialog(ft.SnackBar(ft.Text(message)))
 
-    async def offer_update(self, current=None, delay=2.5):
-        """Android: se o GitHub tiver um APK mais novo, oferece o download (uma vez por abertura)."""
+    async def offer_update(self, current=None, delay=2.5, manual=False):
+        """Android: se o GitHub tiver um APK mais novo, oferece o download.
+
+        Roda ao abrir o app e ao voltar do segundo plano (no máximo a cada ``UPDATE_RECHECK_SECONDS``;
+        o Android costuma só retomar o app, sem abrir de novo). ``manual`` (Conta → Verificar
+        atualização) sempre consulta e avisa também quando não há versão nova.
+        """
         current = current or packaged_version()
+        self.update_checked_at = time.monotonic()
         info = await updates.available_update(current)
         if not info or self.closed:
+            if manual:
+                self.notice(f'Você já está na versão mais recente ({current}).' if current else
+                            'Não foi possível identificar a versão instalada.')
             return False
         await asyncio.sleep(delay)  # deixa a primeira tela terminar de abrir
         while self.prompting:  # não cobre o diálogo "Descartar alterações?"
@@ -442,6 +453,10 @@ class ChargeGridApp:
             self.backgrounded = True
         elif resumed:
             self.backgrounded = False
+            # Voltar ao app não executa main() de novo: confere atualização aqui também.
+            if (was_hidden and getattr(self.page, 'platform', None) == ft.PagePlatform.ANDROID and not self.closed
+                    and time.monotonic() - getattr(self, 'update_checked_at', 0) >= UPDATE_RECHECK_SECONDS):
+                self.update_task = asyncio.create_task(self.offer_update(delay=0.5))
             if was_hidden and self.poll_callback and not self.closed and self.building_generation is None:
                 self.start_poll(immediate=True)
 
