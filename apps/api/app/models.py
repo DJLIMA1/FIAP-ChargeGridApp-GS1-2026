@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -59,6 +60,10 @@ class Station(Base):
     power_limit_notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     # Tarifa dinâmica (migração a7c2e9d4b6f1): dados base do dono; o cálculo é chargegrid_core.pricing.
     pricing: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    # Pagamento Stripe em modo teste (migração e5a1c7f3b9d2): exigir pagamento antes do
+    # START e mostrar o QR de pagamento no painel físico.
+    prepay_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    kiosk_payments: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
@@ -310,3 +315,114 @@ class AiUsage(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     tools: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+PAYMENT_STATUSES = (
+    "awaiting_payment", "declined", "authorized", "paid", "in_use", "expired", "canceled", "completed",
+)
+PAYMENT_OPEN = ("awaiting_payment", "declined", "authorized", "paid")
+SETTLEMENT_STATUSES = ("none", "due", "settling", "done", "failed")
+
+
+class Payment(Base):
+    """Pré-pagamento de uma recarga (Stripe em modo teste); valores em centavos inteiros.
+
+    Uma fonte de verdade para o dinheiro: o teto aceito (``amount_cents``), os termos travados
+    no orçamento e o acerto final (capturado, devolvido, perdoado). Ver ``chargegrid_core.billing``.
+    """
+
+    __tablename__ = "payments"
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), index=True)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id"))
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charging_sessions.id"), unique=True)
+    origin: Mapped[str] = mapped_column(String(10), default="app")
+    provider: Mapped[str] = mapped_column(String(20), default="stripe")
+    environment: Mapped[str] = mapped_column(String(10), default="test")
+    status: Mapped[str] = mapped_column(String(20), default="awaiting_payment")
+    settlement_status: Mapped[str] = mapped_column(String(20), default="none")
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    energy_cap_cents: Mapped[int] = mapped_column(Integer)
+    fixed_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
+    overstay_reserve_cents: Mapped[int] = mapped_column(Integer, default=0)
+    energy_cents: Mapped[int | None] = mapped_column(Integer)
+    overstay_cents: Mapped[int | None] = mapped_column(Integer)
+    charge_cents: Mapped[int | None] = mapped_column(Integer)
+    waived_cents: Mapped[int] = mapped_column(Integer, default=0)
+    uncollected_cents: Mapped[int] = mapped_column(Integer, default=0)
+    captured_cents: Mapped[int] = mapped_column(Integer, default=0)
+    refunded_cents: Mapped[int] = mapped_column(Integer, default=0)
+    provider_fee_cents: Mapped[int | None] = mapped_column(Integer)
+    # Termos travados no orçamento: o START com este pagamento usa estes, não os do momento.
+    price_per_kwh: Mapped[float] = mapped_column(Numeric(10, 4))
+    base_price_per_kwh: Mapped[float] = mapped_column(Numeric(10, 4))
+    demand_multiplier: Mapped[float] = mapped_column(Numeric(4, 2))
+    discount_percent: Mapped[int] = mapped_column(Integer, default=0)
+    coupon_code: Mapped[str | None] = mapped_column(String(50))
+    max_duration_minutes: Mapped[int] = mapped_column(Integer)
+    max_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    quote: Mapped[dict] = mapped_column(JSONB, default=dict)
+    provider_checkout_id: Mapped[str | None] = mapped_column(String(100), unique=True)
+    provider_payment_intent_id: Mapped[str | None] = mapped_column(String(100), unique=True)
+    provider_status: Mapped[str | None] = mapped_column(String(40))
+    method: Mapped[str | None] = mapped_column(String(30))
+    checkout_url: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    start_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authorized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_provider_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settle_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(200))
+    kiosk_token_hash: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    __table_args__ = (
+        CheckConstraint("origin IN ('app', 'kiosk')", name="payment_origin"),
+        CheckConstraint("environment = 'test'", name="payment_environment_test"),
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{value}'" for value in PAYMENT_STATUSES) + ")", name="payment_status"
+        ),
+        CheckConstraint(
+            "settlement_status IN (" + ", ".join(f"'{value}'" for value in SETTLEMENT_STATUSES) + ")",
+            name="payment_settlement_status",
+        ),
+        CheckConstraint(
+            "amount_cents > 0 AND energy_cap_cents > 0 AND fixed_fee_cents >= 0 AND overstay_reserve_cents >= 0"
+            " AND amount_cents = energy_cap_cents + fixed_fee_cents + overstay_reserve_cents",
+            name="payment_amounts",
+        ),
+        CheckConstraint(
+            "captured_cents >= 0 AND refunded_cents >= 0 AND waived_cents >= 0 AND uncollected_cents >= 0"
+            " AND captured_cents <= amount_cents AND refunded_cents <= captured_cents"
+            " AND (charge_cents IS NULL OR charge_cents BETWEEN 0 AND amount_cents)",
+            name="payment_settlement_amounts",
+        ),
+        CheckConstraint("discount_percent BETWEEN 0 AND 100", name="payment_discount_range"),
+        Index("ix_payments_connector_status", "connector_id", "status"),
+        Index(
+            "ix_payments_settlement", "settlement_status",
+            postgresql_where=text("settlement_status IN ('due', 'settling')"),
+        ),
+        # Um pagamento do app em aberto por pessoa (o convidado do painel fica de fora).
+        Index(
+            "one_open_app_payment_user", "user_id", unique=True,
+            postgresql_where=text(
+                "origin = 'app' AND status IN ('awaiting_payment', 'declined', 'authorized', 'paid')"
+            ),
+        ),
+    )
+
+
+class PaymentEvent(Base):
+    """Eventos de webhook já processados (deduplicação); o corpo não é guardado."""
+
+    __tablename__ = "payment_events"
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20), default="stripe")
+    event_id: Mapped[str] = mapped_column(String(100))
+    type: Mapped[str] = mapped_column(String(80))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id"), index=True)
+    payload_sha256: Mapped[str] = mapped_column(String(64))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("provider", "event_id"),)
