@@ -310,6 +310,27 @@ def test_owner_sees_who_occupies_and_exports_the_fee(bench, factory, seed, clock
     clear_overrides()
 
 
+def test_owner_margin_counts_the_overstay_fee(bench, factory, seed, clock):
+    """Regressão da integração: a margem passava ids soltos ao registro e a seção de permanência caía."""
+    bench.rules(start_after_min=0)
+    session = bench.start(overstay_terms_version=bench.version())
+    bench.charge(session["id"])
+    bench.end(session["id"])
+    for _ in range(4):
+        clock.advance(30)
+        bench.idle()
+    bench.idle(connected=False)
+    owner, _ = client_for(factory, seed["owner"])
+    report = owner.get("/v1/owner/margin").json()
+    row = next(item for item in report["items"] if item["session_id"] == session["id"])
+    assert row["overstay_revenue"] == "2.00"
+    assert report["totals"]["overstay_revenue"] == "2.00"
+    assert report["totals"]["revenue_total"] == str(Decimal(report["totals"]["revenue"]) + Decimal("2.00"))
+    csv = owner.get("/v1/owner/export/margin.csv").text
+    assert "Taxa de permanência (R$)" in csv.splitlines()[0]
+    clear_overrides()
+
+
 def test_payment_contract_reserves_the_cap_and_waits_for_disconnect(http, factory, seed, clock, monkeypatch):
     from app.config import settings
 

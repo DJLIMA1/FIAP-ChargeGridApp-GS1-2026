@@ -5,7 +5,6 @@ sessões elegíveis seguem a regra do overview do painel (``owner.service._eligi
 encerradas com energia positiva e término dentro do período.
 """
 
-from types import SimpleNamespace
 
 from sqlalchemy import select
 
@@ -89,7 +88,11 @@ def margin_rows(db, scope, window) -> list[dict]:
     ).mappings().all()
     if len(records) > EXPORT_LIMIT:
         fail("export_too_large", f"Mais de {EXPORT_LIMIT} sessões. Reduza o período ou filtre um posto.", 413)
-    extras = extras_for(db, [SimpleNamespace(id=record["id"]) for record in records])
+    # Os provedores do registro recebem as sessões de verdade: a permanência (frente D) lê as
+    # colunas ``overstay_*`` da própria sessão (um id solto derrubava a seção e zerava a taxa).
+    ids = [record["id"] for record in records]
+    sessions = db.scalars(select(ChargingSession).where(ChargingSession.id.in_(ids))).all() if ids else []
+    extras = extras_for(db, sessions)
     return [
         economics.session_economics(dict(record), station_energy_cost=record["station_energy_cost"],
                                     station_fee_percent=record["station_fee_percent"],
