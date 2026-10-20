@@ -13,6 +13,7 @@ const NAV: { to: string; label: string; icon: IconName; short?: string }[] = [
   { to: '/estacoes', label: 'Estações', icon: 'station' },
   { to: '/sessoes', label: 'Sessões', icon: 'clock' },
   { to: '/alertas', label: 'Alertas', icon: 'bell' },
+  { to: '/resultado', label: 'Resultado', icon: 'wallet' },
   { to: '/cupons', label: 'Cupons', icon: 'ticket' },
   { to: '/insights', label: 'Insights IA', icon: 'sparkles' },
   { to: '/previsao', label: 'Previsão', icon: 'trendUp' },
@@ -213,7 +214,7 @@ export function Layout() {
             {item.short ?? item.label}
           </NavLink>
         ))}
-        <button type="button" onClick={() => setMenuOpen(true)} className={isActive('/cupons') || isActive('/insights') ? 'active' : ''} aria-label="Mais opções">
+        <button type="button" onClick={() => setMenuOpen(true)} className={isActive('/cupons') || isActive('/insights') || isActive('/resultado') ? 'active' : ''} aria-label="Mais opções">
           <Icon name="menu" size={22} />
           Mais
         </button>

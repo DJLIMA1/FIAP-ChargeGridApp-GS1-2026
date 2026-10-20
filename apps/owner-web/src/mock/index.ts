@@ -15,11 +15,14 @@
  * - senha "senhafraca" → `weak_password`
  * - qualquer outro → já entra, como vendedor sem operação habilitada
  * Auto-login para capturas: abra com `?mock_login=1`.
+ * Operação do posto (Resultado, energia do estabelecimento, pagamentos em teste e
+ * permanência): `./operations.ts`.
  */
 import type { Coupon, CouponInput, Profile } from '../api/types'
 import { REFRESH_KEY } from '../auth/tokens'
 import * as data from './data'
 import * as forecastMock from './forecast'
+import * as ops from './operations'
 
 const PROFILE_KEY = 'chargegrid.mock.profile'
 const NAME_KEY = 'chargegrid.mock.name'
@@ -115,12 +118,20 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       return json(data.timeseries(from, to, (p.get('granularity') as 'hour' | 'day') ?? 'day', station))
     case '/owner/heatmap':
       return json(data.heatmap(from, to, station))
-    case '/owner/sessions':
-      return json(data.sessions(p))
+    case '/owner/sessions': {
+      const page = data.sessions(p)
+      return json({ ...page, items: page.items.map(ops.decorateSession) })
+    }
+    case '/owner/margin':
+      return json(ops.marginReport(p))
+    case '/owner/export/margin.csv':
+      return new Response(ops.marginCsv(p), { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } })
+    case '/owner/export/margin.pdf':
+      return new Response(new Blob([ops.marginPdf(p) as BlobPart], { type: 'application/pdf' }), { status: 200, headers: { 'Content-Type': 'application/pdf' } })
     case '/owner/alerts':
       return json(data.alerts(station))
     case '/owner/live':
-      return json(data.live(station))
+      return json(ops.decorateLive(data.live(station)))
     case '/owner/forecast':
       return json(forecastMock.forecast(station ?? data.STATIONS[0].id))
     case '/owner/occupancy-history':
@@ -157,6 +168,23 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       return words.length > 0 && words.every((w) => haystack.includes(w))
     })
     return json({ items, available: true, attribution: 'Dados © colaboradores do OpenStreetMap' })
+  }
+  const opsMatch = /^\/stations\/([^/]+)\/(economics|power|power-site|building-load|pricing)$/.exec(path)
+  if (opsMatch) {
+    const [, stationId, resource] = opsMatch
+    if (!data.STATIONS.some((s) => s.id === stationId)) return fail(404, 'not_found', 'Posto não encontrado')
+    try {
+      const input = (body ?? {}) as Record<string, unknown>
+      if (resource === 'economics') return json(method === 'PUT' ? ops.putEconomics(stationId, input) : ops.economics(stationId))
+      if (resource === 'power' && method === 'GET') return json(ops.power(stationId))
+      if (resource === 'power-site' && method === 'PUT') return json(ops.putPowerSite(stationId, input))
+      if (resource === 'building-load' && method === 'PUT') return json(ops.putBuildingLoad(stationId, input))
+      if (resource === 'pricing') return json(method === 'PUT' ? ops.putPricing(stationId, input) : ops.pricing(stationId))
+    } catch (error) {
+      if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)
+      throw error
+    }
+    return fail(405, 'method_not_allowed', 'Método não suportado na demonstração')
   }
   const stationMatch = /^\/stations\/([^/]+)$/.exec(path)
   if (stationMatch) {

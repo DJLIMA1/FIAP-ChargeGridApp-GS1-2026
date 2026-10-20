@@ -15,10 +15,11 @@ Produção: <https://chargegrid-painel.vercel.app>
 
 | Rota | Conteúdo |
 | --- | --- |
-| `/` Visão geral | KPIs (receita estimada, energia entregue, recargas, ticket médio, ocupação, disponibilidade, reservas, não comparecimento), receita e energia por dia (por hora em "Hoje"), mapa de calor dia × hora com horários de pico, alertas recentes, ranking de pontos e status ao vivo (`/owner/live`, atualizado a cada 30 s com a aba visível) |
+| `/` Visão geral | KPIs (receita bruta estimada, energia entregue, recargas, ticket médio, ocupação, disponibilidade, reservas, não comparecimento), receita e energia por dia (por hora em "Hoje"), mapa de calor dia × hora com horários de pico, alertas recentes, ranking de pontos e status ao vivo (`/owner/live`, atualizado a cada 3 s com a aba visível: potência aplicada e motivo do rebalanceamento, e quem continua na vaga depois da recarga com a fase, a tolerância restante e a taxa acumulada) |
 | `/estacoes` | Lista de estações com status, conectores e faixa de tarifa |
-| `/estacoes/:id` | Nome, endereço e status (ativa/inativa); por conector, tarifa, potência, duração máxima e publicação; comodidades. Os campos são validados com os limites da API, e a tela só muda depois da resposta do servidor (sem atualização otimista). Erros como `point_busy` aparecem ao lado do conector |
-| `/sessoes` | Filtros por status, busca, paginação de 25 itens, detalhe em painel lateral e exportação **CSV** e **JSON** do resultado filtrado (no navegador, no mesmo formato de `/owner/export`) |
+| `/estacoes/:id` | Nome, endereço e status (ativa/inativa); por conector, tarifa, potência, duração máxima e publicação; comodidades. Os campos são validados com os limites da API, e a tela só muda depois da resposta do servidor (sem atualização otimista). Erros como `point_busy` aparecem ao lado do conector. Cartões de operação (cada um some se a API não tiver a rota ou os campos): **Energia do estabelecimento** (limite contratado e liga/desliga do rebalanceamento em `PUT /stations/{id}/power-site`; controle "Consumo da loja (SIMULADO)" em `PUT /stations/{id}/building-load` com debounce de 350 ms; por ponto alvo, aplicada, estado e motivo; soma contra o disponível com o excesso transitório; últimas decisões; `GET /stations/{id}/power` a cada 1,5 s enquanto a página está aberta), **Custo da energia e comissão** (`GET/PUT /stations/{id}/economics`; comissão só leitura), **Taxa de permanência** (`rules.rotation` em `GET/PUT /stations/{id}/pricing`, sempre com as regras inteiras: tarifa por horário e demanda ficam como estão) e **Pagamentos · teste** ("Exigir pagamento antecipado (Stripe · teste)" e "Pagamento pelo QR do painel", PATCH com `prepay_required`/`kiosk_payments`) |
+| `/sessoes` | Filtros por status, busca, paginação de 25 itens, detalhe em painel lateral e exportação **CSV** e **JSON** do resultado filtrado (no navegador, no mesmo formato de `/owner/export`). Colunas **Permanência** (`overstay_fee`/`overstay_minutes` ou a fase em andamento) e **Pagamento** (selo com o `status_label` da API, capturado/devolvido e "teste") aparecem só quando a API envia os campos |
+| `/resultado` | **Receita bruta não é lucro** (faixa fixa com a margem de contribuição). Cascata receita bruta → descontos/cupons → (+ permanência) → receita cobrada → − comissão → (− tarifa do provedor) → = repasse → − custo estimado da energia → = margem estimada; efeito do preço dinâmico e dos cupons; custo do kWh por posto; tabela por sessão (50 por página) e **CSV**/**PDF** de `/owner/export/margin.{csv,pdf}` com o período e a estação do topo (baixados como arquivo, nome montado no cliente: `chargegrid-resultado-AAAAMMDD-HHMM[-posto].csv`). Sem custo do kWh, custo e margem aparecem como "—" (nunca zero) com o atalho "Configurar custo" para o cartão do posto (`/estacoes/:id#economics`) |
 | `/alertas` | Alertas operacionais por severidade, com link para a estação |
 | `/cupons` | Lista, criação (código, descrição, % de desconto, validade e estação opcional) e ativação/desativação |
 | `/insights` | Gera `POST /v1/ai/owner-insights` para o período e a estação escolhidos. Mostra quando o resultado veio das regras automáticas, por falta de IA, e trata os erros de limite e de indisponibilidade |
@@ -68,6 +69,8 @@ npm run dev:mock   # mesmo servidor com dados fictícios (VITE_MOCK=1)
 
 No cadastro (`/criar-conta`): e-mail com `confirmar` → "Verifique seu e-mail"; com `existe` → aviso neutro no login; com `limite` → erro 429 (também no reenvio); senha `senhafraca` → `weak_password`; qualquer outro → a conta entra direto como vendedor sem operação habilitada.
 
+As telas de operação também têm dados fictícios (`src/mock/operations.ts`): Villa Olímpia começa sem custo do kWh (margem "—"; informe o custo no posto e a margem total aparece), o consumo simulado da loja reduz a potência com confirmação do equipamento ~1,2 s depois (excesso transitório visível), CG-002 e CG-006 mostram um carro na vaga após a recarga (tolerância e cobrança), e parte das sessões tem pagamento em teste e taxa de permanência. O Resultado soma o histórico fictício de sessões, por isso não bate exatamente com os totais da visão geral.
+
 Os dados de 7 dias batem com a referência visual: R$ 8.420, 2.184 kWh, 184 recargas e ticket de R$ 45,76. O mock é importado só atrás de `import.meta.env.DEV`, por isso fica fora do build de produção. `npm run check:dist` confirma isso.
 
 Variáveis (opcionais, somente em desenvolvimento; veja `.env.example`):
@@ -82,7 +85,7 @@ Variáveis (opcionais, somente em desenvolvimento; veja `.env.example`):
 ```bash
 npm run lint        # ESLint (typescript-eslint + react-hooks), zero avisos
 npm run typecheck   # tsc strict
-npm test            # Vitest: formatação, período → query, token/refresh, acesso de vendedor, cadastro, CSV/JSON
+npm test            # Vitest: formatação, período → query, token/refresh, acesso de vendedor, cadastro, CSV/JSON, cascata/margem, faixa "não é lucro", exportação do resultado com filtros, potência (formatação e debounce), tarifa preservando as regras, mock fechando
 npm run build       # tsc + vite build → dist/
 npm run check:dist  # garante que nada do modo demonstração foi para dist/
 ```

@@ -51,7 +51,7 @@ export default function Overview() {
       {overview.error ? <ErrorBanner error={overview.error} onRetry={overview.reload} /> : null}
 
       <div className="grid kpis" style={{ marginTop: overview.error ? 16 : 0 }}>
-        <Kpi variant="hero" label="Receita estimada" icon="wallet" loading={loadingKpis} value={formatCurrency(kpis?.revenue, { compact: true })} hint={kpis ? `${formatNumber(kpis.active_sessions)} recarga(s) em andamento` : undefined} />
+        <Kpi variant="hero" label="Receita bruta estimada" icon="wallet" loading={loadingKpis} value={formatCurrency(kpis?.revenue, { compact: true })} hint={kpis ? `${formatNumber(kpis.active_sessions)} recarga(s) em andamento` : undefined} />
         <Kpi label="Energia entregue" icon="zap" loading={loadingKpis} value={formatEnergy(kpis?.energy_kwh)} hint={kpis ? `${formatNumber(kpis.points_online)} de ${formatNumber(kpis.points)} pontos online` : undefined} />
         <Kpi label="Recargas" icon="plug" loading={loadingKpis} value={formatNumber(kpis?.sessions)} hint={kpis ? (kpis.interrupted_sessions || kpis.failed_sessions ? `${kpis.interrupted_sessions} interrompida(s) · ${kpis.failed_sessions} com falha` : 'Nenhuma falha no período') : undefined} hintTone={kpis && !kpis.failed_sessions && !kpis.interrupted_sessions ? 'good' : undefined} />
         <Kpi label="Ticket médio" icon="chart" loading={loadingKpis} value={formatCurrency(kpis?.average_ticket)} hint="Receita ÷ recargas concluídas" />

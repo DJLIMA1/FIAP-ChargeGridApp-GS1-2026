@@ -91,3 +91,16 @@ export function downloadText(filename: string, content: string, mime: string): v
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+/** Baixa um arquivo já pronto (ex.: CSV/PDF da API) com o nome montado no cliente. */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

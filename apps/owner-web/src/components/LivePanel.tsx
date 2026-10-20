@@ -4,11 +4,32 @@ import { useAuth } from '../auth/AuthContext'
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatEnergy, formatPower, formatRelative, formatTariff, formatTime, toNumber } from '../lib/format'
 import { AVAILABILITY } from '../lib/labels'
+import { OVERSTAY_STATUS, occupancyText } from '../lib/overstay'
+import { formatKw } from '../lib/power'
 import { useApi } from '../lib/useApi'
 import { Icon } from './Icon'
 import { Badge, Card, EmptyState, ErrorBanner, Skeleton } from './ui'
 
-export const LIVE_INTERVAL_MS = 30_000
+export const LIVE_INTERVAL_MS = 3_000
+
+/** Quem continua na vaga depois da recarga (frente D): fase, tolerância restante e taxa. */
+function Occupancy({ item }: { item: LiveItem }) {
+  const occupancy = item.occupancy
+  if (!occupancy) return null
+  const meta = OVERSTAY_STATUS[occupancy.status] ?? { label: occupancy.status, tone: 'gray' as const }
+  return (
+    <div className="point-occupancy">
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        {occupancy.driver_label ? <span className="dim">{occupancy.driver_label}</span> : null}
+      </span>
+      <span className="tabular">
+        <b>{occupancyText(occupancy)}</b>
+      </span>
+      {occupancy.started_at ? <span className="dim">Recarga terminou às {formatTime(occupancy.started_at)}</span> : null}
+    </div>
+  )
+}
 
 function PointCard({ item, now }: { item: LiveItem; now: Date }) {
   const status = AVAILABILITY[item.availability_status] ?? { label: item.availability_status, tone: 'gray' as const }
@@ -37,6 +58,11 @@ function PointCard({ item, now }: { item: LiveItem; now: Date }) {
                 <b className="tabular">{formatPower(powerKw)}</b> agora
               </span>
             ) : null}
+            {session.applied_power_kw ? (
+              <span>
+                <b className="tabular">{formatKw(session.applied_power_kw)}</b> aplicada
+              </span>
+            ) : null}
             <span>
               <b className="tabular">{formatCurrency(session.cost_estimate)}</b>
             </span>
@@ -48,6 +74,7 @@ function PointCard({ item, now }: { item: LiveItem; now: Date }) {
               </div>
             </div>
           ) : null}
+          {session.power_reason ? <div className="point-power">{session.power_reason}</div> : null}
           <div className="point-meta">Iniciada às {formatTime(session.started_at)}</div>
         </>
       ) : (
@@ -60,6 +87,7 @@ function PointCard({ item, now }: { item: LiveItem; now: Date }) {
           </span>
         </div>
       )}
+      <Occupancy item={item} />
       <div className="point-meta" style={{ marginTop: 'auto' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Icon name={item.online ? 'zap' : 'wifiOff'} size={14} />
@@ -77,6 +105,11 @@ export function LivePanel({ limit }: { limit?: number }) {
   const [tick, setTick] = useState(0)
   const [now, setNow] = useState(() => new Date())
   const { data, error, loading, settled, reload } = useApi((signal) => ep.live(stationId, signal), `live|${stationId}|${refreshKey}|${tick}`)
+  // O ícone só gira no clique (a atualização automática a cada 3 s não pisca a tela).
+  const [manual, setManual] = useState(false)
+  useEffect(() => {
+    if (!loading) setManual(false)
+  }, [loading])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -105,11 +138,11 @@ export function LivePanel({ limit }: { limit?: number }) {
       }
       sub={
         data
-          ? `${counts.charging ?? 0} carregando · ${counts.available ?? 0} disponíveis · ${(counts.offline ?? 0) + (counts.fault ?? 0)} com problema · atualiza a cada 30 s (${formatTime(data.generated_at)})`
-          : 'Atualiza automaticamente a cada 30 segundos'
+          ? `${counts.charging ?? 0} carregando · ${counts.available ?? 0} disponíveis · ${(counts.offline ?? 0) + (counts.fault ?? 0)} com problema · atualiza a cada ${LIVE_INTERVAL_MS / 1000} s (${formatTime(data.generated_at)})`
+          : `Atualiza automaticamente a cada ${LIVE_INTERVAL_MS / 1000} segundos`
       }
       action={
-        <button type="button" className={`icon-btn ${loading ? 'spinning' : ''}`} onClick={reload} aria-label="Atualizar status ao vivo">
+        <button type="button" className={`icon-btn ${loading && manual ? 'spinning' : ''}`} onClick={() => { setManual(true); reload() }} aria-label="Atualizar status ao vivo">
           <Icon name="refresh" size={16} />
         </button>
       }

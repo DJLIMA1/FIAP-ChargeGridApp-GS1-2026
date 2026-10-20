@@ -9,6 +9,7 @@ import { downloadText, exportFilename, sessionsCsv, sessionsJson } from '../lib/
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatDateTime, formatDuration, formatEnergy, formatNumber, formatShortDateTime, formatTariff } from '../lib/format'
 import { END_REASON_LABELS, SESSION_STATUS, SESSION_STATUS_ORDER, SOURCE_LABELS } from '../lib/labels'
+import { OVERSTAY_STATUS, overstayCell, paymentBadge } from '../lib/overstay'
 import { periodLabel } from '../lib/period'
 import { useApi } from '../lib/useApi'
 
@@ -17,6 +18,37 @@ const PAGE_SIZE = 25
 function StatusBadge({ status }: { status: string }) {
   const meta = SESSION_STATUS[status] ?? { label: status, tone: 'gray' as const }
   return <Badge tone={meta.tone}>{meta.label}</Badge>
+}
+
+/** Selo do pagamento (Stripe em modo teste): rótulo da API, capturado/devolvido e "teste". */
+function PaymentBadge({ session, detail }: { session: SessionItem; detail?: boolean }) {
+  const badge = paymentBadge(session.payment)
+  if (!badge) return <span className="dim">—</span>
+  // "Cobrado R$ 32,10 (teste) · Devolvido R$ 7,90": o selo leva a primeira parte e o resto vai abaixo.
+  const [head, ...rest] = badge.label.split(' · ')
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Badge tone={badge.tone}>{head}</Badge>
+        {badge.test && !/teste/i.test(badge.label) ? <Badge tone="gray">teste</Badge> : null}
+      </span>
+      {rest.length && !(detail && badge.detail) ? <span className="dim" style={{ fontSize: 11.5 }}>{rest.join(' · ')}</span> : null}
+      {detail && badge.detail ? <span className="dim" style={{ fontSize: 11.5 }}>{badge.detail}</span> : null}
+    </span>
+  )
+}
+
+function OverstayValue({ session }: { session: SessionItem }) {
+  const cell = overstayCell(session)
+  if (cell.badge) {
+    return (
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <Badge tone={cell.tone ?? 'gray'}>{cell.badge}</Badge>
+        {cell.text ? <span>{cell.text}</span> : null}
+      </span>
+    )
+  }
+  return <span className={cell.text === '—' ? 'dim' : undefined}>{cell.text}</span>
 }
 
 function SessionDrawer({ session, onClose }: { session: SessionItem; onClose(): void }) {
@@ -76,6 +108,30 @@ function SessionDrawer({ session, onClose }: { session: SessionItem; onClose(): 
           <dt>Motivo de término</dt>
           <dd>{END_REASON_LABELS[session.end_reason] ?? (session.end_reason || '—')}</dd>
         </div>
+        {'payment' in session ? (
+          <div className="full">
+            <dt>Pagamento (Stripe · teste)</dt>
+            <dd>
+              <PaymentBadge session={session} detail />
+              {session.payment ? (
+                <div className="dim" style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+                  Teto autorizado {formatCurrency(session.payment.amount)}
+                  {session.payment.origin === 'kiosk' ? ' · QR do painel' : session.payment.origin === 'app' ? ' · app' : ''}
+                  {session.payment.method ? ` · ${session.payment.method === 'pix' ? 'Pix' : 'cartão'}` : ''}
+                </div>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
+        {'overstay' in session || 'overstay_fee' in session ? (
+          <div className="full">
+            <dt>Permanência após a recarga</dt>
+            <dd>
+              {session.overstay?.status && session.overstay.status !== 'none' ? `${OVERSTAY_STATUS[session.overstay.status]?.label ?? session.overstay.status} · ` : ''}
+              <OverstayValue session={session} />
+            </dd>
+          </div>
+        ) : null}
         <div className="full">
           <dt>ID da sessão</dt>
           <dd className="mono">{session.id}</dd>
@@ -112,6 +168,9 @@ export default function Sessions() {
   )
   const total = data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  // Colunas das frentes A e D só aparecem quando a API envia os campos.
+  const showPayment = Boolean(data?.items.some((item) => 'payment' in item))
+  const showOverstay = Boolean(data?.items.some((item) => 'overstay' in item || 'overstay_fee' in item))
 
   const toggle = (status: string) => setStatuses((list) => (list.includes(status) ? list.filter((s) => s !== status) : [...list, status]))
 
@@ -192,6 +251,8 @@ export default function Sessions() {
                     <th className="right">Energia</th>
                     <th className="right">Tarifa</th>
                     <th className="right">Valor</th>
+                    {showOverstay ? <th className="right">Permanência</th> : null}
+                    {showPayment ? <th>Pagamento</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -214,6 +275,16 @@ export default function Sessions() {
                       <td className="right tabular">{formatEnergy(item.energy_kwh)}</td>
                       <td className="right tabular muted">{formatTariff(item.price_per_kwh)}</td>
                       <td className="right tabular strong">{formatCurrency(item.cost_estimate)}</td>
+                      {showOverstay ? (
+                        <td className="right tabular">
+                          <OverstayValue session={item} />
+                        </td>
+                      ) : null}
+                      {showPayment ? (
+                        <td>
+                          <PaymentBadge session={item} />
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
