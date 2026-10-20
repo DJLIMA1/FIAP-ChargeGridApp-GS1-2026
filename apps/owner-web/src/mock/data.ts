@@ -247,7 +247,7 @@ export function alerts(stationId?: string | null): { items: AlertItem[]; generat
 }
 
 /** Histórico fixo de sessões dos últimos 45 dias. */
-const SESSION_POOL: SessionItem[] = (() => {
+export const SESSION_POOL: SessionItem[] = (() => {
   const random = rng(7)
   const now = Date.now()
   const pool: SessionItem[] = []
