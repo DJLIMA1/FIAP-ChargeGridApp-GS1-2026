@@ -2,6 +2,8 @@
 
 Para uma lista de postos: duas consultas agrupadas (recargas recentes e histórico do
 mesmo horário nas 4 semanas anteriores), além do estado já carregado por ``_point_state``.
+A tarifa base vigente vem da tarifação por horário do dono (``rules.schedule``), no
+horário local do posto.
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -16,6 +18,11 @@ from ...service import online
 
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 BASELINE_WEEKS = 4
+
+
+def local_time(moment):
+    """Horário local do posto (sem fuso), usado pela tarifação por horário."""
+    return moment.astimezone(LOCAL_TIMEZONE).replace(tzinfo=None)
 
 
 def _participants(points, state):
@@ -59,7 +66,7 @@ def demand_by_station(db, stations, points_by_station, state, current=None):
         ).scalars()
         for connector_id in history:
             baseline[station_of[connector_id]] = baseline.get(station_of[connector_id], 0) + 1
-    local_now = current.astimezone(LOCAL_TIMEZONE).replace(tzinfo=None)
+    local_now = local_time(current)
     result = {}
     for station in stations:
         points = participants[station.id]
@@ -87,3 +94,24 @@ def current_multiplier(db, connector) -> Decimal:
     """Multiplicador vigente para iniciar uma reserva/recarga neste ponto."""
     station = db.get(Station, connector.station_id)
     return Decimal(station_demand(db, station)["multiplier"])
+
+
+def scheduled_base(station, connector, moment) -> Decimal:
+    """Tarifa base do ponto em ``moment``: a do horário do dono ou a base do conector."""
+    interval = pricing.active_interval(pricing.stored_rules(station.pricing), local_time(moment))
+    return pricing.base_now(interval, connector.id, connector.price_per_kwh)
+
+
+def current_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal]:
+    """``(base, multiplicador)`` travados ao iniciar uma recarga neste ponto.
+
+    Com reserva, valem os termos do momento da reserva: o multiplicador gravado nela e a
+    base do horário em ``reservation.created_at``. Sem reserva, os de agora.
+    """
+    station = db.get(Station, connector.station_id)
+    if reservation is not None:
+        multiplier = (Decimal(reservation.demand_multiplier) if reservation.demand_multiplier is not None
+                      else Decimal(station_demand(db, station)["multiplier"]))
+        return scheduled_base(station, connector, reservation.created_at), multiplier
+    status = station_demand(db, station)
+    return pricing.connector_price(status, connector.id, connector.price_per_kwh)[0], Decimal(status["multiplier"])

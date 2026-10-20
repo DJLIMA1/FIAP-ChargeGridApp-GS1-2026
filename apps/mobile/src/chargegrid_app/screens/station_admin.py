@@ -2,7 +2,7 @@
 
 Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'). A tela do
 posto leva a Dados da estação, Conectores (pontos, edição e vincular outra tela), Potência por conector
-e Tarifas (``tariffs``: tarifa base e dinâmica). Nome, endereço e status usam ``PATCH stations``; a
+e Tarifa (``tariffs``: tarifa base, por horário e por demanda). Nome, endereço e status usam ``PATCH stations``; a
 localização vem do endereço (sem latitude/longitude na tela). A página de potência edita o teto do posto
 (``PATCH stations``: ``max_power_kw``, ``power_limit_notify``) e o limite de cada conector
 (``PATCH connectors``: ``power_limit_kw``). ``power_kw`` é a potência nominal do carregador e nunca é
@@ -144,7 +144,7 @@ def _main_page(app, station, code):
             menu_row('Dados da estação', 'Nome, endereço e status', ft.Icons.EDIT_OUTLINED, go('data')),
             menu_row('Conectores', _connectors_line(points), ft.Icons.EV_STATION_OUTLINED, go('connectors')),
             menu_row('Potência por conector', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
-            menu_row('Tarifas', 'Tarifa base e tarifa dinâmica por demanda', ft.Icons.TRENDING_UP,
+            menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
         ], spacing=29),
         ft.Container(height=18),
@@ -184,7 +184,7 @@ def _connectors_page(app, station):
     return design.page(
         heading(app, 'Conectores', app.link('station_admin', station_id=sid)),
         design.txt('Toque em um ponto para editar tipo, potência, tempo por recarga e o equipamento. '
-                   'A tarifa fica em Tarifas.', 12, 'regular', theme.GRAY_TEXT),
+                   'A tarifa fica em Tarifa.', 12, 'regular', theme.GRAY_TEXT),
         *rows,
         cta('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',
             app.link('operator', station_id=sid, claim=True), primary=False, weight='semibold'),

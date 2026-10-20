@@ -59,7 +59,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
                                 ('Conectores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
                                 ('Potência por conector', ('station_admin', {'station_id': sid, 'page': 'power'})),
-                                ('Tarifas', ('tariffs', {'station_id': sid}))):
+                                ('Tarifa base, por horário', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
             self.assertEqual((app.go.await_args.args[0], app.go.await_args.kwargs), expected)
         self.assertNotIn('Limite de bateria', texts(screen))  # aba removida do operador
@@ -69,7 +69,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(removed, texts(screen) + texts(data))
         connectors = await station_admin.build(app, station_id=sid, page='connectors')
         self.assertIn('Adicionar ponto simulado a este posto', texts(connectors))
-        self.assertIn('A tarifa fica em Tarifas', texts(connectors))
+        self.assertIn('A tarifa fica em Tarifa.', texts(connectors))
         await app.api.close()
 
     async def test_data_page_patches_name_address_and_status(self):

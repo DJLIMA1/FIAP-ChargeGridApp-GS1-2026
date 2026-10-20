@@ -145,8 +145,15 @@ def _flow_parent(route, data, mode):
     if route == 'payout':
         return 'home', {}
     if route == 'tariffs':
+        # Editor de horário -> lista de horários -> Tarifa -> posto.
         sid = data.get('station_id')
-        return ('station_admin', {'station_id': sid}) if sid else ('home', {})
+        if not sid:
+            return 'home', {}
+        if data.get('page') == 'schedule' and data.get('interval') not in (None, ''):
+            return 'tariffs', {'station_id': sid, 'page': 'schedule'}
+        if data.get('page'):
+            return 'tariffs', {'station_id': sid}
+        return 'station_admin', {'station_id': sid}
     # station_admin
     sid = data.get('station_id')
     if data.get('page') and sid:

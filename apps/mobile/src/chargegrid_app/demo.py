@@ -110,6 +110,11 @@ def _date(value):
     return parsed
 
 
+def _local(moment):
+    """Horário local do posto (Brasília, sem tzdata), como ``LOCAL_TIMEZONE`` da API."""
+    return moment.astimezone(_REPORT_TZ).replace(tzinfo=None)
+
+
 def _decimal(value, places):
     return format(Decimal(str(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP), 'f')
 
@@ -525,10 +530,13 @@ class DemoApi(OwnerApiMixin):
         status = self._demand(station)
         connectors = [self._point_row(p, power) for p in self._points.values() if p['station_id'] == station['id']]
         for point in connectors:
-            point['dynamic_price_per_kwh'] = str(pricing.dynamic_price(point['price_per_kwh'], status['multiplier']))
+            # Como a API: base do horário do dono × demanda.
+            current, price = pricing.connector_price(status, point['id'], point['price_per_kwh'])
+            point['current_base_price_per_kwh'], point['dynamic_price_per_kwh'] = str(current), str(price)
         return {**station, 'allocated_power_kw': _decimal(power['allocated_kw'], '0.001'),
                 'requested_power_kw': _decimal(power['requested_kw'], '0.001'), 'power_shared': power['shared'],
-                'demand': {key: status[key] for key in ('multiplier', 'level', 'level_label', 'increase_percent')},
+                'demand': {key: status[key] for key in ('multiplier', 'level', 'level_label', 'increase_percent',
+                                                        'reason', 'reason_label')},
                 'connectors': connectors}
 
     def _demand(self, station):
@@ -543,20 +551,28 @@ class DemoApi(OwnerApiMixin):
         intervals = [(_date(s['started_at'] or s['created_at']), _date(s['ended_at']) if s['ended_at'] else None)
                      for s in sessions]
         starts = sum(1 for s in sessions if _date(s['created_at']) >= current - timedelta(hours=1))
-        local_now = current.astimezone(timezone(timedelta(hours=-3))).replace(tzinfo=None)  # Brasília, sem tzdata
         return pricing.demand_status(self._pricing.get(station['id']), {
             'connectors': len(points), 'in_use': in_use, 'reserved': reserved,
             'busy_15m': pricing.busy_fraction(intervals, current, len(points)),
-            'starts_60m': starts, 'baseline_60m': 0, 'local_now': local_now})
+            'starts_60m': starts, 'baseline_60m': 0, 'local_now': _local(current)})
+
+    def _scheduled_base(self, point, moment):
+        """Tarifa base do ponto em ``moment`` (tarifação por horário do dono), como a API."""
+        rules = pricing.stored_rules(self._pricing.get(point['station_id']))
+        return pricing.base_now(pricing.active_interval(rules, _local(moment)), point['id'], point['price_per_kwh'])
 
     def _pricing_payload(self, station):
         status = self._demand(station)
         points = [p for p in self._points.values() if p['station_id'] == station['id']]
+        connectors = []
+        for p in points:
+            current, price = pricing.connector_price(status, p['id'], p['price_per_kwh'])
+            connectors.append({'id': p['id'], 'public_code': p['public_code'], 'active': p['active'],
+                               'connector_type': p['connector_type'], 'retired': p['retired'],
+                               'base_price_per_kwh': p['price_per_kwh'], 'current_base_price_per_kwh': str(current),
+                               'current_price_per_kwh': str(price)})
         return {'rules': pricing.stored_rules(self._pricing.get(station['id'])), 'status': status,
-                'connectors': [{'id': p['id'], 'public_code': p['public_code'], 'active': p['active'],
-                                'base_price_per_kwh': p['price_per_kwh'],
-                                'current_price_per_kwh': str(pricing.dynamic_price(p['price_per_kwh'], status['multiplier']))}
-                               for p in points]}
+                'connectors': connectors}
 
     def _operation_row(self, record, kind):
         if record is None:
@@ -565,11 +581,12 @@ class DemoApi(OwnerApiMixin):
         station = self._stations[point['station_id']]
         result = {**record, 'station_id': station['id'], 'station_name': station['name'],
                   'station_address': station['address'], 'connector': {key: point[key] for key in _PUBLIC_POINT}}
-        if kind == 'reservation' and str(record.get('demand_multiplier') or '1.00') != '1.00':
-            # Como a API: o ponto da reserva mostra o preço travado ao reservar.
-            result['connector'].update(
-                price_per_kwh=str(pricing.dynamic_price(point['price_per_kwh'], record['demand_multiplier'])),
-                base_price_per_kwh=point['price_per_kwh'])
+        if kind == 'reservation':
+            # Como a API: o ponto da reserva mostra o preço travado ao reservar (base do horário × demanda).
+            locked = pricing.dynamic_price(self._scheduled_base(point, _date(record['created_at'])),
+                                           record.get('demand_multiplier') or '1.00')
+            if locked != Decimal(str(point['price_per_kwh'])):
+                result['connector'].update(price_per_kwh=str(locked), base_price_per_kwh=point['price_per_kwh'])
         if kind == 'session':
             device = self._device_for(point['id'])
             result['online'] = bool(device and device['online'])
@@ -593,8 +610,10 @@ class DemoApi(OwnerApiMixin):
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'pricing' and method in ('GET', 'PUT'):
             station = self._owned(parts[1])
             if method == 'PUT':
+                ids = [p['id'] for p in self._points.values() if p['station_id'] == station['id']]
                 try:
-                    self._pricing[station['id']] = pricing.clean_rules(body)
+                    self._pricing[station['id']] = pricing.clean_rules(pricing.merge_rules(
+                        pricing.stored_rules(self._pricing.get(station['id'])), body, ids))
                 except ValueError as error:
                     _fail(str(error), 'invalid_pricing')
             return self._pricing_payload(station)
@@ -1000,12 +1019,14 @@ class DemoApi(OwnerApiMixin):
             discount = coupon['discount_percent']
         multiplier = ((reservation or {}).get('demand_multiplier')
                       or self._demand(self._stations[point['station_id']])['multiplier'])
+        # Base do horário: a do momento da reserva ou a de agora (como a API).
+        base = str(self._scheduled_base(point, _date(reservation['created_at']) if reservation else self._now()))
         sid = self._id('session')
         session = {'id': sid, 'user_id': _USER, 'connector_id': point['id'], 'reservation_id': reservation_id,
                    'status': 'starting', 'created_at': self._iso(), 'started_at': None, 'ended_at': None,
                    'max_duration_minutes': duration, 'max_cost': maximum,
-                   'price_per_kwh': str(pricing.dynamic_price(point['price_per_kwh'], multiplier)),
-                   'base_price_per_kwh': point['price_per_kwh'], 'demand_multiplier': multiplier,
+                   'price_per_kwh': str(pricing.dynamic_price(base, multiplier)),
+                   'base_price_per_kwh': base, 'demand_multiplier': multiplier,
                    'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': start_soc,
                    'start_soc_percent': start_soc, 'battery_kwh': battery, 'soc_source': soc_source, 'source': 'simulated',
                    'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None}

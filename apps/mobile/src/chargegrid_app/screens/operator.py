@@ -501,7 +501,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8),
         design.section_label('Tempo por recarga'),
         duration_box,
-        note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifas, na tela do posto.'),
+        note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifa, na tela do posto.'),
     ]
     if connector:
         controls += [active_box, note('O posto também precisa estar ativo para o ponto aparecer na busca.')]
