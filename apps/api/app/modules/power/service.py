@@ -183,7 +183,7 @@ def record_decision(db, station, decision, envelopes, labels):
     digest = balancing.fingerprint(snap)
     last = db.scalar(
         select(PowerDecision).where(PowerDecision.station_id == station.id)
-        .order_by(PowerDecision.id.desc()).limit(1)
+        .order_by(PowerDecision.created_at.desc(), PowerDecision.id.desc()).limit(1)
     )
     if last and last.input_hash == digest:
         return last
@@ -509,7 +509,7 @@ def station_view(db, station):
         rows.append(entry)
     decisions = db.scalars(
         select(PowerDecision).where(PowerDecision.station_id == station.id)
-        .order_by(PowerDecision.id.desc()).limit(20)
+        .order_by(PowerDecision.created_at.desc(), PowerDecision.id.desc()).limit(20)
     ).all()
     total = sum(envelopes.values(), ZERO)
     return {
