@@ -23,9 +23,11 @@ from .modules.economics.routes import router as economics_router
 from .modules.geo.routes import router as geo_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
+from .modules.payments import receipt as payments_receipt
 from .modules.payments import service as payments_service
 from .modules.payments.kiosk import router as payments_pages
 from .modules.payments.routes import router as payments_router
+from .modules.power import receipt as power_receipt
 from .modules.power.routes import router as power_router
 from .modules.pricing.routes import router as pricing_router
 from .modules.receipts.routes import router as receipts_router
@@ -63,6 +65,9 @@ for router in (
 app.include_router(payments_pages)
 # Rebalanceamento de potência ao vivo (painel do vendedor e motorista).
 app.include_router(power_router, prefix="/v1")
+# Recibo e margem: pagamento acertado (Stripe teste) e mudanças de potência confirmadas por ACK.
+payments_receipt.install()
+power_receipt.install()
 
 
 @app.get("/health")
