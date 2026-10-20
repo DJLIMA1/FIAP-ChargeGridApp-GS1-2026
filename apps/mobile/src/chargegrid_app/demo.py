@@ -49,6 +49,35 @@ _REPORT_TZ = timezone(timedelta(hours=-3))
 _PUBLIC_POINT = ('id', 'public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes')
 
 
+_DEMO_ADDRESSES = (
+    ('Avenida Paulista', '1000', 'Bela Vista', '01310-100', -23.5648865, -46.651918),
+    ('Rua Augusta', '1500', 'Consolação', '01304-001', -23.5565983, -46.6587),
+    ('Avenida Brigadeiro Faria Lima', '3477', 'Itaim Bibi', '04538-133', -23.5868, -46.6812),
+    ('Avenida Rebouças', '3970', 'Pinheiros', '05402-600', -23.5726463, -46.6966),
+    *((loc['address'].split(', ')[0], loc['address'].split(', ')[1], loc['address'].split(', ')[2], None,
+       loc['latitude'], loc['longitude']) for loc in DEMO_LOCATIONS),
+)
+
+
+def demo_address_suggestions(query):
+    """Autocomplete da conta demo: endereços fixos de São Paulo, sem consultar serviços externos."""
+    import unicodedata
+
+    def plain(value):
+        return ''.join(c for c in unicodedata.normalize('NFKD', value.casefold()) if not unicodedata.combining(c))
+    words = [w for w in plain(query).replace(',', ' ').split() if not w.isdigit()]
+    items = []
+    if len(query.strip()) >= 3 and words:
+        for street, number, district, postcode, lat, lng in _DEMO_ADDRESSES:
+            haystack = plain(f'{street} {district}')
+            if all(any(token.startswith(w) or w in token for token in haystack.split()) for w in words):
+                item = {'street': street, 'number': number, 'district': district, 'city': 'São Paulo', 'state': 'SP',
+                        'postcode': postcode, 'latitude': lat, 'longitude': lng}
+                item['label'] = f'{street}, {number}, {district}, São Paulo - SP'
+                items.append(item)
+    return {'items': items[:6], 'available': True, 'attribution': 'Endereços de demonstração (sem consulta externa)'}
+
+
 def _fail(message, code='validation_error', status=422):
     raise ApiError(message, status, code)
 
@@ -520,6 +549,8 @@ class DemoApi(OwnerApiMixin):
 
     def _dispatch(self, method, path, body, params):
         parts = path.split('/')
+        if (method, path) == ('GET', 'geo/address-suggestions'):
+            return demo_address_suggestions((params or {}).get('q') or '')
         if path == 'me':
             if method == 'PATCH':
                 _fields(body, ('name', 'phone', 'vehicle_description'))

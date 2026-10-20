@@ -9,6 +9,7 @@ recalculada ao vivo enquanto os controles se movem.
 """
 
 
+import asyncio
 from decimal import Decimal
 
 import flet as ft
@@ -17,7 +18,7 @@ from chargegrid_core import power as power_rules
 from chargegrid_core.formatting import kwh
 
 from ..api_client import ApiError
-from ..ui import design, theme
+from ..ui import address_autocomplete, design, theme
 
 NEXT_START_NOTE = ('Recargas em andamento mantêm a potência com que começaram; '
                    'os novos limites valem a partir da próxima recarga.')
@@ -161,7 +162,17 @@ def _data_page(app, station, code):
         app.notice('Dados da estação salvos.')
 
     async def blur():
+        # Tocar numa sugestão tira o foco antes do clique: espera a escolha (que já salva) e só
+        # então salva o texto digitado, para não gravar o endereço pela metade.
+        await asyncio.sleep(0.35)
         await persist()
+
+    async def picked(item):
+        extra = {}
+        if item.get('latitude') is not None and item.get('longitude') is not None:
+            extra = {'latitude': str(item['latitude']), 'longitude': str(item['longitude'])}
+        await persist(extra)
+    suggestions = address_autocomplete.attach(app, address, picked)
 
     async def choose(value):
         active = value == 'on'
@@ -186,7 +197,8 @@ def _data_page(app, station, code):
         heading(app, 'Dados de estação'),
         ft.Container(ft.Column([
             design.labeled('Nome da estação', _round(name), gap=14),
-            design.labeled('Endereço', _round(address), gap=14),
+            design.labeled('Endereço', ft.Column([_round(address), suggestions], spacing=6,
+                                                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH), gap=14),
             design.labeled('Identificador', _round(ident), gap=14),
             ft.Container(design.labeled('Status', holder, gap=5, strong=False), margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
         ], spacing=15), margin=ft.Margin(left=0, top=16, right=0, bottom=0)),

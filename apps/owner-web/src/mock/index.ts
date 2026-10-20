@@ -145,6 +145,14 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
         model: 'mock-ia',
       })
   }
+  if (path === '/geo/address-suggestions' && method === 'GET') {
+    const words = (p.get('q') ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[\s,]+/).filter((w) => w && !/^\d+$/.test(w))
+    const items = data.ADDRESS_SUGGESTIONS.filter((item) => {
+      const haystack = `${item.street} ${item.district}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      return words.length > 0 && words.every((w) => haystack.includes(w))
+    })
+    return json({ items, available: true, attribution: 'Dados © colaboradores do OpenStreetMap' })
+  }
   const stationMatch = /^\/stations\/([^/]+)$/.exec(path)
   if (stationMatch) {
     const target = data.STATIONS.find((s) => s.id === stationMatch[1])

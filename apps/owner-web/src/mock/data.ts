@@ -311,3 +311,21 @@ export const COUPONS: Coupon[] = [
   { id: id('b0', 2), operator_id: id('f0', 1), station_id: STATIONS[2].id, code: 'MADRUGADA15', description: 'Recargas entre 22h e 6h na Villa Olímpia', discount_percent: 15, valid_until: iso(Date.now() + 20 * DAY), active: true },
   { id: id('b0', 3), operator_id: id('f0', 1), station_id: STATIONS[1].id, code: 'INAUGURA20', description: 'Inauguração da Marginal Pinheiros', discount_percent: 20, valid_until: iso(Date.now() - 12 * DAY), active: false },
 ]
+
+export const ADDRESS_SUGGESTIONS = [
+  ['Avenida Paulista', '1000', 'Bela Vista', '01310-100', -23.5648865, -46.651918],
+  ['Avenida Paulista', '1811', 'Bela Vista', '01311-200', -23.5604471, -46.6580894],
+  ['Rua Augusta', '1500', 'Consolação', '01304-001', -23.5565983, -46.6587],
+  ['Avenida Brigadeiro Faria Lima', '3477', 'Itaim Bibi', '04538-133', -23.5868, -46.6812],
+  ['Avenida Rebouças', '3970', 'Pinheiros', '05402-600', -23.5726463, -46.6966],
+].map(([street, number, district, postcode, latitude, longitude]) => ({
+  label: `${street}, ${number}, ${district}, São Paulo - SP`,
+  street: street as string,
+  number: number as string,
+  district: district as string,
+  city: 'São Paulo',
+  state: 'SP',
+  postcode: postcode as string,
+  latitude: latitude as number,
+  longitude: longitude as number,
+}))

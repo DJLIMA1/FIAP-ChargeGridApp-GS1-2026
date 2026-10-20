@@ -1,5 +1,6 @@
 import type { ApiClient } from './client'
 import type {
+  AddressSuggestions,
   AlertItem,
   Connector,
   Coupon,
@@ -52,6 +53,8 @@ export function endpoints(api: ApiClient) {
     stations: (signal?: AbortSignal) =>
       api.get<Page<Station>>('/operator/stations', { limit: 100, offset: 0 }, signal),
     station: (id: string, signal?: AbortSignal) => api.get<Station>(`/stations/${encodeURIComponent(id)}`, undefined, signal),
+    addressSuggestions: (q: string, signal?: AbortSignal) =>
+      api.get<AddressSuggestions>('/geo/address-suggestions', { q }, signal),
     patchStation: (id: string, body: StationPatch) => api.patch<Station>(`/stations/${encodeURIComponent(id)}`, body),
     patchConnector: (id: string, body: ConnectorPatch) =>
       api.patch<Connector>(`/connectors/${encodeURIComponent(id)}`, body),

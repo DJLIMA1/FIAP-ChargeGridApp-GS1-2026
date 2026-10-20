@@ -521,3 +521,19 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* Autocomplete de endereço (sugestões Photon/ViaCEP via API própria) */
+.autocomplete { position: relative; }
+.autocomplete .input { width: 100%; box-sizing: border-box; }
+.autocomplete-menu {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 6px);
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); overflow: hidden;
+}
+.autocomplete-menu ul { list-style: none; margin: 0; padding: 0; }
+.autocomplete-menu li { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; cursor: pointer; }
+.autocomplete-menu li + li { border-top: 1px solid var(--line); }
+.autocomplete-menu li[aria-selected='true'], .autocomplete-menu li:hover { background: var(--card-2); }
+.autocomplete-title { font-weight: 600; font-size: 14px; color: var(--text); }
+.autocomplete-detail { font-size: 12.5px; color: var(--muted); }
+.autocomplete-note { padding: 7px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
+import type { StationPatch } from '../api/endpoints'
 import type { Amenity, Connector, Station } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
@@ -27,6 +29,8 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
   const [name, setName] = useState(station.name)
   const [address, setAddress] = useState(station.address)
   const [active, setActive] = useState(station.active)
+  // Coordenadas da sugestão escolhida: o mapa do app passa a apontar para o novo endereço.
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [touched, setTouched] = useState(false)
@@ -35,17 +39,21 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
     setName(station.name)
     setAddress(station.address)
     setActive(station.active)
+    setCoords(null)
   }, [station])
 
   const nameError = validateText(name, 'o nome da estação', 100)
   const addressError = validateText(address, 'o endereço', 300)
   const changes = useMemo(() => {
-    const body: { name?: string; address?: string; active?: boolean } = {}
+    const body: StationPatch = {}
     if (name.trim() !== station.name) body.name = name.trim()
-    if (address.trim() !== station.address) body.address = address.trim()
+    if (address.trim() !== station.address) {
+      body.address = address.trim()
+      if (coords) Object.assign(body, coords)
+    }
     if (active !== station.active) body.active = active
     return body
-  }, [name, address, active, station])
+  }, [name, address, active, coords, station])
   const dirty = Object.keys(changes).length > 0
 
   const save = async (event: FormEvent) => {
@@ -86,7 +94,18 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
           </Field>
           <div className="full">
             <Field label="Endereço" error={touched || address !== station.address ? addressError : null}>
-              <input className="input input-big" value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} aria-invalid={Boolean(addressError)} />
+              <AddressAutocomplete
+                value={address}
+                saved={station.address}
+                invalid={Boolean(addressError)}
+                onChange={(next) => {
+                  setAddress(next)
+                  setCoords(null)
+                }}
+                onPick={(item) =>
+                  setCoords(item.latitude !== null && item.longitude !== null ? { latitude: item.latitude, longitude: item.longitude } : null)
+                }
+              />
             </Field>
           </div>
         </div>
@@ -99,6 +118,7 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
               setName(station.name)
               setAddress(station.address)
               setActive(station.active)
+              setCoords(null)
               setError(null)
             }}
           >

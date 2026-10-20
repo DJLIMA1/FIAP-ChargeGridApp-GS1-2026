@@ -10,7 +10,7 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.location import geocode_address
-from ..ui import design, theme
+from ..ui import address_autocomplete, design, theme
 from ..ui.components import money
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title, status_card
 
@@ -132,6 +132,13 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         ident_box = setup_field('Identificador', point.get('public_code', ''), read_only=True, gap=14, height=FIELD_HEIGHT)
         name, address, latitude, longitude = (box.controls[1] for box in
                                               (name_box, address_box, latitude_box, longitude_box))
+
+        def picked(item):
+            # Sugestão escolhida já traz as coordenadas: dispensa "Buscar coordenadas".
+            if item.get('latitude') is not None and item.get('longitude') is not None:
+                latitude.value, longitude.value = str(item['latitude']), str(item['longitude'])
+                latitude.error_text = longitude.error_text = None
+        address_box.controls.append(address_autocomplete.attach(app, address, picked))
 
         async def locate():
             _required(address, 'endereço', 300)

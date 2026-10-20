@@ -239,3 +239,23 @@ export interface OwnerInsights {
 export interface ApiErrorBody {
   error?: { code?: string; message?: string; fields?: { field: string; message: string }[] }
 }
+
+/** Sugestão de endereço (`GET /geo/address-suggestions`: Photon/OpenStreetMap ou ViaCEP). */
+export interface AddressSuggestion {
+  label: string
+  street: string | null
+  number: string | null
+  district: string | null
+  city: string | null
+  state: string | null
+  postcode: string | null
+  latitude: number | null
+  longitude: number | null
+  place?: string
+}
+
+export interface AddressSuggestions {
+  items: AddressSuggestion[]
+  available: boolean
+  attribution: string
+}
