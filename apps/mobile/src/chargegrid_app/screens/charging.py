@@ -380,7 +380,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await app.api.request('POST',f"charging-sessions/{session['id']}/stop",key=key)
             await app.go('charging',session_id=session['id'])
         details = ft.Container(details_card(session,demo=demo))
-        offline = ft.Container(offline_alert(session,demo=demo))
+        offline = ft.Container(offline_alert(session,demo=demo),data='offline-slot')
+        offline.visible = offline.content is not None
         live = {}
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
@@ -390,6 +391,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 return
             details.content = details_card(current,demo=demo)
             offline.content = offline_alert(current,demo=demo)
+            offline.visible = offline.content is not None
             for name,value in zip(('percent','cost','power','remaining'),_metrics(current)):
                 if name in live:
                     live[name].value = value

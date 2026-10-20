@@ -1,6 +1,9 @@
 import unittest
 
+import flet as ft
+
 from chargegrid_app.screens import charging
+from test_behavior import descendants
 from test_demo_consumer import CONTEXT, HandlerApp, texts
 
 REMOVED = ('JORNADA DA RECARGA', 'Ver eventos da sessão', 'Atualiza a cada', 'Detalhes da recarga',
@@ -13,12 +16,12 @@ def session(**extra):
             'price_per_kwh': '1.89', **extra}
 
 
-async def render(demo=True, **extra):
+async def render(demo=True, want_screen=False, **extra):
     app = HandlerApp()
     app.api.is_demo = demo
     app.api.request.side_effect = [session(**extra)]
     screen = await charging.build(app)
-    return texts(screen)
+    return screen if want_screen else texts(screen)
 
 
 class ChargingDetailsTests(unittest.IsolatedAsyncioTestCase):
@@ -41,3 +44,12 @@ class ChargingDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Encerramento', text)
         self.assertIn('Parada solicitada', text)
         self.assertNotIn('offline', text)
+
+    async def test_offline_slot_invisible_when_online(self):
+        def slots(screen):
+            return [c for c in descendants(screen) if isinstance(c, ft.Container) and c.data == 'offline-slot']
+        online = slots(await render(want_screen=True))
+        self.assertTrue(online)
+        self.assertTrue(all(c.visible is False for c in online))
+        offline = slots(await render(want_screen=True, online=False))
+        self.assertTrue(any(c.content is not None and c.visible for c in offline))
