@@ -10,6 +10,10 @@ hospedada da Stripe (``checkout_url``, aberta no navegador com ``ft.UrlLauncher`
 * Textos: selo do pagamento, acerto "Cobrado R$ X · Devolvido R$ Y (teste)" e prazo ``mm:ss``.
 
 Conta demo: ``demo_payments`` responde as mesmas rotas sem rede.
+
+Modo apresentação (``vehicle_state.presentation_mode``): a Stripe fica de fora por completo — o app não
+consulta ``payments/config``, não cria pagamento nem abre o navegador, e volta ao pagamento simulado da
+0.6.x (Saldo / Pix / Cartão). ``enabled(app)`` é a chave usada pelas telas.
 """
 
 from datetime import datetime, timezone
@@ -18,6 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
+from . import vehicle_state
 
 AWAITING = ('awaiting_payment',)
 DECLINED = ('declined',)
@@ -27,6 +32,13 @@ SETTLING = ('due', 'settling')
 METHOD_LABEL = 'Cartão ou Pix · Stripe (teste)'
 TEST_CARD = '4242 4242 4242 4242'
 _CENT = Decimal('0.01')
+PRESENTATION_PREPAY = ('Este posto exige pagamento pela Stripe; desligue o Modo apresentação ou desative a '
+                       'exigência no painel.')
+
+
+def enabled(app):
+    """``False`` no modo apresentação: a Stripe não é usada (pagamento simulado da 0.6.x)."""
+    return not vehicle_state.presentation_mode(app)
 
 
 async def config(app, refresh=False):
