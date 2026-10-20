@@ -18,6 +18,11 @@ void panelTick() {}
 #include "panel_fonts.h"
 #include "panel_network.h"
 #include "panel_claim.h"
+#ifdef CHARGEGRID_KIOSK
+#include "kiosk_flow.h"
+#include "ui/router.h"
+#include "ui/strings_ptbr.h"
+#endif
 
 
 // O port da placa deve chamar lv_disp_drv_register/lv_indev_drv_register antes
@@ -58,6 +63,9 @@ char lastClaimQr[80]{};
 // 0.7.0: QR de pagamento (modo teste) na tela Pronto e botão "Desconectar" da permanência.
 lv_obj_t *kioskCard, *kioskTitle, *kioskDetail, *kioskQrBox, *kioskQr, *disconnectButton;
 char lastKioskQr[164]{};
+// 0.8.0: botão "Carregar agora" do totem na tela Pronto (oculto com o totem desligado).
+lv_obj_t* kioskStartButton = nullptr;
+lv_obj_t* panelScreen = nullptr;
 unsigned long logoPressedAt = 0, clearArmedAt = 0;
 volatile bool configSaveRequested = false, configClearRequested = false;
 char requestedSsid[33]{}, requestedPassword[65]{};
@@ -78,6 +86,7 @@ struct PanelSnapshot {
   char kioskUrl[164], kioskDetail[80];
   uint8_t kioskTone; // 0 neutro, 1 aguardando, 2 confirmado, 3 recusado
   bool showKiosk, showDisconnect;
+  bool showKioskStart;   // 0.8.0: totem ligado e ponto livre na tela Pronto
   char soc[8], socDetail[32];
   uint8_t socProgress;
   bool showSoc;
@@ -140,6 +149,9 @@ lv_obj_t* hline(lv_obj_t* parent, int y) {
 }
 
 void stopClicked(lv_event_t*) { localStopRequested = true; }
+#ifdef CHARGEGRID_KIOSK
+void kioskStartClicked(lv_event_t*) { ui::pushAction(kiosk::Action::StartFlow); }
+#endif
 void disconnectClicked(lv_event_t*) { localDisconnectRequested = true; }
 
 // Números em pt-BR (vírgula decimal) para os textos novos do painel.
@@ -252,11 +264,34 @@ void applyAlertTheme(bool maintenance) {
   lv_obj_set_style_line_color(pumpHose, body, 0);
 }
 
+// Estado do último desenho das telas atuais. Zerado quando as telas são reconstruídas
+// depois de uma tela do totem (objetos novos começam com os valores padrão).
+struct RefreshCache {
+  bool painted = false, lastOnline = false;
+  PanelMode lastMode = PanelMode::Message;
+  uint8_t lastCodeProgress = 255, lastSocProgress = 255, lastKioskTone = 255;
+  bool lastKioskStart = false;
+} cache;
+
+#ifdef CHARGEGRID_KIOSK
+kiosk::KioskView kioskSnapshot{};   // publicado em panelTick sob snapshotMux
+#endif
+
 void refresh() {
   PanelSnapshot current;
+#ifdef CHARGEGRID_KIOSK
+  static kiosk::KioskView kioskCurrent;
+  taskENTER_CRITICAL(&snapshotMux);
+  current = snapshot;
+  kioskCurrent = kioskSnapshot;
+  taskEXIT_CRITICAL(&snapshotMux);
+  // Tela do totem na frente: as telas atuais estão liberadas e não são atualizadas.
+  if (ui::routerUpdate(kioskCurrent)) return;
+#else
   taskENTER_CRITICAL(&snapshotMux);
   current = snapshot;
   taskEXIT_CRITICAL(&snapshotMux);
+#endif
   // LVGL invalidates objects even when a setter receives the same value. On
   // this RGB panel, rewriting the whole UI every 500 ms causes needless flushes.
   auto setTextIfChanged = [](lv_obj_t* target, const char* value) {
@@ -267,8 +302,9 @@ void refresh() {
     if (hidden) lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(target, LV_OBJ_FLAG_HIDDEN);
   };
-  static bool painted = false, lastOnline = false;
-  static PanelMode lastMode = PanelMode::Message;
+  bool& painted = cache.painted;
+  bool& lastOnline = cache.lastOnline;
+  PanelMode& lastMode = cache.lastMode;
   const bool alert = !current.showClaim &&
       (current.mode == PanelMode::Unavailable || current.mode == PanelMode::Maintenance);
   setTextIfChanged(statusLabel, current.status);
@@ -277,7 +313,7 @@ void refresh() {
   setTextIfChanged(codeCaptionLabel, current.codeCaption);
   setTextIfChanged(codeHintLabel, current.codeHint);
   setTextIfChanged(codeTimerLabel, current.codeTimer);
-  static uint8_t lastCodeProgress = 255;
+  uint8_t& lastCodeProgress = cache.lastCodeProgress;
   if (lastCodeProgress != current.codeProgress) {
     lv_bar_set_value(codeProgressBar, current.codeProgress, LV_ANIM_OFF);
     lastCodeProgress = current.codeProgress;
@@ -297,7 +333,7 @@ void refresh() {
   setTextIfChanged(messageDetail, current.messageDetail);
   setTextIfChanged(socLabel, current.soc);
   setTextIfChanged(socDetailLabel, current.socDetail);
-  static uint8_t lastSocProgress = 255;
+  uint8_t& lastSocProgress = cache.lastSocProgress;
   if (lastSocProgress != current.socProgress) {
     lv_bar_set_value(socBar, current.socProgress, LV_ANIM_OFF);
     lastSocProgress = current.socProgress;
@@ -325,7 +361,7 @@ void refresh() {
       lv_qrcode_update(kioskQr, current.kioskUrl, std::strlen(current.kioskUrl)) == LV_RES_OK)
     snprintf(lastKioskQr, sizeof(lastKioskQr), "%s", current.kioskUrl);
   setTextIfChanged(kioskDetail, current.kioskDetail);
-  static uint8_t lastKioskTone = 255;
+  uint8_t& lastKioskTone = cache.lastKioskTone;
   if (lastKioskTone != current.kioskTone) {
     const lv_color_t tones[] = {COLOR_MUTED, COLOR_AMBER, COLOR_GREEN, LV_COLOR_MAKE(0xFF, 0x6B, 0x70)};
     lv_obj_set_style_text_color(kioskDetail, tones[current.kioskTone & 3], 0);
@@ -367,6 +403,18 @@ void refresh() {
       memset(lastClaimQr, 0, sizeof(lastClaimQr));
     }
   }
+#ifdef CHARGEGRID_KIOSK
+  // Totem ligado: "Carregar agora" à esquerda, sob o título; o cartão do código vira
+  // "Tem o app?". Desligado: nada muda (mesmos objetos, mesmas posições).
+  const bool kioskStart = detail && mode == PanelMode::Ready && current.showKioskStart;
+  setHiddenIfChanged(kioskStartButton, !kioskStart);
+  if (kioskStart != cache.lastKioskStart || !painted) {
+    lv_obj_set_y(leftBlock, kioskStart ? 100 : 124);
+    lv_obj_set_height(leftBlock, kioskStart ? 150 : 200);
+    lv_obj_set_style_pad_row(leftBlock, kioskStart ? 16 : 36, 0);
+    cache.lastKioskStart = kioskStart;
+  }
+#endif
   lastOnline = current.online; lastMode = current.mode; painted = true;
 }
 
@@ -515,6 +563,19 @@ void buildDark(lv_obj_t* screen) {
   lv_obj_t* disconnectText = label(disconnectButton, "Desconectar", &chargegrid_body_22, LV_COLOR_MAKE(0x10, 0x10, 0x10));
   lv_obj_center(disconnectText);
   lv_obj_add_flag(disconnectButton, LV_OBJ_FLAG_HIDDEN);
+
+#ifdef CHARGEGRID_KIOSK
+  // Totem: botão grande (alvo de 390x72) na coluna do título. Só aparece com o totem ligado.
+  kioskStartButton = lv_btn_create(darkRoot);
+  lv_obj_set_pos(kioskStartButton, 39, 256); lv_obj_set_size(kioskStartButton, 390, 72);
+  lv_obj_set_style_bg_color(kioskStartButton, COLOR_RED, 0);
+  lv_obj_set_style_radius(kioskStartButton, 14, 0);
+  lv_obj_set_style_shadow_width(kioskStartButton, 0, 0);
+  lv_obj_add_event_cb(kioskStartButton, kioskStartClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* kioskStartText = label(kioskStartButton, kiosk::str::kStartButton, &chargegrid_brand_30, lv_color_white());
+  lv_obj_center(kioskStartText);
+  lv_obj_add_flag(kioskStartButton, LV_OBJ_FLAG_HIDDEN);
+#endif
 
   rowLineTop = hline(darkRoot, 340);
   rowLineBottom = hline(darkRoot, 432);
@@ -665,7 +726,95 @@ void buildAlert(lv_obj_t* screen) {
   lv_obj_set_pos(alertSub, 54, 324);
   lv_obj_add_flag(alertRoot, LV_OBJ_FLAG_HIDDEN);
 }
+
+#ifdef CHARGEGRID_KIOSK
+// Pool LVGL de 64 KB: enquanto uma tela do totem está aberta, as telas atuais (escuras e
+// alerta, ~40 KB no host) são apagadas e reconstruídas ao voltar. A tela de manutenção
+// (Wi-Fi) fica, porque é aberta por cima delas.
+void releasePanelScreens() {
+  lv_obj_del(darkRoot);
+  lv_obj_del(alertRoot);
+  darkRoot = alertRoot = nullptr;
+  kioskStartButton = nullptr;
+}
+void restorePanelScreens() {
+  buildDark(panelScreen);
+  buildAlert(panelScreen);
+  lv_obj_move_foreground(configScreen);
+  cache = RefreshCache{};
+  memset(lastKioskQr, 0, sizeof(lastKioskQr));
+  memset(lastClaimQr, 0, sizeof(lastClaimQr));
+}
+#endif
 }  // namespace
+
+#ifdef CHARGEGRID_KIOSK
+kiosk::Flow kioskFlow;
+
+namespace {
+void copyText(char* out, size_t size, const char* text) { snprintf(out, size, "%s", text ? text : ""); }
+
+// Fatos do ponto para o fluxo do totem (mesma tarefa de apply()/tick(): sem corrida).
+void kioskFacts(kiosk::Facts& f, const PanelSnapshot& next) {
+  f.nowMs = millis();
+  const bool authRejected = lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403;
+  f.online = panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && !authRejected &&
+             hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
+  f.pointReady = panelIntegrationEnabled && next.mode == PanelMode::Ready && !next.showClaim;
+  f.reserved = state == "reserved" || kioskSync.reservationPresent;
+  f.carConnected = overstayView();
+  f.maintenance = !connectorActive || (connectorOwnershipKnown && !panelOwned);
+  f.charging = state == "charging";
+  f.stopped = state == "stopped";
+  f.sessionAuthorized = kioskSync.sessionPresent;
+  copyText(f.sessionId, sizeof(f.sessionId), sessionId.c_str());
+  copyText(f.endReason, sizeof(f.endReason), endReason.c_str());
+  f.energyKwh = sessionId.length() ? reading.energyWh / 1000.0f : 0;
+  const float estimatedCost = reading.energyWh / 1000.0f * price * (1.0f - discount / 100.0f);
+  f.costCents = sessionId.length() && sessionPricingKnown ? static_cast<int32_t>(lroundf(estimatedCost * 100)) : -1;
+  f.capCents = maxCost >= 0 ? static_cast<int32_t>(lroundf(maxCost * 100)) : -1;
+  f.appliedPowerKw = state == "charging" ? (sessionAppliedPowerKw >= 0 ? sessionAppliedPowerKw : chargePowerW / 1000.0f) : -1;
+  copyText(f.powerReason, sizeof(f.powerReason), powerReasonShort.c_str());
+  f.socPercent = sessionId.length() && sessionSocKnown() ? reading.socPercent : -1;
+  if (state == "charging") {
+    const unsigned long elapsed = millis() - started;
+    f.elapsedS = elapsed / 1000UL;
+    f.remainingS = elapsed < maxDurationMs ? (maxDurationMs - elapsed) / 1000UL : 0;
+  }
+  if (f.carConnected) {
+    copyText(f.overstayTitle, sizeof(f.overstayTitle), next.messageTitle);
+    copyText(f.overstayDetail, sizeof(f.overstayDetail), next.messageDetail);
+  }
+  f.sync = kioskSync;
+}
+
+void kioskTick(PanelSnapshot& next) {
+  static kiosk::Facts facts;   // ~1 KB: fora da pilha da tarefa
+  facts = kiosk::Facts{};
+  kioskFacts(facts, next);
+  kioskFlow.facts(facts);
+  ui::Input input;
+  while (ui::popInput(input)) {
+    if (input.key) kioskFlow.key(input.value, millis());
+    else kioskFlow.touch(input.action, millis());
+  }
+  if (kioskFlow.takeLocalStop()) requestLocalSafeStop();
+  if (kioskFlow.takeLocalDisconnect()) requestLocalDisconnect();
+  char order[kiosk::kIdSize];
+  if (kioskFlow.takePersist(order, sizeof(order))) kioskPersistOrder(order);
+  next.showKioskStart = kioskFlow.canStart();
+  if (next.showKioskStart && next.mode == PanelMode::Ready) {
+    snprintf(next.instruction, sizeof(next.instruction), "%s", kiosk::str::kStartHint);
+    snprintf(next.codeCaption, sizeof(next.codeCaption), "%s", kiosk::str::kCodeCaption);
+  }
+}
+}  // namespace
+
+void kioskResume(const char* orderId, uint32_t seed) {
+  kioskFlow.setSeed(seed);
+  kioskFlow.resume(orderId, millis());
+}
+#endif
 
 void panelSetup() {
   if (!chargegridPanelHardwareSetup()) {
@@ -674,6 +823,7 @@ void panelSetup() {
   }
   lvgl_port_lock(-1);
   lv_obj_t* screen = lv_scr_act();
+  panelScreen = screen;
   lv_obj_set_style_bg_color(screen, COLOR_BG, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -727,6 +877,9 @@ void panelSetup() {
   lv_obj_set_style_bg_color(configKeyboard, LV_COLOR_MAKE(0x2A, 0x2A, 0x2A), LV_PART_ITEMS);
   lv_obj_set_style_text_color(configKeyboard, COLOR_TEXT, LV_PART_ITEMS);
   lv_obj_add_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
+#ifdef CHARGEGRID_KIOSK
+  ui::routerInit(screen, releasePanelScreens, restorePanelScreens);
+#endif
   ready = true;
   panelTick();
   refresh();
@@ -738,6 +891,12 @@ void panelTick() {
   if (!ready) return;
   if (localStopRequested) {
     localStopRequested = false;
+#ifdef CHARGEGRID_KIOSK
+    // Totem ligado: Encerrar de uma recarga do app pede confirmação (T7). Em qualquer
+    // outro estado do fluxo a parada é imediata, como sempre.
+    if (kioskFlow.state() == kiosk::State::Idle && state == "charging") kioskFlow.touch(kiosk::Action::Stop, millis());
+    else
+#endif
     requestLocalSafeStop();
   }
   if (localDisconnectRequested) {
@@ -936,9 +1095,17 @@ void panelTick() {
              state == "idle" && !sessionId.length() && !next.showClaim && !reading.connected) {
     next = batteryFullHeld;
   } else batteryFullHoldUntil = 0;
+#ifdef CHARGEGRID_KIOSK
+  kioskTick(next);
+  taskENTER_CRITICAL(&snapshotMux);
+  snapshot = next;
+  kioskSnapshot = kioskFlow.view();
+  taskEXIT_CRITICAL(&snapshotMux);
+#else
   taskENTER_CRITICAL(&snapshotMux);
   snapshot = next;
   taskEXIT_CRITICAL(&snapshotMux);
+#endif
 }
 
 #endif

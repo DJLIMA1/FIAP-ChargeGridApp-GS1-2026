@@ -1,6 +1,33 @@
 #include "runtime.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include "kiosk_api.h"
+
+// Conexão TLS mantida entre syncs (keep-alive): sem novo handshake a cada envio,
+// o sync de 1 s em recarga custa ~100-300 ms em vez de 1-2 s. Compartilhada com as rotas
+// do totem (deviceRequest), que rodam no mesmo laço e nunca durante uma recarga.
+namespace {
+WiFiClientSecure deviceTls;
+HTTPClient deviceHttpClient;
+bool deviceClientReady = false;
+}  // namespace
+
+HTTPClient* deviceHttpBegin(const char* path) {
+  if (!deviceClientReady) {
+    deviceTls.setCACert(deviceRootCa());
+    deviceHttpClient.setReuse(true);
+    deviceHttpClient.setTimeout(3000);
+    deviceHttpClient.setConnectTimeout(3000);
+    deviceHttpClient.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    deviceClientReady = true;
+  }
+  if (!deviceHttpClient.begin(deviceTls, String(deviceApiBaseUrl()) + path)) { deviceTls.stop(); return nullptr; }
+  return &deviceHttpClient;
+}
+void deviceHttpEnd(int code) {
+  deviceHttpClient.end();
+  if (code <= 0) deviceTls.stop(); // conexão quebrada: o próximo envio refaz o handshake
+}
 
 bool probePanelFactoryIdentity(const String& payload) {
   String pendingId = pendingPanelFactoryCommand();
@@ -47,20 +74,9 @@ void syncDevice() {
   body["boot_id"] = bootId; body["sequence"] = ++sequence;
   fillSyncBody(body, !legacyBody);
   String payload; serializeJson(body, payload);
-  // Conexão TLS mantida entre syncs (keep-alive): sem novo handshake a cada envio,
-  // o sync de 1 s em recarga custa ~100-300 ms em vez de 1-2 s.
-  static WiFiClientSecure tls;
-  static HTTPClient http;
-  static bool clientReady = false;
-  if (!clientReady) {
-    tls.setCACert(deviceRootCa());
-    http.setReuse(true);
-    http.setTimeout(3000);
-    http.setConnectTimeout(3000);
-    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-    clientReady = true;
-  }
-  if (!http.begin(tls, String(deviceApiBaseUrl()) + "/v1/devices/sync")) { tls.stop(); return; }
+  HTTPClient* client = deviceHttpBegin("/v1/devices/sync");
+  if (!client) return;
+  HTTPClient& http = *client;
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String("Device ") + deviceAuthorizationKey());
   int code = http.POST(payload);
@@ -86,8 +102,7 @@ void syncDevice() {
       nextSync = changed ? millis() : millis() + constrain(seconds, 1UL, 30UL) * 1000UL;
     }
   }
-  http.end();
-  if (code <= 0) tls.stop(); // conexão quebrada: o próximo sync refaz o handshake
+  deviceHttpEnd(code);
   if (confirmedReset.length()) finishPanelFactoryReset(confirmedReset);
   else if (code == 401 && pendingPanelFactoryCommand().length()) probePanelFactoryIdentity(payload);
 }

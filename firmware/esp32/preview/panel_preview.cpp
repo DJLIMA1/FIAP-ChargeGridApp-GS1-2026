@@ -39,6 +39,7 @@ bool chargegridPanelHardwareSetup() { return true; }
 
 // O controlador real calcula o SoC exibido (simulado/celular) exatamente como na placa.
 #include "../src/sensors.cpp"
+#include "../src/kiosk_flow.cpp"
 #include "../src/charging_controller.cpp"
 #include "../src/panel_ui.cpp"
 

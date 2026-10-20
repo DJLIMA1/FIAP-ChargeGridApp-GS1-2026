@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 #include "runtime.h"
 #include "lvgl.h"
 #include "panel_claim.h"
@@ -70,15 +71,29 @@ void confirmPanelOwnership() {
   panelOwned = true; panelClaimToken = "";
   rememberPanelOwnership(claimStorage);
 }
+std::string persistedOrder = "<none>";
+void kioskPersistOrder(const char* orderId) { persistedOrder = orderId ? orderId : ""; }
 extern "C" bool lvgl_port_lock(int) { return true; }
 extern "C" bool lvgl_port_unlock() { return true; }
 bool chargegridPanelHardwareSetup() { return true; }
 
 #include "../../firmware/esp32/src/sensors.cpp"
 #include "../../firmware/esp32/src/charging_controller.cpp"
+#include "../../firmware/esp32/src/kiosk_flow.cpp"
 #include "../../firmware/esp32/src/panel_ui.cpp"
+#include "../../firmware/esp32/src/ui/widgets.cpp"
+#include "../../firmware/esp32/src/ui/router.cpp"
+#include "../../firmware/esp32/src/ui/view_choose.cpp"
+#include "../../firmware/esp32/src/ui/view_amount.cpp"
+#include "../../firmware/esp32/src/ui/view_review.cpp"
+#include "../../firmware/esp32/src/ui/view_pay.cpp"
+#include "../../firmware/esp32/src/ui/view_starting.cpp"
+#include "../../firmware/esp32/src/ui/view_live.cpp"
+#include "../../firmware/esp32/src/ui/view_confirm_stop.cpp"
+#include "../../firmware/esp32/src/ui/view_receipt.cpp"
+#include "../../firmware/esp32/src/ui/view_notice.cpp"
 
-static lv_color_t framebuffer[800 * 480], drawbuf[800 * 48];
+static lv_color_t framebuffer[800 * 480], drawbuf[800 * 48], panelIdleFrame[800 * 480];
 static unsigned flushCount = 0;
 static void flush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* colors) {
   ++flushCount;
@@ -128,6 +143,322 @@ struct NetworkStorage {
     present = true; value = password; return value.size();
   }
 };
+
+// ---- 0.8.0: totem de autoatendimento (kiosk_flow + router + views reais, LVGL real) ----
+static const char* kKioskOrderId = "7d0c9a52-3f1e-4b5a-9a51-2c0d5e8f1a10";
+static const char* kKioskSessionId = "58967906-cabe-48d3-ae70-af6859edc100";
+static const char* kKioskOrderQr = "https://chargegrid-api-preview-djlima1s-projects.vercel.app/pay/o/7d0c9a52-3f1e-4b5a-9a51-2c0d5e8f1a10?t=QUJDREVGR0hJSktMTU5PUFFSU1RVVldY";
+static const char* kKioskReceiptUrl = "https://chargegrid-api-preview-djlima1s-projects.vercel.app/pay/r/7d0c9a52-3f1e-4b5a-9a51-2c0d5e8f1a10?t=QUJDREVGR0hJSktMTU5PUFFSU1RVVldY";
+
+static std::string kioskSyncJson(const char* kioskBlock, const char* order = "null", const char* session = "null") {
+  char out[3072];
+  snprintf(out, sizeof(out), R"({"server_time":"2026-10-20T12:00:00+00:00","control_version":0,"overstay":null,
+    "connector":{"public_code":"CG-01","active":true,"presence_code":"#F12345",
+    "presence_expires_at":"2026-10-20T12:05:00+00:00"%s%s},
+    "authorized":{"reservation":null,"session":%s},"commands":[],"kiosk_order":%s})",
+           kioskBlock[0] ? ",\"kiosk\":" : "", kioskBlock, session, order);
+  return out;
+}
+
+static void testKioskSyncBlocks() {
+  // Leitura aditiva em apply(): ausente, nulo e inválido = totem desligado.
+  const char* off[] = {"", "null", R"({"enabled":"yes","method":"simulated"})", R"({"enabled":true,"method":null,"label":null,"reason":"payments_unavailable"})",
+                       R"({"enabled":true,"method":"card_terminal"})", "[]"};
+  for (const char* block : off) {
+    JsonDocument doc; assert(!deserializeJson(doc, kioskSyncJson(block)));
+    apply(doc);
+    assert(!kioskSync.kiosk.enabled && !kioskSync.order.present && kioskSync.sessionOrigin[0] == '\0');
+  }
+  JsonDocument doc;
+  const std::string order = std::string(R"({"id":")") + kKioskOrderId + R"(","status":"charging","session_id":")" + kKioskSessionId +
+      R"J(","payment":{"status":"in_use","label":"Pago (simulado) · em uso","method":"simulated","amount":"50.00","qr_url":null},"receipt":null,"error":null})J";
+  const std::string session = std::string(R"({"id":")") + kKioskSessionId + R"(","status":"charging","origin":"kiosk_totem","price_per_kwh":"2.0000"})";
+  assert(!deserializeJson(doc, kioskSyncJson(R"({"enabled":true,"method":"simulated","label":"SIMULADO","reason":null})", order.c_str(), session.c_str())));
+  apply(doc);
+  assert(kioskSync.kiosk.enabled && kioskSync.kiosk.method == kiosk::Method::Simulated && std::string(kioskSync.kiosk.label) == "SIMULADO");
+  assert(kioskSync.order.present && std::string(kioskSync.order.status) == "charging" && std::string(kioskSync.sessionOrigin) == "kiosk_totem");
+  assert(state == "idle" && sessionId.empty()); // Bloco do totem nunca liga nada: só START liga.
+  // Mesma resposta sem os blocos (API antiga): limpa.
+  doc.clear(); assert(!deserializeJson(doc, kioskSyncJson(""))); apply(doc);
+  assert(!kioskSync.kiosk.present && !kioskSync.order.present);
+  puts("PASS: 0.8.0 sync reading of connector.kiosk / kiosk_order / session.origin (absent, null, invalid, valid) in apply()");
+}
+
+static lv_obj_t* findButton(lv_obj_t* parent, const char* text) {
+  if (!parent) return nullptr;
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(parent); ++i) {
+    lv_obj_t* child = lv_obj_get_child(parent, i);
+    if (lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) continue;   // subárvore oculta (ex.: tela de Wi-Fi)
+    if (lv_obj_check_type(child, &lv_btn_class) && lv_obj_get_child_cnt(child) &&
+        lv_obj_check_type(lv_obj_get_child(child, 0), &lv_label_class) &&
+        std::string(lv_label_get_text(lv_obj_get_child(child, 0))) == text && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN))
+      return child;
+    if (lv_obj_t* found = findButton(child, text)) return found;
+  }
+  return nullptr;
+}
+static bool hasLabel(lv_obj_t* parent, const std::string& text) {
+  if (!parent) return false;
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(parent); ++i) {
+    lv_obj_t* child = lv_obj_get_child(parent, i);
+    if (lv_obj_check_type(child, &lv_label_class) && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN) &&
+        std::string(lv_label_get_text(child)).find(text) != std::string::npos) return true;
+    if (hasLabel(child, text)) return true;
+  }
+  return false;
+}
+// Cobertura de glifos: todo label visível da tela do totem só usa glifos da fonte dele.
+static uint32_t nextCodepoint(const char*& c) {
+  const unsigned char* u = reinterpret_cast<const unsigned char*>(c);
+  uint32_t cp = *u; int extra = 0;
+  if (cp >= 0xF0) { cp &= 0x07; extra = 3; } else if (cp >= 0xE0) { cp &= 0x0F; extra = 2; } else if (cp >= 0xC0) { cp &= 0x1F; extra = 1; }
+  ++u;
+  for (int i = 0; i < extra; ++i) cp = (cp << 6) | (*u++ & 0x3F);
+  c = reinterpret_cast<const char*>(u);
+  return cp;
+}
+static bool fontCovers(const lv_font_t* font, const char* text, uint32_t* missing = nullptr) {
+  for (const char* c = text; *c;) {
+    const uint32_t cp = nextCodepoint(c);
+    if (cp == '\n') continue;
+    lv_font_glyph_dsc_t dsc;
+    if (!lv_font_get_glyph_dsc(font, &dsc, cp, 0)) { if (missing) *missing = cp; return false; }
+  }
+  return true;
+}
+static unsigned glyphChecks = 0;
+static void assertGlyphs(lv_obj_t* parent, const char* screen) {
+  if (!parent) return;
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(parent); ++i) {
+    lv_obj_t* child = lv_obj_get_child(parent, i);
+    if (lv_obj_check_type(child, &lv_label_class) && !lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) {
+      uint32_t missing = 0;
+      const char* value = lv_label_get_text(child);
+      if (!fontCovers(lv_obj_get_style_text_font(child, 0), value, &missing)) {
+        fprintf(stderr, "Missing glyph U+%04X in \"%s\" on %s\n", missing, value, screen);
+        assert(false);
+      }
+      ++glyphChecks;
+    }
+    assertGlyphs(child, screen);
+  }
+}
+struct KioskMem { std::string name; unsigned used; };
+static std::vector<KioskMem> kioskMem;
+static void kioskShot(const char* directory, const char* name) {
+  screenshot(directory, name);
+  if (std::strncmp(name, "kiosk-", 6) == 0 && ui::routerRoot()) assertGlyphs(ui::routerRoot(), name);
+  lv_mem_monitor_t mon; lv_mem_monitor(&mon);
+  kioskMem.push_back({name, static_cast<unsigned>(mon.total_size - mon.free_size)});
+}
+static kiosk::ApiRequest kioskApi(int status, const std::string& body, kiosk::RequestKind expected) {
+  kiosk::ApiRequest request;
+  assert(kioskFlow.takeRequest(request) && request.kind == expected);
+  kiosk::ApiResult result; result.kind = request.kind; result.seq = request.seq; result.status = status; result.body = body.c_str();
+  kioskFlow.apiResult(result);
+  panelTick();   // efeitos do fluxo (NVS "kord", parada local) saem no laço, como na placa
+  return request;
+}
+static void kioskTap(const char* text) {
+  lv_obj_t* button = findButton(lv_scr_act(), text);
+  if (!button) { fprintf(stderr, "Button not found: %s\n", text); assert(false); }
+  lv_event_send(button, LV_EVENT_CLICKED, nullptr);
+  panelTick(); refresh();
+}
+static void kioskApply(const std::string& json) {
+  JsonDocument doc; assert(!deserializeJson(doc, json)); apply(doc);
+  lastContact = testMillis; hasSynced = true; lastSyncHttpStatus = 200;
+}
+
+static void runKioskScreens(const char* out) {
+  const char* simulatedBlock = R"({"enabled":true,"method":"simulated","label":"SIMULADO","reason":null})";
+  const char* stripeBlock = R"({"enabled":true,"method":"stripe","label":"TESTE","reason":null})";
+  const std::string offer = R"({"enabled":true,"available":true,"reason":null,"open_order_id":null,"method":"simulated","label":"SIMULADO",
+    "power_kw":"7.200","price":{"price_per_kwh":"2.3000","base_price_per_kwh":"2.0000","demand_multiplier":"1.15","reason_label":"Alta demanda"},
+    "limits":{"max_total":"200.00","overstay_reserve":"30.00"},
+    "modes":{"value":{"shortcuts":["10.00","20.00","40.00","60.00"],"min":"5.00","max":"170.00"},
+             "time":{"shortcuts":[15,30,60],"min":5,"max":60},"energy":{"shortcuts":["5.0","10.0","20.0"],"min":"1.0","max":"73.9","decimals":1}},
+    "overstay":{"enabled":true,"version":"ov-3","summary":"Após 10 min: R$ 1,00 por minuto, até R$ 30,00"},"start_timeout_seconds":60})";
+  const std::string quote = R"({"quote_hash":"0123456789abcdef0123456789abcdef","mode":"value","amount":"20.00","total":"50.00",
+    "energy_cap":"20.00","overstay_reserve":"30.00","price_per_kwh":"2.3000","base_price_per_kwh":"2.0000","demand_multiplier":"1.15",
+    "demand":{"multiplier":"1.15","reason_label":"Alta demanda"},"estimated_energy_kwh":"8.696","max_duration_minutes":73,
+    "overstay":{"enabled":true,"version":"ov-3","summary":"Após 10 min: R$ 1,00 por minuto, até R$ 30,00"},"method":"simulated","label":"SIMULADO"})";
+  auto orderJson = [](const char* status, const char* method, const char* payment) {
+    return std::string(R"({"id":")") + kKioskOrderId + R"(","status":")" + status + R"(","method":")" + method +
+        R"(","expires_in_seconds":300,"quote":{"total":"50.00"},"payment":)" + payment +
+        R"(,"session_id":null,"receipt":null,"receipt_url":")" + kKioskReceiptUrl + R"(","error":null})";
+  };
+  auto syncOrder = [](const char* status, const char* receipt) {
+    return std::string(R"({"id":")") + kKioskOrderId + R"(","status":")" + status + R"(","session_id":")" + kKioskSessionId +
+        R"J(","payment":{"status":"in_use","label":"Pago (simulado)","method":"simulated","amount":"50.00","qr_url":null},"receipt":)J" + receipt + "}";
+  };
+  // As respostas dizem owned=true; os testes de vínculo depois precisam do estado anterior.
+  const ClaimStorage savedClaim = claimStorage;
+  const bool savedOwned = panelOwned, savedOwnershipKnown = connectorOwnershipKnown;
+  const String savedClaimToken = panelClaimToken;
+  lv_mem_monitor_t mon; lv_mem_monitor(&mon);
+  kioskMem.push_back({"panel-ready (0.7.0 screens)", static_cast<unsigned>(mon.total_size - mon.free_size)});
+
+  // T0: totem ligado no posto -> botão "Carregar agora" na tela Pronto.
+  kioskApply(kioskSyncJson(simulatedBlock));
+  stationPresenceCode = "#F12345"; presenceCodeReceivedAt = testMillis; presenceCodeTtlMs = 300000;
+  kioskShot(out, "kiosk-ready");
+  assert(kioskFlow.state() == kiosk::State::Idle && kioskFlow.canStart());
+  assert(kioskStartButton && !lv_obj_has_flag(kioskStartButton, LV_OBJ_FLAG_HIDDEN));
+  assert(std::string(lv_label_get_text(codeCaptionLabel)) == "TEM O APP? CÓDIGO");
+  assert(std::string(lv_label_get_text(codeLabel)) == "#F12345" && !lv_obj_has_flag(codeCard, LV_OBJ_FLAG_HIDDEN));
+  assertGlyphs(darkRoot, "kiosk-ready");
+  lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  assert(kioskFlow.state() == kiosk::State::LoadingOffer);
+  kioskApi(200, offer, kiosk::RequestKind::Offer);
+  kioskShot(out, "kiosk-choose");
+  assert(darkRoot == nullptr && alertRoot == nullptr);   // telas atuais liberadas
+  assert(ui::routerScreen() == kiosk::Screen::Choose && hasLabel(ui::routerRoot(), "Como você quer pagar?"));
+  kioskTap("Por valor");
+  kioskShot(out, "kiosk-amount");
+  assert(findButton(ui::routerRoot(), "R$ 20,00") && findButton(ui::routerRoot(), "R$ 60,00"));
+  kioskTap("Outro valor");
+  kioskTap("2"); kioskTap("5");
+  kioskShot(out, "kiosk-keypad");
+  assert(hasLabel(ui::routerRoot(), "R$ 25"));
+  lv_obj_t* comma = findButton(ui::routerRoot(), ",");
+  assert(comma && lv_obj_has_state(comma, LV_STATE_DISABLED));   // vírgula só em kWh
+  kioskTap(LV_SYMBOL_BACKSPACE); assert(hasLabel(ui::routerRoot(), "R$ 2"));
+  kioskTap("Voltar");
+  kioskTap("R$ 20,00");
+  kioskApi(200, quote, kiosk::RequestKind::Quote);
+  kioskShot(out, "kiosk-review");
+  assert(hasLabel(ui::routerRoot(), "R$ 2,00 x 1,15 Alta demanda") && hasLabel(ui::routerRoot(), "R$ 50,00"));
+  kioskTap("Aceitar e pagar");
+  kioskApi(201, orderJson("held", "simulated", "null"), kiosk::RequestKind::CreateOrder);
+  assert(persistedOrder == kKioskOrderId);
+  kioskShot(out, "kiosk-pay-simulated");
+  assert(findButton(ui::routerRoot(), "Simular pagamento de R$ 50,00 (sem cobrança)"));
+  testMillis += 50000; lastContact = testMillis;
+  kioskShot(out, "kiosk-still-there");
+  assert(hasLabel(ui::routerRoot(), "Ainda está aí?"));
+  kioskTap("Continuar");
+  assert(!hasLabel(ui::routerRoot(), "Ainda está aí?"));
+  kioskTap("Simular pagamento de R$ 50,00 (sem cobrança)");
+  kioskApi(200, orderJson("paid", "simulated", R"({"status":"paid","method":"simulated"})"), kiosk::RequestKind::Pay);
+  kioskShot(out, "kiosk-starting");
+  assert(ui::routerScreen() == kiosk::Screen::Starting);
+  // START normal do servidor (o totem nunca liga sozinho).
+  JsonDocument start = startResponse();
+  start["control_version"] = 1;
+  start["authorized"]["session"]["id"] = kKioskSessionId; start["authorized"]["session"]["origin"] = "kiosk_totem";
+  start["authorized"]["session"]["max_cost"] = 20.0; start["authorized"]["session"]["price_per_kwh"] = 2.3;
+  start["commands"][0]["session_id"] = kKioskSessionId;
+  start["connector"]["kiosk"]["enabled"] = true; start["connector"]["kiosk"]["method"] = "simulated"; start["connector"]["kiosk"]["label"] = "SIMULADO";
+  start["connector"]["owned"] = true; start["connector"]["active"] = true;
+  sessionId = ""; lastCommand = ""; version = 0;
+  apply(start); lastContact = testMillis;
+  assert(state == "charging" && sessionId == kKioskSessionId);
+  testMillis += 600000; lastContact = testMillis; tick();
+  sessionAppliedPowerKw = 7.2f; powerReasonShort = "Máx. do carregador";
+  kioskShot(out, "kiosk-live");
+  assert(ui::routerScreen() == kiosk::Screen::Live && hasLabel(ui::routerRoot(), "kWh") && hasLabel(ui::routerRoot(), "7,2 kW"));
+  kioskTap("Encerrar");
+  kioskShot(out, "kiosk-confirm-stop");
+  assert(state == "charging" && ui::routerScreen() == kiosk::Screen::ConfirmStop);
+  kioskTap("Sim, encerrar");
+  assert(state == "stopped" && endReason == "requested");     // requestLocalSafeStop()
+  kioskApply(kioskSyncJson(simulatedBlock, syncOrder("finished", (std::string(R"({"number":"1A2B3C4D","energy_kwh":"1.200","total":"2.76","returned":"47.24","return_kind":"simulated","final":true,"end_reason":"requested","url":")") + kKioskReceiptUrl + "\"}").c_str()).c_str()));
+  kioskShot(out, "kiosk-receipt");
+  assert(ui::routerScreen() == kiosk::Screen::Receipt && hasLabel(ui::routerRoot(), "1A2B3C4D") && hasLabel(ui::routerRoot(), "Simulado, sem cobrança"));
+  kioskTap("Concluir");
+  assert(persistedOrder.empty() && kioskFlow.state() == kiosk::State::Idle);
+  // De volta às telas atuais (reconstruídas).
+  kioskApply(kioskSyncJson(simulatedBlock));
+  kioskShot(out, "kiosk-back-to-ready");
+  assert(darkRoot && alertRoot && ui::routerScreen() == kiosk::Screen::None && kioskFlow.canStart());
+
+  // Stripe: QR do pedido na tela.
+  kioskApply(kioskSyncJson(stripeBlock));
+  panelTick(); refresh();
+  lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  std::string stripeOffer = offer; stripeOffer.replace(stripeOffer.find("\"simulated\",\"label\":\"SIMULADO\""), 30, "\"stripe\",\"label\":\"TESTE\"");
+  kioskApi(200, stripeOffer, kiosk::RequestKind::Offer); panelTick(); refresh();
+  kioskTap("Por tempo"); kioskTap("30 min");
+  std::string stripeQuote = quote; stripeQuote.replace(stripeQuote.find("\"simulated\",\"label\":\"SIMULADO\""), 30, "\"stripe\",\"label\":\"TESTE\"");
+  kioskApi(200, stripeQuote, kiosk::RequestKind::Quote); panelTick(); refresh();
+  kioskTap("Aceitar e pagar");
+  kioskApi(201, orderJson("held", "stripe", "null"), kiosk::RequestKind::CreateOrder);
+  kioskApi(200, orderJson("awaiting_payment", "stripe", (std::string(R"({"status":"awaiting_payment","method":"stripe","qr_url":")") + kKioskOrderQr + "\"}").c_str()),
+           kiosk::RequestKind::Pay);
+  kioskShot(out, "kiosk-pay-stripe");
+  assert(ui::routerScreen() == kiosk::Screen::Pay && hasLabel(ui::routerRoot(), "TESTE"));
+  kioskTap("Cancelar");
+  kioskApi(200, orderJson("canceled", "stripe", "null"), kiosk::RequestKind::Cancel);
+  kioskShot(out, "kiosk-notice-canceled");
+  assert(ui::routerScreen() == kiosk::Screen::Notice && hasLabel(ui::routerRoot(), "Pedido cancelado"));
+  kioskTap("Concluir");
+
+  // TE: o app inicia durante T1.
+  kioskApply(kioskSyncJson(simulatedBlock));
+  panelTick(); refresh();
+  lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  kioskApi(200, offer, kiosk::RequestKind::Offer);
+  const std::string appSession = std::string(R"({"id":")") + kKioskSessionId + R"(","status":"starting","origin":"app"})";
+  kioskApply(kioskSyncJson(simulatedBlock, "null", appSession.c_str()));
+  kioskShot(out, "kiosk-notice-app-started");
+  assert(hasLabel(ui::routerRoot(), "Este ponto acabou de ser iniciado pelo app"));
+  kioskTap("Concluir");
+  // Recarga iniciada pelo app: Encerrar das telas atuais pede confirmação (totem ligado).
+  state = "charging"; sessionId = kKioskSessionId; reading = {42, 3210, 7200, true}; started = testMillis;
+  panelTick(); refresh();
+  assert(darkRoot && !lv_obj_has_flag(stopButton, LV_OBJ_FLAG_HIDDEN));
+  lv_event_send(stopButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  assert(state == "charging");
+  kioskShot(out, "kiosk-confirm-app-stop");
+  assert(hasLabel(ui::routerRoot(), "Encerrar a recarga do app?"));
+  kioskTap("Sim, encerrar");
+  assert(state == "stopped");
+  state = "idle"; sessionId = ""; endReason = ""; reading = {20, 0, 0, false};
+  // Retomada após reboot: "Verificando pagamento".
+  kioskFlow.resume(kKioskOrderId, testMillis);
+  kioskShot(out, "kiosk-verifying");
+  assert(ui::routerScreen() == kiosk::Screen::Verifying);
+  kioskApi(404, R"({"error":{"code":"not_found","message":"x"}})", kiosk::RequestKind::GetOrder);
+  panelTick(); refresh();
+
+  // Totem desligado de novo (API sem os blocos): telas atuais idênticas às da 0.7.0.
+  kioskApply(kioskSyncJson(""));
+  stationPresenceCode = "#F12345"; presenceCodeReceivedAt = testMillis; presenceCodeTtlMs = 300000;
+  screenshot(out, "panel-idle-after-kiosk");
+  assert(kioskFlow.state() == kiosk::State::Off && lv_obj_has_flag(kioskStartButton, LV_OBJ_FLAG_HIDDEN));
+  assert(memcmp(panelIdleFrame, framebuffer, sizeof(framebuffer)) == 0);   // pixel a pixel
+
+  // Textos fixos: títulos só com glifos das Bold, corpo nas Medium.
+  for (const auto& entry : kiosk::str::kAll) {
+    const lv_font_t* fonts[] = {&chargegrid_brand_30, &chargegrid_brand_34, &chargegrid_title_48};
+    const lv_font_t* bodies[] = {&chargegrid_body_14, &chargegrid_body_17, &chargegrid_body_19, &chargegrid_body_22};
+    if (entry.role == kiosk::str::TITLE) for (auto font : fonts) assert(fontCovers(font, entry.text) && ui::boldCovers(entry.text));
+    for (auto font : bodies) assert(fontCovers(font, entry.text));
+    ++glyphChecks;
+  }
+  assert(fontCovers(ui::tokens::symbol(), LV_SYMBOL_BACKSPACE));
+  assert(!ui::boldCovers("Pico \xE2\x80\x94 2") && !ui::boldCovers("Verificando\xE2\x80\xA6") && !ui::boldCovers("a \xC2\xB7 b"));
+
+  // Memória do pool LVGL (64 KB, host 64 bits: superestima a placa de 32 bits).
+  char path[1024]; snprintf(path, sizeof(path), "%s/kiosk-memory.txt", out);
+  FILE* report = fopen(path, "wb"); assert(report);
+  unsigned kioskPeak = 0;
+  for (const auto& item : kioskMem) {
+    fprintf(report, "%-34s %6u bytes %5.1f%%\n", item.name.c_str(), item.used, item.used * 100.0 / LV_MEM_SIZE);
+    if (item.name.rfind("kiosk-", 0) == 0 && item.name != "kiosk-ready" && item.name != "kiosk-back-to-ready")
+      kioskPeak = std::max(kioskPeak, item.used);
+  }
+  lv_mem_monitor(&mon);
+  fprintf(report, "lv_mem max_used (requested bytes, whole run) %6u\n", (unsigned)mon.max_used);
+  fclose(report);
+  printf("Kiosk screens LVGL pool peak: %u of %u bytes (%.1f%%); 0.7.0 Ready screen: %u bytes\n", kioskPeak, (unsigned)LV_MEM_SIZE,
+         kioskPeak * 100.0 / LV_MEM_SIZE, kioskMem.front().used);
+  assert(kioskPeak < LV_MEM_SIZE * 8 / 10);   // < 80 % por tela do totem
+  claimStorage = savedClaim; panelOwned = savedOwned; connectorOwnershipKnown = savedOwnershipKnown;
+  panelClaimToken = savedClaimToken;
+  printf("PASS: 0.8.0 totem screens (T0-T8/TE, simulated + Stripe), real router/views, %u label glyph checks, panel restored pixel-identical\n", glyphChecks);
+}
 
 int main(int argc, char** argv) {
   constexpr const char* claimToken = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg";
@@ -294,14 +625,14 @@ int main(int argc, char** argv) {
   assert(panelLatin1(nullptr, 40).empty());
   resetSession();
   JsonDocument syncBody; fillSyncBody(syncBody, true);
-  assert(syncBody["firmware_version"] == "0.7.0" && syncBody["connected"] == false);
+  assert(syncBody["firmware_version"] == "0.8.0" && syncBody["connected"] == false);
   assert(syncBody["capabilities"].size() == 1 && syncBody["capabilities"][0] == "set_power_v1");
   assert(syncBody["applied_power_w"] == 0); // Idle: nothing installed.
   assert(syncBody["charger"]["model"] == "esp32_bench" && syncBody["charger"]["transport"] == "simulated");
   assert(syncBody["charger"]["min_power_w"] == 1400 && syncBody["charger"]["max_power_w"] == 7200);
   assert(syncBody["charger"]["step_w"] == 100);
   JsonDocument legacySync; fillSyncBody(legacySync, false); // Older API (extra="forbid").
-  assert(legacySync["firmware_version"] == "0.7.0" && legacySync["capabilities"].isNull());
+  assert(legacySync["firmware_version"] == "0.8.0" && legacySync["capabilities"].isNull());
   assert(legacySync["applied_power_w"].isNull() && legacySync["charger"].isNull());
   assert(!legacySync["acks"].isNull() && !legacySync["energy_wh"].isNull());
   // START: power_limit_w wins over the legacy max_power_kw; integer W, rounded down to the step.
@@ -458,6 +789,7 @@ int main(int argc, char** argv) {
   apply(kiosk); assert(kioskUrl.empty() && paymentStatus.empty());
   kiosk["connector"].remove("kiosk_url"); kiosk["connector"].remove("payment");
   apply(kiosk); assert(kioskUrl.empty() && paymentStatus.empty() && paymentAmount < 0);
+  testKioskSyncBlocks();
   resetSession(); sessionId = ""; state = "idle";
 
   // ---- Real API responses (captured from apps/api POST /v1/devices/sync, live power + overstay) ----
@@ -576,6 +908,7 @@ int main(int argc, char** argv) {
   presenceCodeReceivedAt = testMillis;
   presenceCodeTtlMs = 300000;
   screenshot(argv[1], "panel-idle");
+  memcpy(panelIdleFrame, framebuffer, sizeof(framebuffer));
   assert(std::string(lv_label_get_text(statusLabel)) == "Pronto para você");
   assert(std::string(lv_label_get_text(codeLabel)) == "#F12345");
   assert(std::string(lv_label_get_text(codeTimerLabel)) == "Troca em 05:00");
@@ -699,6 +1032,7 @@ int main(int argc, char** argv) {
   assert(lv_obj_get_width(rowLineTop) == 711 && lv_obj_get_y(codeCard) == 130);
   paymentStatus = ""; paymentAmount = -1; paymentTest = false; panelTick(); refresh();
   assert(text(instructionLabel) == "Abra o app ChargeGrid e use o código ao lado para iniciar a recarga.");
+  runKioskScreens(argv[1]);
   state = "stopped"; sessionId = "test-session"; endReason = "requested";
   state = "idle"; sessionId = ""; lastSyncHttpStatus = 401;
   screenshot(argv[1], "panel-key-error");
@@ -804,5 +1138,5 @@ int main(int argc, char** argv) {
   puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");
   puts("PASS: 0.7.0 overstay (keep connected, disconnect + immediate sync, RELEASE, reboot, factory reset refusal, texts), payment kiosk QR and status, live power texts");
   puts("PASS: real API sync responses (ISO offsets -03:00, Decimal text, START overstay + power_limit_w, SET_POWER ack, STOP keeps the cable, overstay block, kiosk) and 422 classification");
-  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 20 LVGL frames");
+  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 20 panel LVGL frames");
 }

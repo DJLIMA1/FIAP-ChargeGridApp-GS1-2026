@@ -312,11 +312,13 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f connected=%s source=simulated firmware=%s\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f connected=%s source=simulated kiosk=%s kiosk_order=%s firmware=%s\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
         lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW,
-        reading.connected ? "yes" : "no", CHARGEGRID_FIRMWARE_VERSION);
+        reading.connected ? "yes" : "no",
+        kioskSync.kiosk.enabled ? (kioskSync.kiosk.method == kiosk::Method::Simulated ? "simulated" : "stripe") : "off",
+        store.isKey("kord") ? "present" : "none", CHARGEGRID_FIRMWARE_VERSION);
       return;
     }
     if (line == "CG_STOP") {
@@ -354,6 +356,12 @@ void handleSerialMaintenance() {
   Serial.printf("[setup] Network saved; connecting to SSID: %s\n", pendingSsid.c_str());
 }
 #endif
+
+// Totem 0.8.0: pedido aberto guardado na NVS para retomar pelo sync após reboot.
+void kioskPersistOrder(const char* orderId) {
+  if (orderId && orderId[0]) store.putString("kord", orderId);
+  else if (store.isKey("kord")) store.remove("kord");
+}
 
 bool clearPanelConnection() {
 #ifdef CHARGEGRID_PANEL_ENABLED
@@ -407,6 +415,9 @@ void setup() {
 #endif
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   panelSetup();
+#ifdef CHARGEGRID_KIOSK
+  kioskResume(store.getString("kord", "").c_str(), esp_random());
+#endif
 }
 void loop() {
 #ifdef CHARGEGRID_PANEL_ENABLED
@@ -427,5 +438,9 @@ void loop() {
       panelIntegrationEnabled &&
 #endif
       WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000 && (long)(millis() - nextSync) >= 0) syncDevice();
+#ifdef CHARGEGRID_KIOSK
+  // Um pedido do totem por vez, na mesma tarefa e conexão TLS do sync (nunca em recarga).
+  if (panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000) kioskApiService();
+#endif
   delay(20);
 }
