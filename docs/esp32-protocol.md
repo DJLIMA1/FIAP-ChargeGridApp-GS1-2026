@@ -122,3 +122,108 @@ Minutos inteiros; `amount` (por intervalo completo depois da tolerância) e `max
 - O painel mostra "Recarga concluída · desconecte em mm:ss" (contagem local a partir de `grace_remaining_seconds`, como o código #F), depois "Taxa de permanência: R$ x" (com "(valor máximo)" em `capped`) e o botão "Desconectar"; `no_fee`: "Recarga concluída · desconecte o carro" e "Sem taxa de permanência neste ponto". O simulador imprime o mesmo no terminal. Intervalo de sync: o ocioso (5 s).
 
 Com o cabo conectado o ponto fica `occupied`: novo START (app ou pagamento pelo QR, `point_unavailable`) só depois de `connected=false`. O painel não mostra o QR de pagamento enquanto o carro está conectado, mesmo que `kiosk_url` venha preenchido.
+
+## Totem 0.8.0 (autoatendimento sem celular)
+
+Contrato definitivo do totem (firmware 0.8.0, API com a migração `f4b9d2c7e1a3`). Tudo é **aditivo**: com o totem desligado no posto (`stations.kiosk_mode = false`, padrão) a resposta do sync não muda (as chaves novas nem aparecem) e o firmware 0.7.0 continua idêntico. Firmware 0.8.0 numa API antiga: sem `connector.kiosk` no sync e `404` nos endpoints abaixo → totem desligado, telas atuais.
+
+Princípios: o totem usa **as mesmas regras do app** (orçamento `payments.service.quote`/`locked_terms`, termos de permanência, `charging.service.start`, encerramento e recibo), com um perfil convidado por ponto ("Visitante do painel CG-XXXX"), sem identificar o motorista. **Nada liga sem pagamento confirmado no servidor.** O método de pagamento é decidido **pelo servidor** a partir do modo da conta do **dono** do posto: conta em *Modo apresentação* → `simulated` (rotulado `SIMULADO`, acerto local, nenhuma chamada à Stripe); conta oficial → `stripe` (modo teste, rotulado `TESTE`, QR do pedido abrindo a Checkout hospedada, mesma pré-autorização/captura/devolução do app). O equipamento nunca escolhe nem força o simulado. **Encerrar continua local** (`requestLocalSafeStop`, sem endpoint novo), inclusive para recarga iniciada pelo app (com confirmação na tela).
+
+### Sync (só resposta; o corpo do sync não muda)
+
+**`connector.kiosk`** — presente só com o totem ligado no posto; ausente (chave inexistente) com ele desligado:
+```json
+{"connector": {"kiosk": {"enabled": true, "method": "simulated", "label": "SIMULADO", "reason": null}}}
+```
+- `enabled`: o totem pode vender agora (posto e ponto ativos, com dono, método disponível). Não considera se o ponto está livre: reserva, sessão e cabo conectado continuam vindo de `authorized`/`overstay`/estado físico e bloqueiam o botão "Carregar agora" no firmware.
+- `method`: `"simulated"` | `"stripe"` | `null`; `label`: `"SIMULADO"` | `"TESTE"` | `null`.
+- `reason`: `null` ou `"payments_unavailable"` (conta oficial e Stripe não configurada no servidor → totem indisponível, `enabled: false`) ou `"point_disabled"` (posto/ponto inativo ou sem dono).
+
+**`kiosk_order`** (nível de cima, como `overstay`) — presente só com o totem ligado; `null` ou o pedido mais recente deste ponto enquanto aberto/em recarga e até **10 min** depois de fechar:
+```json
+{"kiosk_order": {
+  "id": "UUID", "status": "charging", "status_label": "Recarga em andamento",
+  "expires_at": null, "expires_in_seconds": null, "session_id": "UUID",
+  "payment": {"id": "UUID", "status": "in_use", "label": "Pago (simulado) · em uso", "method": "simulated",
+              "amount": "50.00", "qr_url": null},
+  "receipt": {"number": "1A2B3C4D", "energy_kwh": "2.500", "total": "5.00", "returned": "45.00",
+              "return_kind": "simulated", "final": true, "end_reason": "cost_limit",
+              "end_reason_label": "Limite de valor atingido", "url": "https://<api>/pay/r/UUID?t=..."},
+  "error": null}}
+```
+- `status`: `held` (aceito; ponto travado para o totem, aguardando pagar) · `awaiting_payment` (QR da Stripe na tela) · `paid` (pagamento confirmado; START sendo emitido) · `charging` (sessão criada; segue `authorized.session`) · `finished` (recarga encerrada; recibo pode ainda não ser final) · `canceled` (cancelado pelo totem antes do START; nada cobrado) · `expired` (trava venceu sem pagamento confirmado; nada cobrado) · `failed` (pago, mas não foi possível iniciar no prazo; valor devolvido/liberado inteiro). Abertos: `held`, `awaiting_payment`, `paid`.
+- `expires_at`/`expires_in_seconds`: fim da trava enquanto aberto (ISO 8601 UTC e segundos inteiros, para contagem local como o #F), `null` fora disso.
+- `payment`: `null` antes de pagar; `qr_url` (https, ≤160 caracteres) só em `awaiting_payment` — permite redesenhar o QR depois de um reboot. `label` termina em "(simulado)" ou "(teste)".
+- `receipt`: `null` até existir sessão. `total` = valor cobrado depois do acerto (antes: estimativa pela energia registrada + permanência); `returned`/`return_kind` (`"released"` cartão, `"refunded"` Pix, `"simulated"`) só depois do acerto; `final: true` quando o valor não muda mais (sessão encerrada, permanência fechada/ausente e acerto concluído). `url` é o recibo completo do visitante (HTML+PDF), para o QR da tela T8. Textos de `status_label`, `label` e `end_reason_label` só usam Latin-1 (cabem nas fontes `body_*`; os títulos devem usar `strings_ptbr.h`).
+- `error`: `null` ou `{"code","message"}` do último problema (ex.: `{"code":"kiosk_start","message":"Não foi possível iniciar; valor devolvido"}` em `failed`).
+- Firmware novo guarda `id` na NVS (`kord`) a partir de `POST /orders` e retoma pelo sync depois de queda de rede ou reboot; pedido desconhecido em estado final é ignorado.
+
+**`authorized.session.origin`** (sempre presente com sessão ativa; firmware antigo ignora): `"app"` (iniciada pelo app) | `"kiosk_qr"` (pagamento pelo QR `/pay/k` da tela Pronto) | `"kiosk_totem"` (pedido do totem). A tela "Recarga iniciada pelo app" usa `origin == "app"`.
+
+**Intervalo:** `sync_interval_seconds` é 1 também enquanto houver pedido do totem aberto (status do QR/START chega em ~1 s). O servidor avança o pedido aberto a cada sync (vence a trava, emite o START do pagamento confirmado, acerta o simulado). Com Stripe, a confirmação vem pelo webhook ou por uma verificação na Stripe feita **depois** de gravar o sync (no máximo a cada 3 s, sem segurar a trava do ponto); o START aparece em `commands` no sync seguinte.
+
+### Endpoints do dispositivo (`/v1/devices/kiosk/*`)
+
+Só `Authorization: Device <chave>` (Bearer de pessoa → `401 unauthorized`). O ponto é **sempre o da chave**; pedido de outro ponto → `404 not_found`. JSON; valores em reais como texto decimal (`"20.00"`), kWh com até 1 casa (`"10.5"`, aceita número JSON), minutos inteiros. Erros no formato da API: `{"error":{"code","message",...}}`. Totem desligado no posto → `404 kiosk_disabled` em todos. Timeout recomendado no firmware: 3 s (o `POST .../pay` com Stripe cria a Checkout e pode levar ~3 s: repetir com a mesma `Idempotency-Key` é seguro).
+
+**`GET /v1/devices/kiosk/offer`** (30/min) — tela T0/T1/T2:
+```json
+{"enabled": true, "available": true, "reason": null, "reason_label": null, "open_order_id": null,
+ "method": "simulated", "label": "SIMULADO", "currency": "BRL", "public_code": "CG-7KQ2", "power_kw": "7.200",
+ "price": {"price_per_kwh": "2.3000", "base_price_per_kwh": "2.0000", "demand_multiplier": "1.15",
+           "reason_label": "Alta demanda", "level_label": "Alta", "increase_percent": 15},
+ "limits": {"max_total": "200.00", "overstay_reserve": "30.00"},
+ "modes": {"value": {"shortcuts": ["10.00", "20.00", "40.00", "60.00"], "min": "5.00", "max": "170.00"},
+           "time": {"shortcuts": [15, 30, 60], "min": 5, "max": 60},
+           "energy": {"shortcuts": ["5.0", "10.0", "20.0"], "min": "1.0", "max": "73.9", "decimals": 1}},
+ "overstay": {"enabled": true, "version": "...", "summary": "...", "grace_minutes": 10, "interval_minutes": 1,
+              "amount": "1.00", "max_amount": "30.00", "fee_per_minute": "1.00"},
+ "hold_minutes": 5, "qr_hold_minutes": 10, "start_timeout_seconds": 60}
+```
+- `enabled`/`method`/`label`/`reason` como em `connector.kiosk` (`reason_label` em texto). `available`: ponto livre agora; senão `reason` = `kiosk_in_use` (pedido do totem aberto; `open_order_id` traz o id para retomar) · `reserved` · `charging` · `occupied` (cabo conectado/permanência) · `reconciling` · `offline` · `fault` · `disabled`.
+- `price`: tarifa vigente (base do horário × demanda) e o motivo, a mesma do app.
+- `modes`: atalhos filtrados pelos limites. Teto por pedido **R$ 200** sobre o total pré-autorizado (energia + reserva do teto da taxa de permanência): `value.max = 200 − reserva`; `time.max` = menor entre a duração máxima do ponto e o tempo cujo teto cabe; `energy.max` = kWh cujo teto cabe. Mínimos: R$ 5,00, 5 min, 1,0 kWh. A estimativa local da tela T2 é só indicativa; vale o orçamento.
+- `overstay`: termos públicos vigentes (`enabled: false` e `null` nos demais sem taxa).
+
+**`POST /v1/devices/kiosk/quote`** (30/min) — T3. Corpo: `{"mode":"value","amount":"20.00"}` | `{"mode":"time","minutes":30}` | `{"mode":"energy","energy_kwh":"10.0"}`. Reaproveita `payments.service.quote` com o convidado (mesmo teto, termos travados, motivo da demanda e reserva de permanência do app). Resposta:
+```json
+{"quote_hash": "32 hex", "mode": "value", "amount": "20.00", "minutes": null, "energy_kwh": null,
+ "total": "50.00", "energy_cap": "20.00", "overstay_reserve": "30.00",
+ "price_per_kwh": "2.3000", "base_price_per_kwh": "2.0000", "demand_multiplier": "1.15", "discount_percent": 0,
+ "demand": {"multiplier": "1.15", "level_label": "Alta", "reason_label": "Alta demanda"},
+ "estimated_energy_kwh": "8.696", "max_duration_minutes": 73, "power_kw": "7.200",
+ "overstay": {"...": "termos públicos, como na oferta"}, "method": "simulated", "label": "SIMULADO"}
+```
+`total` é o valor pré-autorizado (simulado ou Stripe). `quote_hash` é opaco (hoje 32 hex; aceite até 64) e muda se tarifa, demanda, termos de permanência, potência ou método mudarem. Erros: `422 invalid_quote` (falta o campo do modo / abaixo do mínimo do provedor), `422 amount_below_minimum`, `422 amount_above_limit` (total > R$ 200), `503 payments_unavailable`, `422 validation_error`.
+
+**`POST /v1/devices/kiosk/orders`** (`Idempotency-Key` obrigatória, 6 por 5 min) — "Aceitar e pagar". Corpo: `{"quote_hash": "...", "mode": "value", "amount": "20.00", "overstay_terms_version": "..." | null}` (o mesmo campo do modo do orçamento). Sob a trava do ponto (a mesma de `start()`), recalcula o orçamento: diferente → `409 quote_changed` (o corpo do erro traz `quote` novo; refaça T3). Cria o pedido `held` com os termos travados e **trava o ponto por 5 min** (app e reserva recebem `409 point_unavailable` com `reason: "kiosk_in_use"`). Responde `201` com o **pedido** (abaixo); repetir com a mesma chave devolve o mesmo pedido. Erros: `409 point_unavailable` (+ `reason` como em `available`), `409 order_open` (já existe pedido aberto neste ponto; `order_id` no erro), `409 quote_changed`, `409 overstay_terms_changed`, `503 payments_unavailable`, `422 idempotency_key_required`, `409 idempotency_conflict`, `429 rate_limited`.
+
+**Pedido** (resposta de `orders`, `pay`, `cancel` e `GET`):
+```json
+{"id": "UUID", "status": "held", "status_label": "Pedido aceito · aguardando pagamento",
+ "method": "simulated", "label": "SIMULADO", "expires_at": "ISO8601", "expires_in_seconds": 300,
+ "quote": {"mode": "value", "amount": "20.00", "minutes": null, "energy_kwh": null, "total": "50.00",
+           "energy_cap": "20.00", "overstay_reserve": "30.00", "price_per_kwh": "2.3000",
+           "estimated_energy_kwh": "8.696", "max_duration_minutes": 73},
+ "payment": null, "session_id": null,
+ "session": null,
+ "receipt": null, "receipt_url": "https://<api>/pay/r/UUID?t=<token>", "error": null}
+```
+`payment`, `receipt`, `error` como em `kiosk_order`; `session`: `null` ou `{"status","energy_kwh","cost","started_at","ended_at","end_reason"}`. `receipt_url` (≤160 caracteres) já vale desde a criação (mostra o status até existir recarga).
+
+**`POST /v1/devices/kiosk/orders/{id}/pay`** (`Idempotency-Key`, 10 por 5 min) — T4. Corpo `{}` ou `{"method": "simulated"|"stripe"}` só como conferência: se não for o método decidido pelo servidor → `409 method_mismatch` e nada é criado (o dispositivo não força o simulado). Métodos reservados, ocultos e recusados com `409 method_unavailable`: `"voucher"` (voucher do caixa) e `"card_terminal"` (maquininha física).
+- `simulated` (dono em Modo apresentação): cria o pagamento `provider: "simulated"` já `paid` (sem Stripe) e emite o START uma única vez; resposta com `status` `charging` (ou `paid` se o ponto ainda reconcilia; o START sai no próximo sync, até o prazo de 10 min, senão `failed`).
+- `stripe` (dono oficial): cria o pagamento aguardando e a Checkout hospedada; `payment.qr_url = "https://<api>/pay/o/<id>?t=<token>"` (≤160) e o pedido vai a `awaiting_payment` com a trava estendida a **10 min** desde agora. A confirmação vem pelo webhook/verificação; então o servidor emite o START (mesmo `start_kiosk` do QR do painel).
+- Erros: `409 order_not_payable` (pedido não está `held`/`awaiting_payment`), `409 order_expired`, `409 method_changed` (o dono trocou de modo depois do orçamento; o pedido é cancelado), `409 method_mismatch`, `409 method_unavailable`, `503 payments_unavailable`, `502 payment_provider_error` (repetir com a mesma chave).
+
+**`POST /v1/devices/kiosk/orders/{id}/cancel`** (20 por 5 min) — Voltar/Cancelar/inatividade antes do START: libera a trava na hora; Checkout expirada, autorização liberada ou valor devolvido inteiro (simulado: acerto local). Idempotente em pedido já fechado. Depois do START → `409 order_in_use` (use Encerrar local).
+
+**`GET /v1/devices/kiosk/orders/{id}`** (120/min) — status atual (verifica a Stripe no máximo a cada 3 s, emite START pendente, conclui o acerto). Enquanto `held`, cada consulta (e cada `pay`) **renova a trava para 5 min**; `awaiting_payment` não renova (vence 10 min depois do QR); `paid` dura até o prazo de início do pagamento (10 min).
+
+**Trava do ponto:** um pedido aberto por ponto. Trava vencida libera o ponto **na hora** (a disponibilidade ignora trava vencida; o pedido vira `expired` no próximo contato e o pagamento não confirmado é cancelado; pagamento tardio na Stripe é devolvido inteiro). Antes de "Aceitar" não há trava: se chegar sessão/reserva no sync, o firmware aborta ("Este ponto acabou de ser iniciado pelo app").
+
+### Páginas do visitante (fora de `/v1`, HTML, CSP restritiva)
+
+- `GET /pay/o/{order_id}?t=<token>` — QR do pedido (Stripe): redireciona (303) à Checkout hospedada enquanto aguarda; depois, à página do recibo/status.
+- `GET /pay/r/{order_id}?t=<token>` — status e recibo do visitante (a partir de `receipts.service`), com atualização automática até ficar final; `GET /pay/r/{order_id}.pdf?t=<token>` — PDF do recibo (depois que a recarga existe). Pagamento simulado aparece rotulado **SIMULADO** (cabeçalho e recibo: "Pagamento simulado: nenhum dinheiro real foi movimentado").
+- Token: 24 bytes (32 caracteres base64url), um por pedido, entregue só ao dispositivo autenticado; derivado (HMAC) de um segredo do posto que nunca sai do servidor + sal aleatório do pedido; o banco guarda só o sal e o SHA-256. Sem dado pessoal. Token errado → 404.
