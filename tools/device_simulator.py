@@ -44,6 +44,8 @@ def load_charger(name, variant="GW7K-HCA-20", fail_writes=0, echo=None):
     except ImportError:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packages" / "chargegrid_core"))
         from chargegrid_core.chargers import GoodWeHcaG2
+    if str(Path(__file__).resolve().parents[1]) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # execução direta: python tools/…
     from tools.edge.modbus_sim import SimulatedModbusTransport
     driver = GoodWeHcaG2(variant)
     transport = SimulatedModbusTransport(variant, fail_writes=fail_writes, echo=echo)
