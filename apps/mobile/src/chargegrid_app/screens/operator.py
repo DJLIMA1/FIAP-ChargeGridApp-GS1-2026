@@ -4,8 +4,8 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
-from ..services.location import geocode_address
-from ..ui import design, theme
+from ..services.location import station_location
+from ..ui import address_autocomplete, design, theme
 from ..ui.ai_features import ai_supported, owner_insights_control
 from ..ui.components import (
     date_time,
@@ -15,7 +15,7 @@ from ..ui.components import (
 from . import onboarding as onboarding_screen
 from . import ownership
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title
-from .station_admin import chatbot_button, menu_row, station_code
+from .station_admin import chatbot_button, menu_row
 
 
 def _plural(count, one, many):
@@ -62,15 +62,9 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if station_id == 'new':
         return await station_form(app)
     if station_id:
-        station = await app.api.request('GET',f'stations/{station_id}')
-        code = None
-        try:
-            listing = await app.api.request('GET','operator/stations',params={'limit':100,'offset':0})
-            if isinstance(listing,dict) and isinstance(listing.get('items'),list):
-                code = station_code(listing['items'],station_id)
-        except ApiError:
-            pass
-        return await station_form(app,station,edited=edited,code=code)
+        # Um único lugar para cada posto: dados, conectores, potência e tarifas (station_admin).
+        from . import station_admin
+        return await station_admin.build(app, station_id=station_id)
     return await station_list(app, offset, is_demo)
 
 
@@ -162,82 +156,36 @@ def _status_pill(label, color):
 
 
 async def station_form(app, station=None, edited=False, code=None):
-    """Editar/criar posto no visual da referência (``Configurar Estação``): campos escuros rotulados,
-    Ativa/Inativa segmentado, botão branco. Coordenadas, pontos e atalhos ficam abaixo da primeira tela."""
+    """Criar posto (``Configurar Estação``): nome e endereço com sugestões; a localização vem do endereço.
+
+    Postos existentes são editados em ``station_admin`` (dados, conectores, potência e tarifas)."""
     is_demo = bool(getattr(app.api,'is_demo',False))
-    station = station or {}
-    editing = bool(station)
-    gap, height = (3.5, 42.5) if edited else (14, FIELD_HEIGHT)
-    name_box = setup_field('Nome da estação', station.get('name',''), 'Ex.: Posto Centro', gap=gap, edited=edited,
-                           height=height)
-    address_box = setup_field('Endereço', station.get('address',''), 'Rua, número, bairro, cidade e estado',
-                              gap=gap, edited=edited, height=height)
-    ident_box = setup_field('Identificador', code or station_code([station], station.get('id')) if editing else '',
-                            read_only=True, gap=gap, height=height)
-    ident_box.visible = editing and not edited
-    latitude_box = setup_field('Latitude', str(station.get('latitude','')), keyboard=ft.KeyboardType.NUMBER, gap=14, height=FIELD_HEIGHT)
-    longitude_box = setup_field('Longitude', str(station.get('longitude','')), keyboard=ft.KeyboardType.NUMBER, gap=14,
-                                height=FIELD_HEIGHT)
-    name, address, latitude, longitude = (box.controls[1] for box in (name_box, address_box, latitude_box, longitude_box))
-    toggle = _Toggle(app, False if edited else station.get('active', True))
-    status_box = ft.Column([design.label('Status', strong=False), toggle.holder], spacing=4,
-                           horizontal_alignment=ft.CrossAxisAlignment.STRETCH, visible=editing)
-    async def locate():
-        if is_demo:
-            latitude.value,longitude.value = '-23.55','-46.63'
-            app.page.update()
-            return
-        try:
-            coordinates = await geocode_address(address.value)
-        except Exception as exc:
-            raise ApiError('Consulta de endereço indisponível. Informe coordenadas.') from exc
-        if not coordinates:
-            raise ApiError('Endereço não encontrado.')
-        latitude.value,longitude.value = map(str,coordinates)
-        app.page.update()
+    name_box = setup_field('Nome da estação', '', 'Ex.: Posto Centro', gap=14, height=FIELD_HEIGHT)
+    address_box = setup_field('Endereço', '', 'Rua, número, bairro, cidade e estado', gap=14, height=FIELD_HEIGHT)
+    name, address = name_box.controls[1], address_box.controls[1]
+    chosen = {}
+    address_box.controls.append(address_autocomplete.attach(app, address, lambda item: chosen.update(item=item)))
+
     async def save():
         body = {'name':onboarding_screen._required(name,'nome do posto',100),
-                'address':onboarding_screen._required(address,'endereço',300),
-                'latitude':onboarding_screen._number(latitude,'Latitude',-90,90),
-                'longitude':onboarding_screen._number(longitude,'Longitude',-180,180)}
-        if station:
-            body['active'] = toggle.value
-        result = await app.api.request('PATCH' if station else 'POST',f"stations/{station['id']}" if station else 'stations',body)
+                'address':onboarding_screen._required(address,'endereço',300)}
+        try:
+            body['latitude'], body['longitude'] = (str(value) for value in await station_location(
+                app.api, body['address'], chosen.get('item'), demo=is_demo))
+        except ValueError as error:
+            address.error_text = str(error)
+            app.page.update()
+            raise ApiError(str(error)) from None
+        result = await app.api.request('POST','stations',body)
         if hasattr(app,'mark_saved'):
             app.mark_saved()
-        await app.go('operator',station_id=result['id'],nav=False)
-    controls = [setup_title(app, 'Configurar Estação', bottom=3.25 if edited else 2.25),
-                ft.Column([name_box, address_box, ident_box], spacing=16.5 if edited else 15.5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-                status_box,
-                cta('Salvar alterações' if editing else 'Salvar posto', app.action(save), weight='semibold', height=47.5),
-                ft.Container(height=450),  # coordenadas, pontos e atalhos: abaixo da primeira tela (referência)
-                design.section_label('Localização'),
-                ft.Column([latitude_box, longitude_box], spacing=14),
-                cta('Usar localização de exemplo' if is_demo else 'Localizar endereço',app.action(locate),primary=False,weight='semibold'),
-                design.txt('Nome, endereço e disponibilidade do posto valem para todos os seus pontos.', 11.5, 'regular',
-                           theme.GRAY_TEXT)]
-    if station:
-        controls += [ft.Container(height=4), design.section_label('Pontos de recarga')]
-        for connector in station['connectors']:
-            status, color = _point_status(connector)
-            row = design.list_row(connector['public_code'], _point_line(connector), tile=44, dark_tile=True,
-                                  icon='/design/icon_station_charge.svg', trailing=_status_pill(status, color),
-                                  on_click=app.link('operator',station_id=station['id'],connector_id=connector['id'],
-                                                    connector={**connector,'station_name':station.get('name')},nav=False))
-            details = [row]
-            if is_demo:
-                from ..demo import DEMO_PRESENCE_CODE
-                details.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
-            if not connector.get('active') and not connector.get('retired'):
-                shared = bool(station.get('active') or len(station['connectors']) > 1)
-                details.append(cta('Revisar e ativar ponto',app.link('operator',station_id=station['id'],
-                                   point_id=connector['id'],onboarding=True,step=2 if shared else 1,
-                                   **({'existing_station':True} if shared else {})),weight='semibold'))
-            controls.append(ft.Column(details, spacing=8))
-        controls.append(cta('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',
-                            app.link('operator',station_id=station['id'],claim=True),primary=False,weight='semibold'))
-    controls.append(cta('Voltar à gestão',app.link('operator'),primary=False,weight='semibold'))
-    return design.page(*controls, gap=16)
+        await app.go('station_admin',station_id=result['id'])
+    return design.page(
+        setup_title(app, 'Configurar Estação', bottom=2.25),
+        ft.Column([name_box, address_box], spacing=15.5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        design.txt('Escolha uma sugestão de endereço: a localização no mapa vem dele.', 11.5, 'regular', theme.GRAY_TEXT),
+        cta('Salvar posto', app.action(save), weight='semibold', height=47.5),
+        cta('Voltar à gestão',app.link('operator'),primary=False,weight='semibold'), gap=16)
 
 
 CONNECTOR_TYPES = ('Tipo 2', 'CCS2', 'CHAdeMO', 'GB/T')
@@ -343,15 +291,13 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     kind_box = setup_field('Tipo de conector', connector.get('connector_type','Tipo 2'), gap=gap, height=FIELD_HEIGHT)
     power_box = setup_field('Potência', _decimal_text(connector.get('power_kw','7.4')), keyboard=ft.KeyboardType.NUMBER,
                             gap=gap, height=FIELD_HEIGHT, suffix='kW')
-    price_box = setup_field('Tarifa', _decimal_text(connector.get('price_per_kwh','1.00'),2), keyboard=ft.KeyboardType.NUMBER,
-                            gap=gap, height=FIELD_HEIGHT, prefix='R$ ', suffix='/kWh')
     duration_box = setup_field('Limite por recarga', str(connector.get('max_duration_minutes','60')),
                                keyboard=ft.KeyboardType.NUMBER, gap=gap, height=FIELD_HEIGHT, suffix='min')
     device_box = setup_field('Dispositivo vinculado', linked_device['device_id'] if linked_device else '', read_only=True,
                              gap=gap, height=FIELD_HEIGHT)
-    public, kind, power, price, duration, device = (box.controls[1] for box in
-                                                    (public_box, kind_box, power_box, price_box, duration_box, device_box))
-    price_box.expand = duration_box.expand = True
+    public, kind, power, duration, device = (box.controls[1] for box in
+                                             (public_box, kind_box, power_box, duration_box, device_box))
+    back_to_connectors = app.link('station_admin', station_id=station_id, page='connectors')
     active = _Toggle(app, connector.get('active',True))
     active_box = ft.Column([design.label('Disponível para motoristas', strong=False), active.holder], spacing=4,
                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH, visible=bool(connector))
@@ -433,14 +379,13 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         body = {'public_code':onboarding_screen._required(public,'código público',50),
                 'connector_type':onboarding_screen._required(kind,'tipo de conector',50),
                 'power_kw':onboarding_screen._number(power,'Potência',Decimal('0.001'),1000),
-                'price_per_kwh':onboarding_screen._number(price,'Tarifa',0,10000),
                 'max_duration_minutes':onboarding_screen._number(duration,'Limite',1,1440,integer=True)}
         if connector:
             body['active'] = active.value
         await app.api.request('PATCH' if connector else 'POST',f"connectors/{connector['id']}" if connector else f'stations/{station_id}/connectors',body)
         if hasattr(app,'mark_saved'):
             app.mark_saved()
-        await app.go('operator',station_id=station_id)
+        await app.go('station_admin',station_id=station_id,page='connectors')
     async def provision():
         result = await app.api.request('POST',f"connectors/{connector['id']}/device")
         update_device(result['device_id'],'Credencial simulada criada. Nada precisa ser instalado.' if is_demo else
@@ -546,7 +491,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
 
     note = lambda text: design.txt(text, 11.5, 'regular', theme.GRAY_TEXT)  # noqa: E731
     controls = [
-        setup_title(app, 'Editar ponto' if connector else 'Novo ponto', on_back=app.link('operator',station_id=station_id),
+        setup_title(app, 'Editar ponto' if connector else 'Novo ponto', on_back=back_to_connectors,
                     bottom=2.25),
         design.card_box(ft.Column(header,spacing=8)),
         design.section_label('Conector'),
@@ -554,9 +499,9 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         kind_box,
         power_box,
         ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8),
-        design.section_label('Preço e tempo'),
-        ft.Row([price_box,duration_box],spacing=10,vertical_alignment=ft.CrossAxisAlignment.START),
-        note('Tarifa estimada por kWh e tempo máximo de cada recarga.'),
+        design.section_label('Tempo por recarga'),
+        duration_box,
+        note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifas, na tela do posto.'),
     ]
     if connector:
         controls += [active_box, note('O posto também precisa estar ativo para o ponto aparecer na busca.')]
@@ -593,7 +538,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
             device_box,provision_row,rotate_row,revoke_row,reset_box]
         if reset_state.get('status') in ('pending', 'received'):
             app.set_poll(poll_reset, 5)
-    controls.append(cta('Voltar ao posto',app.link('operator',station_id=station_id),primary=False,weight='semibold'))
+    controls.append(cta('Voltar aos conectores',back_to_connectors,primary=False,weight='semibold'))
     return design.page(*controls, gap=16)
 
 

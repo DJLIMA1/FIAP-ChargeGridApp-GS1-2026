@@ -57,11 +57,19 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_admin.build(app, station_id=sid)
         self.assertIn('Estação CG-001', texts(screen))
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
+                                ('Conectores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
                                 ('Potência por conector', ('station_admin', {'station_id': sid, 'page': 'power'})),
-                                ('Tarifas dinâmicas', ('tariffs', {'station_id': sid}))):
+                                ('Tarifas', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
             self.assertEqual((app.go.await_args.args[0], app.go.await_args.kwargs), expected)
         self.assertNotIn('Limite de bateria', texts(screen))  # aba removida do operador
+        # Sem repetições: nada de "Configurações adicionais" nem "Pontos e equipamentos".
+        data = await station_admin.build(app, station_id=sid, page='data')
+        for removed in ('Configurações adicionais', 'Pontos e equipamentos', 'Latitude'):
+            self.assertNotIn(removed, texts(screen) + texts(data))
+        connectors = await station_admin.build(app, station_id=sid, page='connectors')
+        self.assertIn('Adicionar ponto simulado a este posto', texts(connectors))
+        self.assertIn('A tarifa fica em Tarifas', texts(connectors))
         await app.api.close()
 
     async def test_data_page_patches_name_address_and_status(self):

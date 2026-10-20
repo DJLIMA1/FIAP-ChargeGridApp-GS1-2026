@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
-from ..services.location import geocode_address
+from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
 from ..ui.components import money
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title, status_card
@@ -127,57 +127,32 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         name_box = setup_field('Nome da estação', station.get('name', ''), 'Ex.: Posto Centro', gap=14, height=FIELD_HEIGHT)
         address_box = setup_field('Endereço', station.get('address', ''), 'Rua, número, bairro, cidade e estado', gap=14,
                                    height=FIELD_HEIGHT)
-        latitude_box = setup_field('Latitude', str(station.get('latitude', '')), keyboard=ft.KeyboardType.NUMBER)
-        longitude_box = setup_field('Longitude', str(station.get('longitude', '')), keyboard=ft.KeyboardType.NUMBER)
         ident_box = setup_field('Identificador', point.get('public_code', ''), read_only=True, gap=14, height=FIELD_HEIGHT)
-        name, address, latitude, longitude = (box.controls[1] for box in
-                                              (name_box, address_box, latitude_box, longitude_box))
-
-        def picked(item):
-            # Sugestão escolhida já traz as coordenadas: dispensa "Buscar coordenadas".
-            if item.get('latitude') is not None and item.get('longitude') is not None:
-                latitude.value, longitude.value = str(item['latitude']), str(item['longitude'])
-                latitude.error_text = longitude.error_text = None
-        address_box.controls.append(address_autocomplete.attach(app, address, picked))
-
-        async def locate():
-            _required(address, 'endereço', 300)
-            if is_demo:
-                latitude.value,longitude.value = '-23.55','-46.63'
-                latitude.error_text = longitude.error_text = None
-                app.page.update()
-                return
-            try:
-                coordinates = await geocode_address(address.value.strip())
-            except Exception as exc:
-                raise ApiError('Não foi possível consultar este endereço. Informe as coordenadas manualmente.') from exc
-            if not coordinates:
-                raise ApiError('Endereço não encontrado. Confira o texto ou informe as coordenadas.')
-            latitude.value, longitude.value = map(str, coordinates)
-            latitude.error_text = longitude.error_text = None
-            app.page.update()
+        name, address = name_box.controls[1], address_box.controls[1]
+        chosen = {}
+        # Sem latitude/longitude na tela: as coordenadas vêm do endereço (sugestão escolhida ou busca).
+        address_box.controls.append(address_autocomplete.attach(app, address, lambda item: chosen.update(item=item)))
 
         async def save_location():
-            body = {
-                'name': _required(name, 'nome do posto', 100),
-                'address': _required(address, 'endereço', 300),
-                'latitude': _number(latitude, 'Latitude', -90, 90),
-                'longitude': _number(longitude, 'Longitude', -180, 180),
-            }
+            body = {'name': _required(name, 'nome do posto', 100), 'address': _required(address, 'endereço', 300)}
+            try:
+                body['latitude'], body['longitude'] = (str(value) for value in await station_location(
+                    app.api, body['address'], chosen.get('item'), station, demo=is_demo))
+            except ValueError as error:
+                address.error_text = str(error)
+                app.page.update()
+                raise ApiError(str(error)) from None
             await app.api.request('PATCH', f'stations/{station_id}', body)
             if hasattr(app, 'mark_saved'):
                 app.mark_saved()
             await app.go('operator', station_id=station_id, point_id=point_id,
                          onboarding=True, step=2, **context)
 
-        tail.insert(0, _note('Use um nome e endereço fictícios. A localização de exemplo não consulta serviços externos.' if is_demo else
+        tail.insert(0, _note('Use um nome e endereço fictícios. A conta demo sugere endereços de exemplo.' if is_demo else
                              'Use um nome reconhecível e o endereço da instalação, não o seu endereço pessoal.'))
         controls += [
             _form([name_box, address_box, ident_box,
-                   cta('Usar localização de exemplo' if is_demo else 'Buscar coordenadas do endereço',
-                       app.action(locate), primary=False, weight='semibold'),
-                   latitude_box, longitude_box,
-                   _note('Confira as coordenadas. Se necessário, ajuste-as manualmente.')]),
+                   _note('Digite a rua e o número e escolha uma sugestão: a localização no mapa vem do endereço.')]),
             cta('Salvar e continuar', app.action(save_location), weight='bold', size=15),
             cta('Deixar para depois', app.link('operator'), primary=False, weight='semibold'),
         ]

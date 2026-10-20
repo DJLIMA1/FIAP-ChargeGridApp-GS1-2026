@@ -92,9 +92,11 @@ def parent_route(route, data, mode='consumer'):
                 return 'operator', {**data, 'step': step - 1}
             return 'operator', {}
         if data.get('claim'):
-            return 'operator', {'station_id': data['station_id']} if data.get('station_id') else {}
+            if data.get('station_id'):
+                return 'station_admin', {'station_id': data['station_id'], 'page': 'connectors'}
+            return 'operator', {}
         if data.get('connector_id'):
-            return 'operator', {'station_id': data.get('station_id')}
+            return 'station_admin', {'station_id': data.get('station_id'), 'page': 'connectors'}
         return ('operator', {}) if data.get('station_id') else (None if mode == 'vendor' else ('profile', {}))
     if route == 'profile' and data.get('mode') in ('password', 'edit'):
         return 'profile', {}

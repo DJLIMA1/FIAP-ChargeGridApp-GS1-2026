@@ -50,7 +50,8 @@ class NavigationTests(unittest.IsolatedAsyncioTestCase):
         app.go.assert_not_called()
 
     async def test_logical_parents_preserve_operator_context(self):
-        self.assertEqual(parent_route('operator', {'station_id':'s','connector_id':'c'}), ('operator',{'station_id':'s'}))
+        self.assertEqual(parent_route('operator', {'station_id':'s','connector_id':'c'}),
+                         ('station_admin',{'station_id':'s','page':'connectors'}))
         self.assertEqual(parent_route('history', {'station_id':'s'}), ('operator',{'station_id':'s'}))
         self.assertEqual(parent_route('coupons', {'manage':True,'create':True}), ('coupons',{'manage':True}))
         self.assertEqual(parent_route('charging', {'session_id':'s'}), ('stations',{}))

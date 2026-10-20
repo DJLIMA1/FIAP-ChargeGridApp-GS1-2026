@@ -5,7 +5,13 @@ from unittest.mock import Mock, patch
 import flet as ft
 
 from chargegrid_app.api_client import ApiError
-from chargegrid_app.screens import coupons, onboarding, operator, ownership
+from chargegrid_app.screens import (
+    coupons,
+    onboarding,
+    operator,
+    ownership,
+    station_admin,
+)
 from test_behavior import HandlerApp, click, descendants
 
 
@@ -197,20 +203,23 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_review_disabled_point_preserves_shared_station(self):
         app = HandlerApp()
-        screen = await operator.station_form(app,station_fixture())
+        screen = station_admin._connectors_page(app,station_fixture())
         await click(screen,'Revisar e ativar ponto')(None)
         app.go.assert_awaited_with('operator',station_id='station',point_id='point',
                                   onboarding=True,step=2,existing_station=True)
 
-    async def test_invalid_coordinates_show_field_error_without_sending_patch(self):
+    async def test_new_station_without_a_found_address_shows_field_error_and_sends_nothing(self):
         app = HandlerApp()
-        screen = await operator.station_form(app,station_fixture())
-        latitude = fields(screen)['Latitude']
-        latitude.value = 'não é número'
+        app.api.request.return_value = {'items': []}
+        screen = await operator.station_form(app)
+        self.assertNotIn('Latitude', fields(screen))
+        fields(screen)['Nome da estação'].value = 'Posto'
+        address = fields(screen)['Endereço']
+        address.value = 'Rua Inexistente, 1'
         with self.assertRaises(ApiError):
-            await click(screen,'Salvar alterações')(None)
-        self.assertTrue(latitude.error_text)
-        app.api.request.assert_not_awaited()
+            await click(screen,'Salvar posto')(None)
+        self.assertIn('Não encontramos este endereço', address.error_text)
+        self.assertFalse(any(call.args[0] == 'POST' for call in app.api.request.await_args_list))
 
     async def test_retired_point_cannot_be_resumed_in_setup(self):
         app = HandlerApp()

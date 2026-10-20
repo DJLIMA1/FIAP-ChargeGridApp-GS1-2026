@@ -1,7 +1,9 @@
-"""Estação do vendedor: detalhe e subpáginas (dados, limites de potência).
+"""Estação do vendedor: um único lugar para cada posto.
 
-Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'power').
-Nome, endereço e status usam ``PATCH stations``. A página de potência edita o teto do posto
+Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'). A tela do
+posto leva a Dados da estação, Conectores (pontos, edição e vincular outra tela), Potência por conector
+e Tarifas (``tariffs``: tarifa base e dinâmica). Nome, endereço e status usam ``PATCH stations``; a
+localização vem do endereço (sem latitude/longitude na tela). A página de potência edita o teto do posto
 (``PATCH stations``: ``max_power_kw``, ``power_limit_notify``) e o limite de cada conector
 (``PATCH connectors``: ``power_limit_kw``). ``power_kw`` é a potência nominal do carregador e nunca é
 alterada aqui. A divisão do teto entre os conectores usa ``chargegrid_core.power`` (a mesma regra da API),
@@ -18,6 +20,7 @@ from chargegrid_core import power as power_rules
 from chargegrid_core.formatting import kwh
 
 from ..api_client import ApiError
+from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
 
 NEXT_START_NOTE = ('Recargas em andamento mantêm a potência com que começaram; '
@@ -114,13 +117,22 @@ async def build(app, station_id=None, page=None, **params):
         return _data_page(app, station, code)
     if page == 'power':
         return _power_page(app, station)
+    if page == 'connectors':
+        return _connectors_page(app, station)
     return _main_page(app, station, code)
+
+
+def _connectors_line(points):
+    if not points:
+        return 'Nenhum ponto vinculado · vincular uma tela'
+    live = sum(1 for point in points if point.get('active') is not False)
+    plural = 's' if len(points) != 1 else ''
+    return f"{len(points)} ponto{plural} · {live} publicado{'s' if live != 1 else ''} · editar e vincular outra tela"
 
 
 def _main_page(app, station, code):
     sid = station['id']
     points = _live_points(station)
-    power_line = power_summary(station, points)
     go = lambda page: app.link('station_admin', station_id=sid, page=page)  # noqa: E731
     return design.page(
         heading(app, station.get('name') or 'Estação'),
@@ -129,13 +141,54 @@ def _main_page(app, station, code):
                    design.txt(_street(station.get('address')), 11, 'regular', theme.GRAY_TEXT)], spacing=9),
         ft.Container(height=19),
         ft.Column([
-            menu_row('Dados da estação', 'Endereço, nome e status', ft.Icons.EDIT_OUTLINED, go('data')),
-            menu_row('Potência por conector', power_line, ft.Icons.BOLT_OUTLINED, go('power')),
-            menu_row('Tarifas dinâmicas', 'Rotatividade, demanda e pico', ft.Icons.TRENDING_UP,
+            menu_row('Dados da estação', 'Nome, endereço e status', ft.Icons.EDIT_OUTLINED, go('data')),
+            menu_row('Conectores', _connectors_line(points), ft.Icons.EV_STATION_OUTLINED, go('connectors')),
+            menu_row('Potência por conector', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
+            menu_row('Tarifas', 'Tarifa base e tarifa dinâmica por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
         ], spacing=29),
         ft.Container(height=18),
         chatbot_button(app, 38), gap=14)
+
+
+def _connectors_page(app, station):
+    """Pontos de recarga do posto: editar cada um (tipo, potência, tempo, equipamento) e vincular outra tela."""
+    from .operator import (  # evita import circular
+        _point_line,
+        _point_status,
+        _status_pill,
+    )
+    from .setup_ui import cta
+
+    sid = station['id']
+    is_demo = bool(getattr(app.api, 'is_demo', False))
+    rows = []
+    for connector in station.get('connectors') or []:
+        status, color = _point_status(connector)
+        details = [design.list_row(
+            connector['public_code'], _point_line(connector), tile=44, dark_tile=True,
+            icon='/design/icon_station_charge.svg', trailing=_status_pill(status, color),
+            on_click=app.link('operator', station_id=sid, connector_id=connector['id'],
+                              connector={**connector, 'station_name': station.get('name')}, nav=False))]
+        if not connector.get('active') and not connector.get('retired'):
+            shared = bool(station.get('active') or len(station.get('connectors') or []) > 1)
+            details.append(cta('Revisar e ativar ponto', app.link(
+                'operator', station_id=sid, point_id=connector['id'], onboarding=True, step=2 if shared else 1,
+                **({'existing_station': True} if shared else {})), weight='semibold'))
+        rows.append(ft.Column(details, spacing=8))
+    if is_demo:
+        from ..demo import DEMO_PRESENCE_CODE
+        rows.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
+    if not rows:
+        rows.append(design.txt('Nenhum ponto vinculado a este posto.', 12.5, 'regular', theme.GRAY_TEXT))
+    return design.page(
+        heading(app, 'Conectores', app.link('station_admin', station_id=sid)),
+        design.txt('Toque em um ponto para editar tipo, potência, tempo por recarga e o equipamento. '
+                   'A tarifa fica em Tarifas.', 12, 'regular', theme.GRAY_TEXT),
+        *rows,
+        cta('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',
+            app.link('operator', station_id=sid, claim=True), primary=False, weight='semibold'),
+        gap=16, gutter=3)
 
 
 def _data_page(app, station, code):
@@ -146,6 +199,8 @@ def _data_page(app, station, code):
     state = {'active': station.get('active', True), 'saved': (station.get('name'), station.get('address'))}
     holder = ft.Container()
 
+    chosen = {}
+
     async def persist(extra=None):
         current = (name.value.strip(), address.value.strip())
         body = dict(extra or {})
@@ -153,6 +208,17 @@ def _data_page(app, station, code):
             if not current[0] or not current[1]:
                 raise ApiError('Informe nome e endereço da estação.')
             body.update({'name': current[0], 'address': current[1]})
+            if current[1] != state['saved'][1]:
+                # Endereço novo: a localização do mapa vem dele (sugestão escolhida ou busca).
+                try:
+                    lat, lng = await station_location(app.api, current[1], chosen.get('item'), station,
+                                                      demo=bool(getattr(app.api, 'is_demo', False)))
+                except ValueError as error:
+                    address.error_text = str(error)
+                    app.page.update()
+                    raise ApiError(str(error)) from None
+                address.error_text = None
+                body.update({'latitude': str(lat), 'longitude': str(lng)})
         if not body:
             return
         await app.api.request('PATCH', f'stations/{sid}', body)
@@ -168,10 +234,8 @@ def _data_page(app, station, code):
         await persist()
 
     async def picked(item):
-        extra = {}
-        if item.get('latitude') is not None and item.get('longitude') is not None:
-            extra = {'latitude': str(item['latitude']), 'longitude': str(item['longitude'])}
-        await persist(extra)
+        chosen['item'] = item
+        await persist()
     suggestions = address_autocomplete.attach(app, address, picked)
 
     async def choose(value):
@@ -202,13 +266,6 @@ def _data_page(app, station, code):
             design.labeled('Identificador', _round(ident), gap=14),
             ft.Container(design.labeled('Status', holder, gap=5, strong=False), margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
         ], spacing=15), margin=ft.Margin(left=0, top=16, right=0, bottom=0)),
-        ft.Container(height=5),
-        ft.Container(design.section_label('Configurações adicionais'), margin=ft.Margin(left=0, top=0, right=0, bottom=-3)),
-        menu_row('Potência por conector', 'Limite do posto e de cada conector', ft.Icons.BOLT_OUTLINED,
-                 app.link('station_admin', station_id=sid, page='power')),
-        ft.Container(height=8),
-        menu_row('Pontos e equipamentos', 'Vincular por QR, editar e restaurar', ft.Icons.QR_CODE_SCANNER,
-                 app.link('operator', station_id=sid, nav=False)),
         gap=16, gutter=3)
 
 

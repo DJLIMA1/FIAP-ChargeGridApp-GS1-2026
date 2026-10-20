@@ -81,11 +81,22 @@ Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`).
 
 **No app:** a tela **Tarifas** do posto mostra a demanda agora (nível, multiplicador, preço atual, pressão e fatores, atualizada a cada 30 s). Ela também tem a tarifa base de cada conector e as regras, com campos numéricos de prefixo e sufixo (`R$ … /kWh`, `até + … %`, `… min`), horário pelo seletor do sistema e dias por botões. O motorista vê "Demanda alta agora: tarifa 1,3× a base" ao escolher o conector, e o resumo e a estimativa da recarga já usam o preço dinâmico.
 
+## Telas do posto no app (vendedor)
+
+**Estações → posto** reúne tudo em quatro entradas, sem repetição:
+
+- **Dados da estação:** nome, endereço com sugestões e status.
+- **Conectores:** pontos de recarga do posto. Cada um tem a edição de tipo, potência, tempo por recarga e equipamento (credencial e restauração). Também ficam aqui "Revisar e ativar ponto" e "Vincular outra tela a este posto".
+- **Potência por conector.**
+- **Tarifas:** tarifa base de cada conector e tarifa dinâmica.
+
+Saíram "Configurações adicionais" e a antiga tela "Pontos e equipamentos". O preço por kWh existe só em **Tarifas**. Latitude e longitude não aparecem mais: o cadastro (onboarding e novo posto) e a edição do endereço gravam as coordenadas da sugestão escolhida ou da busca pela API própria. Em conta real, um endereço sem resultado é recusado com "Não encontramos este endereço…". Na demo, usa-se o centro de São Paulo.
+
 ## Autocomplete de endereço
 
 `GET /geo/address-suggestions?q=<texto ou CEP>[&lat=&lng=]` (usuário autenticado, 60 consultas/min) devolve `{items:[{label,street,number,district,city,state,postcode,latitude,longitude,place?}],available,attribution}`. É um endpoint próprio, sem chave e sem custo: texto livre consulta o [Photon](https://photon.komoot.io) (geocodificador do OpenStreetMap feito para busca enquanto se digita; o Nominatim proíbe esse uso), limitado ao Brasil e com viés por `lat/lng`; um CEP de 8 dígitos consulta o [ViaCEP](https://viacep.com.br) e o Photon completa as coordenadas. `label` segue o formato dos endereços salvos (`Rua X, 123, Bairro, Cidade - UF`); se a rua vier sem número, o número digitado é aproveitado. Cache em memória (24 h; falha, 60 s), timeout de 2,5 s e falha silenciosa (`available: false`, lista vazia): o cadastro continua aceitando o texto digitado. Menos de 3 caracteres (e não CEP) não consulta ninguém. A interface mostra a atribuição exigida pelo OpenStreetMap.
 
-Uso: app (cadastro da estação no onboarding e **Dados da estação**; espera 350 ms sem digitação, descarta respostas antigas; escolher uma sugestão preenche/salva latitude e longitude) e painel web (**Dados da estação**: combobox acessível com ↑/↓, Enter e Esc; o **Salvar** envia endereço + coordenadas). A conta demo do app e o mock do painel respondem com endereços fixos de São Paulo, sem rede.
+Uso: app (cadastro da estação no onboarding e **Dados da estação**; espera 350 ms sem digitação, descarta respostas antigas; a localização do posto vem do endereço: da sugestão escolhida ou, sem escolha, da primeira sugestão da busca; o app não pede latitude/longitude) e painel web (**Dados da estação**: combobox acessível com ↑/↓, Enter e Esc; o **Salvar** envia endereço + coordenadas). A conta demo do app e o mock do painel respondem com endereços fixos de São Paulo, sem rede.
 
 ## Modo Motorista
 

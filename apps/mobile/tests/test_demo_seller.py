@@ -1,6 +1,6 @@
 """Seller simulation uses local demo operations, never camera or geocoding."""
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import flet as ft
 
@@ -78,30 +78,37 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         await add.on_click(None)
         app.go.assert_awaited_with('operator',claim=True)
 
-    async def test_demo_station_location_does_not_call_external_geocoder(self):
+    async def test_demo_new_station_location_comes_from_the_address(self):
         app = self.demo_app()
-        screen = await operator.station_form(app,station_fixture())
-        fields(screen)['Latitude'].value = ''
-        fields(screen)['Longitude'].value = ''
-        with patch('chargegrid_app.screens.operator.geocode_address',new=AsyncMock()) as geocode:
-            await click(screen,'Usar localização de exemplo')(None)
-        geocode.assert_not_called()
-        self.assertEqual(fields(screen)['Latitude'].value,'-23.55')
-        self.assertEqual(fields(screen)['Longitude'].value,'-46.63')
-        self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
+        app.api.request.side_effect = [{'items': []}, {'id': 'new-station'}]
+        screen = await operator.station_form(app)
+        self.assertNotIn('Latitude', fields(screen))
+        fields(screen)['Nome da estação'].value = 'Posto Novo'
+        fields(screen)['Endereço'].value = 'Rua Fictícia, 42'
+        await click(screen,'Salvar posto')(None)
+        method, path, body = app.api.request.await_args.args[:3]
+        # Demo sem sugestão: centro de São Paulo, sem geocodificador externo.
+        self.assertEqual((method, path, body['latitude'], body['longitude']), ('POST', 'stations', '-23.5505', '-46.6333'))
+        app.go.assert_awaited_with('station_admin', station_id='new-station')
 
-    async def test_demo_onboarding_location_uses_local_example_coordinates(self):
+    async def test_demo_onboarding_location_uses_the_address(self):
         app = self.demo_app()
-        app.api.request.return_value = station_fixture(active=False)
+        station = station_fixture(active=False)
+
+        async def request(method, path, body=None, **kwargs):
+            if path == 'geo/address-suggestions':
+                return {'items': [{'label': 'Avenida Paulista, 1000, Bela Vista, São Paulo - SP',
+                                   'latitude': -23.5648865, 'longitude': -46.651918}]}
+            return station
+        app.api.request.side_effect = request
         screen = await onboarding.build(app,'station','point',step=1)
         self.assertIn('PONTO SIMULADO',texts(screen))
         self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
-        with patch('chargegrid_app.screens.onboarding.geocode_address',new=AsyncMock()) as geocode:
-            await click(screen,'Usar localização de exemplo')(None)
-        geocode.assert_not_called()
+        self.assertNotIn('Latitude', fields(screen))
+        fields(screen)['Endereço'].value = 'av paulista 1000'
         await click(screen,'Salvar e continuar')(None)
         self.assertEqual(app.api.request.await_args.args[:2],('PATCH','stations/station'))
-        self.assertEqual(app.api.request.await_args.args[2]['longitude'],'-46.63')
+        self.assertEqual(app.api.request.await_args.args[2]['longitude'],'-46.651918')
 
     async def test_demo_publish_displays_presence_code_without_physical_instructions(self):
         app = self.demo_app()
@@ -166,7 +173,6 @@ class DemoSellerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             location_screen = await onboarding.build(app,station_id,point_id,step=1)
             fields(location_screen)['Nome da estação'].value = 'Posto de teste local'
             fields(location_screen)['Endereço'].value = 'Rua Fictícia, 42, Cidade Simulada'
-            await click(location_screen,'Usar localização de exemplo')(None)
             await click(location_screen,'Salvar e continuar')(None)
 
             price_screen = await onboarding.build(app,station_id,point_id,step=2)

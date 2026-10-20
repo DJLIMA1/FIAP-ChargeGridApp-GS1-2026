@@ -144,7 +144,8 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         finally:
             theme._dark_enabled.reset(token)
         fields = {(item.label or item.data):item for item in descendants(screen) if isinstance(item,ft.TextField)}
-        self.assertEqual((fields['Potência'].value,fields['Tarifa'].value),('7,2','1,50'))
+        self.assertEqual(fields['Potência'].value,'7,2')
+        self.assertNotIn('Tarifa',fields)  # a tarifa fica em Tarifas, na tela do posto
         self.assertFalse(fields['Tipo de conector'].visible)
         # Event handlers may run outside the build context (dark default).
         contextvars.Context().run(click(screen,'Outro'))
@@ -157,4 +158,6 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         click(screen,'CCS2')()
         await click(screen,'Salvar alterações')(None)
         body = app.api.request.await_args.args[2]
-        self.assertEqual((body['connector_type'],body['power_kw'],body['price_per_kwh']),('CCS2','22','1.50'))
+        self.assertEqual((body['connector_type'],body['power_kw']),('CCS2','22'))
+        self.assertNotIn('price_per_kwh',body)
+        app.go.assert_awaited_with('station_admin',station_id='station',page='connectors')

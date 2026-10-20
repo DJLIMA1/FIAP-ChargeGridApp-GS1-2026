@@ -29,3 +29,46 @@ async def geocode_address(address):
         if results:
             return float(results[0]['lat']), float(results[0]['lon'])
     return None
+
+
+async def coordinates_for(api, address, picked=None):
+    """Coordenadas de um endereço sem pedir latitude/longitude ao usuário.
+
+    ``picked``: sugestão escolhida no autocomplete (já traz coordenadas). Senão, a primeira sugestão
+    da API própria (``geo/address-suggestions``: Photon/ViaCEP; na demo, endereços fixos). ``None`` se
+    não houver resultado.
+    """
+    if picked and picked.get('label') == (address or '').strip() and picked.get('latitude') is not None:
+        return float(picked['latitude']), float(picked['longitude'])
+    query = ' '.join(str(address or '').split())
+    if len(query) < 3:
+        return None
+    try:
+        result = await api.request('GET', 'geo/address-suggestions', params={'q': query[:120]}) or {}
+    except Exception:  # noqa: BLE001 - sem rede/sem provedor: quem chama decide a mensagem
+        return None
+    found = next((item for item in result.get('items') or [] if item.get('latitude') is not None), None)
+    return (float(found['latitude']), float(found['longitude'])) if found else None
+
+
+SAO_PAULO_CENTER = (-23.5505, -46.6333)
+NOT_FOUND = 'Não encontramos este endereço. Digite a rua e o número e escolha uma das sugestões.'
+
+
+async def station_location(api, address, picked=None, station=None, demo=False):
+    """``(latitude, longitude)`` para salvar o posto a partir do endereço.
+
+    Sem resultado: mantém as coordenadas salvas se o endereço não mudou; na demo usa o centro de
+    São Paulo (endereços fictícios). Em conta real, levanta ``ValueError`` com a mensagem ao usuário.
+    """
+    found = await coordinates_for(api, address, picked)
+    if found:
+        return found
+    station = station or {}
+    saved = (station.get('latitude'), station.get('longitude'))
+    if (address or '').strip() == (station.get('address') or '').strip() and None not in saved \
+            and any(float(value) for value in saved):
+        return float(saved[0]), float(saved[1])
+    if demo:
+        return SAO_PAULO_CENTER
+    raise ValueError(NOT_FOUND)

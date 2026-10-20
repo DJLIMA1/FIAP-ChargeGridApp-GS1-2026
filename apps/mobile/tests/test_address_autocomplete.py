@@ -58,7 +58,7 @@ class AddressAutocompleteTests(unittest.IsolatedAsyncioTestCase):
         await type_address(field, 'av')
         self.assertFalse(panel_of(screen).visible)
 
-    async def test_onboarding_pick_fills_latitude_and_longitude(self):
+    async def test_onboarding_pick_gives_the_coordinates(self):
         app = HandlerApp()
         app.api = AsyncMock()
         app.api.is_demo = False
@@ -81,7 +81,13 @@ class AddressAutocompleteTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('OpenStreetMap', texts(panel_of(screen)))
         await suggestion_rows(screen)[0].on_click(None)
         self.assertEqual(fields['Endereço'].value, item['label'])
-        self.assertEqual((fields['Latitude'].value, fields['Longitude'].value), ('-23.5648865', '-46.651918'))
+        self.assertNotIn('Latitude', fields)
+        fields['Nome da estação'].value = 'Posto Paulista'
+        save = next(c for c in descendants(screen) if isinstance(c, ft.Container) and c.on_click
+                    and 'Salvar e continuar' in texts(c))
+        await save.on_click(None)
+        patch = next(call for call in app.api.request.await_args_list if call.args[0] == 'PATCH')
+        self.assertEqual((patch.args[2]['latitude'], patch.args[2]['longitude']), ('-23.5648865', '-46.651918'))
 
     async def test_failure_and_stale_answers_never_show_a_list(self):
         app = HandlerApp()

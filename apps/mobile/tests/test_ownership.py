@@ -115,7 +115,8 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
 
     def test_back_routes_keep_station_but_never_secret(self):
         self.assertEqual(parent_route('operator', {'claim': True}), ('operator', {}))
-        self.assertEqual(parent_route('operator', {'claim': True, 'station_id': 'station'}), ('operator', {'station_id': 'station'}))
+        self.assertEqual(parent_route('operator', {'claim': True, 'station_id': 'station'}),
+                         ('station_admin', {'station_id': 'station', 'page': 'connectors'}))
         self.assertTrue(form_route('operator', {'claim': True}))
         route = {'station_id': 'station', 'point_id': 'point', 'onboarding': True, 'step': 3}
         self.assertEqual(parent_route('operator', route), ('operator', {**route, 'step': 2}))
@@ -133,12 +134,15 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
             }],
         }
         requests = []
+        suggestions = {'items': []}
 
         async def request(method, path, body=None, **kwargs):
             requests.append((method, path, body))
             if method == 'GET':
                 if path == 'me':
                     return {'account_type': 'vendor', 'operator_enabled': True}
+                if path == 'geo/address-suggestions':
+                    return suggestions
                 return station
             if path == 'stations/station':
                 station.update(body)
@@ -154,13 +158,13 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         fields = {(item.label or item.data): item for item in descendants(screen) if isinstance(item, ft.TextField)}
         fields['Nome da estação'].value = 'Estação Centro'
         fields['Endereço'].value = 'Rua das Flores, 50, São Paulo'
-        fields['Latitude'].value = 'abc'
-        fields['Longitude'].value = '-46,63'
-        with self.assertRaises(ApiError):
+        self.assertNotIn('Latitude', fields)  # a localização vem do endereço
+        with self.assertRaises(ApiError):  # endereço não encontrado: não salva coordenadas inventadas
             await click(screen, 'Salvar e continuar')(None)
-        self.assertTrue(fields['Latitude'].error_text)
+        self.assertIn('Não encontramos este endereço', fields['Endereço'].error_text)
         self.assertFalse(any(method == 'PATCH' for method, _, _ in requests))
-        fields['Latitude'].value = '-23,55'
+        suggestions['items'] = [{'label': 'Rua das Flores, 50, Centro, São Paulo - SP',
+                                 'latitude': -23.55, 'longitude': -46.63}]
         await click(screen, 'Salvar e continuar')(None)
         self.assertEqual(requests[-1], ('PATCH', 'stations/station', {
             'name': 'Estação Centro', 'address': 'Rua das Flores, 50, São Paulo',
