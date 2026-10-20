@@ -215,6 +215,15 @@ class ChargingSession(Base):
     price_terms: Mapped[dict | None] = mapped_column(JSONB)
     energy_cost_per_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4))
     platform_fee_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    # Permanência após a recarga (migração c8e3a5f2d914, chargegrid_core.overstay): termos aceitos
+    # no início, intervalo com o cabo ainda conectado e a taxa sobre os segundos confirmados.
+    overstay_terms: Mapped[dict | None] = mapped_column(JSONB)
+    overstay_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    overstay_last_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    overstay_billable_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    overstay_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    overstay_end_reason: Mapped[str | None] = mapped_column(String(30))
+    overstay_fee: Mapped[float] = mapped_column(Numeric(12, 4), default=0, server_default=text("0"))
     __table_args__ = (
         CheckConstraint(
             "energy_wh >= 0 AND (soc_percent IS NULL OR soc_percent BETWEEN 0 AND 100) AND discount_percent BETWEEN 0 AND 100"
@@ -348,6 +357,22 @@ Index("ix_charging_sessions_connector_ended", ChargingSession.connector_id, Char
 Index("ix_charging_sessions_connector_created", ChargingSession.connector_id, ChargingSession.created_at)
 Index("ix_reservations_connector_created", Reservation.connector_id, Reservation.created_at)
 Index("ix_telemetry_samples_session_captured", Telemetry.session_id, Telemetry.captured_at)
+
+# Permanência após a recarga (migração c8e3a5f2d914): um intervalo aberto por ponto.
+OVERSTAY_END_REASONS = ("disconnected", "device_reboot", "observation_lost", "owner_waived")
+_OVERSTAY_OPEN = text("overstay_started_at IS NOT NULL AND overstay_ended_at IS NULL")
+for _constraint in (
+    CheckConstraint("overstay_billable_seconds >= 0 AND overstay_fee >= 0", name="session_overstay_amounts"),
+    CheckConstraint("overstay_ended_at IS NULL OR overstay_started_at IS NOT NULL", name="session_overstay_order"),
+    CheckConstraint(
+        "overstay_end_reason IS NULL OR overstay_end_reason IN ("
+        + ", ".join(f"'{reason}'" for reason in OVERSTAY_END_REASONS) + ")",
+        name="session_overstay_end_reason",
+    ),
+):
+    ChargingSession.__table__.append_constraint(_constraint)
+Index("one_open_overstay_connector", ChargingSession.connector_id, unique=True, postgresql_where=_OVERSTAY_OPEN)
+Index("ix_open_overstay_user", ChargingSession.user_id, postgresql_where=_OVERSTAY_OPEN)
 
 
 class AiUsage(Base):
