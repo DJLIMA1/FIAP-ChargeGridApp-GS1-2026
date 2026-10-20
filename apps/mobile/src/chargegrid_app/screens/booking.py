@@ -2,18 +2,23 @@
 
 Dois fluxos, escolhidos na tela do posto (``kind``):
   * ``reserve`` (Reservar estação): 1 conector · 2 reserva (15 min + taxa) · 3 cobrança · 4 potência ·
-    5 pagamento · 6 revisar · 7 Pix/cartão · 8 reserva confirmada (o prazo de 15 min corre a partir da
-    confirmação do posto; ao chegar, "Cheguei: informar código" inicia a recarga);
-  * ``now`` (Carregar agora): 1 conector · 3 cobrança · 4 potência · 5 pagamento · 6 revisar · 7 Pix/cartão,
-    e então o início no ponto com o código #F (sem etapa de reserva nem taxa).
+    5 pagamento · 6 revisar · 7 aguardando pagamento (Stripe) · 8 reserva confirmada (o prazo de 15 min
+    corre a partir da confirmação do posto; ao chegar, "Cheguei: informar código" inicia a recarga);
+  * ``now`` (Carregar agora): 1 conector · 3 cobrança · 4 potência · 5 pagamento · 6 revisar · 7 aguardando
+    pagamento (Stripe), e então o início no ponto com o código #F (sem etapa de reserva nem taxa).
 Parâmetros de rota: ``step``, ``station_id``, ``connector_id`` e, para abrir uma etapa já preenchida
 (captura/atalhos): ``kind`` (reserve|now), ``by`` (time|value|autonomy), ``amount``, ``power`` (max|reduced),
-``pay`` (balance|pix|card), ``slot``. O estado das escolhas fica em ``app.booking`` (memória).
+``pay`` (balance|stripe; ``pix``/``card`` antigos viram ``stripe``), ``slot``. O estado das escolhas fica
+em ``app.booking`` (memória).
 
 "Reservar" cria a reserva pela API (``POST reservations`` com chave de idempotência); "Agora" entrega
 para o fluxo de início de recarga (``charging``), onde o código de presença #F continua obrigatório.
-O pagamento é simulado: Saldo debita ``services.wallet``; Pix/cartão apenas confirmam. Nenhum dado de
-cartão é lido, guardado ou enviado.
+
+Pagamento: "Cartão ou Pix · Stripe (teste)" quando ``GET payments/config`` diz ``enabled`` — o app cria o
+pagamento (``POST payments``, teto calculado pela API), abre a página hospedada da Stripe no navegador e
+consulta o estado a cada 2 s; só com o pagamento confirmado pelo servidor segue (o ``payment_id`` vai no
+início da recarga). Nenhum dado de cartão é lido, guardado ou enviado pelo app. "Saldo" (simulado,
+``services.wallet``) fica na conta demo, ou como única opção quando a API não tem pagamento.
 
 "Por autonomia": o motorista pede N km; a energia sai do carro do perfil (consumo) e é limitada ao espaço
 livre da bateria (SoC escondido de ``services.vehicle_state``, nunca exibido aqui). Todo pagamento feito
@@ -25,15 +30,16 @@ import flet.canvas as cv
 
 from ..api_client import ApiError
 from ..services import booking as rules
-from ..services import prepaid, vehicle_state, wallet
+from ..services import payments, prepaid, vehicle_state, wallet
 from ..ui import design, theme
 from ..ui.point_summary import point_context
 
-PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-demo-simulado5204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
 AMBER_BG = '#4E3F24'
 AMBER = '#E8922B'
-PAY_LABELS = {'balance': 'Saldo Disponível', 'pix': 'Pix', 'card': 'Cartão de Crédito / Débito'}
-PAY_ICONS = {'balance': ft.Icons.WALLET, 'pix': ft.Icons.MONEY, 'card': ft.Icons.CREDIT_CARD}
+PAY_LABELS = {'balance': 'Saldo Disponível', 'stripe': payments.METHOD_LABEL}
+PAY_ICONS = {'balance': ft.Icons.WALLET, 'stripe': ft.Icons.CREDIT_CARD}
+STRIPE_SUBTITLE = 'Página segura da Stripe · ambiente de teste'
+POLL_SECONDS = 2
 LAST_STEP = 8
 
 
@@ -71,11 +77,13 @@ def _info_box(text, icon=ft.Icons.INFO_OUTLINE, width=None):
         padding=ft.Padding(left=13, right=13, top=0, bottom=0), alignment=ft.Alignment(-1, 0))
 
 
-def _fee_box():
+def _fee_box(free=False):
+    """Taxa de reserva (simulada). ``free``: só há pagamento Stripe (teste), que cobra apenas a energia."""
     return ft.Container(
         ft.Row([ft.Icon(ft.Icons.INFO_OUTLINE, size=20, color=AMBER),
                 ft.Text(spans=[ft.TextSpan('Taxa de reserva: ', ft.TextStyle(font_family=design.FONT, size=11.6)),
-                               ft.TextSpan(rules.money(rules.RESERVATION_FEE),
+                               ft.TextSpan('sem cobrança no pagamento de teste' if free else
+                                           rules.money(rules.RESERVATION_FEE),
                                            ft.TextStyle(font_family=design.FONT_BOLD, size=11.6))],
                         color=theme.TEXT_COLOR)],
                spacing=10, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -219,9 +227,36 @@ def _section(text):
     return design.txt(text, 13, 'bold')
 
 
-def _secure_note():
+def _secure_note(text='Pagamento seguro e criptografado'):
     return ft.Row([ft.Icon(ft.Icons.VERIFIED_USER_OUTLINED, size=15, color=theme.SUCCESS),
-                   design.txt('Pagamento seguro e criptografado', 11.5, 'regular', theme.GRAY_TEXT)], spacing=14)
+                   design.txt(text, 11.5, 'regular', theme.GRAY_TEXT, expand=True)], spacing=14)
+
+
+def pay_options(demo, stripe_enabled):
+    """Formas de pagamento da etapa 5: Saldo (simulado) só na demo ou sem Stripe na API."""
+    if demo:
+        return ['balance', 'stripe'] if stripe_enabled else ['balance']
+    return ['stripe'] if stripe_enabled else ['balance']
+
+
+def overstay_terms(station):
+    """Termos da taxa de permanência do posto (``station.overstay``) ou ``None`` (desligada/API antiga)."""
+    terms = (station or {}).get('overstay')
+    if isinstance(terms, dict) and terms.get('enabled') and terms.get('summary'):
+        return terms
+    return None
+
+
+def overstay_box(terms):
+    """Aviso da revisão: o texto pronto da API (ex.: "Após a recarga: 10 min de tolerância, ...")."""
+    return ft.Container(
+        ft.Row([ft.Icon(ft.Icons.TIMER_OUTLINED, size=20, color=AMBER),
+                ft.Column([design.txt('Taxa de permanência', 12.4, 'bold'),
+                           design.txt(str(terms['summary']), 11.6, 'regular', theme.GRAY_TEXT)],
+                          spacing=2, expand=True)],
+               spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='overstay-terms',
+        padding=ft.Padding(left=13, right=13, top=10, bottom=10))
 
 
 async def build(app, step=1, station_id=None, connector_id=None, **presets):
@@ -310,8 +345,16 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         if safe_quote() is None:  # ex.: bateria já cheia no modo autonomia
             state['by'] = 'time'
 
+    demo = getattr(app.api, 'is_demo', False) is True
+    stripe_config = await payments.config(app) if step >= 2 else {}
+    options = pay_options(demo, stripe_config.get('enabled') is True)
+    if state['pay'] in ('pix', 'card'):  # atalhos antigos: o formulário falso de cartão/Pix saiu
+        state['pay'] = 'stripe'
+    if state['pay'] is not None and state['pay'] not in options:
+        state['pay'] = options[0]
     if step > 5 and not state['pay']:
-        state['pay'] = 'balance'
+        state['pay'] = options[0]
+    stripe_only = options == ['stripe']
 
     def failing(message):
         return ApiError(message, 422, 'booking_invalid')
@@ -368,7 +411,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             design.txt('O prazo começa quando o posto confirma a reserva. Chegando, toque em "Cheguei" e informe o '
                        'código #F da tela do equipamento. Se não chegar a tempo, a reserva expira.', 12, 'regular',
                        theme.GRAY_TEXT)], spacing=10), padding=ft.Padding(left=15, right=15, top=15, bottom=16))
-        body = [ft.Container(height=4), hold, ft.Container(height=6), _fee_box()]
+        body = [ft.Container(height=4), hold, ft.Container(height=6), _fee_box(free=stripe_only)]
         return _page(*body, title='Reservar estação', on_back=app.back, steps=4, step=2, edge='c2r',
                      footer=_footer(design.primary_button('Continuar', nav(3), height=55, size=16, weight='bold')),
                      **wizard)
@@ -442,9 +485,9 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                 state['pay'] = key
                 await app.go('booking', step=5, station_id=station_id)
             return handler
-        cards = [_option(PAY_LABELS[key], rules.money(balance) if key == 'balance' else None,
+        cards = [_option(PAY_LABELS[key], rules.money(balance) if key == 'balance' else STRIPE_SUBTITLE,
                                      selected=state['pay'] == key, on_click=choose_pay(key), icon=PAY_ICONS[key])
-                 for key in ('balance', 'pix', 'card')]
+                 for key in options]
 
         async def pay_next():
             if not state['pay']:
@@ -457,15 +500,14 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                                                 weight='bold')), **wizard)
 
     estimate = quote()
-    amount = rules.total(estimate['cost'], reserving)
+    stripe = state['pay'] == 'stripe'
+    # Stripe (teste): a taxa de reserva simulada não é cobrada; o valor final é o teto calculado pela API.
+    amount = estimate['cost'] if stripe else rules.total(estimate['cost'], reserving)
     connector = next((p for p in group['connectors'] if p.get('id') == state['connector_id']),
                      (group['free'] or group['connectors'])[0])
+    overstay = overstay_terms(station)
 
-    async def finish():
-        """Confirma a recarga: reserva pela API (Reservar) ou entrega ao fluxo de início (Agora)."""
-        if state['pay'] == 'balance' and wallet.balance(app) < amount:
-            raise failing('Saldo insuficiente para esta recarga.')
-        description = f"Recarga {station.get('name', '')}".strip()
+    def charging_intent():
         if state['by'] == 'autonomy':
             intent = {'mode': 'autonomy', 'km': rules.parse_km(state['km_text'])}
         elif state['by'] == 'value':
@@ -474,6 +516,23 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             intent = {'mode': 'time', 'minutes': max(1, estimate['minutes'] or 30)}
         # Potência escolhida (conector efetivo ∩ carro ∩ opção): a API aplica no início da recarga.
         intent['max_power_kw'] = str(rules.power_options(group, car_power)[state['power'] or 'max'][0])
+        return intent
+
+    async def finish(payment=None):
+        """Confirma a recarga: reserva pela API (Reservar) ou entrega ao fluxo de início (Agora).
+
+        ``payment``: pagamento Stripe (teste) já confirmado pelo servidor; o ``payment_id`` segue no início.
+        """
+        if not payment and state['pay'] == 'balance' and wallet.balance(app) < amount:
+            raise failing('Saldo insuficiente para esta recarga.')
+        description = f"Recarga {station.get('name', '')}".strip()
+        intent = charging_intent()
+        if payment:
+            intent.update(payment_id=payment['id'], payment_amount=str(payment.get('amount') or ''))
+        if overstay and overstay.get('version'):
+            # Termos mostrados na revisão: a API recusa (409) se o dono mudou a taxa depois.
+            intent['overstay_terms_version'] = overstay['version']
+        paid_amount = payment.get('amount') if payment else amount
         paid = dict(amount=amount, energy_amount=estimate['cost'], method=state['pay'], station_id=station_id,
                     station_name=station.get('name', ''), connector_id=connector['id'])
         if reserving:
@@ -481,25 +540,47 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             reservation = await app.api.request('POST', 'reservations', {'connector_id': connector['id']},
                                                 key=state['key'])
             state['key'] = None
-            if state['pay'] == 'balance':
-                wallet.debit(app, amount, description)
-            prepaid.record(app, **paid, reservation_id=reservation['id'])
+            if not payment:
+                if state['pay'] == 'balance':
+                    wallet.debit(app, amount, description)
+                prepaid.record(app, **paid, reservation_id=reservation['id'])
             # Ao chegar e iniciar com esta reserva, o assistente #F já abre com os mesmos limites.
             app.planning_intent = {'connector_id': connector['id'], 'intent': intent}
             state['result'] = {'id': reservation['id'], 'arrival': f'Em até {rules.TOLERANCE_MINUTES} min',
-                               'code': rules.reservation_code(reservation['id']), 'paid': str(amount),
-                               'pay': state['pay'], 'station': station.get('name', '')}
+                               'code': rules.reservation_code(reservation['id']), 'paid': str(paid_amount),
+                               'pay': state['pay'], 'station': station.get('name', ''),
+                               'payment_id': payment['id'] if payment else None}
+            state['payment'] = None
             state['done'] = True
             await app.go('booking', step=8, station_id=station_id)
             return
-        if state['pay'] == 'balance':
-            wallet.debit(app, amount, description)
-        prepaid.record(app, **paid)
+        if not payment:
+            if state['pay'] == 'balance':
+                wallet.debit(app, amount, description)
+            prepaid.record(app, **paid)
+        state['payment'] = None
         state['done'] = True
         limit = int(connector.get('max_duration_minutes') or 1440)
         await app.go('charging', public_code=connector.get('public_code') or '',
                      point_context=point_context(station, connector),
                      max_duration=max(1, min(estimate['minutes'] or 30, limit)), planning_intent=intent)
+
+    async def open_payment(fresh=False):
+        """Cria o pagamento na API (teto calculado lá) e abre a etapa 7.
+
+        O mesmo pedido repete a mesma ``Idempotency-Key`` (uma resposta perdida não cria dois pagamentos);
+        ``fresh`` (tentar de novo depois de expirar/cancelar) usa uma chave nova.
+        """
+        body = payments.request_body(connector['id'], charging_intent(), estimate['energy_kwh'])
+        if fresh or state.get('pay_body') != body or not state.get('pay_key'):
+            app.api.clear_operation('payments')  # o cliente reaproveita a chave do mesmo corpo
+            state['pay_key'], state['pay_body'] = app.api.new_key(), body
+        payment = await payments.create(app, body, state['pay_key'])
+        if payment.get('status') in payments.CLOSED and not fresh:
+            await open_payment(fresh=True)  # a chave antiga devolveu um pagamento já encerrado
+            return
+        state['payment'] = payment
+        await app.go('booking', step=7, station_id=station_id)
 
     if step == 6:
         def row(title, subtitle, icon, target):
@@ -517,7 +598,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         when = (f'Reservado por {rules.TOLERANCE_MINUTES} min' if reserving else 'Início no ponto com o código #F')
         kind = KIND_LABELS.get(state['by'], 'Por tempo')
         power_note = rules.power_options(group, car_power)[state['power'] or 'max'][1]
-        pay_sub = rules.money(balance) if state['pay'] == 'balance' else None
+        pay_sub = rules.money(balance) if state['pay'] == 'balance' else STRIPE_SUBTITLE
         first = block('Recarga', row(f"{kind} | {'Reservar estação' if reserving else 'Carregar agora'}", f'{detail} | {when}',
                                      ft.Icons.ACCESS_TIME, 3), 11, 18.5)
         second = block('Método de Pagamento', row(PAY_LABELS[state['pay']], pay_sub, PAY_ICONS[state['pay']], 5),
@@ -530,77 +611,31 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                                   overflow=ft.TextOverflow.ELLIPSIS)],
                                        spacing=1), margin=ft.Margin(left=0, top=31.5, right=0, bottom=0))
         # Sem linha extra de taxa na tela (a taxa de reserva já foi mostrada na etapa 2 e entra no total).
-        total_block = ft.Container(ft.Column([ft.Container(design.txt('Total', 17, 'bold'), height=18,
-                                                           alignment=ft.Alignment(-1, -1)),
-                                              design.txt(rules.money(amount), 32.5, 'bold')], spacing=0),
+        total_lines = [ft.Container(design.txt('Total estimado' if stripe else 'Total', 17, 'bold'), height=18,
+                                    alignment=ft.Alignment(-1, -1)),
+                       design.txt(rules.money(amount), 32.5, 'bold')]
+        if stripe:
+            note = 'Pré-autorização na Stripe (teste): cobramos só a energia confirmada pelo equipamento.'
+            if reserving:
+                note += ' Sem taxa de reserva no pagamento de teste.'
+            total_lines.append(design.txt(note, 11, 'regular', theme.GRAY_TEXT))
+        total_block = ft.Container(ft.Column(total_lines, spacing=0),
                                    margin=ft.Margin(left=0, top=25, right=0, bottom=0))
+        extra = [ft.Container(overstay_box(overstay), margin=ft.Margin(left=0, top=18, right=0, bottom=0))] \
+            if overstay else []
 
         async def confirm():
-            if state['pay'] == 'balance':
-                await finish()
+            if stripe:
+                await open_payment()
             else:
-                await app.go('booking', step=7, station_id=station_id)
-        return _page(first, second, third, place, total_block, title='Revisar Dados', on_back=app.back,
+                await finish()
+        return _page(first, second, third, place, total_block, *extra, title='Revisar Dados', on_back=app.back,
                      steps=1, step=1, gap=0, edge='c6',
                      footer=[design.primary_button('Confirmar reserva' if reserving else 'Confirmar e iniciar no ponto',
                                                    app.action(confirm), height=55, size=16, weight='bold')])
 
     if step == 7:
-        async def copy_code():
-            await ft.Clipboard().set(PIX_CODE)
-            app.notice('Código Pix copiado (demonstração).')
-        if state['pay'] == 'card':
-            def card_field(text, hint, **kwargs):
-                field = design.input_field('', hint, **kwargs)
-                field.hint_style = ft.TextStyle(color='#96989D', size=12, font_family=design.FONT)
-                field.text_style = ft.TextStyle(size=12, font_family=design.FONT, color=theme.INPUT_TEXT)
-                field.content_padding = ft.Padding(left=9, right=9, top=13, bottom=13)
-                return ft.Column([design.txt(text, 10.6, 'bold', theme.GRAY_TEXT), field], spacing=4,
-                                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
-            fields = {'number': card_field('Número do cartão', '0000 0000 0000 0000', keyboard=ft.KeyboardType.NUMBER),
-                      'name': card_field('Nome impresso', 'Nome no cartão'),
-                      'valid': card_field('Validade', 'MM/AA', keyboard=ft.KeyboardType.NUMBER),
-                      'cvv': card_field('CVV', '•••', keyboard=ft.KeyboardType.NUMBER, password=True)}
-
-            async def pay_card():
-                # Os campos são apenas ilustrativos: valores nunca são guardados nem enviados.
-                if not all((item.controls[1].value or '').strip() for item in fields.values()):
-                    raise failing('Preencha os dados do cartão (demonstração: nada é enviado ou guardado).')
-                for item in fields.values():
-                    item.controls[1].value = ''
-                await finish()
-            for item in fields.values():
-                item.controls[1].can_reveal_password = False
-            body = [ft.Container(height=5.5), fields['number'], fields['name'],
-                    ft.Row([ft.Container(fields['valid'], expand=True), ft.Container(fields['cvv'], expand=True)],
-                           spacing=34)]
-            footer = [ft.Container(_secure_note(), margin=ft.Margin(left=0, top=0, right=0, bottom=3.5)),
-                      design.primary_button('Efetuar Pagamento', app.action(pay_card), height=55, size=16,
-                                            weight='bold')]
-        else:
-            plate = ft.Container(
-                ft.Container(ft.Image(src=design.QR_SRC, width=260, height=260, fit=ft.BoxFit.COVER,
-                                     exclude_from_semantics=True), scale=1.09),
-                width=260, height=262, bgcolor='#F7F7F7', border_radius=18, alignment=ft.Alignment(0, 0),
-                clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
-            body = [ft.Container(plate, alignment=ft.Alignment(0, 0), margin=ft.Margin(left=0, top=52.5, right=0,
-                                                                                         bottom=0)),
-                    ft.Column([ft.Container(design.txt(rules.money(amount).replace('R$', 'R$ '), 28, 'bold'), height=35.5,
-                                            alignment=ft.Alignment(0, -1)),
-                               design.txt('Expira em 14:59', 11.6, 'bold', '#ABABAB')], spacing=0,
-                              horizontal_alignment=ft.CrossAxisAlignment.CENTER)]
-            footer = [ft.Container(_secure_note(), margin=ft.Margin(left=0, top=0, right=0, bottom=3.5)),
-                      ft.Container(
-                          ft.Container(ft.Row([ft.Icon(ft.Icons.CONTENT_COPY, size=13, color=theme.BTN_SECONDARY_FG),
-                                               design.txt('Copiar código Pix', 12.5, 'bold', theme.BTN_SECONDARY_FG)],
-                                              spacing=8, alignment=ft.MainAxisAlignment.CENTER),
-                                       height=45, bgcolor='#252525', border_radius=design.RADIUS_BTN,
-                                       on_click=app.action(copy_code), ink=True),
-                          margin=ft.Margin(left=0, top=0, right=0, bottom=4)),
-                      design.primary_button('Já paguei (Confirmar)', app.action(finish), height=55, size=16,
-                                            weight='bold')]
-        return _page(*body, title='Efetuar Pagamento', on_back=app.back, steps=1, step=1, footer=footer,
-                     edge='c7c' if state['pay'] == 'card' else 'c7p', gap=15.5 if state['pay'] == 'card' else 13.5)
+        return _awaiting_payment(app, state, station_id, finish, open_payment, stripe_config, nav)
 
     # ------------------------------------------------------------------ 8: confirmada
     result = state.get('result') or {'id': 'demo', 'arrival': f'Em até {rules.TOLERANCE_MINUTES} min',
@@ -610,6 +645,12 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
     async def cancel():
         if result['id'] != 'demo':
             await app.api.request('POST', f"reservations/{result['id']}/cancel")
+            if result.get('payment_id'):
+                # Libera a pré-autorização (cartão) ou devolve o Pix: nada é cobrado (teste).
+                try:
+                    await payments.cancel(app, result['payment_id'])
+                except ApiError:
+                    app.notice('Reserva cancelada. O pagamento de teste é liberado no fim do prazo de início.')
             if result['pay'] == 'balance':
                 wallet.credit(app, result['paid'], f"Estorno de reserva {result['station']}".strip())
             prepaid.cancel_reservation(app, result['id'])
@@ -648,3 +689,109 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         gutter=0, gap=16, title_size=18.5)
     column.controls[0] = ft.Container(column.controls[0], margin=ft.Margin(left=0, top=2.5, right=0, bottom=0))
     return column
+
+
+# ---------------------------------------------------------------------- 7: aguardando pagamento
+AWAIT_TEXTS = {
+    'awaiting_payment': 'Aguardando a confirmação da Stripe (teste)…',
+    'declined': 'Pagamento recusado. Tente de novo com outro cartão de teste na mesma página.',
+    'expired': 'O prazo do pagamento acabou. Nada foi cobrado.',
+    'canceled': 'Pagamento cancelado. Nada foi cobrado.',
+    'funded': 'Pagamento confirmado (teste). Continuando…',
+}
+
+
+def _awaiting_payment(app, state, station_id, finish, open_payment, config, nav):
+    """Etapa 7 com a Stripe: valor, "Abrir pagamento seguro", consulta a cada 2 s e o prazo.
+
+    O app não coleta dados de cartão: o motorista paga na página da Stripe e o servidor confirma.
+    Recusado: abre a mesma página de novo. Expirado/cancelado: "Tentar de novo" cria outro pagamento.
+    """
+    payment = state.get('payment')
+    if state.get('pay') != 'stripe' or not payment:
+        return _page(design.txt('Revise os dados da recarga para abrir o pagamento.', 13, 'regular', theme.GRAY_TEXT),
+                     title='Aguardando pagamento', on_back=app.back,
+                     footer=[design.primary_button('Revisar dados', nav(6), height=55, size=16, weight='bold')])
+    amount = design.txt(payments.money(payment.get('amount')), 32.5, 'bold', text_align=ft.TextAlign.CENTER)
+    status = design.txt('', 12.4, 'semibold', text_align=ft.TextAlign.CENTER)
+    countdown = design.txt('', 11.6, 'bold', '#ABABAB', text_align=ft.TextAlign.CENTER)
+    test_card = config.get('test_card') or payments.TEST_CARD
+    hint = ft.Container(
+        ft.Row([ft.Icon(ft.Icons.CREDIT_CARD, size=20, color=theme.TEXT_COLOR),
+                ft.Column([design.txt(f'Cartão de teste: {test_card}', 12.2, 'bold'),
+                           design.txt('Use qualquer validade futura e qualquer CVC. Ambiente de teste: nenhum valor '
+                                      'real é cobrado.', 11, 'regular', theme.GRAY_TEXT)], spacing=2, expand=True)],
+               spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='test-card-hint',
+        padding=ft.Padding(left=13, right=13, top=10, bottom=10))
+    explain = design.txt('Pré-autorização do teto. No fim, cobramos só a energia confirmada pelo equipamento e o '
+                         'restante é liberado ou devolvido.', 11.4, 'regular', theme.GRAY_TEXT,
+                         text_align=ft.TextAlign.CENTER)
+
+    async def open_checkout():
+        current = state.get('payment') or {}
+        if not await payments.open_checkout(app, current):
+            raise ApiError('A página de pagamento não está disponível. Toque em "Tentar de novo".', 409,
+                           'checkout_unavailable')
+
+    async def retry():
+        await open_payment(fresh=True)
+
+    async def cancel():
+        current = state.get('payment') or {}
+        if current.get('status') in payments.AWAITING + payments.DECLINED + payments.FUNDED:
+            state['payment'] = await payments.cancel(app, current['id'])
+        state['payment'] = None
+        await app.go('booking', step=6, station_id=station_id)
+
+    open_button = design.primary_button('Abrir pagamento seguro', app.action(open_checkout), height=55, size=16,
+                                        weight='bold')
+    retry_button = design.primary_button('Tentar de novo', app.action(retry), height=55, size=16, weight='bold')
+    cancel_button = design.secondary_button('Cancelar pagamento', app.action(cancel), height=45)
+
+    def render(current):
+        code = current.get('status')
+        key = 'funded' if code in payments.FUNDED else code
+        status.value = AWAIT_TEXTS.get(key, str(current.get('status_label') or ''))
+        status.color = theme.ERROR if code in payments.DECLINED + payments.CLOSED else theme.TEXT_COLOR
+        left = payments.seconds_left(current) if code in payments.AWAITING + payments.DECLINED else None
+        countdown.value = f'Expira em {payments.clock(left)}' if left is not None else ''
+        countdown.visible = left is not None
+        closed = code in payments.CLOSED
+        open_button.visible = not closed and code not in payments.FUNDED
+        if code in payments.DECLINED:
+            open_button.content.controls[0].value = 'Tentar de novo'
+        retry_button.visible = closed
+        cancel_button.visible = not closed and code not in payments.FUNDED
+    render(payment)
+
+    async def update():
+        current = state.get('payment')
+        if not current:
+            return
+        current = await payments.fetch(app, current['id'])
+        state['payment'] = current
+        if current.get('status') in payments.FUNDED:
+            render(current)
+            app.page.update()
+            try:
+                await finish(current)
+            except ApiError as exc:
+                # Ex.: o ponto ficou indisponível ao reservar. O pagamento segue confirmado (e é liberado no
+                # prazo de início); o motorista pode cancelar agora. A próxima consulta tenta de novo.
+                status.value, status.color = f'Pagamento confirmado (teste), mas: {exc}', theme.ERROR
+                cancel_button.visible = True
+                app.page.update()
+            return
+        render(current)
+        app.page.update()
+    app.set_poll(update, POLL_SECONDS)
+    body = [ft.Container(height=36),
+            ft.Container(design.icon_tile(ft.Icons.LOCK_OUTLINE, size=64, icon_size=30), alignment=ft.Alignment(0, 0)),
+            ft.Column([amount, status, countdown], spacing=6, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            explain, hint]
+    footer = [ft.Container(_secure_note('Pagamento na página segura da Stripe: o app não recebe dados do cartão'),
+                           margin=ft.Margin(left=0, top=0, right=0, bottom=3.5)),
+              open_button, retry_button, cancel_button]
+    return _page(*body, title='Aguardando pagamento', on_back=app.back, steps=1, step=1, footer=footer,
+                 edge='c7p', gap=13.5)

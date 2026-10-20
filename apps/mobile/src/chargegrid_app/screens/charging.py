@@ -1,3 +1,18 @@
+"""Recarga do motorista (rota ``charging``): início pelo código #F, acompanhamento e fim.
+
+* Início: código #F → limites → revisão → ``POST charging-sessions``. Vindo do assistente (``booking``) com
+  pagamento Stripe (teste) confirmado, o ``payment_id`` vai no corpo; com taxa de permanência no posto, a
+  revisão mostra ``station.overstay.summary`` e envia ``overstay_terms_version`` (409
+  ``overstay_terms_changed`` → mostra os termos novos e pede nova confirmação).
+* Em andamento (consulta a cada 1 s): potência APLICADA pelo equipamento (``applied_power_kw``),
+  "Ajustando…" quando ``power_state`` é ``reducing``/``raising``, "Pausada" em ``paused`` e a linha de
+  motivo (``power_reason``); selo do pagamento.
+* Encerrada: "Recarga concluída — desconecte em mm:ss" e depois "Taxa de permanência: R$ x" (consulta a cada
+  5 s até fechar) e o acerto do pagamento "Cobrado R$ X · Devolvido R$ Y (teste)" (o ``GET payments/{id}``
+  também dispara o acerto no servidor). Campos ausentes (API antiga) = nada disso aparece.
+"""
+
+import time
 from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -8,7 +23,7 @@ from chargegrid_core.pricing import multiplier_label
 
 from ..api_client import ApiError
 from ..services import booking as rules
-from ..services import prepaid, vehicle_state
+from ..services import payments, prepaid, vehicle_state
 from ..services.planning import estimate_text, intent_limits
 from ..ui import design as d
 from ..ui import theme
@@ -107,16 +122,127 @@ async def push_phone_soc(app, session):
     return result if isinstance(result,dict) and result.get('id') == session['id'] else session
 
 
+ADJUSTING = ('reducing','raising')
+OVERSTAY_OPEN = ('grace','billing','capped')
+END_POLL_SECONDS = 5
+
+
+def _kw(value):
+    return f"{float(value):g} kW".replace('.',',')
+
+
+def power_text(session):
+    """Potência atual do painel. Com rebalanceamento ao vivo, a APLICADA confirmada pelo equipamento."""
+    if session.get('status') != 'charging':
+        return '- kW'
+    state = session.get('power_state')
+    if state == 'paused':
+        return 'Pausada'
+    if state in ADJUSTING:
+        return 'Ajustando…'
+    if session.get('applied_power_kw') is not None:
+        return _kw(session['applied_power_kw'])
+    power_kw = (session.get('connector') or {}).get('power_kw')
+    if power_kw is not None and session.get('power_limit_kw') is not None:
+        # API sem potência ao vivo: limite aplicado no início (posto ∩ motorista).
+        power_kw = min(Decimal(str(power_kw)), Decimal(str(session['power_limit_kw'])))
+    return _kw(power_kw) if power_kw is not None else '- kW'
+
+
+def power_reason(session):
+    """Motivo da potência em pt-BR (``power_reason``: texto ou ``{text}``); ``None`` sem rebalanceamento."""
+    if session.get('status') not in ACTIVE:
+        return None
+    reason = session.get('power_reason')
+    if isinstance(reason, dict):
+        reason = reason.get('text')
+    text = str(reason or '').strip()
+    return text or None
+
+
+def reason_line(session):
+    text = power_reason(session)
+    if not text:
+        return None
+    return ft.Row([ft.Icon(ft.Icons.OFFLINE_BOLT_OUTLINED,size=18,color=theme.GRAY_TEXT),
+                   d.txt(text,11.6,'regular',theme.GRAY_TEXT,expand=True)],
+                  spacing=8,vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+
+def payment_badge(payment):
+    """Selo do pré-pagamento Stripe (teste) da recarga."""
+    text = payments.badge_text(payment)
+    if not text:
+        return None
+    return ft.Container(ft.Row([ft.Icon(ft.Icons.CREDIT_CARD,size=18,color=theme.SUCCESS),
+                                d.txt(text,11.8,'semibold',expand=True)],
+                               spacing=8,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        bgcolor=theme.CARD,border_radius=d.RADIUS_BTN,padding=ft.Padding(left=14,right=14,top=10,bottom=10),
+                        data='payment-badge')
+
+
+def _money_value(value):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation,ValueError,TypeError):
+        return Decimal(0)
+
+
+def overstay_lines(overstay, remaining=None):
+    """(título, detalhe) da permanência depois da recarga; ``None`` quando não se aplica (ou API antiga)."""
+    if not isinstance(overstay,dict):
+        return None
+    state = overstay.get('status')
+    fee = payments.money(overstay.get('fee_due') or 0)
+    if state == 'grace':
+        seconds = overstay.get('grace_remaining_seconds') if remaining is None else remaining
+        return (f'Recarga concluída — desconecte em {payments.clock(seconds)}',
+                'Depois da tolerância, cobramos a taxa de permanência aceita no início.')
+    if state == 'billing':
+        return (f'Taxa de permanência: {fee}','Desconecte o carro para encerrar a cobrança.')
+    if state == 'capped':
+        return (f'Taxa de permanência: {fee}','Teto atingido: não cobramos mais nada. Desconecte o carro.')
+    if state == 'closed':
+        if _money_value(overstay.get('fee_due')) > 0:
+            return (f'Taxa de permanência: {fee}','Carro desconectado. Valor final da permanência.')
+        return ('Desconectado dentro da tolerância','Sem taxa de permanência.')
+    return None
+
+
+def info_card(title, detail, data, icon=ft.Icons.TIMER_OUTLINED, color=None):
+    rows = [d.txt(title,13,'bold')]
+    if detail:
+        rows.append(d.txt(detail,11,'regular',theme.GRAY_TEXT))
+    return ft.Container(ft.Row([ft.Icon(icon,size=20,color=color or theme.TEXT_COLOR),
+                                ft.Column(rows,spacing=2,expand=True)],
+                               spacing=10,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        bgcolor=theme.CARD,border_radius=d.RADIUS_BTN,padding=ft.Padding(left=14,right=14,top=12,bottom=12),
+                        data=data)
+
+
+def settlement_card(payment):
+    """Acerto do pagamento: "Cobrado R$ X · Devolvido R$ Y (teste)" ou "acertando"."""
+    if not payment:
+        return None
+    text = payments.settlement_text(payment)
+    if text:
+        return info_card(text,payments.settlement_note(payment),'payment-settlement',ft.Icons.CHECK_CIRCLE,theme.SUCCESS)
+    if (payment.get('settlement') or {}).get('status') == 'failed':
+        return info_card('Pagamento em revisão (teste)',payments.settlement_note(payment),'payment-settlement',
+                         ft.Icons.INFO_OUTLINE)
+    if payments.pending_settlement(payment):
+        return info_card('Acertando o valor com a Stripe (teste)…',
+                         'Cobramos só a energia confirmada pelo equipamento; o restante é liberado ou devolvido.',
+                         'payment-settlement',ft.Icons.HOURGLASS_EMPTY)
+    return payment_badge(payment)
+
+
 def _metrics(session):
     """(gauge, custo, potência, tempo restante) para o painel; só dados recebidos, nunca um relógio local."""
     progress,label = _progress(session)
     percent = f'{progress*100:.0f}%' if progress is not None and label.startswith('Bateria') else '-%'
     cost = money(session.get('cost_estimate')) if session.get('cost_estimate') is not None else '-'
-    power_kw = (session.get('connector') or {}).get('power_kw')
-    if power_kw is not None and session.get('power_limit_kw') is not None:
-        # Limite aplicado no início (posto ∩ motorista): é a potência máxima desta recarga.
-        power_kw = min(Decimal(str(power_kw)), Decimal(str(session['power_limit_kw'])))
-    power = f"{float(power_kw):g} kW".replace('.',',') if session.get('status') == 'charging' and power_kw is not None else '- kW'
+    power = power_text(session)
     remaining = '- minutos'
     if session.get('status') in ACTIVE:
         try:
@@ -204,6 +330,64 @@ def details_card(session, *, demo=False):
     if demo:
         controls.append(d.txt('Dados simulados nesta conta',11,'regular',theme.GRAY_TEXT))
     return d.card_box(ft.Column(controls,spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16)
+
+
+def _pending_end(session, payment):
+    overstay = session.get('overstay')
+    return ((isinstance(overstay,dict) and overstay.get('status') in OVERSTAY_OPEN)
+            or payments.pending_settlement(payment))
+
+
+def end_panels(app, session):
+    """Fim da recarga: permanência (contagem local de 1 s) e acerto do pagamento, consultando a cada 5 s.
+
+    Devolve os controles (vazio quando a API não manda ``overstay`` nem ``payment``) e liga a consulta.
+    """
+    state = {'session':session,'payment':session.get('payment'),'seen':time.monotonic(),'tick':END_POLL_SECONDS-1}  # 1ª consulta já no 1º segundo
+    lines = overstay_lines(session.get('overstay'))
+    stay = ft.Container(info_card(*lines,'overstay-status') if lines else None,data='overstay-slot')
+    stay.visible = stay.content is not None
+    settle = ft.Container(settlement_card(state['payment']),data='settlement-slot')
+    settle.visible = settle.content is not None
+    if not stay.visible and not settle.visible:
+        return []
+
+    def render():
+        current = state['session'].get('overstay')
+        remaining = None
+        if isinstance(current,dict) and current.get('status') == 'grace':
+            try:
+                remaining = int(current.get('grace_remaining_seconds') or 0) - int(time.monotonic()-state['seen'])
+            except (TypeError,ValueError):
+                remaining = None
+        found = overstay_lines(current,remaining)
+        stay.content = info_card(*found,'overstay-status') if found else None
+        stay.visible = stay.content is not None
+        settle.content = settlement_card(state['payment'])
+        settle.visible = settle.content is not None
+
+    async def refresh():
+        state['tick'] += 1
+        if state['tick'] % END_POLL_SECONDS == 0:
+            current = await app.api.request('GET',f"charging-sessions/{session['id']}")
+            if isinstance(current,dict) and current.get('id') == session['id']:
+                state['session'],state['seen'] = current,time.monotonic()
+                state['payment'] = current.get('payment') or state['payment']
+            payment = state['payment']
+            if payments.pending_settlement(payment):
+                # O GET do pagamento faz o servidor concluir o acerto (captura/liberação na Stripe, teste).
+                state['payment'] = await payments.fetch(app,payment['id'])
+        render()
+        app.page.update()
+        if not _pending_end(state['session'],state['payment']):
+            app.set_poll(idle,60)
+
+    async def idle():
+        return None
+    render()
+    if _pending_end(session,state['payment']):
+        app.set_poll(refresh,1)
+    return [stay,settle]
 
 
 def _owner(app):
@@ -298,7 +482,17 @@ def _body(draft):
             body[key] = draft[key]
     if (draft['coupon_code'] or '').strip():
         body['coupon_code'] = draft['coupon_code'].strip()
+    if (draft.get('payment') or {}).get('id'):
+        body['payment_id'] = draft['payment']['id']  # pré-pagamento Stripe (teste) já confirmado
+    version = (draft.get('overstay') or {}).get('version') or draft.get('overstay_version')
+    if version:
+        body['overstay_terms_version'] = version  # termos da permanência mostrados na revisão
     return body
+
+
+def _overstay(station):
+    terms = (station or {}).get('overstay')
+    return terms if isinstance(terms,dict) and terms.get('enabled') and terms.get('summary') else None
 
 
 def _estimate(draft):
@@ -338,7 +532,11 @@ def _review(draft):
             ('Limite de tempo',f"{body['max_duration_minutes']} min"),
             ('Limite de valor',money(body['max_cost']) if body.get('max_cost') else None),
             ('Tarifa',f"{money(point['price_per_kwh'])}/kWh" if point.get('price_per_kwh') is not None else None),
-            ('Cupom',body.get('coupon_code'))]
+            ('Cupom',body.get('coupon_code')),
+            ('Pagamento',f"Stripe (teste) · {payments.money((draft.get('payment') or {}).get('amount'))} pré-autorizado"
+             if (draft.get('payment') or {}).get('amount') else 'Stripe (teste) · confirmado'
+             if draft.get('payment') else None),
+            ('Permanência',(draft.get('overstay') or {}).get('summary'))]
     controls = [d.txt('RESUMO DA RECARGA',11,'bold',theme.GRAY_TEXT)]
     for label,value in rows:
         if value:
@@ -392,12 +590,23 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             details.content = details_card(current,demo=demo)
             offline.content = offline_alert(current,demo=demo)
             offline.visible = offline.content is not None
+            reason.content = reason_line(current)
+            reason.visible = reason.content is not None
+            if current.get('payment'):
+                badge.content = payment_badge(current['payment'])
+                badge.visible = badge.content is not None
             for name,value in zip(('percent','cost','power','remaining'),_metrics(current)):
                 if name in live:
                     live[name].value = value
             app.page.update()
+        # Motivo da potência (rebalanceamento ao vivo) e selo do pagamento: ocultos sem os campos.
+        reason = ft.Container(reason_line(session),data='power-reason',margin=ft.Margin(6,0,6,0))
+        reason.visible = reason.content is not None
+        badge = ft.Container(payment_badge(session.get('payment')),data='payment-slot')
+        badge.visible = badge.content is not None
         extra = [offline,details]
         if session['status'] in ACTIVE:
+            extra = [reason,badge,offline,details]
             # 1 s: o app acompanha o totem (que sincroniza a cada 1 s durante a recarga).
             app.set_poll(update,1)
         else:
@@ -406,6 +615,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             credited = prepaid.settle(app,session)
             if credited:
                 extra.insert(0,credit_notice(credited))
+            ending = end_panels(app,session)
+            if ending:
+                extra[0:0] = ending
             async def again():
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
@@ -490,6 +702,10 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         # Vindo do assistente (booking), cobrança, valor e potência já foram escolhidos:
         # a etapa "Definir limites" não é mostrada de novo (só código #F → revisar).
         draft['planned'] = bool(intention)
+        if intention and intention.get('payment_id'):
+            draft['payment'] = {'id':intention['payment_id'],'amount':intention.get('payment_amount')}
+        if intention and intention.get('overstay_terms_version'):
+            draft['overstay_version'] = intention['overstay_terms_version']
         if intention and intention.get('max_power_kw'):
             draft['max_power_kw'] = str(intention['max_power_kw'])
         if intention and intention.get('mode') == 'autonomy':
@@ -535,6 +751,13 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             step = draft['furthest'] = 2
     draft['step'] = step
     _metadata(app,_route(draft,step))
+    station_id = draft['point_context'].get('station_id')
+    if step == 3 and not uncertain and station_id and not draft.get('overstay_loaded'):
+        try:
+            draft['overstay'] = _overstay(await app.api.request('GET',f'stations/{station_id}'))
+            draft.update(overstay_loaded=True,overstay_version=None)
+        except Exception:  # noqa: BLE001 - termos opcionais: sem eles a revisão segue como antes
+            pass
 
     def saved():
         mark_saved = getattr(app,'mark_saved',None)
@@ -755,6 +978,14 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                         changed_terms = changed_terms or (
                             old_point.get('price_per_kwh') is not None and charged is not None
                             and Decimal(str(old_point['price_per_kwh'])) != Decimal(str(charged)))
+                    fresh_terms = _overstay(station)
+                    shown = draft.get('overstay')
+                    if (fresh_terms or {}).get('version') != (shown or {}).get('version'):
+                        # A taxa de permanência mudou (ou passou a existir) desde a revisão: mostra de novo.
+                        draft.update(overstay=fresh_terms,overstay_loaded=True,overstay_version=None)
+                        await navigate(3)
+                        app.notice('A taxa de permanência deste posto mudou. Confira os termos antes de iniciar.')
+                        return
                     fresh_context = context_from_station(station, current_point)
                     if draft['reservation_id']:
                         # Reserva: vale o preço travado ao reservar, não a demanda de agora.
@@ -822,6 +1053,11 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     draft['furthest'] = 1
                     await navigate(1)
                     app.notice(str(exc))
+                    return
+                if definite and exc.code == 'overstay_terms_changed':
+                    draft.update(overstay_loaded=False,overstay_version=None,overstay=None)
+                    await navigate(3)
+                    app.notice('A taxa de permanência deste posto mudou. Confira os termos antes de iniciar.')
                     return
                 raise
             await show_result(result)

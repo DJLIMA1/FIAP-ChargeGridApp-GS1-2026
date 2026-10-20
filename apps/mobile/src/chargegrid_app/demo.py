@@ -173,6 +173,7 @@ class DemoApi(OwnerApiMixin):
         self._claims = {DEMO_CLAIM_TOKEN: None}
         self._pricing = {}  # dados base da tarifa dinâmica por posto (como stations.pricing)
         self._idempotency = {}
+        self._payments = {}  # pagamentos Stripe (teste) simulados: demo_payments
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
@@ -254,7 +255,7 @@ class DemoApi(OwnerApiMixin):
         self.last_session_id = self.last_reservation_id = None
         for store in (self._stations, self._points, self._devices, self._reservations, self._sessions,
                       self._session_events, self._coupons, self._reservation_runtime, self._session_runtime, self._resets,
-                      self._claims, self._idempotency):
+                      self._claims, self._idempotency, self._payments):
             store.clear()
 
     def clear_operation(self, path):
@@ -315,7 +316,7 @@ class DemoApi(OwnerApiMixin):
         signature = (method, path, json.dumps(body, sort_keys=True, separators=(',', ':')))
         if key:
             key = self.operation_keys.setdefault(signature, key)
-        idempotent = method == 'POST' and (path in ('reservations', 'charging-sessions')
+        idempotent = method == 'POST' and (path in ('reservations', 'charging-sessions', 'payments')
                                             or (path.startswith('charging-sessions/') and path.endswith('/stop')))
         remembered = (method, path, key)
         if idempotent:
@@ -326,11 +327,15 @@ class DemoApi(OwnerApiMixin):
                 original, kind, resource_id = old
                 if original != signature[2]:
                     _fail('Chave já usada com outro corpo.', 'idempotency_conflict', 409)
+                if kind == 'payment':
+                    from . import demo_payments
+                    return self._record_result(method, path, demo_payments.row(self, self._payments[resource_id]),
+                                               signature)
                 record = (self._reservations if kind == 'reservation' else self._sessions)[resource_id]
                 return self._record_result(method, path, self._operation_row(record, kind), signature)
         result = self._dispatch(method, path, data, params)
         if idempotent:
-            kind = 'reservation' if path == 'reservations' else 'session'
+            kind = {'reservations': 'reservation', 'payments': 'payment'}.get(path, 'session')
             self._idempotency[remembered] = (signature[2], kind, result['id'])
         return self._record_result(method, path, result, signature)
 
@@ -590,6 +595,9 @@ class DemoApi(OwnerApiMixin):
         if kind == 'session':
             device = self._device_for(point['id'])
             result['online'] = bool(device and device['online'])
+            # Pré-pagamento Stripe (teste) simulado desta recarga, ou None.
+            from . import demo_payments
+            result['payment'] = demo_payments.for_session(self, record['id'])
         return result
 
     def _page(self, records, params):
@@ -754,6 +762,9 @@ class DemoApi(OwnerApiMixin):
                            and (parts[0] != 'stations' or self._points[s['connector_id']]['station_id'] == parts[1])]
             records.sort(key=lambda s: (s['created_at'], s['id']), reverse=True)
             return self._page([self._operation_row(s, 'session') for s in records], params)
+        if parts[0] == 'payments':
+            from . import demo_payments
+            return demo_payments.route(self, method, parts, body)
         if parts[0] == 'owner' or path == 'ai/owner-insights':
             from .demo_owner import owner_for
             return owner_for(self).route(method, path, params, body)
@@ -972,7 +983,8 @@ class DemoApi(OwnerApiMixin):
 
     def _start(self, body):
         _fields(body, ('public_code', 'presence_code', 'reservation_id', 'coupon_code', 'max_duration_minutes', 'max_cost',
-                       'soc_percent', 'battery_kwh', 'soc_source', 'max_power_kw'))
+                       'soc_percent', 'battery_kwh', 'soc_source', 'max_power_kw', 'payment_id',
+                       'overstay_terms_version'))
         driver_kw = (_number(body['max_power_kw'], 'a potência máxima', 0, 1000, positive=True)
                      if body.get('max_power_kw') is not None else None)
         start_soc = (_decimal(_number(body['soc_percent'], 'o nível da bateria', 0, 100), '0.01')
@@ -1005,6 +1017,10 @@ class DemoApi(OwnerApiMixin):
             _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
         if reservation and (not point['active'] or not self._stations[point['station_id']]['active'] or not self._point_row(point)['online']):
             _fail('O ponto reservado não está disponível.', 'point_unavailable', 409)
+        from . import demo_payments
+        payment = demo_payments.claim_for_start(self, point, body['payment_id']) if body.get('payment_id') else None
+        if payment and payment.get('max_power_kw') is not None:
+            driver_kw = Decimal(payment['max_power_kw'])  # potência do orçamento pago, como a API
         duration = _number(body.get('max_duration_minutes', 30), 'duração', 1, point['max_duration_minutes'], integer=True)
         maximum = None
         if body.get('max_cost') is not None:
@@ -1037,6 +1053,8 @@ class DemoApi(OwnerApiMixin):
         effective = self._power(self._stations[point['station_id']])['connectors'][point['id']]['effective_kw']
         applied = power_rules.applied_limit(effective, driver_kw).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
         session['power_limit_kw'] = _decimal(applied, '0.001') if applied > 0 else None
+        if payment:
+            demo_payments.attach(payment, session)  # termos e teto travados no orçamento pago
         self._sessions[sid] = session
         self._event(sid, 'start_requested')
         self._session_runtime[sid] = {'start_at': self._elapsed + 1,

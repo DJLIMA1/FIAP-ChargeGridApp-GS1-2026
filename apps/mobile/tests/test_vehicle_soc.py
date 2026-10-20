@@ -284,18 +284,16 @@ class DemoChargingTests(StorageCase):
         visible = [str(c.value) for c in descendants(screen) if isinstance(c, ft.Text)]
         for label in ('Por tempo', 'Por valor', 'Por autonomia', 'Autonomia desejada (km)'):
             self.assertIn(label, visible)
-        self.app.booking.update(mode='now', km_text='80', pay='pix')
+        self.app.booking.update(mode='now', km_text='80', pay='balance')
         review = await booking.build(self.app, step=6, station_id=sid)
         visible = [str(c.value) for c in descendants(review) if isinstance(c, ft.Text)]
         self.assertTrue(any(text.startswith('Por autonomia') for text in visible))
         self.assertTrue(any(text.startswith('80 km |') for text in visible))
-        await tap(review, 'Confirmar e iniciar no ponto')()
-        pix = await booking.build(self.app, step=7, station_id=sid)
-        await tap(pix, 'Já paguei (Confirmar)')()
+        await tap(review, 'Confirmar e iniciar no ponto')()  # Saldo (simulado): segue direto ao início
         kwargs = self.app.go.await_args.kwargs
         self.assertEqual(kwargs['planning_intent'], {'mode': 'autonomy', 'km': 80, 'max_power_kw': '60.0'})
         rows = prepaid.records(self.app)
-        self.assertEqual((len(rows), rows[0]['method'], rows[0]['status']), (1, 'pix', 'open'))
+        self.assertEqual((len(rows), rows[0]['method'], rows[0]['status']), (1, 'balance', 'open'))
         draft_screen = await charging.build(self.app, **kwargs)
         self.assertEqual(self.app.charging_draft['mode'], 'autonomy')
         self.assertEqual(self.app.charging_draft['autonomy_km'], '80')
