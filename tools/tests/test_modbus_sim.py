@@ -3,7 +3,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from tools.device_simulator import Device, load_charger
-from tools.edge.modbus_sim import ModbusError, ModbusTcpTransport, SimulatedModbusTransport
+from tools.edge.modbus_sim import (
+    ModbusError,
+    ModbusTcpTransport,
+    SimulatedModbusTransport,
+)
 
 
 def _response(kind, identifier, version, parameters):
@@ -57,3 +61,18 @@ def test_lost_modbus_write_is_not_acknowledged():
     device.response(_response("SET_POWER", "p", 2, {"power_limit_w": 3000}))
     assert device.acks[-1]["status"] == "failed" and device.acks[-1]["error"] == "readback_mismatch"
     assert device.acks[-1]["applied_power_w"] == 7000
+
+
+def test_modbus_exception_keeps_previous_power_and_reports_error():
+    charger, bank = load_charger("goodwe-hca-g2")
+    device = Device(clock=lambda: 0, charger=charger, transport=bank)
+    device.response(_response("START", "start", 1, {"power_limit_w": 7000}))
+
+    def refuse(address, value):
+        raise ModbusError(f"03 valor ilegal para {address}: {value}")
+
+    bank.write = refuse
+    assert device.install_power(3000) == (7000, "modbus_error: 03 valor ilegal para 10029: 30")
+    with pytest.raises(RuntimeError):  # erro inesperado não é engolido como falha Modbus
+        bank.write = lambda address, value: (_ for _ in ()).throw(RuntimeError("bug"))
+        device.install_power(3000)

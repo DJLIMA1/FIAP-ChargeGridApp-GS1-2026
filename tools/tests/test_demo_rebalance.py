@@ -70,3 +70,34 @@ def test_commands_start_stop_and_store_load_with_relogin_on_401():
     demo.handle("entra 9")
     assert lines[-1].startswith("Erro: Carro 9")
     assert demo.handle("sair") is False
+
+
+def test_run_device_backs_off_when_the_network_fails(monkeypatch):
+    import threading
+
+    import httpx
+
+    from tools import demo_rebalance
+
+    stop = threading.Event()
+    printed = []
+
+    class Offline:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def post(self, *args, **kwargs):
+            stop.set()
+            raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(httpx, "Client", Offline)
+    monkeypatch.setattr("builtins.print", printed.append)
+    monkeypatch.setattr(demo_rebalance.time, "sleep", lambda seconds: None)
+    demo_rebalance.run_device("https://api.test", "key", Device(clock=lambda: 0), stop, "carro 1")
+    assert printed == ["[SIMULADO] carro 1: sync indisponível"]
