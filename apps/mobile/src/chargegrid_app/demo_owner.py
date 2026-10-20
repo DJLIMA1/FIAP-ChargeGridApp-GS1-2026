@@ -11,7 +11,7 @@ import random
 from datetime import timedelta
 from decimal import Decimal
 
-from chargegrid_core import analytics
+from chargegrid_core import analytics, economics
 from chargegrid_core.formatting import brl
 
 from .api_client import ApiError
@@ -21,6 +21,8 @@ HISTORY_DAYS = 30
 HOUR_WEIGHTS = (1, 1, 1, 1, 1, 2, 4, 9, 10, 6, 4, 5, 8, 7, 4, 4, 5, 9, 11, 10, 7, 4, 2, 1)
 END_REASONS = ('duration_limit', 'requested', 'requested', 'cost_limit', 'local_stop')
 SAMPLE_INSIGHT_MODEL = 'demo-local'
+# Custo do kWh dos postos da conta demo (valor de exemplo; o dono pode trocar na tela de resultado).
+DEMO_ENERGY_COST = Decimal('0.8500')
 
 
 def _fail(message, code='validation_error', status=422):
@@ -157,12 +159,14 @@ class DemoOwner:
             _fail('Operador não habilitado.', 'forbidden', 403)
         if (method, path) == ('POST', 'ai/owner-insights'):
             return self.insights({**(params or {}), **(body or {})})
+        if path.startswith('stations/') and path.endswith('/economics'):
+            return self.economics(method, path.split('/')[1], body)
         if method != 'GET':
             _fail('Operação não disponível na demonstração.', 'demo_route_not_supported', 404)
         resource = path.split('/', 1)[1]
         handler = {'overview': self.overview, 'timeseries': self.timeseries, 'heatmap': self.heatmap,
                    'sessions': self.sessions, 'reservations': self.reservations, 'alerts': self.alerts,
-                   'live': self.live}.get(resource)
+                   'live': self.live, 'margin': self.margin}.get(resource)
         if handler is None:
             _fail('Esta operação não está disponível na demonstração.', 'demo_route_not_supported', 404)
         return handler(params)
@@ -318,10 +322,88 @@ class DemoOwner:
             })
         return {'items': items, 'generated_at': now.isoformat()}
 
+    # ---------------------------------------------------- resultado do dono
+    def _economics_config(self):
+        """Custo do kWh por posto (some a cada login, como o resto da demonstração)."""
+        state = getattr(self, '_economics_state', None)
+        if state is None or state[0] != self.api._wall:
+            state = self._economics_state = (self.api._wall, {})
+        return state[1]
+
+    def _station_economics(self, station, notes=True):
+        config = self._economics_config()
+        cost = config.get(station['id'], DEMO_ENERGY_COST)
+        result = {'station_id': station['id'],
+                  'energy_cost_per_kwh': analytics.decimal_text(cost, '0.0001') if cost is not None else None,
+                  'platform_fee_percent': analytics.decimal_text(economics.DEFAULT_PLATFORM_FEE_PERCENT, '0.01'),
+                  'fee_editable': False, 'currency': 'BRL'}
+        if notes:
+            result['notes'] = ['Custo do kWh: informe o valor médio pago à distribuidora (R$/kWh). Vale para as '
+                               'próximas recargas; as anteriores mantêm o custo travado no início.',
+                               'A comissão da plataforma é definida em contrato e não pode ser alterada no painel.']
+        return result
+
+    def economics(self, method, station_id, body):
+        station = self.api._owned(station_id)
+        if method == 'PUT':
+            if not isinstance(body, dict):
+                _fail('Envie um objeto com energy_cost_per_kwh.', 'invalid_economics')
+            if 'platform_fee_percent' in body:
+                _fail('A comissão da plataforma é definida em contrato e não pode ser alterada no painel.',
+                      'fee_read_only')
+            unknown = sorted(set(body) - {'energy_cost_per_kwh'})
+            if unknown:
+                _fail('Campo não permitido: ' + ', '.join(unknown), 'invalid_economics')
+            if 'energy_cost_per_kwh' in body:
+                try:
+                    self._economics_config()[station['id']] = economics.clean_energy_cost(body['energy_cost_per_kwh'])
+                except ValueError as error:
+                    _fail(str(error), 'invalid_economics')
+        elif method != 'GET':
+            _fail('Operação não disponível na demonstração.', 'demo_route_not_supported', 404)
+        return self._station_economics(station)
+
+    def margin_report(self, params):
+        """Mesmo relatório de ``GET /owner/margin`` (``Decimal``), com o núcleo ``economics``."""
+        station_id = self._station(params)
+        start, end = self._window(params)
+        sessions, _ = self.records(station_id)
+        config = self._economics_config()
+        eligible = sorted((s for s in sessions if analytics.is_eligible(s, start, end)),
+                          key=lambda s: (s['ended_at'], s['id']), reverse=True)
+        rows = [economics.session_economics(s, station_energy_cost=config.get(s['station_id'], DEMO_ENERGY_COST))
+                for s in eligible]
+        owner = self.api._profile.get('id')
+        stations = sorted((s for s in self.api._stations.values() if s['owner_id'] == owner
+                           and (station_id is None or s['id'] == station_id)), key=lambda s: (s['name'], s['id']))
+        report = economics.aggregate(rows)
+        report.update(
+            schema_version=economics.SCHEMA_VERSION,
+            period={'from': start.isoformat(), 'to': end.isoformat(), 'timezone': analytics.REPORT_TZ_NAME},
+            basis='ended_at', currency='BRL', station_id=station_id,
+            stations=[{**self._station_economics(s, notes=False), 'station_name': s['name']} for s in stations],
+            methodology=list(economics.METHODOLOGY), generated_at=self.api._now().isoformat(), items=rows,
+            total=len(rows))
+        return report
+
+    def margin(self, params):
+        report = self.margin_report(params)
+        limit = int(params.get('limit') or 50)
+        offset = int(params.get('offset') or 0)
+        report.update(items=report['items'][offset:offset + limit], limit=limit, offset=offset)
+        return economics.serialize(report)
+
     # ------------------------------------------------------------ exportação
     def download(self, path, params):
         name = path.strip('/').removeprefix('v1/').removeprefix('owner/export/')
         dataset, _, fmt = name.partition('.')
+        if dataset == 'margin':
+            if not self.api.session.access_token:
+                _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+            if fmt != 'csv':
+                _fail('O PDF só é gerado na conta real. Na demo, exporte o CSV.', 'demo_pdf_unavailable', 404)
+            self.api._advance()
+            return economics.margin_csv(self.margin_report(dict(params or {}))['items']).encode('utf-8')
         if dataset not in ('sessions', 'reservations') or fmt not in ('csv', 'json'):
             _fail('Exportação não disponível na demonstração.', 'demo_route_not_supported', 404)
         if not self.api.session.access_token:
