@@ -423,3 +423,22 @@ def test_kiosk_fields_from_the_real_sync_are_read_like_the_panel():
     assert device.kiosk_url is None and device.payment is None and kiosk_text(device) == ""
     device.response(_kiosk({}))
     assert device.kiosk_url is None and device.payment is None
+
+
+def test_totem_blocks_are_read_and_shown_like_the_panel():
+    """Totem 0.8.0: connector.kiosk, kiosk_order e session.origin; ausentes (API antiga ou totem desligado) = nada."""
+    from tools.device_simulator import kiosk_text
+
+    device = Device()
+    synced = response()
+    synced["connector"] = {"kiosk": {"enabled": True, "method": "simulated", "label": "SIMULADO", "reason": None}}
+    synced["kiosk_order"] = {"id": "order", "status": "charging", "status_label": "Recarga em andamento"}
+    synced["authorized"]["session"]["origin"] = "kiosk_totem"
+    device.response(synced)
+    assert device.totem["label"] == "SIMULADO" and device.session_origin == "kiosk_totem"
+    assert kiosk_text(device) == " | Totem: Recarga em andamento"
+    older = response(version=2, identifier="other")
+    older["connector"] = {"kiosk": {"enabled": True, "method": "cash"}}
+    older["kiosk_order"] = {"id": "order", "status": "unknown"}
+    device.response(older)
+    assert device.totem is None and device.kiosk_order is None and device.session_origin is None
