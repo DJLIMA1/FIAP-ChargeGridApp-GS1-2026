@@ -1,11 +1,10 @@
-"""Previsão no app: cartão "Melhor horário" do motorista e previsão do vendedor (conta demo)."""
+"""Previsão no app: cartão "Melhor horário" (fora do detalhe do posto) e previsão do vendedor (conta demo)."""
 
 import unittest
 from unittest.mock import patch
 
 import flet as ft
 
-from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import history, history_owner, stations
 from chargegrid_app.services import maps
@@ -43,30 +42,35 @@ class ForecastScreenTests(unittest.IsolatedAsyncioTestCase):
         await self.app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
         self.app.profile = await self.app.api.request('GET', 'me')
 
-    async def test_driver_station_shows_best_time_to_charge(self):
-        with patch.object(maps, 'build_map_png', side_effect=AssertionError('network tiles')):
-            first = (await self.app.api.request('GET', 'stations'))['items'][0]
-            screen = await stations.build(self.app, station_id=first['id'])
-        text = joined(screen)
-        self.assertIn('Melhor horário para carregar', text)
-        self.assertIn('a partir de R$', text)
-        self.assertIn('Estimativa. O preço é travado', text)
-        self.assertIn('Reservar estação', text)  # o fluxo principal continua igual
-
-    async def test_best_time_card_disappears_when_the_api_fails(self):
+    async def test_station_detail_follows_the_reference_without_the_best_time_card(self):
+        # O detalhe do posto segue o design de referência (estacao_3): sem "Melhor horário".
         original = self.app.api.request
+        paths = []
 
-        async def failing(method, path, *args, **kwargs):
-            if path.endswith('/best-times'):
-                raise ApiError('Indisponível', 503, 'unavailable')
+        async def recording(method, path, *args, **kwargs):
+            paths.append(path)
             return await original(method, path, *args, **kwargs)
 
         first = (await original('GET', 'stations'))['items'][0]
-        with patch.object(self.app.api, 'request', side_effect=failing), \
+        with patch.object(self.app.api, 'request', side_effect=recording), \
                 patch.object(maps, 'build_map_png', side_effect=AssertionError('network tiles')):
             screen = await stations.build(self.app, station_id=first['id'])
-        self.assertNotIn('Melhor horário para carregar', joined(screen))
-        self.assertIn('Carregar agora', joined(screen))
+        text = joined(screen)
+        self.assertNotIn('Melhor horário para carregar', text)
+        self.assertFalse([path for path in paths if path.endswith('/best-times')])
+        for expected in ('Detalhes da estação', 'Conectores', 'Abrir rota no Google Maps', 'Reservar estação',
+                         'Carregar agora'):
+            self.assertIn(expected, text)
+
+    async def test_best_time_card_still_renders_from_the_station_forecast(self):
+        # A funcionalidade continua pronta (cartão + rota); só saiu do detalhe do posto.
+        first = (await self.app.api.request('GET', 'stations'))['items'][0]
+        payload = await self.app.api.request('GET', f"stations/{first['id']}/best-times", params={'hours': 12})
+        card = forecast_ui.best_time_card(payload)
+        text = joined(card)
+        self.assertIn('Melhor horário para carregar', text)
+        self.assertIn('a partir de R$', text)
+        self.assertIn('Estimativa. O preço é travado', text)
 
     async def test_vendor_forecast_page_shows_method_accuracy_and_synthetic_label(self):
         screen = await history.build(self.app, manage=True, page='forecast')
