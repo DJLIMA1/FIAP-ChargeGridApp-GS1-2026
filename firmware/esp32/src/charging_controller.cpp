@@ -116,11 +116,31 @@ String isoTime() {
   strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
   return String(buffer);
 }
+// ISO 8601 da API: frações de segundo e fuso opcionais ("Z", "+00:00", "-03:00", "-0300").
+// A API serializa os horários vindos do banco no fuso da sessão do PostgreSQL (expires_at
+// pode chegar com -03:00); ignorar o fuso faria um comando válido parecer vencido.
 time_t parseTime(const char* value) {
   if (!value) return 0;
   struct tm utc{};
-  if (!strptime(value, "%Y-%m-%dT%H:%M:%S", &utc)) return 0;
-  return mktime(&utc); // TZ é UTC.
+  const char* rest = strptime(value, "%Y-%m-%dT%H:%M:%S", &utc);
+  if (!rest) return 0;
+  if (*rest == '.') while (*++rest >= '0' && *rest <= '9') {}
+  long offset = 0;
+  if (*rest == '+' || *rest == '-') {
+    const int sign = *rest == '-' ? -1 : 1;
+    int digits[4], count = 0;
+    for (const char* c = rest + 1; *c && count < 4; ++c) {
+      if (*c == ':' && count == 2) continue;
+      if (*c < '0' || *c > '9') break;
+      digits[count++] = *c - '0';
+    }
+    if (count != 2 && count != 4) return 0;
+    const long hours = digits[0] * 10 + digits[1];
+    const long minutes = count == 4 ? digits[2] * 10 + digits[3] : 0;
+    if (hours > 23 || minutes > 59) return 0;
+    offset = sign * (hours * 3600 + minutes * 60);
+  }
+  return mktime(&utc) - offset; // TZ é UTC; sem fuso: UTC (formato anterior).
 }
 void persist() {
   store.putUInt("version", version);
@@ -256,6 +276,29 @@ void fillSyncBody(JsonDocument& body, bool extensions) {
   charger["model"] = "esp32_bench"; charger["transport"] = "simulated";
   charger["min_power_w"] = kChargerMinPowerW; charger["max_power_w"] = kChargerMaxPowerW;
   charger["step_w"] = kChargerStepW; charger["phases"] = 1;
+}
+static bool extensionField(const char* field) {
+  if (!field) return false;
+  for (const char* name : {"capabilities", "applied_power_w", "charger"}) {
+    const size_t length = strlen(name);
+    if (strncmp(field, name, length) == 0 && (field[length] == '\0' || field[length] == '.')) return true;
+  }
+  return false;
+}
+bool syncRejectedExtensions(const char* body) {
+  JsonDocument doc;
+  if (!body || deserializeJson(doc, body)) return false;
+  // API ChargeGrid: {"error":{"code":"validation_error","fields":[{"field":"capabilities",...}]}}.
+  // invalid_time, energy_regression e session_required também são 422, mas não são campos 0.7.0.
+  if (doc["error"]["code"] == "validation_error") {
+    for (JsonObjectConst item : doc["error"]["fields"].as<JsonArrayConst>())
+      if (extensionField(item["field"].as<const char*>())) return true;
+    return false;
+  }
+  // FastAPI sem o tratador próprio: {"detail":[{"loc":["body","capabilities"],...}]}.
+  for (JsonObjectConst item : doc["detail"].as<JsonArrayConst>())
+    if (item["loc"][0] == "body" && extensionField(item["loc"][1].as<const char*>())) return true;
+  return false;
 }
 bool apply(JsonDocument& response) {
   acknowledgements.to<JsonArray>();

@@ -69,6 +69,11 @@ String panelLatin1(const char* text, size_t maxChars);
 // Corpo do sync sem boot_id/sequence. extensions=false gera o corpo 0.6 para uma API
 // anterior (SyncInput recusa campos desconhecidos com 422).
 void fillSyncBody(JsonDocument& body, bool extensions);
+// 422 do sync causado pelos campos 0.7.0 (API anterior com extra="forbid")? Os outros 422
+// da API (invalid_time, energy_regression, session_required) não rebaixam o corpo.
+bool syncRejectedExtensions(const char* body);
+// Horário ISO 8601 da API (frações e fuso opcionais; sem fuso = UTC) em segundos Unix.
+time_t parseTime(const char* value);
 // Pagamento no painel (modo teste): URL do QR (vazia = sem QR) e último pagamento.
 extern String kioskUrl, paymentStatus;
 extern float paymentAmount;

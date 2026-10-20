@@ -65,7 +65,9 @@ void syncDevice() {
   http.addHeader("Authorization", String("Device ") + deviceAuthorizationKey());
   int code = http.POST(payload);
   lastSyncHttpStatus = code;
-  if (code == 422 && !legacyBody) {
+  // Só um 422 que aponta os campos 0.7.0 rebaixa o corpo; os 422 de regra da API
+  // (invalid_time, energy_regression, session_required) mantêm SET_POWER declarado.
+  if (code == 422 && !legacyBody && syncRejectedExtensions(http.getString().c_str())) {
     legacyBody = true; legacySince = millis();
     backoffMs = 5000; nextSync = millis(); // Reenvia já com o corpo anterior.
     Serial.println("[sync] API anterior: campos 0.7.0 recusados; usando corpo 0.6");

@@ -460,6 +460,110 @@ int main(int argc, char** argv) {
   apply(kiosk); assert(kioskUrl.empty() && paymentStatus.empty() && paymentAmount < 0);
   resetSession(); sessionId = ""; state = "idle";
 
+  // ---- Real API responses (captured from apps/api POST /v1/devices/sync, live power + overstay) ----
+  // Timestamps loaded from PostgreSQL carry the session time zone (-03:00 here), with fractions.
+  const ClaimStorage savedClaim = claimStorage; // Real responses say owned=true; the claim tests below need the old state.
+  const bool savedOwned = panelOwned, savedOwnershipKnown = connectorOwnershipKnown;
+  const String savedClaimToken = panelClaimToken;
+  assert(parseTime("2026-10-20T04:09:50.703479-03:00") == parseTime("2026-10-20T07:09:50Z"));
+  assert(parseTime("2026-10-20T07:09:50+00:00") == parseTime("2026-10-20T07:09:50"));
+  assert(parseTime("2026-10-20T04:09:50-0300") == parseTime("2026-10-20T07:09:50.999Z"));
+  assert(parseTime("2026-10-20T09:39:50+02:30") == parseTime("2026-10-20T07:09:50Z"));
+  assert(parseTime("2026-10-20T07:09:50+7") == 0 && parseTime("garbage") == 0 && parseTime(nullptr) == 0);
+  const char* realStart = R"({"server_time":"2026-10-20T07:09:20.765272+00:00","sync_interval_seconds":1,"control_version":1,
+    "overstay":null,"connector":{"id":"c","public_code":"CG-A","max_duration_minutes":60,"owned":true,"active":true,
+    "presence_code":"#F00975","presence_expires_at":"2026-10-20T07:10:00+00:00","kiosk_url":null,"payment":null},
+    "authorized":{"reservation":null,"session":{"id":"58967906-cabe-48d3-ae70-af6859edc100","status":"starting",
+    "max_duration_minutes":30,"max_cost":null,"price_per_kwh":"2.0000","discount_percent":0,"soc_percent":null,
+    "battery_kwh":null,"soc_source":null,"start_soc_percent":null,"max_power_kw":7.2,"applied_power_kw":null,
+    "target_power_kw":7.2,"power_state":"raising","power_reason_short":"Máx. do carregador"}},
+    "commands":[{"id":"ade38acd-7f27-4baa-b9eb-2f241a5e1ace","type":"START","version":1,
+    "expires_at":"2026-10-20T04:09:50.703479-03:00","reservation_id":null,"session_id":"58967906-cabe-48d3-ae70-af6859edc100",
+    "parameters":{"max_cost":null,"overstay":{"amount":"1.00","max_amount":"30.00","grace_minutes":10,"interval_minutes":1},
+    "session_id":"58967906-cabe-48d3-ae70-af6859edc100","soc_source":null,"battery_kwh":null,"soc_percent":null,
+    "max_power_kw":7.2,"power_limit_w":7200,"price_per_kwh":"2.0000","discount_percent":0,"power_decision_id":1,
+    "max_duration_minutes":30}}]})";
+  JsonDocument real; assert(!deserializeJson(real, realStart));
+  assert(apply(real)); // Before the offset fix the START looked 3 h expired and was silently ignored.
+  assert(state == "charging" && sessionId == "58967906-cabe-48d3-ae70-af6859edc100" && reading.connected);
+  assert(acknowledgements.size() == 1 && acknowledgements[0]["status"] == "applied");
+  assert(overstayEnabled && chargePowerW == 7200 && std::abs(price - 2.0f) < 0.001f && maxCost < 0);
+  assert(maxDurationMs == 30UL * 60000UL && sessionAppliedPowerKw < 0 && powerReasonShort.empty()); // Shown from the next sync.
+  // Bodies saved next to the frames so they can be checked against the API SyncInput schema.
+  auto saveBody = [&](JsonDocument& body, const char* name) {
+    body["boot_id"] = "host-boot"; body["sequence"] = 1;
+    char path[1024]; snprintf(path, sizeof(path), "%s/sync-body-%s.json", argv[1], name);
+    FILE* out = fopen(path, "wb"); assert(out);
+    std::string text; serializeJson(body, text); fputs(text.c_str(), out); fclose(out);
+  };
+  JsonDocument realBody; fillSyncBody(realBody, true);
+  assert(realBody["applied_power_w"] == 7200 && realBody["connected"] == true && realBody["physical_state"] == "charging");
+  saveBody(realBody, "charging");
+  const char* realSetPower = R"({"server_time":"2026-10-20T07:09:21.388969+00:00","sync_interval_seconds":1,"control_version":2,
+    "overstay":null,"connector":{"public_code":"CG-A","owned":true,"active":true,"kiosk_url":null,"payment":null},
+    "authorized":{"reservation":null,"session":{"id":"58967906-cabe-48d3-ae70-af6859edc100","status":"charging",
+    "max_duration_minutes":30,"max_cost":null,"price_per_kwh":"2.0000","discount_percent":0,"max_power_kw":7.2,
+    "applied_power_kw":7.2,"target_power_kw":6.0,"power_state":"reducing","power_reason_short":"Loja 12/30 kW · 3 carros"}},
+    "commands":[{"id":"a92caeb0-5d34-4bfd-9b6d-191561a7a9aa","type":"SET_POWER","version":2,
+    "expires_at":"2026-10-20T04:09:36.384609-03:00","reservation_id":null,"session_id":"58967906-cabe-48d3-ae70-af6859edc100",
+    "parameters":{"reason":"site","attempt":1,"direction":"reduce","decision_id":6,"reason_short":"Loja 12/30 kW · 3 carros",
+    "power_limit_w":6000,"previous_power_w":7200}}]})";
+  real.clear(); assert(!deserializeJson(real, realSetPower));
+  assert(apply(real) && chargePowerW == 6000 && version == 2);
+  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 6000);
+  realBody.clear(); fillSyncBody(realBody, true); saveBody(realBody, "set-power-ack");
+  assert(realBody["acks"][0]["applied_power_w"] == 6000 && realBody["applied_power_w"] == 6000);
+  assert(std::abs(sessionAppliedPowerKw - 7.2f) < 0.001f && powerReasonShort == "Loja 12/30 kW · 3 carros"); // ACK not yet seen by the API.
+  const char* realStop = R"({"server_time":"2026-10-20T07:09:21.731986+00:00","sync_interval_seconds":1,"control_version":3,
+    "overstay":null,"connector":{"public_code":"CG-A","owned":true,"active":true,"kiosk_url":null,"payment":null},
+    "authorized":{"reservation":null,"session":{"id":"58967906-cabe-48d3-ae70-af6859edc100","status":"stopping",
+    "price_per_kwh":"2.0000","discount_percent":0}},
+    "commands":[{"id":"81e6f2b2-a02d-4502-9319-9d1b78335d0e","type":"STOP","version":3,
+    "expires_at":"2026-10-20T04:09:51.635131-03:00","reservation_id":null,"session_id":"58967906-cabe-48d3-ae70-af6859edc100",
+    "parameters":{}}]})";
+  real.clear(); assert(!deserializeJson(real, realStop));
+  assert(apply(real) && state == "stopped" && reading.connected && endReason == "requested");
+  realBody.clear(); fillSyncBody(realBody, true); // Session closes "completed" with connected=true: overstay opens.
+  assert(realBody["connected"] == true && realBody["session_id"] == "58967906-cabe-48d3-ae70-af6859edc100");
+  assert(realBody["end_reason"] == "requested" && realBody["applied_power_w"] == 0); saveBody(realBody, "stopped-connected");
+  const char* realOverstay = R"({"server_time":"2026-10-20T07:09:21.808023+00:00","sync_interval_seconds":5,"control_version":3,
+    "overstay":{"session_id":"58967906-cabe-48d3-ae70-af6859edc100","status":"grace","grace_remaining_seconds":600,
+    "fee_due":"0.00","max_fee":"30.00","amount":"1.00","interval_minutes":1},
+    "connector":{"public_code":"CG-A","owned":true,"active":true,"kiosk_url":null,"payment":null},
+    "authorized":{"reservation":null,"session":null},"commands":[]})";
+  real.clear(); assert(!deserializeJson(real, realOverstay));
+  apply(real);
+  assert(state == "idle" && sessionId.empty() && reading.connected && overstayStatus == "grace");
+  assert(overstayGraceSeconds == 600 && overstayFeeDue == 0 && overstayMaxFee == 30 && overstayAmount == 1 &&
+         overstayIntervalMinutes == 1);
+  realBody.clear(); fillSyncBody(realBody, true); // Idle with the cable: the API keeps counting the overstay.
+  assert(realBody["connected"] == true && realBody["session_id"].isNull() && realBody["energy_wh"] == 0);
+  saveBody(realBody, "overstay-idle");
+  assert(requestLocalDisconnect() && !reading.connected); // The next sync closes it ("disconnected").
+  realBody.clear(); fillSyncBody(realBody, true); saveBody(realBody, "unplugged");
+  JsonDocument legacyReal; fillSyncBody(legacyReal, false); saveBody(legacyReal, "legacy");
+  // Payment kiosk fields exactly as the API sends them (Stripe test mode).
+  const char* realKiosk = R"({"server_time":"2026-10-20T07:09:22+00:00","control_version":3,"overstay":null,
+    "connector":{"public_code":"CG-01","owned":true,"active":true,"kiosk_url":"https://api.chargegrid.test/pay/k/CG-01?c=62600",
+    "payment":{"status":"awaiting_payment","status_label":"Aguardando pagamento","amount":"20.00","environment":"test"}},
+    "authorized":{"reservation":null,"session":null},"commands":[]})";
+  real.clear(); assert(!deserializeJson(real, realKiosk)); apply(real);
+  assert(kioskUrl == "https://api.chargegrid.test/pay/k/CG-01?c=62600" && paymentStatus == "awaiting_payment");
+  assert(paymentAmount == 20.0f && paymentTest && overstayStatus.empty());
+  // 422 from the real API: only an extra_forbidden on the 0.7.0 fields means "older API".
+  assert(syncRejectedExtensions(R"({"error":{"code":"validation_error","message":"Dados inválidos","fields":[{"field":"capabilities","message":"Extra inputs are not permitted"}]}})"));
+  assert(syncRejectedExtensions(R"({"error":{"code":"validation_error","fields":[{"field":"charger.step_w","message":"x"}]}})"));
+  assert(syncRejectedExtensions(R"({"detail":[{"loc":["body","applied_power_w"],"msg":"Extra inputs are not permitted"}]})"));
+  assert(!syncRejectedExtensions(R"({"error":{"code":"validation_error","fields":[{"field":"unknown_extension","message":"Extra inputs are not permitted"}]}})"));
+  assert(!syncRejectedExtensions(R"({"error":{"code":"validation_error","fields":[{"field":"chargers","message":"x"}]}})"));
+  assert(!syncRejectedExtensions(R"({"error":{"code":"invalid_time","message":"Horário inválido"}})"));
+  assert(!syncRejectedExtensions(R"({"error":{"code":"energy_regression","message":"Energia acumulada diminuiu"}})"));
+  assert(!syncRejectedExtensions(R"({"error":{"code":"session_required","message":"Medição de recarga exige session_id"}})"));
+  assert(!syncRejectedExtensions("") && !syncRejectedExtensions(nullptr) && !syncRejectedExtensions("<html>"));
+  resetSession(); sessionId = ""; state = "idle"; kioskUrl = ""; paymentStatus = ""; paymentAmount = -1; paymentTest = false;
+  claimStorage = savedClaim; panelOwned = savedOwned; connectorOwnershipKnown = savedOwnershipKnown;
+  panelClaimToken = savedClaimToken;
+
   lv_init();
   static lv_disp_draw_buf_t db; lv_disp_draw_buf_init(&db, drawbuf, nullptr, 800 * 48);
   static lv_disp_drv_t dd; lv_disp_drv_init(&dd);
@@ -699,5 +803,6 @@ int main(int argc, char** argv) {
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
   puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");
   puts("PASS: 0.7.0 overstay (keep connected, disconnect + immediate sync, RELEASE, reboot, factory reset refusal, texts), payment kiosk QR and status, live power texts");
+  puts("PASS: real API sync responses (ISO offsets -03:00, Decimal text, START overstay + power_limit_w, SET_POWER ack, STOP keeps the cable, overstay block, kiosk) and 422 classification");
   puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 20 LVGL frames");
 }
