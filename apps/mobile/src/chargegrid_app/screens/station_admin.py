@@ -136,8 +136,10 @@ async def build(app, station_id=None, page=None, **params):
         return await station_ops.energy_page(app, station)
     if page == 'payments':
         config = None
-        if station_ops.has_kiosk(station) and not station_ops.account_presentation(app):
+        if (station_ops.has_kiosk(station) and not station_ops.account_presentation(app)
+                and station_ops.server_kiosk_status(station, False) is None):
             # Status do totem: conta oficial sem Stripe no servidor → indisponível (payments_unavailable).
+            # A API com ``kiosk_status`` no posto já decide; só a antiga precisa da consulta.
             from ..services import payments
             config = await payments.config(app, refresh=True)
         return station_ops.payments_page(app, station, config)

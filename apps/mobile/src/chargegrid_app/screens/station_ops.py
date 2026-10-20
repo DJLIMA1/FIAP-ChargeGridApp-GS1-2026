@@ -117,12 +117,36 @@ def account_presentation(app):
     return value if value is not None else vehicle_state.presentation_mode(app)
 
 
+def server_kiosk_status(station, presentation):
+    """``(método, motivo)`` do ``kiosk_status`` que a API manda no posto do dono, ou ``None``.
+
+    Vale o bloco do servidor (mesma regra do ``connector.kiosk`` do sync, inclusive a Stripe configurada),
+    exceto quando o Modo apresentação da conta mudou depois que o posto foi lido (posto em cache): aí o
+    bloco não bate com ``presentation`` e o app volta ao cálculo local."""
+    server = (station or {}).get('kiosk_status')
+    if not isinstance(server, dict):
+        return None
+    method, reason = server.get('method'), server.get('reason')
+    if reason == 'point_disabled' and method is None:
+        return method, reason
+    if presentation and method == 'simulated' and reason is None:
+        return method, reason
+    if not presentation and ((method == 'stripe' and reason is None)
+                             or (method is None and reason == 'payments_unavailable')):
+        return method, reason
+    return None
+
+
 def kiosk_status(station, presentation, payments_config=None):
     """``{enabled, method, label, reason, text, tone}`` como o ``connector.kiosk`` do sync (decidido pela API).
 
-    ``payments_config``: ``GET payments/config`` (``None`` = ainda não consultado: supõe a Stripe ligada)."""
+    Usa o ``kiosk_status`` do posto (API com o campo); sem ele, deduz: ``payments_config`` é
+    ``GET payments/config`` (``None`` = ainda não consultado: supõe a Stripe ligada)."""
     station = station or {}
-    if station.get('active') is False:
+    decided = server_kiosk_status(station, presentation)
+    if decided is not None:
+        method, reason = decided
+    elif station.get('active') is False:
         method, reason = None, 'point_disabled'
     elif presentation:
         method, reason = 'simulated', None
@@ -180,6 +204,8 @@ def kiosk_section(app, station, payments_config=None):
         else:
             state['on'] = bool((saved or {}).get('kiosk_mode', value))
             station['kiosk_mode'] = state['on']
+            if isinstance((saved or {}).get('kiosk_status'), dict):
+                station['kiosk_status'] = saved['kiosk_status']
             switch.value = state['on']
             app.notice('Totem de autoatendimento ligado' if state['on'] else 'Totem de autoatendimento desligado')
         finally:

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { Station } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { KIOSK_FOLLOWS, kioskStatus } from '../../lib/kiosk'
+import { KIOSK_FOLLOWS, kioskStatus, serverKioskStatus } from '../../lib/kiosk'
 import { useApi } from '../../lib/useApi'
 import { useToast } from '../Toast'
 import { Badge, Card, ErrorBanner, Switch } from '../ui'
@@ -21,10 +21,19 @@ export function KioskCard({ station, onSaved }: { station: Station; onSaved(next
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supported = typeof station.kiosk_mode === 'boolean'
-  // Modo da conta atualizado (pode ter mudado no app depois do login) e a Stripe do servidor.
+  // Modo da conta atualizado (pode ter mudado no app depois do login) e a Stripe do servidor. Com
+  // `kiosk_status` no posto a API já decidiu a Stripe; `/payments/config` só para a API antiga.
+  const decidedByApi = Boolean(station.kiosk_status)
   const account = useApi(async (signal) => {
-    const [me, config] = await Promise.all([ep.me(signal), ep.paymentsConfig(signal).catch(() => ({ enabled: false }))])
-    return { presentation: me.presentation_mode === true, stripe: config.enabled === true }
+    const [me, config] = await Promise.all([
+      ep.me(signal),
+      decidedByApi ? Promise.resolve(undefined) : ep.paymentsConfig(signal).catch(() => ({ enabled: false })),
+    ])
+    const presentation = me.presentation_mode === true
+    // Conta mudou de modo depois de ler o posto: o bloco da API não vale e a Stripe precisa ser conferida.
+    const stale = decidedByApi && !serverKioskStatus(station, presentation)
+    const checked = config ?? (stale ? await ep.paymentsConfig(signal).catch(() => ({ enabled: false })) : undefined)
+    return { presentation, stripe: checked ? checked.enabled === true : undefined }
   }, `kiosk-${station.id}`, supported)
   if (!supported) return null
 

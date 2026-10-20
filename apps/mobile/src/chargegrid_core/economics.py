@@ -31,7 +31,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from .analytics import csv_cell, decimal_text, parse_time, to_decimal
+from .analytics import (
+    PAYMENT_EXPORT_COLUMNS,
+    csv_cell,
+    decimal_text,
+    parse_time,
+    to_decimal,
+)
 
 SCHEMA_VERSION = 1
 CENT = Decimal("0.01")
@@ -88,6 +94,7 @@ MARGIN_EXPORT_COLUMNS = (
     ("margin", "Margem estimada (R$)"),
     ("margin_percent", "Margem (%)"),
     ("revenue_basis", "Base da receita"),
+    *PAYMENT_EXPORT_COLUMNS,  # totem 0.8.0: canal e método (no fim; vazios em linhas sem a informação)
 )
 
 

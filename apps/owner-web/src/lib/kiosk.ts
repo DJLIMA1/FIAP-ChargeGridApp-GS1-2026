@@ -28,13 +28,37 @@ export const KIOSK_REASON_TEXT: Record<KioskReason, string> = {
 }
 
 /**
- * Status como o `connector.kiosk` do sync: decidido pelo modo da conta do dono.
- * `stripeEnabled`: `GET /payments/config` → `enabled` (`undefined` = ainda não consultado; supõe ligada).
+ * `kiosk_status` que a API manda no posto do dono, ou `null` para deduzir. Vale o bloco do servidor (inclui a
+ * Stripe configurada), exceto quando o Modo apresentação da conta mudou depois que o posto foi lido: aí ele não
+ * bate com `presentationMode` e o painel volta ao cálculo local.
  */
-export function kioskStatus(station: Pick<Station, 'active'>, presentationMode: boolean, stripeEnabled?: boolean): KioskStatus {
+export function serverKioskStatus(
+  station: Pick<Station, 'kiosk_status'>,
+  presentationMode: boolean,
+): { method: KioskMethod | null; reason: KioskReason | null } | null {
+  const server = station.kiosk_status
+  if (!server || typeof server !== 'object') return null
+  const { method, reason } = server
+  if (reason === 'point_disabled' && method === null) return { method, reason }
+  if (presentationMode && method === 'simulated' && reason === null) return { method, reason }
+  if (!presentationMode && ((method === 'stripe' && reason === null) || (method === null && reason === 'payments_unavailable')))
+    return { method, reason }
+  return null
+}
+
+/**
+ * Status como o `connector.kiosk` do sync: decidido pelo modo da conta do dono. Usa `station.kiosk_status`
+ * (API com o campo); sem ele deduz, e `stripeEnabled` é `GET /payments/config` → `enabled`
+ * (`undefined` = ainda não consultado; supõe ligada).
+ */
+export function kioskStatus(station: Pick<Station, 'active' | 'kiosk_status'>, presentationMode: boolean, stripeEnabled?: boolean): KioskStatus {
   let method: KioskMethod | null
   let reason: KioskReason | null = null
-  if (!station.active) {
+  const decided = serverKioskStatus(station, presentationMode)
+  if (decided) {
+    method = decided.method
+    reason = decided.reason
+  } else if (!station.active) {
     method = null
     reason = 'point_disabled'
   } else if (presentationMode) method = 'simulated'

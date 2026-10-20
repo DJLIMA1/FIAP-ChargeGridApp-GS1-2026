@@ -115,9 +115,9 @@ def is_simulated(payment):
 def payment_source(payment):
     """``'Totem · Simulado'``, ``'QR do painel · Stripe'`` ou ``'Stripe'`` (canal do app fica implícito).
 
-    ``payment.channel`` (``app`` | ``kiosk_qr`` | ``kiosk_totem``) vem de ``/owner/sessions``; sem o campo
-    (``/operator/charging-sessions`` ou API antiga): simulado só existe no totem; outra origem ``kiosk`` vira
-    "Painel" (QR ou totem, sem como distinguir)."""
+    ``payment.channel`` (``app`` | ``kiosk_qr`` | ``kiosk_totem``) vem de ``/owner/sessions`` e de
+    ``/operator/charging-sessions``; sem o campo (API antiga): simulado só existe no totem; outra origem
+    ``kiosk`` vira "Painel" (QR ou totem, sem como distinguir)."""
     payment = payment or {}
     channel = payment.get('channel')
     if not channel:

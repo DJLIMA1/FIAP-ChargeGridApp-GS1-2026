@@ -221,6 +221,34 @@ class KioskSwitchTests(StorageCase):
         screen = station_ops.payments_page(app, {'id': 's1', 'kiosk_payments': False})
         self.assertIsNone(by_data(screen, 'kiosk_mode'))
 
+    def test_server_kiosk_status_wins_unless_the_account_mode_changed(self):
+        station = {'id': 's1', 'active': True, 'kiosk_mode': True,
+                   'kiosk_status': {'method': None, 'label': None, 'reason': 'payments_unavailable',
+                                    'reason_label': 'Pagamento indisponível'}}
+        # Sem consultar payments/config (supõe Stripe), o bloco da API diz indisponível.
+        unavailable = station_ops.kiosk_status(station, False)
+        self.assertEqual((unavailable['enabled'], unavailable['reason']), (False, 'payments_unavailable'))
+        stripe = {**station, 'kiosk_status': {'method': 'stripe', 'label': 'TESTE', 'reason': None}}
+        self.assertEqual(station_ops.kiosk_status(stripe, False, {'enabled': False})['method'], 'stripe')
+        # Conta virou Modo apresentação depois de ler o posto (cache): o bloco não bate, vale o cálculo.
+        self.assertEqual(station_ops.kiosk_status(stripe, True)['method'], 'simulated')
+        simulated = {**station, 'kiosk_status': {'method': 'simulated', 'label': 'SIMULADO', 'reason': None}}
+        self.assertEqual(station_ops.kiosk_status(simulated, True)['label'], 'SIMULADO')
+        self.assertEqual(station_ops.kiosk_status(simulated, False, {'enabled': True})['method'], 'stripe')
+        off = {**station, 'kiosk_status': {'method': None, 'label': None, 'reason': 'point_disabled'}}
+        self.assertEqual(station_ops.kiosk_status(off, True)['reason'], 'point_disabled')
+
+    async def test_payments_page_skips_payments_config_when_the_api_decides(self):
+        app = fake_app({**OWNER, 'presentation_mode': False}, {('GET', 'payments/config'): {'enabled': True}})
+        app.api.request = AsyncMock(wraps=app.api.request)
+        station = {'id': 's1', 'name': 'Posto', 'active': True, 'kiosk_mode': True, 'connectors': [],
+                   'kiosk_status': {'method': None, 'label': None, 'reason': 'payments_unavailable'}}
+        with patch.object(station_admin, '_load', AsyncMock(return_value=(station, 'CG-1'))):
+            screen = await station_admin.build(app, station_id='s1', page='payments')
+        self.assertIn('payments_unavailable', by_data(screen, 'kiosk-status').value)
+        called = [call.args[:2] for call in app.api.request.await_args_list]
+        self.assertNotIn(('GET', 'payments/config'), called)
+
 
 # ---------------------------------------------------------------- ponto em uso no totem (motorista)
 class KioskInUseTests(StorageCase):
@@ -301,7 +329,7 @@ class SessionChannelTests(StorageCase):
         self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'channel': 'kiosk_qr', 'provider': 'stripe'}),
                          'QR do painel · Stripe')
         self.assertEqual(owner_sessions.payment_source({'origin': 'app', 'provider': 'stripe'}), 'Stripe')
-        # Sem ``channel`` (/operator/charging-sessions): simulado só existe no totem.
+        # Sem ``channel`` (API antiga): simulado só existe no totem.
         self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'provider': 'simulated'}), 'Totem · Simulado')
         self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'provider': 'stripe'}), 'Painel · Stripe')
 

@@ -183,7 +183,7 @@ export interface LiveItem {
   available: boolean
   availability_status: AvailabilityStatus | string
   reserved_until: string | null
-  /** Totem 0.8.0 (aditivo; `/owner/live` ainda não manda). */
+  /** Totem 0.8.0 (aditivo): ponto travado por um pedido do totem (`occupied` + "Em uso no totem"). */
   kiosk_in_use?: boolean
   session: LiveSession | null
   /** Frente D: quem continua na vaga depois da recarga (ou `null`). */
@@ -216,6 +216,13 @@ export interface Connector {
   retired?: boolean
 }
 
+export interface StationKioskStatus {
+  method: 'simulated' | 'stripe' | null
+  label: 'SIMULADO' | 'TESTE' | null
+  reason: 'payments_unavailable' | 'point_disabled' | null
+  reason_label?: string | null
+}
+
 export interface Station {
   id: string
   owner_id: string | null
@@ -231,6 +238,8 @@ export interface Station {
   kiosk_payments?: boolean
   /** Totem 0.8.0: totem de autoatendimento no painel físico (padrão desligado). */
   kiosk_mode?: boolean
+  /** Totem 0.8.0 (só o dono): método efetivo decidido pela API, mesma regra do `connector.kiosk` do sync. */
+  kiosk_status?: StationKioskStatus | null
   /** Frente D: termos vigentes da taxa de permanência. */
   overstay?: StationOverstay | null
 }

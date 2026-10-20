@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionPayment } from '../src/api/operations'
 import type { SessionItem } from '../src/api/types'
 import { sessionsCsv } from '../src/lib/exporters'
-import { CHANNEL_LABELS, kioskStatus, paymentChannel, paymentMethodLabel } from '../src/lib/kiosk'
+import { CHANNEL_LABELS, kioskStatus, paymentChannel, paymentMethodLabel, serverKioskStatus } from '../src/lib/kiosk'
 import { availabilityMeta } from '../src/lib/labels'
 import { paymentBadge } from '../src/lib/overstay'
 import * as data from '../src/mock/data'
@@ -32,6 +32,22 @@ describe('totem de autoatendimento: status do posto', () => {
     expect(missing).toMatchObject({ enabled: false, method: null, reason: 'payments_unavailable', tone: 'red' })
     expect(missing.text).toContain('payments_unavailable')
     expect(kioskStatus({ active: false }, true, true)).toMatchObject({ enabled: false, reason: 'point_disabled' })
+  })
+
+  it('usa o kiosk_status da API e cai no cálculo se o modo da conta mudou depois', () => {
+    const unavailable = { active: true, kiosk_status: { method: null, label: null, reason: 'payments_unavailable' as const } }
+    // Sem /payments/config (supõe Stripe), o bloco da API diz indisponível.
+    expect(kioskStatus(unavailable, false)).toMatchObject({ enabled: false, reason: 'payments_unavailable' })
+    const stripe = { active: true, kiosk_status: { method: 'stripe' as const, label: 'TESTE' as const, reason: null } }
+    expect(kioskStatus(stripe, false, false)).toMatchObject({ method: 'stripe', label: 'TESTE' })
+    expect(kioskStatus(stripe, true)).toMatchObject({ method: 'simulated' }) // conta virou Modo apresentação
+    const simulated = { active: true, kiosk_status: { method: 'simulated' as const, label: 'SIMULADO' as const, reason: null } }
+    expect(kioskStatus(simulated, true)).toMatchObject({ label: 'SIMULADO' })
+    expect(kioskStatus(simulated, false, true)).toMatchObject({ method: 'stripe' })
+    expect(serverKioskStatus(simulated, false)).toBeNull()
+    const off = { active: true, kiosk_status: { method: null, label: null, reason: 'point_disabled' as const } }
+    expect(kioskStatus(off, true)).toMatchObject({ enabled: false, reason: 'point_disabled' })
+    expect(serverKioskStatus({ kiosk_status: undefined }, true)).toBeNull()
   })
 
   it('ponto travado por pedido do totem aparece como "Em uso no totem"', () => {

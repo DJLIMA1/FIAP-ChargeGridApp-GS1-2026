@@ -49,6 +49,10 @@ MAX_WINDOW_DAYS = 366
 MAX_HOURLY_DAYS = 31
 SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
+# Totem 0.8.0: canal e método da recarga paga, sempre no FIM das exportações do dono (o formato
+# anterior continua igual coluna a coluna). Mesmos rótulos do painel web e do app do vendedor.
+PAYMENT_CHANNEL_LABELS = {"app": "App", "kiosk_qr": "QR do painel", "kiosk_totem": "Totem"}
+PAYMENT_EXPORT_COLUMNS = (("payment_channel", "Canal"), ("payment_method", "Pagamento"))
 SESSION_EXPORT_COLUMNS = (
     ("id", "ID da sessão"),
     ("station_name", "Posto"),
@@ -66,6 +70,7 @@ SESSION_EXPORT_COLUMNS = (
     ("end_reason", "Motivo de término"),
     ("overstay_minutes", "Permanência cobrada (min)"),
     ("overstay_fee", "Taxa de permanência (R$)"),
+    *PAYMENT_EXPORT_COLUMNS,
 )
 RESERVATION_EXPORT_COLUMNS = (
     ("id", "ID da reserva"),
@@ -453,6 +458,22 @@ def build_alerts(points: Iterable[Mapping], now: datetime, *, idle_hours: int = 
 
 
 # ---------------------------------------------------------------- exportação
+
+def payment_export_fields(payment: Mapping | None) -> dict:
+    """``payment_channel``/``payment_method`` de uma recarga para CSV/PDF do dono.
+
+    ``payment``: ``{"channel", "provider", "method"}`` do pré-pagamento (``channel`` como em
+    ``/owner/sessions``: ``app`` | ``kiosk_qr`` | ``kiosk_totem``) ou ``None`` sem pré-pagamento
+    (recarga do app sem pagamento antecipado: canal "App", método vazio). Simulado = totem com a
+    conta do dono em Modo apresentação; o resto é Stripe em modo teste.
+    """
+    if not payment:
+        return {"payment_channel": PAYMENT_CHANNEL_LABELS["app"], "payment_method": ""}
+    channel = payment.get("channel") or "app"
+    simulated = payment.get("provider") == "simulated" or payment.get("method") == "simulated"
+    return {"payment_channel": PAYMENT_CHANNEL_LABELS.get(channel, channel),
+            "payment_method": "Simulado" if simulated else "Stripe (teste)"}
+
 
 def session_export_row(session: Mapping, now: datetime | None = None) -> dict:
     """Projeção mínima para relatórios: sem identidade do cliente."""
