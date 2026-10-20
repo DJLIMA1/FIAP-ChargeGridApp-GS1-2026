@@ -24,7 +24,14 @@ from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from . import economics
-from .analytics import FINISHED_STATUSES, decimal_text, duration_minutes, local, parse_time, to_decimal
+from .analytics import (
+    FINISHED_STATUSES,
+    decimal_text,
+    duration_minutes,
+    local,
+    parse_time,
+    to_decimal,
+)
 from .formatting import brl
 from .pricing import multiplier_label
 
