@@ -59,6 +59,8 @@ O app Android consulta esse endpoint ao abrir e ao voltar do segundo plano, no m
 
 Até a 0.6.6, o app consultava as releases do GitHub. Depois que o repositório ficou privado, essas versões não enxergam mais atualizações, por isso a 0.6.7 precisa ser instalada manualmente uma última vez.
 
+O APK 0.6.7 (build 35) está em `builds/chargegrid-0.6.7.apk` (SHA-256 `7bb545891d71d2f4831e1959e613d31255b38a480539cc62c11fa9ba35ed784e`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.6.7.apk`); os apps instalados oferecem a atualização ao abrir. Atualizações agora vêm do servidor do ChargeGrid (esta é a última instalação manual). Inclui a tarifa dinâmica por demanda, a tela Tarifas e as telas do posto reorganizadas.
+
 O APK 0.6.6 (build 34) está em `builds/chargegrid-0.6.6.apk` (SHA-256 `05b0ad60579dea7c95cedd437e9d0ff39ee5fad13f39dac3d747ce705efa0498`). Publicado em 20/10/2026 na release `app-v0.6.6` do GitHub; os apps instalados oferecem a atualização ao abrir. O aviso de atualização agora também aparece ao voltar para o app (não só ao abrir do zero), e a tela Conta mostra a versão instalada com o botão Verificar atualização.
 
 O APK 0.6.5 (build 33) está em `builds/chargegrid-0.6.5.apk` (SHA-256 `98808573fe38b4275981187a8186e12e7f3f99de669fa29bc5b5cddc86c291ea`). Publicado em 20/10/2026 na release `app-v0.6.5` do GitHub; os apps instalados oferecem a atualização ao abrir. Tarifa dinâmica por demanda calculada pelo ChargeGrid (com o status da demanda para o dono do posto e o preço travado ao reservar ou iniciar), tela Tarifas com tarifa base e campos numéricos, e telas do posto reorganizadas sem repetições e sem latitude/longitude.
