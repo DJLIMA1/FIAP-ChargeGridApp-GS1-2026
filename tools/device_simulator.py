@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -27,6 +28,28 @@ def number(value, low, high):
 
 SOC_SOURCES = ("simulated", "phone")
 BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
+BENCH_MIN_POWER_W = 1400  # 6 A em 230 V: menor corrente de recarga AC.
+# Firmware 0.5.0+: ajuste de potência ao vivo (SET_POWER). ``legacy=True`` simula o antigo.
+CAPABILITIES = ["set_power_v1"]
+
+
+def load_charger(name, variant="GW7K-HCA-20", fail_writes=0, echo=None):
+    """Adaptador de carregador + transporte SIMULADO (nenhuma conexão real)."""
+    if name in (None, "", "bench"):
+        return None, None
+    if name != "goodwe-hca-g2":
+        raise ValueError(f"Carregador desconhecido: {name}")
+    try:
+        from chargegrid_core.chargers import GoodWeHcaG2
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packages" / "chargegrid_core"))
+        from chargegrid_core.chargers import GoodWeHcaG2
+    from tools.edge.modbus_sim import SimulatedModbusTransport
+    driver = GoodWeHcaG2(variant)
+    transport = SimulatedModbusTransport(variant, fail_writes=fail_writes, echo=echo)
+    for item in driver.setup_writes():
+        transport.write(item.address, item.value)
+    return driver, transport
 
 
 def power_cap_w(*sources):
@@ -39,7 +62,7 @@ def power_cap_w(*sources):
 
 
 class Device:
-    def __init__(self, state_path=None, clock=time.monotonic):
+    def __init__(self, state_path=None, clock=time.monotonic, *, legacy=False, charger=None, transport=None):
         self.path = Path(state_path) if state_path else None
         self.clock = clock
         saved = json.loads(self.path.read_text()) if self.path and self.path.exists() else {}
@@ -64,6 +87,11 @@ class Device:
         self.limits = {}
         self.power_w = BENCH_POWER_W
         self.reservation_expires = None
+        self.legacy = legacy
+        self.charger = charger
+        self.transport = transport
+        self.presence_code = None
+        self.public_code = None
 
     def save(self):
         if self.path:
@@ -107,6 +135,33 @@ class Device:
             return min(100, self.soc_start + self.energy / (10 * self.battery_kwh))
         return min(100, 20 + self.energy / 600)  # Bancada legada, sem SoC da API.
 
+    def max_power_w(self):
+        return self.charger.limits().max_power_w if self.charger else BENCH_POWER_W
+
+    def charger_info(self):
+        if self.charger:
+            return {**self.charger.capability(), "transport": "simulated"}
+        return {"model": "simulated_bench", "transport": "simulated", "min_power_w": BENCH_MIN_POWER_W,
+                "max_power_w": BENCH_POWER_W, "step_w": 100, "phases": 1}
+
+    def install_power(self, power_w):
+        """Instala o limite (W). Com adaptador, escreve os registradores e só confirma pela
+        releitura. Devolve (aplicado, erro)."""
+        power_w = max(0, min(int(power_w), self.max_power_w()))
+        if not self.charger:
+            self.power_w = power_w
+            return power_w, None
+        from chargegrid_core.chargers import apply_power
+        from chargegrid_core.chargers.goodwe_hca_g2 import WATCHED
+        try:
+            result = apply_power(self.charger, self.transport, power_w, WATCHED)
+        except Exception as exc:  # Exceção Modbus simulada: o limite anterior continua.
+            return self.power_w, f"modbus_error: {exc}"[:200]
+        if not result["confirmed"]:
+            return self.power_w, "readback_mismatch"
+        self.power_w = result["applied_power_w"]
+        return self.power_w, None
+
     def stop(self, reason):
         self.state = "stopped"
         self.connected = False
@@ -148,11 +203,15 @@ class Device:
         self.save()
         # SoC próprio só na fonte simulada; phone ou sem dados de bateria: null (nunca eco da API).
         report_soc = self.session_id and self.soc_source == "simulated" and self.soc_known()
-        return {"boot_id": self.boot_id, "sequence": self.sequence, "firmware_version": "0.4.0",
+        body = {"boot_id": self.boot_id, "sequence": self.sequence, "firmware_version": "0.4.0" if self.legacy else "0.5.0",
                 "session_id": self.session_id, "physical_state": self.state, "connected": self.connected,
                 "soc_percent": round(self.soc(), 2) if report_soc else None,
                 "energy_wh": self.energy, "power_w": self.power_w if self.state == "charging" else 0,
                 "source": "simulated", "captured_at": utc_now(), "end_reason": self.reason, "acks": list(self.acks)}
+        if not self.legacy:
+            body.update(capabilities=list(CAPABILITIES), charger=self.charger_info(),
+                        applied_power_w=self.power_w if self.state == "charging" else 0)
+        return body
 
     def response(self, response):
         self.last_sync = self.clock()
@@ -180,14 +239,20 @@ class Device:
                 phone = number(new_session.get("soc_percent"), 0, 100)
                 self.phone_soc = phone if phone is not None else (
                     self.phone_soc if self.phone_soc is not None else self.soc_start)
+        connector = response.get("connector") or {}
+        self.presence_code = connector.get("presence_code")
+        self.public_code = connector.get("public_code")
         changed = False
         for command in response["commands"]:
             identifier = command["id"]
             version = int(command["version"])
             if identifier == self.last_command:
                 restarted_start = command["type"] == "START" and self.state != "charging"
-                self.acks.append({"command_id": identifier, "status": "failed" if restarted_start else "applied",
-                                  "error": "previous_session_requires_reconciliation" if restarted_start else None})
+                ack = {"command_id": identifier, "status": "failed" if restarted_start else "applied",
+                       "error": "previous_session_requires_reconciliation" if restarted_start else None}
+                if command["type"] == "SET_POWER":
+                    ack["applied_power_w"] = self.power_w
+                self.acks.append(ack)
                 continue
             if version <= self.version or version < current_version or timestamp(command["expires_at"]) <= server_time:
                 continue
@@ -210,7 +275,12 @@ class Device:
                     self.last_tick = self.clock()
                     self.limits = dict(session)
                     # Limite de potência do posto/motorista (parameters prevalecem; API antiga: nominal).
-                    self.power_w = power_cap_w(command.get("parameters"), session)
+                    # Firmware novo usa power_limit_w (pode ser 0: começa pausado até sobrar folga).
+                    start_limit = (command.get("parameters") or {}).get("power_limit_w")
+                    if not self.legacy and start_limit is not None:
+                        self.install_power(number(start_limit, 0, 1000000) or 0)
+                    else:
+                        self.install_power(power_cap_w(command.get("parameters"), session))
                     self.reset_soc()
                     self.read_start_soc(session)
                     self.read_start_soc(command.get("parameters"))  # parameters prevalecem.
@@ -240,9 +310,21 @@ class Device:
                 else:
                     self.state = "idle"
                     self.connected = False
+            elif kind == "SET_POWER" and not self.legacy:
+                limit = number((command.get("parameters") or {}).get("power_limit_w"), 0, 1000000)
+                if self.state != "charging" or command.get("session_id") != self.session_id:
+                    error = "no_active_session"
+                elif limit is None:
+                    error = "invalid_power_limit"
+                else:
+                    self.tick()  # Energia até aqui na potência antiga; daqui em diante, na nova.
+                    _, error = self.install_power(limit)
             else:
                 error = "unknown_command"
-            self.acks.append({"command_id": identifier, "status": "failed" if error else "applied", "error": error})
+            ack = {"command_id": identifier, "status": "failed" if error else "applied", "error": error}
+            if kind == "SET_POWER" and not self.legacy:
+                ack["applied_power_w"] = self.power_w
+            self.acks.append(ack)
             if not error:
                 self.version = version
                 self.last_command = identifier
@@ -266,6 +348,11 @@ def main():
     parser.add_argument("--api", default=os.getenv("CHARGEGRID_API_URL", "https://localhost:8000"))
     parser.add_argument("--state", default=".device-simulator-state.json")
     parser.add_argument("--allow-local-http", action="store_true", help="Só localhost para teste local")
+    parser.add_argument("--charger", choices=["bench", "goodwe-hca-g2"], default="bench",
+                        help="goodwe-hca-g2: traduz SET_POWER em registradores Modbus num transporte SIMULADO")
+    parser.add_argument("--hca-model", default="GW7K-HCA-20", choices=["GW7K-HCA-20", "GW11K-HCA-20", "GW22K-HCA-20"])
+    parser.add_argument("--hca-fail-writes", type=int, default=0, help="Perde as N primeiras escritas (teste de ACK)")
+    parser.add_argument("--legacy", action="store_true", help="Simula firmware 0.4.0 (sem SET_POWER)")
     args = parser.parse_args()
     from urllib.parse import urlparse
     url = urlparse(args.api)
@@ -274,7 +361,8 @@ def main():
     key = os.environ.get("CHARGEGRID_DEVICE_KEY")
     if not key:
         parser.error("Defina CHARGEGRID_DEVICE_KEY com a chave individual")
-    device = Device(args.state)
+    charger, transport = load_charger(args.charger, args.hca_model, args.hca_fail_writes, echo=print)
+    device = Device(args.state, legacy=args.legacy, charger=charger, transport=transport)
     interval = 1
     next_sync = 0
     with httpx.Client(timeout=10, follow_redirects=False) as client:
@@ -291,7 +379,8 @@ def main():
                     interval = max(1, min(30, response["sync_interval_seconds"]))
                     next_sync = time.monotonic() if changed else time.monotonic() + interval
                     soc = f" soc={device.soc():.1f}% ({device.soc_source})" if device.soc_known() else ""
-                    print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{soc}")
+                    power = f" power_w={device.power_w if device.state == 'charging' else 0}"
+                    print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{power}{soc}")
                 except (httpx.HTTPError, ValueError, KeyError):
                     interval = min(30, interval * 2)
                     next_sync = time.monotonic() + interval
