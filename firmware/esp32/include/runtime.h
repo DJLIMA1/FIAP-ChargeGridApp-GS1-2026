@@ -3,6 +3,8 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "sensors.h"
+// Versão única do firmware (sync, CG_STATUS e pacote).
+#define CHARGEGRID_FIRMWARE_VERSION "0.7.0"
 extern Preferences store;
 extern SimulatedSensors sensors;
 extern Reading reading;
@@ -51,3 +53,34 @@ bool apply(JsonDocument& response);
 void syncDevice();
 // Parada física local: segura e independente da UI/rede. Nunca inicia carga.
 void requestLocalSafeStop();
+
+// ---- 0.7.0: campos aditivos (firmware/API anteriores continuam funcionando) ----
+// Potência ao vivo (SET_POWER). A bancada declara o carregador simulado que controla.
+constexpr int kChargerMinPowerW = 1400, kChargerMaxPowerW = 7200, kChargerStepW = 100;
+// Limite que a bancada instala para um pedido em W: arredonda para baixo no passo,
+// nunca acima do pedido nem do máximo; abaixo do piso (ou 0) pausa a recarga.
+float chargerLimitW(float requestedW);
+// authorized.session: potência aplicada confirmada pela API (kW, < 0 = não informada)
+// e motivo curto já reduzido a Latin-1 (cabe nas fontes do painel), até 40 caracteres.
+extern float sessionAppliedPowerKw;
+extern String powerReasonShort;
+// Texto UTF-8 só com caracteres das fontes do painel (U+0020-U+007E, U+00A0-U+00FF, U+2022).
+String panelLatin1(const char* text, size_t maxChars);
+// Corpo do sync sem boot_id/sequence. extensions=false gera o corpo 0.6 para uma API
+// anterior (SyncInput recusa campos desconhecidos com 422).
+void fillSyncBody(JsonDocument& body, bool extensions);
+// Pagamento no painel (modo teste): URL do QR (vazia = sem QR) e último pagamento.
+extern String kioskUrl, paymentStatus;
+extern float paymentAmount;
+extern bool paymentTest;
+// Permanência: START com parameters.overstay mantém o carro conectado após parar.
+extern bool overstayEnabled;
+extern String overstayStatus;
+extern long overstayGraceSeconds;
+extern unsigned long overstayReceivedAt;
+extern float overstayFeeDue, overstayMaxFee, overstayAmount;
+extern long overstayIntervalMinutes;
+// Toque em "Desconectar": só fora de recarga; limpa a conexão e força um sync imediato.
+bool requestLocalDisconnect();
+// Estado seguro após reboot (chamado no setup depois de ler o diário da sessão).
+void applyBootSafety();
