@@ -25,12 +25,11 @@ def _mode(params):
 
 
 async def _load_revenue(app):
+    """Saldo da conta real = repasse ao dono (``/owner/margin``), não a receita bruta."""
     if service.is_demo(app):
         return
     try:
-        summary, _ = await app.api.request('GET', 'operator/summary')
-        if isinstance(summary, dict):
-            service.set_revenue(app, summary.get('total_estimated_cost'))
+        await service.load_owner_net(app)
     except Exception:  # sem rede: usa o último valor conhecido
         pass
 

@@ -41,11 +41,11 @@ def test_request_friday_no_fee_and_validation():
         raise AssertionError('second payout without balance must fail')
 
 
-def test_real_account_derives_from_revenue(tmp_path, monkeypatch):
+def test_real_account_derives_from_owner_net(tmp_path, monkeypatch):
     monkeypatch.setenv('FLET_APP_STORAGE_DATA', str(tmp_path))
     app = SimpleNamespace(api=SimpleNamespace(is_demo=False))
     assert payout.available(app) == Decimal('0')
-    payout.set_revenue(app, '100.0000')
+    payout.set_owner_net(app, '100.0000')
     assert payout.available(app) == Decimal('100.00')
     result = payout.request(app, 'now')
     assert result['destination'] == 'Conta cadastrada' and result['net'] == Decimal('98.00')

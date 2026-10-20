@@ -1,12 +1,15 @@
 """Carteira e resgate do vendedor (simulado, nada movimenta dinheiro de verdade).
 
 Demo: saldo inicial R$ 2.485,90 em memória (guardado no próprio ``app``). Conta real: saldo =
-receita estimada do operador (``operator/summary.total_estimated_cost``, guardada em ``app`` pela tela) menos os
-resgates registrados localmente em ``payouts.json`` (``FLET_APP_STORAGE_DATA``, como ``preferences.py``).
+**repasse** ao dono (``owner_net`` de ``GET /v1/owner/margin`` nos últimos 12 meses: receita cobrada menos a
+comissão da plataforma e a tarifa do pagamento; receita bruta não é saldo), guardado em ``app`` por
+``load_owner_net``, menos os resgates registrados localmente em ``payouts.json`` (``FLET_APP_STORAGE_DATA``,
+como ``preferences.py``).
 """
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -16,6 +19,7 @@ DEMO_DESTINATION = 'Banco Inter •••• 0378'
 REAL_DESTINATION = 'Conta cadastrada'
 DEMO_FIRST_PROTOCOL = 1026
 CENT = Decimal('0.01')
+NET_DAYS = 365  # janela do repasse acumulado (a API aceita até 366 dias)
 
 _DEMO_MOVEMENTS = [
     {'title': 'Recargas concluídas', 'subtitle': 'Hoje - 24 transações', 'amount': Decimal('486.20')},
@@ -57,15 +61,30 @@ def _save_payouts(app, items):
         app._demo_payouts = items  # sem armazenamento: vale só nesta sessão
 
 
-def set_revenue(app, total_estimated_cost):
-    """Guarda a receita estimada do operador (a tela busca ``operator/summary`` e chama isto)."""
-    app._payout_revenue = _cents(total_estimated_cost)
+def set_owner_net(app, owner_net):
+    """Guarda o repasse ao dono (``totals.owner_net`` de ``/owner/margin``), base do saldo da conta real."""
+    app._payout_net = _cents(owner_net)
+
+
+async def load_owner_net(app, now=None):
+    """Busca o repasse dos últimos ``NET_DAYS`` dias e guarda em ``app``; sem rede, mantém o último valor."""
+    if is_demo(app):
+        return None
+    end = now or datetime.now(timezone.utc)
+    params = {'from': (end - timedelta(days=NET_DAYS)).isoformat(), 'to': end.isoformat(), 'limit': 1}
+    api = app.api
+    report = await (api.owner_margin(params) if hasattr(api, 'owner_margin') else
+                    api.request('GET', 'owner/margin', params=params))
+    net = ((report or {}).get('totals') or {}).get('owner_net')
+    if net is not None:
+        set_owner_net(app, net)
+    return getattr(app, '_payout_net', None)
 
 
 def _gross_total(app):
     if is_demo(app):
         return sum((m['amount'] for m in _DEMO_MOVEMENTS), Decimal('0'))
-    return _cents(getattr(app, '_payout_revenue', 0))
+    return _cents(getattr(app, '_payout_net', 0))
 
 
 def _paid_out(app):
@@ -87,8 +106,8 @@ def movements(app):
     if is_demo(app):
         return paid + [dict(m) for m in _DEMO_MOVEMENTS]
     revenue = _gross_total(app)
-    base = [{'title': 'Recargas concluídas', 'subtitle': 'Receita estimada acumulada', 'amount': revenue}] \
-        if revenue > 0 else []
+    base = [{'title': 'Repasse das recargas', 'subtitle': 'Após a comissão da plataforma · últimos 12 meses',
+             'amount': revenue}] if revenue > 0 else []
     return paid + base
 
 

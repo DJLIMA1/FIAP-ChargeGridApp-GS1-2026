@@ -89,6 +89,10 @@ async def balance_text(app, vendor):
     try:
         if vendor:
             from ..services import payout
+            try:
+                await payout.load_owner_net(app)  # saldo = repasse (após a comissão), não a receita bruta
+            except Exception:  # sem rede: usa o último valor conhecido
+                pass
             value = payout.available(app)
         else:
             from ..services import wallet
