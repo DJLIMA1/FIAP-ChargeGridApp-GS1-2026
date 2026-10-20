@@ -59,6 +59,8 @@ O app Android consulta esse endpoint ao abrir e ao voltar do segundo plano, no m
 
 Até a 0.6.6, o app consultava as releases do GitHub. Depois que o repositório ficou privado, essas versões não enxergam mais atualizações, por isso a 0.6.7 precisa ser instalada manualmente uma última vez.
 
+O APK 0.7.1 (build 39) está em `builds/chargegrid-0.7.1.apk` (SHA-256 `91805f8a0046313a74d746bf736d24636f30bc9ab409afb8c99a63a82b46e916`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.7.1.apk`); os apps instalados oferecem a atualização ao abrir. App bem mais rápido (telas abrem na hora), aba Recarga abre a busca de estações, mapa com tema claro e escuro, telas do vendedor completas e Modo apresentação com pagamento simulado (sem Stripe)
+
 O APK 0.7.0 (build 38) está em `builds/chargegrid-0.7.0.apk` (SHA-256 `e1255ce0bd425809fd53c4bbe465954174ad96d44468bfec4c31bbb221647a6c`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.7.0.apk`); os apps instalados oferecem a atualização ao abrir. Pagamento com Stripe (teste), potência ao vivo com motivo, recibo explicável com PDF, resultado do vendedor, taxa de permanência e melhor horário para carregar
 
 O APK 0.6.9 (build 37) está em `builds/chargegrid-0.6.9.apk` (SHA-256 `9391cb1b62461c3809fc98a3139231aecb334dcde8dfe395f09686d38547230e`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.6.9.apk`); os apps instalados oferecem a atualização ao abrir. Nova tela Tarifa (tarifa atual, base e motivo; cálculo em Detalhes) com tarifação por horário; Modo motorista sem nada para preencher, com GPS e clima atual; tela de recarga em andamento mais limpa.
