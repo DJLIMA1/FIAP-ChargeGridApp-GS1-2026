@@ -11,6 +11,26 @@ imediatamente, sem precisar reimportar nada.
 
 from contextvars import ContextVar
 
+# Cores-base da marca (design de referência): verde dos pinos/"Disponível" e azul-marinho do posto
+# em destaque. Os tokens MAP_* de cada paleta derivam delas (e das superfícies do tema) via _mix.
+BRAND_GREEN = "#039F25"
+BRAND_NAVY = "#1D3355"
+
+
+def _mix(base, other, amount):
+    """Hex de `base` com `amount` (0..1) de `other` misturado — deriva tons sem cores soltas."""
+    a = [int(base.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    b = [int(other.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    return '#' + ''.join(f'{round(x + (y - x) * amount):02X}' for x, y in zip(a, b))
+
+
+# Estilo de mapa ChargeGrid (services/maps.py): os tiles do OpenStreetMap são dessaturados e
+# remapeados por luminância numa rampa land → block → road (+ labels), com água e áreas verdes
+# levemente tingidas pelas cores da marca. Pinos, balões e o crédito "© OpenStreetMap" também
+# têm variante por tema.
+_MAP_LIGHT_LAND = "#EEF0F1"
+_MAP_DARK_LAND = "#1E2124"
+
 LIGHT = {
     "NAV_BG": "#FFFFFF",
     "INPUT_BG": "#FFFFFF",
@@ -48,6 +68,34 @@ LIGHT = {
     "NAV_ACTIVE": "#1D1F20",
     "SUCCESS": "#2E7D32",
     "ON_PRIMARY": "#FFFFFF",
+    # --- mapa (estilo ChargeGrid, variante clara) ---
+    "MAP_LAND": _MAP_LIGHT_LAND,                  # terreno / fundo do mapa e do esquemático
+    "MAP_BLOCK": "#E2E5E7",                       # edificações e quadras
+    "MAP_EDGE": "#D2D6DA",                        # contornos de quadras e bordas de vias
+    "MAP_ROAD": "#FFFFFF",
+    "MAP_ROAD_MAJOR": "#FFFFFF",                  # avenidas (laranja/amarelo no OSM padrão)
+    "MAP_LABEL": "#5E6870",                       # nomes de ruas e ícones
+    "MAP_WATER": _mix(_MAP_LIGHT_LAND, "#205EA8", .25),
+    "MAP_PARK": _mix(_MAP_LIGHT_LAND, BRAND_GREEN, .18),
+    "MAP_RING": "#CED8DE",                        # anéis do mapa esquemático
+    "MAP_PIN": "#233949",                         # posto livre
+    "MAP_PIN_OFF": "#58626F",                     # posto indisponível
+    "MAP_PIN_LIST": BRAND_GREEN,                  # posto em destaque na lista
+    "MAP_PIN_DETAIL": BRAND_NAVY,                 # posto em destaque no detalhe
+    "MAP_PIN_RING": "#FFFFFF",
+    "MAP_PIN_SHADOW": "#1E2327",
+    "MAP_CALLOUT": "#FFFFFF",
+    "MAP_CALLOUT_TEXT": "#101828",
+    "MAP_CALLOUT_MUTED": "#3F4654",
+    "MAP_CALLOUT_SHADOW": "#38000000",
+    "MAP_CHIP_FREE": "#BAD4FB",
+    "MAP_CHIP_FREE_FG": "#1E4FA3",
+    "MAP_CHIP_OFF": "#E7EBEF",
+    "MAP_CHIP_OFF_FG": "#58626F",
+    "MAP_CHIP_LIST": "#05A02B",
+    "MAP_CHIP_LIST_FG": "#FFFFFF",
+    "MAP_CREDIT_BG": "#EFFFFFFF",                 # ARGB: crédito do OSM legível sobre o mapa
+    "MAP_CREDIT_FG": "#40484B",
 }
 
 # Tema escuro = o design de referência (amostrado dos PNGs):
@@ -90,6 +138,34 @@ DARK = {
     "NAV_ACTIVE": "#FFFFFF",
     "SUCCESS": "#34C759",
     "ON_PRIMARY": "#000000",
+    # --- mapa (estilo ChargeGrid, variante escura: fundo charcoal, ruas claras) ---
+    "MAP_LAND": _MAP_DARK_LAND,
+    "MAP_BLOCK": "#272B2F",
+    "MAP_EDGE": "#30353A",
+    "MAP_ROAD": "#3D444A",
+    "MAP_ROAD_MAJOR": "#545D65",
+    "MAP_LABEL": "#AEB6BD",
+    "MAP_WATER": _mix(_MAP_DARK_LAND, "#205EA8", .35),
+    "MAP_PARK": _mix(_MAP_DARK_LAND, BRAND_GREEN, .22),
+    "MAP_RING": "#3A4146",
+    "MAP_PIN": "#3A78C2",                         # azul da marca clareado: contraste no charcoal
+    "MAP_PIN_OFF": "#58626F",
+    "MAP_PIN_LIST": BRAND_GREEN,
+    "MAP_PIN_DETAIL": "#3A78C2",
+    "MAP_PIN_RING": "#FFFFFF",
+    "MAP_PIN_SHADOW": "#000000",
+    "MAP_CALLOUT": "#2A2E32",
+    "MAP_CALLOUT_TEXT": "#FFFFFF",
+    "MAP_CALLOUT_MUTED": "#C5CBD1",
+    "MAP_CALLOUT_SHADOW": "#80000000",
+    "MAP_CHIP_FREE": "#1F3A5C",
+    "MAP_CHIP_FREE_FG": "#9DC8FF",
+    "MAP_CHIP_OFF": "#3A3F44",
+    "MAP_CHIP_OFF_FG": "#C5CBD1",
+    "MAP_CHIP_LIST": "#05A02B",
+    "MAP_CHIP_LIST_FG": "#FFFFFF",
+    "MAP_CREDIT_BG": "#E6202326",
+    "MAP_CREDIT_FG": "#D3D8DC",
 }
 
 _dark_enabled = ContextVar('chargegrid_dark_mode', default=True)

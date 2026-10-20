@@ -11,6 +11,7 @@ from PIL import Image
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import home
 from chargegrid_app.services import maps
+from chargegrid_app.ui import theme
 from test_behavior import HandlerApp, descendants
 from test_consumer_flows import texts
 
@@ -21,6 +22,11 @@ def mapped_station(**changes):
 
 
 class HomeMapTests(unittest.IsolatedAsyncioTestCase):
+    # These cover the light cartography; the map follows the app theme (see test_map_style.py).
+    def setUp(self):
+        self.addCleanup(theme.set_dark, theme.is_dark())
+        theme.set_dark(False)
+
     async def test_all_geographic_maps_share_shell_and_compact_visible_licence_link(self):
         with patch.object(maps,'build_map_png',return_value=b'fixture-png') as render:
             home_map = await maps.station_map_widget([mapped_station()],Mock(),width=560)
@@ -94,7 +100,7 @@ class HomeMapTests(unittest.IsolatedAsyncioTestCase):
             draw.assert_called_once()
 
     async def test_availability_badge_is_blue_only_when_points_are_available(self):
-        for count,color in ((2,'#D5E6FF'),(0,'#E7EBEF')):
+        for count,color in ((2,theme.LIGHT['MAP_CHIP_FREE']),(0,theme.LIGHT['MAP_CHIP_OFF'])):
             with self.subTest(count=count),patch.object(maps,'build_map_png',return_value=b'fixture-png'):
                 screen = await maps.station_map_widget([mapped_station(free_points=count,status='Offline')],Mock())
                 badge = next(item for item in descendants(screen) if isinstance(item,ft.Container) and item.bgcolor == color)
