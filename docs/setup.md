@@ -59,6 +59,8 @@ O app Android consulta esse endpoint ao abrir e ao voltar do segundo plano, no m
 
 Até a 0.6.6, o app consultava as releases do GitHub. Depois que o repositório ficou privado, essas versões não enxergam mais atualizações, por isso a 0.6.7 precisa ser instalada manualmente uma última vez.
 
+O APK 0.6.8 (build 36) está em `builds/chargegrid-0.6.8.apk` (SHA-256 `b06102910baa2a6295b1fe8d9607d79460eb932b55ea977609aa6762a1824ff1`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.6.8.apk`); os apps instalados oferecem a atualização ao abrir. Tela do posto com dois caminhos: Reservar estação (o ponto fica guardado por 15 minutos até você chegar) e Carregar agora (para quem já está no posto). Sem a lista repetida de pontos. Códigos de ponto mais curtos.
+
 O APK 0.6.7 (build 35) está em `builds/chargegrid-0.6.7.apk` (SHA-256 `7bb545891d71d2f4831e1959e613d31255b38a480539cc62c11fa9ba35ed784e`). Publicado em 20/10/2026 no Vercel Blob (`app/chargegrid-0.6.7.apk`); os apps instalados oferecem a atualização ao abrir. Atualizações agora vêm do servidor do ChargeGrid (esta é a última instalação manual). Inclui a tarifa dinâmica por demanda, a tela Tarifas e as telas do posto reorganizadas.
 
 O APK 0.6.6 (build 34) está em `builds/chargegrid-0.6.6.apk` (SHA-256 `05b0ad60579dea7c95cedd437e9d0ff39ee5fad13f39dac3d747ce705efa0498`). Publicado em 20/10/2026 na release `app-v0.6.6` do GitHub; os apps instalados oferecem a atualização ao abrir. O aviso de atualização agora também aparece ao voltar para o app (não só ao abrir do zero), e a tela Conta mostra a versão instalada com o botão Verificar atualização.
