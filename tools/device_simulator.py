@@ -167,9 +167,12 @@ class Device:
             return power_w, None
         from chargegrid_core.chargers import apply_power
         from chargegrid_core.chargers.goodwe_hca_g2 import WATCHED
+
+        from tools.edge.modbus_sim import ModbusError
         try:
             result = apply_power(self.charger, self.transport, power_w, WATCHED)
-        except Exception as exc:  # Exceção Modbus simulada: o limite anterior continua.
+        # Exceção Modbus simulada, valor recusado pelo adaptador ou falha de E/S: o limite anterior continua.
+        except (ModbusError, ValueError, OSError) as exc:
             return self.power_w, f"modbus_error: {exc}"[:200]
         if not result["confirmed"]:
             return self.power_w, "readback_mismatch"

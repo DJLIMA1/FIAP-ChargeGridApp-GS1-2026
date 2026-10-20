@@ -286,12 +286,17 @@ def power_section(session: Mapping, samples: Iterable[Mapping], changes: list | 
                             "reason_label": "Limite de potência no início (ponto, posto e carro)",
                             "confirmed_at": _iso((applied or {}).get("observed_at"))})
     peak = max((watts for _, watts in curve), default=None)
+    limits = sorted(({"t": change.get("confirmed_at"), "kw": change.get("applied_kw")} for change in changes
+                     if isinstance(change, Mapping) and change.get("status") == "applied"
+                     and change.get("confirmed_at") and change.get("applied_kw") is not None),
+                    key=lambda item: parse_time(item["t"]) or datetime.min.replace(tzinfo=timezone.utc))
     result = {
         "status": "available" if points else "unavailable",
         "samples": points,
         "sample_count": len(curve),
         "peak_kw": _text(peak / 1000) if peak is not None else None,
         "changes": changes,
+        "applied_limits": limits,
     }
     if not points:
         result["note"] = "Amostras de potência indisponíveis (não enviadas pelo equipamento ou já expiradas)."
@@ -310,7 +315,36 @@ def timeline_section(events: Iterable[Mapping]) -> list[dict]:
     return result
 
 
+def _payment_adjustments(payment: Mapping, overstay_present: bool, difference: Decimal) -> list[dict]:
+    """Por que o valor capturado difere do calculado pela energia (linhas com sinal, em R$)."""
+    lines = []
+    overstay = economics.cents(payment.get("overstay_amount")) or Decimal("0.00")
+    if overstay and not overstay_present:
+        lines.append({"key": "overstay", "label": "Taxa de permanência cobrada no pagamento",
+                      "amount": overstay})
+    waived = economics.cents(payment.get("waived_amount")) or Decimal("0.00")
+    if waived:
+        label = ("Abaixo do mínimo do provedor de pagamento: não cobrado" if payment.get("below_minimum")
+                 else "Acima do valor pré-pago: não cobrado")
+        lines.append({"key": "below_minimum" if payment.get("below_minimum") else "waived", "label": label,
+                      "amount": -waived})
+    uncollected = economics.cents(payment.get("uncollected_amount")) or Decimal("0.00")
+    if uncollected:
+        lines.append({"key": "uncollected", "label": "Além da reserva paga ou autorização indisponível: não cobrado",
+                      "amount": -uncollected})
+    rest = difference - sum((line["amount"] for line in lines), Decimal("0.00"))
+    if rest:
+        lines.append({"key": "other", "label": "Outra diferença entre o calculado e o capturado", "amount": rest})
+    return [{**line, "amount": _text(line["amount"])} for line in lines]
+
+
 def charges_section(session: Mapping, payment: Mapping | None, overstay: Mapping | None) -> dict:
+    """Valores do recibo. Com pagamento acertado, o capturado (− devolvido) manda no total.
+
+    ``calculated_total`` = energia + permanência pela mesma regra de centavos da captura
+    (``economics.charged_amount``); ``difference`` = pago − calculado, explicada em
+    ``adjustments`` quando não é zero.
+    """
     row = economics.session_economics(session, extras={"payment": payment, "overstay": overstay})
     final = session.get("status") in FINAL_STATUSES
     overstay_amount = row["overstay_revenue"]
@@ -323,12 +357,22 @@ def charges_section(session: Mapping, payment: Mapping | None, overstay: Mapping
         "energy_total": _text(row["revenue"]),
         "overstay": _text(overstay_amount),
         "total": _text(total),
+        "calculated_total": _text(total),
         "revenue_basis": "estimated",
         "note": "Valor estimado pela energia registrada; sem pagamento confirmado." if not payment else None,
     }
     if payment and payment.get("net_amount") is not None:
-        result.update(revenue_basis="paid", paid_total=_text(economics.cents(payment["net_amount"])))
+        paid = economics.cents(payment["net_amount"])
+        difference = paid - total
+        result.update(revenue_basis="paid", paid_total=_text(paid), total=_text(paid),
+                      difference=_text(difference), adjustments=[])
         result["note"] = None
+        if difference:
+            result["adjustments"] = _payment_adjustments(payment, overstay is not None, difference)
+            result["note"] = (f"Valor capturado no pagamento ({brl(paid)}) difere do calculado pela energia "
+                              f"({brl(total)}): o total é o capturado; diferença de {brl(difference)}.")
+    elif payment:
+        result["note"] = "Pagamento confirmado; o valor final é acertado no encerramento da recarga."
     return result
 
 
@@ -395,7 +439,7 @@ def build_receipt(facts: Mapping) -> dict:
         "charges": charges_section(session, payment, overstay),
         "power": power_section(session, facts.get("samples") or [], sections.get("power_changes"), events),
         "timeline": timeline_section(events),
-        "payment": {"status": "available", **payment} if payment else {
+        "payment": {**payment, "payment_status": payment.get("status"), "status": "available"} if payment else {
             "status": "not_applicable", "note": "Sem pagamento registrado: valor estimado, sem cobrança real."},
         "overstay": {"status": "available", **overstay} if overstay else {"status": "not_applicable"},
     }

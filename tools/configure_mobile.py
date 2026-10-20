@@ -6,9 +6,10 @@ The version/build let the installed app compare itself with the latest GitHub re
 
 import argparse
 import json
-import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
+
+import tomllib
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ROOT_ENV_FILE = ROOT_DIR / ".env"

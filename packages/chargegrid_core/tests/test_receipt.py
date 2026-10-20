@@ -75,7 +75,7 @@ def test_receipt_v1_explains_price_energy_and_charges():
     assert receipt["energy"]["confirmed_by_device"] and receipt["energy"]["kwh"] == "10.000"
     assert receipt["charges"] == {"status": "final", "currency": "BRL", "energy_gross": "15.60", "discount": "1.56",
                                   "energy_total": "14.04", "overstay": None, "total": "14.04",
-                                  "revenue_basis": "estimated",
+                                  "calculated_total": "14.04", "revenue_basis": "estimated",
                                   "note": "Valor estimado pela energia registrada; sem pagamento confirmado."}
     assert receipt["payment"]["status"] == "not_applicable" and receipt["overstay"]["status"] == "not_applicable"
     assert receipt["labels"]["simulated"] and any("SIMULADO" in note for note in receipt["labels"]["notes"])
@@ -141,8 +141,12 @@ def test_sections_from_other_fronts_are_plugged():
     receipt = r.build_receipt(facts(sections=sections))
     assert receipt["payment"]["status"] == "available" and receipt["payment"]["provider_reference"] == "pi_123"
     assert receipt["labels"]["payment_environment"] == "sandbox"
-    assert receipt["charges"]["overstay"] == "2.00" and receipt["charges"]["total"] == "16.04"
+    assert receipt["charges"]["overstay"] == "2.00" and receipt["charges"]["calculated_total"] == "16.04"
     assert receipt["charges"]["revenue_basis"] == "paid" and receipt["charges"]["paid_total"] == "14.04"
+    # O capturado manda no total; a diferença para o calculado fica explícita.
+    assert receipt["charges"]["total"] == "14.04" and receipt["charges"]["difference"] == "-2.00"
+    assert receipt["charges"]["adjustments"] == [
+        {"key": "other", "label": "Outra diferença entre o calculado e o capturado", "amount": "-2.00"}]
     assert receipt["power"]["changes"][0]["reason_code"] == "rebalance"
     assert receipt["extensions"] == {"forecast": {"note": "x"}}
 
@@ -160,3 +164,61 @@ def test_history_rows_and_totals_follow_me_summary_rule():
     totals = r.history_totals(rows)
     assert totals == {"sessions": 2, "energy_kwh": "11.000", "total": "15.28", "sources": {"simulated": 2}}
     assert Decimal(rows[0]["energy_kwh"]) == Decimal("10.000")
+
+
+def test_settled_payment_matching_energy_has_zero_difference():
+    payment = {"environment": "sandbox", "status": "completed", "net_amount": "14.04", "provider_fee": "0.95",
+               "waived_amount": "0.00", "uncollected_amount": "0.00"}
+    receipt = r.build_receipt(facts(sections={"payment": payment}))
+    charges = receipt["charges"]
+    assert charges["total"] == charges["paid_total"] == charges["calculated_total"] == "14.04"
+    assert charges["difference"] == "0.00" and charges["adjustments"] == [] and charges["note"] is None
+    assert receipt["payment"]["status"] == "available" and receipt["payment"]["payment_status"] == "completed"
+
+
+def test_capture_differences_are_explained_line_by_line():
+    payment = {"net_amount": "12.00", "waived_amount": "2.04", "uncollected_amount": "0.00",
+               "overstay_amount": "0.00"}
+    charges = r.build_receipt(facts(sections={"payment": payment}))["charges"]
+    assert (charges["calculated_total"], charges["total"], charges["difference"]) == ("14.04", "12.00", "-2.04")
+    assert charges["adjustments"] == [{"key": "waived", "label": "Acima do valor pré-pago: não cobrado",
+                                       "amount": "-2.04"}]
+    assert "difere do calculado" in charges["note"] and "-R$ 2,04" in charges["note"]
+    # Permanência cobrada no pagamento sem a seção de permanência (frente D ausente).
+    payment = {"net_amount": "15.04", "overstay_amount": "1.00", "waived_amount": "0.00",
+               "uncollected_amount": "0.00"}
+    charges = r.build_receipt(facts(sections={"payment": payment}))["charges"]
+    assert charges["adjustments"] == [{"key": "overstay", "label": "Taxa de permanência cobrada no pagamento",
+                                       "amount": "1.00"}]
+
+
+def test_confirmed_unsettled_payment_keeps_estimate():
+    payment = {"environment": "sandbox", "status": "in_use", "net_amount": None}
+    charges = r.build_receipt(facts(sections={"payment": payment}))["charges"]
+    assert charges["revenue_basis"] == "estimated" and "paid_total" not in charges
+    assert charges["total"] == "14.04" and charges["note"].startswith("Pagamento confirmado")
+
+
+def test_receipt_total_and_capture_use_the_same_cent_rule():
+    """Recibo (``cost_estimate`` → ``charged_amount``) e captura (``billing.energy_cents``) batem ao centavo."""
+    from chargegrid_core import billing, economics
+
+    for energy_wh in ("1", "125", "2500.5", "6200", "7333.333", "10005", "12345.678"):
+        for price in ("0.0100", "1.2345", "1.5600", "2.0000", "2.5050"):
+            for discount in (0, 10, 33, 50):
+                estimate = (Decimal(energy_wh) / Decimal(1000) * Decimal(price) * Decimal(100 - discount)
+                            / Decimal(100)).quantize(Decimal("0.0001"))  # como a API grava cost_estimate
+                assert economics.charged_amount(estimate) == billing.money(
+                    billing.energy_cents(energy_wh, price, discount)), (energy_wh, price, discount)
+
+
+def test_applied_limits_follow_only_acknowledged_changes():
+    changes = [{"at": "2026-10-20T17:06:00Z", "applied_kw": "7.200", "status": "applied",
+                "confirmed_at": "2026-10-20T17:06:01Z"},
+               {"at": "2026-10-20T17:20:00Z", "requested_kw": "4.000", "applied_kw": "4.000", "status": "applied",
+                "confirmed_at": "2026-10-20T17:20:02Z"},
+               {"at": "2026-10-20T17:30:00Z", "requested_kw": "7.200", "applied_kw": None, "status": "requested",
+                "confirmed_at": None}]
+    power = r.build_receipt(facts(sections={"power_changes": changes}))["power"]
+    assert power["applied_limits"] == [{"t": "2026-10-20T17:06:01Z", "kw": "7.200"},
+                                       {"t": "2026-10-20T17:20:02Z", "kw": "4.000"}]

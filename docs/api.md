@@ -151,6 +151,11 @@ Uma regra para tudo (`chargegrid_core.economics` e `chargegrid_core.receipt`): o
 
 **Extensões das outras frentes** (`app/modules/receipts/registry.py`): `register_extras("payment"|"overstay", batch)` alimenta recibo e margem (pagamento confirmado: `net_amount` substitui a estimativa e `provider_fee` entra no repasse; permanência entra na receita e na comissão); `register_section("power_changes", provider)` alimenta `power.changes`. Um provedor com erro não derruba o recibo.
 
+Provedores ligados no app (`app/main.py`):
+
+- **Pagamento** (`app/modules/payments/receipt.py`): só pagamentos confirmados pela Stripe (teste). `environment` gravado como `test` aparece como `sandbox`. Antes do acerto: `payment` presente, `net_amount = null`, valores estimados. Depois do acerto: `net_amount` = capturado − devolvido, `provider_fee` da Stripe; no recibo `charges.total = charges.paid_total` (o capturado manda), `charges.calculated_total` = energia + permanência pela mesma regra de centavos da captura, `charges.difference` = pago − calculado e `charges.adjustments` (`waived`, `below_minimum`, `uncollected`, `overstay`, `other`) explicam a diferença; na margem `revenue_basis = "captured"`. `receipt.payment.status` é o estado da seção (`available`); o estado do pagamento vai em `payment_status`.
+- **Potência** (`app/modules/power/receipt.py`): `power.changes` vem dos eventos `power_requested`/`power_applied`/`power_failed`, casados pelo comando. `status = "applied"` só com o ACK do equipamento; `failed` com `failure_code`; sem resposta fica `requested`. Campos extras: `direction`, `previous_kw`, `attempt`, `decision_id`. `power.applied_limits` = degraus `{t, kw}` das mudanças aplicadas. Posto sem rebalanceamento ao vivo mantém o limite do início.
+
 PDFs com ReportLab (`reportlab>=5.0.1`), importado só nas rotas de PDF (recibo ~0,2 s; margem com 1 000 linhas ~1 s). Fonte Helvetica (WinAnsi).
 
 ## Previsão de ocupação (`/owner/forecast`, `/stations/{id}/best-times`)
