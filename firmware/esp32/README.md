@@ -44,3 +44,18 @@ Versão única (`CHARGEGRID_FIRMWARE_VERSION` em `include/runtime.h`, enviada no
 - **API anterior:** se o sync receber 422 (campos novos recusados), o painel reenvia no formato 0.6 e segue como carga fixa; tenta os campos novos de novo a cada 10 min, só ocioso.
 
 Pré-visualização das telas do totem no host: `python firmware/esp32/preview/render.py --output tmp/panel-preview` (LVGL real, sem serial/hardware). Veja "Redesign do totem" em `docs/waveshare-panel.md`.
+
+## Firmware 0.8.0 — totem de autoatendimento
+
+Versão única `0.8.0` (`include/runtime.h`, sync e `CG_STATUS`, que agora também mostra `kiosk=off|simulated|stripe` e `kiosk_order=present|none`). Contrato: seção "Totem 0.8.0" de `docs/esp32-protocol.md`. Tudo é aditivo: sem `connector.kiosk` no sync (totem desligado no posto ou API anterior) ou com `404` em `/v1/devices/kiosk/offer`, as telas são as da 0.7.0, pixel a pixel (teste `--compare-panel`).
+
+- **Lógica separada da tela:** `src/kiosk_flow.cpp` é C++17 puro (sem Arduino/LVGL): estados T0–T8/TE, eventos (toque, tecla, tempo, fatos do sync, resultado da API), saída `KioskView` e um `ApiRequest` por vez. O método de pagamento vem do servidor (`simulated` na conta em Modo apresentação, `stripe` na oficial); o totem nunca escolhe nem paga sozinho. Nada liga sem o `START` normal do sync.
+- **Rede:** `src/kiosk_api.cpp` executa `deviceRequest()` no laço principal, na mesma conexão TLS keep-alive do sync (`deviceHttpBegin`/`deviceHttpEnd` em `api_client.cpp`), timeout de 3 s, `Idempotency-Key` (`ko-…` por orçamento; `pay-<id>`/`cancel-<id>` derivadas do pedido, seguras para repetir) e **nunca durante uma recarga**.
+- **Retomada:** o id do pedido aberto fica na NVS (`kord`) desde `POST /orders`; após queda de rede ou reboot a tela "Verificando pagamento" segue `kiosk_order` do sync (ou `GET /orders/{id}`) e redesenha o QR pelo `payment.qr_url`.
+- **Encerrar** continua local (`requestLocalSafeStop()`), com confirmação (T7) — inclusive para a recarga iniciada pelo app quando o totem está ligado. Com o totem desligado o botão Encerrar para na hora, como antes.
+- **Telas provisórias** (`include/ui/tokens.h`, `include/ui/strings_ptbr.h`, `src/ui/widgets.cpp`, `src/ui/router.cpp`, `src/ui/view_*.cpp`): alvos ≥ 72 px, teclas 104 × 72, textos fixos só com glifos das fontes atuais (sem "—", "…", "·" nos títulos Bold; apagar = `LV_SYMBOL_BACKSPACE` da Montserrat 28). Toques entram numa fila sob `portMUX` (núcleo 0) e são entregues ao fluxo no `panelTick()` (núcleo 1). O design troca só esses arquivos.
+- **Memória:** criação preguiçosa; cada tela do totem é criada ao entrar e apagada ao sair, e enquanto uma tela do totem está aberta as telas atuais são liberadas e reconstruídas ao voltar (pool de 64 KB inalterado). Pico medido no host (64 bits, superestima a placa): telas do totem 20–35 KB (≤ 53 % do pool, teclado é o maior); tela Pronto da 0.7.0 ~54 KB. Relatório em `tmp/panel-validation/kiosk-memory.txt`.
+- **Pool LVGL na PSRAM (opcional, não validado em placa):** env `waveshare_panel_ui_psram_pool` (192 KB via `heap_caps_malloc(MALLOC_CAP_SPIRAM)`, `include/lvgl_psram_pool.h`). O padrão continua o pool interno de 64 KB: sem teste na placa, o risco do RGB ler o framebuffer da mesma PSRAM (banda, deriva da imagem) não compensa. Medir com `lv_mem_monitor` e observar a imagem antes de adotar.
+- Flag de compilação `CHARGEGRID_KIOSK` (só no env `waveshare_panel_ui`); `esp32dev` só lê os blocos do sync.
+
+Validação de host: `python tools/validate_firmware.py --decode-qr` compila `tools/tests/kiosk_flow_test.cpp` (fluxo nos dois modos, com sanitizers) e `tools/tests/firmware_behavior.cpp` (capturas `kiosk-*.ppm`, QR do pedido e do recibo decodificados, cobertura de glifos, memória por tela).

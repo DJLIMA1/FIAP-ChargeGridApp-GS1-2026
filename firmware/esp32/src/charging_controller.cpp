@@ -15,6 +15,8 @@ long overstayGraceSeconds = 0;
 unsigned long overstayReceivedAt = 0;
 float overstayFeeDue = -1, overstayMaxFee = -1, overstayAmount = -1;
 long overstayIntervalMinutes = 0;
+// 0.8.0: blocos do totem no sync (definidos aqui para os testes de host).
+kiosk::SyncFacts kioskSync;
 // A API serializa Decimal como texto ("42.50"); aceita número ou texto numérico.
 static float jsonNumber(JsonVariantConst value, float fallback) {
   if (value.is<const char*>()) {
@@ -306,6 +308,8 @@ bool apply(JsonDocument& response) {
   JsonObjectConst connector = response["connector"].as<JsonObjectConst>();
   readKiosk(connector);
   readOverstay(response["overstay"].as<JsonObjectConst>());
+  // Totem 0.8.0: leitura aditiva; sem os blocos (API antiga ou totem desligado) = desligado.
+  kiosk::readSync(response.as<JsonObjectConst>(), kioskSync);
   if (connector["owned"].is<bool>()) {
     connectorOwnershipKnown = true;
     if (connector["owned"].as<bool>()) confirmPanelOwnership();

@@ -3,8 +3,9 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "sensors.h"
+#include "kiosk_flow.h"
 // Versão única do firmware (sync, CG_STATUS e pacote).
-#define CHARGEGRID_FIRMWARE_VERSION "0.7.0"
+#define CHARGEGRID_FIRMWARE_VERSION "0.8.0"
 extern Preferences store;
 extern SimulatedSensors sensors;
 extern Reading reading;
@@ -89,3 +90,13 @@ extern long overstayIntervalMinutes;
 bool requestLocalDisconnect();
 // Estado seguro após reboot (chamado no setup depois de ler o diário da sessão).
 void applyBootSafety();
+
+// ---- 0.8.0: totem de autoatendimento (aditivo; API anterior = totem desligado) ----
+// Blocos do sync lidos em apply(): connector.kiosk, kiosk_order e authorized.session.origin.
+extern kiosk::SyncFacts kioskSync;
+// Pedido do totem a guardar na NVS ("kord"); vazio apaga. Retomada após reboot/queda de rede.
+void kioskPersistOrder(const char* orderId);
+// Executa o próximo pedido do totem à API (laço principal; nunca durante charging).
+void kioskApiService();
+// Pedido salvo na NVS no boot (retomada pelo sync).
+void kioskResume(const char* orderId, uint32_t seed);
