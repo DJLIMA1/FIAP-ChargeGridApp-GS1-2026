@@ -10,6 +10,8 @@ Resposta:
 ```json
 {"server_time":"ISO8601","sync_interval_seconds":10,"control_version":1,"connector":{"id":"UUID","public_code":"CG-01","max_duration_minutes":60,"owned":true,"active":true,"presence_code":"#F12345","presence_expires_at":"ISO8601"},"authorized":{"reservation":null,"session":null},"commands":[{"id":"UUID","type":"RESERVE","version":1,"expires_at":"ISO8601","reservation_id":"UUID","session_id":null,"parameters":{"expires_at":"ISO8601"}}]}
 ```
+Horários são ISO 8601 **com fuso**: `server_time` e `presence_expires_at` saem em UTC (`+00:00`), mas os que vêm do banco (`commands[].expires_at`, `authorized.reservation.expires_at`, `parameters.expires_at` do RESERVE) saem no fuso da sessão do PostgreSQL e com microssegundos, por exemplo `2026-10-20T04:09:50.703479-03:00`. O equipamento deve aplicar o deslocamento antes de comparar; ler só `AAAA-MM-DDTHH:MM:SS` como UTC faz um comando válido parecer vencido há 3 h (o firmware 0.7.0 antes da correção de 20/10/2026 fazia isso e ignorava os comandos em silêncio com o banco fora de UTC; o simulador sempre usou `fromisoformat`).
+
 `authorized.reservation`: {id,expires_at,status}; `authorized.session`: {id,status,max_duration_minutes,max_cost,price_per_kwh,discount_percent}. Comandos RESERVE,RELEASE,START,STOP. START parameters inclui os limites autorizados e session_id. Comandos persistentes, IDs idempotentes, versão crescente por ponto/dispositivo. Ignorar comandos expirados/versões inferiores; guardar último aplicado. Após aplicar sincronizar imediatamente. RESERVE aplicado requer estado reserved; START aplicado requer charging e session_id correto; STOP requer stopped/idle e sessão correta; RELEASE requer idle/stopped e connected=false. ACK de outro dispositivo retorna 409 sem efetuar alterações.
 
 `presence_code` é comum aos pontos do mesmo posto, muda a cada cinco minutos e só é enviado ao dispositivo autenticado. A tela exibe o tempo restante e uma barra de progresso. O app envia esse código junto com `public_code` ao solicitar início; a API confere o código atual do posto. `presence_code` é nulo enquanto o posto ou o ponto estiver inativo. A chave do dispositivo continua privada e serve apenas para autenticar a sincronização.
@@ -58,13 +60,13 @@ Campos aditivos no bloco `connector` da resposta do sync; firmware anterior igno
 {"connector": {"kiosk_url": "https://<api>/pay/k/CG-7KQ2?c=12345",
                "payment": {"status": "awaiting_payment", "status_label": "Aguardando pagamento", "amount": "20.00", "environment": "test"}}}
 ```
-- `kiosk_url`: string ou `null`. Presente só quando o vendedor ligou “pagamento pelo QR do painel”, a Stripe está configurada, o ponto está ativo e sem sessão/reserva. Contém o código #F atual (sem `#F`), então muda com ele. O painel mostra um QR desse texto na tela “Pronto” com a legenda “Sem o app? Pague aqui · TESTE”. Quem escaneia escolhe R$ 10/20/40 e paga na Checkout da Stripe pelo próprio celular.
+- `kiosk_url`: string ou `null`. Presente só quando o vendedor ligou “pagamento pelo QR do painel”, a Stripe está configurada, o ponto está ativo e sem sessão/reserva. Contém o código #F atual (sem `#F`), então muda com ele. O firmware só aceita `https://` com até 160 caracteres (o simulador idem) e mostra um QR desse texto na tela “Pronto” com a legenda “Sem o app? Pague aqui · TESTE”. Quem escaneia escolhe R$ 10/20/40 e paga na Checkout da Stripe pelo próprio celular.
 - `payment`: `null` ou o pagamento do painel mais recente ainda não usado (`awaiting_payment`, `declined`, `authorized`, `paid`; até 35 min). O painel pode mostrar “Aguardando pagamento (teste)” e “Pagamento confirmado — iniciando”.
-- Depois da confirmação o fluxo é o de sempre: a API emite `START` (com `max_cost` = teto pago; o painel para sozinho em `cost_limit`), o painel aplica e confirma com ACK. Nada liga sem pagamento confirmado pelo servidor; o QR em si não autoriza nada.
+- Depois da confirmação o fluxo é o de sempre: a API emite `START` (com `max_cost` = teto de energia do pagamento, isto é, o valor pré-autorizado menos a reserva do teto da taxa de permanência quando o posto cobra; o painel para sozinho em `cost_limit`), o painel aplica e confirma com ACK. Nada liga sem pagamento confirmado pelo servidor; o QR em si não autoriza nada.
 
-## Potência ao vivo — SET_POWER (firmware 0.5.0, API b7d2f4a91c36)
+## Potência ao vivo — SET_POWER (firmware 0.7.0, API b7d2f4a91c36)
 
-Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa campos desconhecidos (`extra="forbid"`), então um firmware 0.5.0 numa API antiga receberia 422. Firmware antigo nunca recebe `SET_POWER` nem START com potência 0: a API só envia para quem declara a capacidade. Sem declaração, o ponto é tratado como carga fixa (a potência com que começou). Atenção: comando desconhecido **não** é ignorado pelo firmware 0.4.0, ele responde `failed unknown_command`; por isso a negociação.
+Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa campos desconhecidos (`extra="forbid"`), então um firmware 0.7.0 numa API antiga receberia 422 (`{"error":{"code":"validation_error","fields":[{"field":"capabilities",...}]}}`). O firmware 0.7.0 só volta ao corpo 0.6 (sem `capabilities`, `applied_power_w`, `charger`) quando o 422 aponta um desses campos; os 422 de regra da API (`invalid_time`, `energy_regression`, `session_required`) não rebaixam o corpo, porque sem `capabilities` a API passaria a tratar o ponto como carga fixa. O simulador (`tools/device_simulator.py`) declara a mesma versão 0.7.0 (`--legacy`: 0.4.0, sem SET_POWER). Firmware antigo nunca recebe `SET_POWER` nem START com potência 0: a API só envia para quem declara a capacidade. Sem declaração, o ponto é tratado como carga fixa (a potência com que começou). Atenção: comando desconhecido **não** é ignorado pelo firmware 0.4.0, ele responde `failed unknown_command`; por isso a negociação.
 
 **Corpo do sync (novos campos, opcionais):**
 ```json
@@ -74,7 +76,7 @@ Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa ca
 ```
 - `capabilities`: enviado em todo sync; sync sem o campo apaga a capacidade (firmware rebaixado deixa de receber SET_POWER).
 - `applied_power_w`: limite instalado agora (W), 0 fora de recarga ou pausado. É a verdade do equipamento: resolve ACK perdido.
-- `charger`: o equipamento declara o que controla. O piso (`min_power_w`) e o máximo entram na divisão (HCA trifásico: 4.200 W). `transport` é `simulated` enquanto não houver hardware real.
+- `charger`: o equipamento declara o que controla (painel: `model: "esp32_bench"`; simulador: `"simulated_bench"`, os dois com piso 1.400 W, máximo 7.200 W, passo 100 W). No painel, pedido abaixo do piso vira pausa (0 W) e o valor é arredondado para baixo no passo, nunca acima do pedido. O piso (`min_power_w`) e o máximo entram na divisão (HCA trifásico: 4.200 W). `transport` é `simulated` enquanto não houver hardware real.
 
 **START (`parameters`):** `power_limit_w` (inteiro, pode ser **0** = começa pausado até os outros pontos confirmarem a redução) e `power_decision_id`. `max_power_kw` continua para o firmware antigo, nunca abaixo do piso. O firmware novo usa `power_limit_w` quando presente.
 
@@ -94,13 +96,29 @@ Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa ca
 
 **Limite de taxa:** 120 syncs/min por dispositivo (antes 40/min, que derrubava cerca de 1/3 dos syncs de 1 s com 429).
 
-## Permanência após a recarga
+## Permanência (firmware 0.7.0)
 
-Campos aditivos; firmware anterior ignora e continua funcionando (ele desconecta ao parar, então nunca gera permanência).
+Contrato real (`apps/api/app/overstay.py`, `modules/devices/service.py`). Campos aditivos; firmware anterior ignora e continua funcionando (ele desconecta ao parar, então nunca gera permanência). Não existe ACK de permanência: o equipamento só confirma o `STOP` como sempre e relata o cabo pelo campo `connected` que já existe no corpo do sync.
 
-**START `parameters.overstay`** (só quando o motorista aceitou a taxa): `{"grace_minutes":10,"interval_minutes":1,"amount":"1.00","max_amount":"30.00"}` (minutos inteiros, valores em texto decimal). Com o campo, o equipamento **mantém `connected=true` depois da parada** (qualquer motivo) até o cabo ser desconectado — na bancada, pelo botão "Desconectar" (simulado). Sem o campo, comportamento antigo: desconecta ao parar. Após um reboot o cabo volta como `connected=false` (a API encerra a permanência com `device_reboot`, cobrando só até a última evidência). O corpo do sync não muda: `connected` já existe.
+**START `parameters.overstay`** (só quando o motorista aceitou a taxa; sem termos aceitos a chave não vem):
+```json
+{"overstay": {"grace_minutes": 10, "interval_minutes": 1, "amount": "1.00", "max_amount": "30.00"}}
+```
+Minutos inteiros; `amount` (por intervalo completo depois da tolerância) e `max_amount` (teto) em texto decimal. O firmware 0.7.0 só usa a presença do objeto: com ele, **continua com `connected=true` depois de parar por qualquer motivo** (STOP da API, Encerrar local, `cost_limit`, `duration_limit`, `battery_full`, `communication_lost`) até o cabo sair; sem ele, desconecta ao parar como antes.
 
-**Resposta do sync, nível de cima:** `"overstay": {"session_id":"UUID","status":"grace"|"billing"|"capped"|"no_fee","grace_remaining_seconds":462,"fee_due":"3.00","max_fee":"30.00","amount":"1.00","interval_minutes":1}` ou `null`. Vem fora de `authorized` porque a sessão já terminou. O painel mostra "Recarga concluída — desconecte em mm:ss" (contagem local a partir de `grace_remaining_seconds`, como o código #F) e depois "Taxa de permanência: R$ x". `no_fee`: "Recarga concluída — desconecte o cabo". Intervalo de sync: o ocioso (5 s); ao desconectar, sincronizar imediatamente.
+**O que o equipamento relata:**
+1. Ao aplicar o STOP: `physical_state: "stopped"`, `session_id` da sessão, `connected: true`, `end_reason`, ACK `applied`. A API encerra a sessão e, se ela terminou `completed` com `connected=true` nesse mesmo sync (sem reboot), abre a permanência no horário do servidor. Sessão `failed`/`interrupted` (`fault`, `communication_lost`, `device_reboot`) nunca abre.
+2. Depois que `authorized.session` vira `null`: `physical_state: "idle"`, `session_id: null`, `energy_wh: 0`, `connected: true`. Cada sync aceito com `connected=true` soma o tempo desde a última evidência, até 45 s; intervalo maior (offline) não é cobrado (`overstay_gap`); repetição de `sequence` não soma.
+3. Cabo desconectado (botão "Desconectar" na bancada, só fora de recarga): `connected: false` e sync imediato. O primeiro sync com `connected=false` fecha (`disconnected`).
+4. `RELEASE` e reboot sempre relatam `connected=false`. Um `boot_id` novo fecha a permanência com `device_reboot`, cobrando só até a última evidência de conexão. Sem notícia do equipamento por 15 min a API fecha com `observation_lost`.
 
-A API conta só tempo confirmado: cada sync com `connected=true` soma até 45 s desde o anterior; intervalo maior não é cobrado; repetição de `sequence` não soma; `connected=false` encerra. Novo START continua exigindo o ponto livre (`connected=false`).
+**Resposta do sync, nível de cima** (fora de `authorized`, porque a sessão já terminou), ou `null` sem permanência aberta neste ponto:
+```json
+{"overstay": {"session_id": "UUID", "status": "grace", "grace_remaining_seconds": 600, "fee_due": "0.00",
+              "max_fee": "30.00", "amount": "1.00", "interval_minutes": 1}}
+```
+- `status`: `grace` (tolerância), `billing` (cobrando), `capped` (no teto) ou `no_fee` (permanência registrada sem termos aceitos: `max_fee`, `amount` e `interval_minutes` vêm `null`, `fee_due` `"0.00"`). `closed` existe na sessão e no recibo, mas o bloco do sync some (`null`) ao fechar.
+- `grace_remaining_seconds` inteiro; `fee_due`, `max_fee`, `amount` em texto decimal; `interval_minutes` inteiro.
+- O painel mostra "Recarga concluída · desconecte em mm:ss" (contagem local a partir de `grace_remaining_seconds`, como o código #F), depois "Taxa de permanência: R$ x" (com "(valor máximo)" em `capped`) e o botão "Desconectar"; `no_fee`: "Recarga concluída · desconecte o carro" e "Sem taxa de permanência neste ponto". O simulador imprime o mesmo no terminal. Intervalo de sync: o ocioso (5 s).
 
+Com o cabo conectado o ponto fica `occupied`: novo START (app ou pagamento pelo QR, `point_unavailable`) só depois de `connected=false`. O painel não mostra o QR de pagamento enquanto o carro está conectado, mesmo que `kiosk_url` venha preenchido.
