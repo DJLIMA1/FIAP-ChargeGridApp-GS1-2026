@@ -469,8 +469,20 @@ void buildDark(lv_obj_t* screen) {
   const char* stepTitles[] = {"Abra o app ChargeGrid", "Use o código deste ponto", "Comece a recarga"};
   // títulos em Barlow Condensed Medium 17 px para caber com as setas.
   const char* stepDetails[] = {"No seu celular", "Digite no app", "Comece pelo app"};
-  const int stepX[] = {6, 241, 485};
-  const int chevronX[] = {219, 471};
+  // A segunda seta repete os vãos da primeira (texto → seta → próximo número),
+  // medidos pela largura real do texto de cada passo.
+  auto stepTextEnd = [&](int i, int x) {
+    lv_point_t title, detail;
+    lv_txt_get_size(&title, stepTitles[i], &chargegrid_body_17, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_txt_get_size(&detail, stepDetails[i], &chargegrid_body_14, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    return x + 46 + LV_MAX(title.x, detail.x);
+  };
+  int stepX[] = {6, 241, 0};
+  int chevronX[] = {219, 0};
+  const int gapBeforeChevron = chevronX[0] - stepTextEnd(0, stepX[0]);
+  const int gapAfterChevron = stepX[1] - chevronX[0];
+  chevronX[1] = stepTextEnd(1, stepX[1]) + gapBeforeChevron;
+  stepX[2] = chevronX[1] + gapAfterChevron;
   for (int i = 0; i < 3; ++i) {
     lv_obj_t* tile = shape(stepsCard, stepX[i], 23, 38, 44, 4);
     lv_obj_set_style_bg_color(tile, lv_color_white(), 0);

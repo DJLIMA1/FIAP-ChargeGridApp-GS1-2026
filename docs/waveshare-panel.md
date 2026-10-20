@@ -18,6 +18,16 @@ O alias `waveshare_panel_demo` gera a mesma imagem. O pacote atual é `builds/ch
 2. Digite SSID de Wi-Fi 2,4 GHz e senha. A chave individual já vem provisionada de fábrica; deixe vazia para preservá-la. Manutenção de equipamentos legados fica em **Conta → Meus equipamentos e postos → Posto → Ponto**. A partir do firmware 0.2.1, deixe a senha vazia para redes abertas; isso remove a senha anterior, sem alterar a identidade do dispositivo. Redes abertas não protegem o enlace Wi-Fi, mas a comunicação com a API continua usando HTTPS com certificado validado.
 3. Toque em **Salvar e conectar**; o painel reinicia no modo integrado.
 
+## Configurar o Wi-Fi pelo terminal (USB)
+
+Com o painel ligado ao Mac por USB, na raiz do repositório:
+
+```bash
+tools/cg-wifi "Nome da rede" senha
+```
+
+Sem a senha (`tools/cg-wifi "Nome da rede"`), ela é pedida sem eco e não fica no histórico do shell. A porta (`/dev/cu.wchusbserial*`, `usbserial*`, `usbmodem*`) é detectada sozinha; com mais de uma placa, use `CG_PORT=/dev/cu.xxx tools/cg-wifi ...`. O script usa o Python do `.venv` (precisa de `pyserial`) e chama `tools/panel_serial.py --action wifi --ssid ... [--password ...]`, que envia `CG_WIFI`, responde SSID e senha e termina com o IP obtido ou com o erro do firmware (rede não encontrada, senha errada, bloqueio durante reserva/recarga). Rede 2,4 GHz, SSID até 32 bytes e senha até 64. A rede fica salva no NVS e a identidade é preservada. Validado em 19/10/2026 na placa física: a rede `S23 Ultra de Murillo` conectou e a placa sincronizou com HTTP 200.
+
 Rede e identidade são independentes: o painel pode associar ao Wi-Fi sem chave, mas só inicia a sincronização autenticada depois que uma chave individual estiver configurada.
 
 O suporte a redes abertas do firmware 0.2.1 foi validado na placa física: atualização somente em `0x10000`, configuração por serial com senha vazia, chave existente preservada e sincronização HTTP 200. Após reiniciar, o painel reconectou automaticamente e permaneceu `idle`, sem sessão e com potência zero. Os testes de host cobrem senha anterior removida, falha de gravação, SSID obrigatório e envio do formulário com senha vazia.
@@ -105,6 +115,8 @@ As telas seguem o design de referência do totem (2:1; as posições verticais s
 | Falha, Wi-Fi caído, chave rejeitada ou contato perdido | Vermelha **Ponto Indisponível** com a mensagem de reconexão |
 | Ponto com dono, online, mas desativado pelo responsável (`connectorActive=false`) | Âmbar **Estamos em manutenção** |
 | `reserved` / `charging` / `stopped` / preparação | Mesmo tema escuro: prazo no cartão de destaque, métricas + **Encerrar**, mensagem de despedida |
+
+Na faixa de passos da tela **Pronto para você**, a segunda seta (antes do 03) repete os vãos da primeira: a posição é calculada pela largura real do título/detalhe de cada passo (`lv_txt_get_size`), em vez de coordenadas fixas que deixavam a seta colada em "Use o código deste ponto". Conferido em 19/10/2026 na captura do framebuffer da placa física.
 
 Tela de configuração Wi-Fi (segurar o logo 5 s) usa o mesmo fundo; **Salvar e conectar** é o botão branco principal. O pool do LVGL subiu para 64 KB (`LV_MEM_SIZE` em `platformio.ini`; a UI usa ~47 KB). A tipografia é Barlow Condensed (OFL, `include/panel_font_barlow_OFL.txt`; TTFs em `apps/mobile/assets/`), o rosto condensado do design: Bold para marca, títulos, código e números (`panel_font_brand_30/34`, `title_48`, `alert_68`, `code_72`) e Medium para o texto (`panel_font_body_14/17/19/22`, U+0020–U+00FF e U+2022; o 17 inclui o ● do DejaVu para campos de senha). Todas geradas com `lv_font_conv --bpp 4 --no-compress`; o raio da ilustração é o bitmap alpha `src/panel_font_pump_bolt.c` (o nome casa com o glob de `tools/validate_firmware.py`). Cores de fundo/degradê usam valores exatos de RGB565 para não mudar de matiz entre as faixas.
 
