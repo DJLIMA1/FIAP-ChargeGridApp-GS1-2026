@@ -200,6 +200,10 @@ def test_start_without_accepted_terms_records_the_interval_with_no_fee(bench, cl
     shown = bench.session(session["id"])["overstay"]
     assert shown["status"] == "no_fee" and shown["fee_due"] == "0.00" and shown["fee_applies"] is False
     assert shown["billable_seconds"] == 300
+    # Zero fee cannot grow: the payment may settle while the cable is still connected.
+    assert bench.session(session["id"])["settlement_ready"] is True
+    bench.idle(connected=False)
+    assert bench.events(session["id"]).count("settlement_ready") == 1
 
 
 def test_stale_terms_are_refused_and_accepted_terms_are_frozen(bench, factory, seed, clock):

@@ -106,13 +106,19 @@ def _fee(session):
     return rules.fee_due(_terms(session), session.overstay_billable_seconds or 0)
 
 
+def _amount_fixed(session):
+    """A taxa não pode mais crescer: sem termos aceitos (taxa zero) ou já no teto."""
+    terms = _terms(session)
+    return terms is None or rules.capped(terms, session.overstay_billable_seconds or 0)
+
+
 def is_final(session):
-    """O valor devido não muda mais (sessão encerrada e permanência fechada, ausente ou no teto)."""
+    """O valor devido não muda mais (sessão encerrada e permanência fechada, ausente, sem taxa ou no teto)."""
     if session.status not in TERMINAL:
         return False
     if session.overstay_started_at is None or session.overstay_ended_at is not None:
         return True
-    return rules.capped(_terms(session), session.overstay_billable_seconds or 0)
+    return _amount_fixed(session)
 
 
 def charge(db, session):
@@ -137,14 +143,14 @@ def _settlement_ready(db, session, source="device_sync"):
 
 
 def _close(db, session, reason, moment, source="device_sync"):
-    was_capped = rules.capped(_terms(session), session.overstay_billable_seconds or 0)
+    was_fixed = _amount_fixed(session)
     session.overstay_ended_at = moment
     session.overstay_end_reason = reason
     session.overstay_fee = _fee(session)
     _event(db, session, "overstay_ended", source=source)
     if reason == "disconnected":
         _event(db, session, "vehicle_disconnected", source=source)
-    if not was_capped:
+    if not was_fixed:  # senão o acerto já foi liberado ao abrir (sem taxa) ou no teto
         _settlement_ready(db, session, source)
 
 
@@ -189,7 +195,7 @@ def on_sync(db, connector, data, *, reboot, finished):
             session.overstay_billable_seconds = 0
             session.overstay_fee = Decimal("0")
             _event(db, session, "overstay_started")
-            if _terms(session) and rules.capped(_terms(session), 0):  # teto zero: nada a esperar
+            if _amount_fixed(session):  # sem taxa aceita ou teto zero: nada a esperar
                 _settlement_ready(db, session)
         else:
             if not data.connected:
