@@ -180,7 +180,7 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
         after, every, amount = number_fields(rotation)
         self.assertEqual([after.suffix.value.strip(), every.suffix.value.strip(), amount.prefix.value.strip()],
                          ['min', 'min', 'R$'])
-        self.assertIn('2 intervalos × R$ 0,20 = R$ 0,40', texts(rotation))
+        self.assertIn('2 intervalos × R$ 1,00 = R$ 2,00', texts(rotation))
 
 
 class DriverDynamicPriceTests(unittest.IsolatedAsyncioTestCase):
