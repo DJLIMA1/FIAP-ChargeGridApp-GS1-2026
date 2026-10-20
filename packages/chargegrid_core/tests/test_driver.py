@@ -321,3 +321,92 @@ def test_parse_hhmm_rejects_invalid_minutes():
     for value in ('10:99', '10:60', '25:00', '-1:00', 'ab'):
         with pytest.raises(ValueError):
             parse_hhmm(value)
+
+
+# --- tela enxuta (2026-10): origem dos valores, clima em uma linha, ganho sem digitar ---------
+
+def test_sources_mark_unconfirmed_defaults_and_legacy_profiles_are_inferred():
+    from chargegrid_core.driver import SOURCE_CHOICES
+    assert set(SOURCE_CHOICES) == {'earnings_per_hour', 'shift'}
+    default = DriverPreferences.from_dict({})
+    assert default.to_dict()['sources'] == {'earnings_per_hour': 'estimativa', 'shift': 'auto'}
+    assert default.earnings_estimated
+    legacy = DriverPreferences.from_dict({'earnings_per_hour': 50, 'shift_start': '06:00', 'shift_end': '14:00'})
+    assert legacy.to_dict()['sources'] == {'earnings_per_hour': 'informado', 'shift': 'informado'}
+    typed = DriverPreferences.from_dict({'sources': {'earnings_per_hour': 'informado'}})
+    assert typed.source('earnings_per_hour') == 'informado' and not typed.earnings_estimated
+    # "estimativa" com valor diferente do padrão (app antigo editou o número) vale como informado.
+    edited = DriverPreferences.from_dict({'earnings_per_hour': 44, 'sources': {'earnings_per_hour': 'estimativa'}})
+    assert edited.source('earnings_per_hour') == 'informado'
+    # Leitura tolerante: origem desconhecida é ignorada, nunca derruba um perfil salvo.
+    odd = DriverPreferences.from_dict({'sources': {'earnings_per_hour': 'chute', 'x': 'y'}})
+    assert odd.source('earnings_per_hour') == 'estimativa'
+    assert validate_profile({'preferences': {'sources': 'texto'}})['preferences']['sources']['shift'] == 'auto'
+
+
+def test_weather_summary_one_line_and_rain_note():
+    from chargegrid_core.driver import (
+        condition_text,
+        rain_note,
+        simulated_weather,
+        weather_summary,
+    )
+    assert condition_text(0) == 'céu limpo' and condition_text(81) == 'pancadas de chuva'
+    assert condition_text(None) is None and condition_text(1234) is None
+    hourly = {at(h): (3.0 if h == 18 else 0.0, 25.0) for h in range(24)}
+    signal = WeatherSignal(hourly, codes={at(h): 3 for h in range(24)},
+                           current={'temperature': 24.6, 'precipitation': 0.0, 'weather_code': 0, 'time': at(14)})
+    summary = weather_summary(signal, at(14, 20))
+    assert summary['label'] == '25° · céu limpo · chuva às 18h'
+    assert summary['next_rain_at'] == '18:00' and not summary['rain_now'] and summary['status'] == 'ok'
+    raining = weather_summary(signal, at(18, 10))
+    assert raining['rain_now'] and raining['label'].endswith('mais corridas agora')
+    dry = weather_summary(WeatherSignal({at(14): (0.0, None)}), at(14))
+    assert dry['label'] == 'sem chuva prevista' and dry['temperature_c'] is None
+    assert '18h (Open-Meteo)' in rain_note(signal, at(14))['message']
+    assert rain_note(WeatherSignal({at(14): (0.0, 20.0)}), at(14)) is None
+    demo = simulated_weather(at(12))
+    assert demo.source == 'simulado' and weather_summary(demo, at(12))['label'] == '23° · nublado · chuva às 18h (simulado)'
+    assert weather_summary(demo, at(12))['status'] == 'simulado'
+
+
+def test_earnings_chain_typed_beats_history_beats_estimate():
+    from chargegrid_core.driver import (
+        EarningsSource,
+        Trip,
+        TripHistory,
+        resolve_earnings,
+    )
+    trips = (Trip(at(10), at(10, 30), 30.0, 12.0), Trip(at(10, 40), at(11, 0), 20.0, 8.0),
+             Trip(at(15), at(15, 30), 25.0, 10.0))
+    history = TripHistory(trips)
+    assert isinstance(history, EarningsSource)
+    assert history.online_minutes() == 90  # 10:00–11:00 (pausa de 10 min conta) + 15:00–15:30
+    assert history.hourly() == pytest.approx(50.0)
+    assert history.km_per_hour() == pytest.approx(20.0)
+    assert TripHistory((Trip(at(10), at(10, 20), 30.0),)).hourly() is None  # menos de 1 h online
+    estimate = resolve_earnings(DriverPreferences())
+    assert estimate == {'per_hour': 38.0, 'source': 'estimativa', 'estimated': True, 'label': 'R$ 38/h estimado'}
+    assert resolve_earnings(DriverPreferences(), history)['source'] == 'uber'
+    typed = DriverPreferences(earnings_per_hour=45.5)
+    assert resolve_earnings(typed, history) == {'per_hour': 45.5, 'source': 'informado', 'estimated': False,
+                                                 'label': 'R$ 45,50/h (seu ganho)'}
+
+
+def test_context_and_plan_expose_weather_and_earnings_source():
+    from chargegrid_core.driver import build_context, simulated_weather
+    profile = validate_profile(merge_profile(None, None))
+    context = build_context(profile, at(14, 5), (simulated_weather(at(14)),))
+    assert context['in_shift'] and context['window'] == {
+        'start': '14:00', 'end': '22:00', 'start_at': at(14).isoformat(), 'end_at': at(22).isoformat()}
+    assert context['shift_source'] == 'auto' and context['earnings']['estimated']
+    assert context['demand']['source'] == 'heuristica+simulado' and context['demand']['level'] == 'normal'
+    assert context['demand']['peaks'][0]['start'] == '16:45'
+    assert context['weather']['label'].endswith('(simulado)')
+    night = build_context(profile, at(23), ())
+    assert not night['in_shift'] and night['window']['start'] == '10:00' and night['weather'] is None
+    plan = build_plan({'soc_percent': 50, 'mode': 'auto'}, profile, [], at(14), (simulated_weather(at(14)),))
+    assert plan['demand']['weather']['status'] == 'simulado' and plan['earnings']['source'] == 'estimativa'
+    assert build_plan({'soc_percent': 50}, profile, [], at(14))['demand']['weather'] is None
+    quick = build_next_stop({'soc_percent': 50}, profile, [], at(14), (simulated_weather(at(14)),))
+    assert quick['demand']['weather']['next_rain_at'] == '18:00'

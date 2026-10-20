@@ -707,7 +707,9 @@ def plan_shift(vehicle: VehicleProfile, preferences: DriverPreferences, options:
         'assumptions': [
             f'Consumo de {_dec(vehicle.consumption_kwh_per_100km)} kWh/100 km e bateria útil de '
             f'{_dec(vehicle.usable_battery_kwh)} kWh (estimativa).',
-            f'Ganho médio de {brl(preferences.hourly_earnings)}/h ajustado pela demanda estimada do horário.',
+            f'Ganho médio de {brl(preferences.hourly_earnings)}/h '
+            + ('estimado pelo ChargeGrid (ajuste em Ajustes)' if preferences.earnings_estimated else 'informado por você')
+            + ', ajustado pela demanda estimada do horário.',
             f'Energia restante ao fim do turno vale {brl(preferences.end_energy_value)}/kWh (custo de repor).',
             'Desvio até o posto estimado em linha reta × 1,3 a 24 km/h; disponibilidade futura é estimada.',
         ],

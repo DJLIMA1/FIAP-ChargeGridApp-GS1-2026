@@ -83,6 +83,19 @@ class Meal:
 
 
 DEFAULT_MEALS = (Meal('almoco', 12 * 60 + 30, 60, 45), Meal('jantar', 20 * 60, 45, 30))
+DEFAULT_EARNINGS_PER_HOUR = 38.0
+DEFAULT_SHIFT = (10 * 60, 22 * 60)
+# De onde vem cada valor: "estimativa"/"auto" = padrão do ChargeGrid que o motorista nunca confirmou.
+SOURCE_CHOICES = {'earnings_per_hour': ('estimativa', 'informado', 'uber'), 'shift': ('auto', 'informado')}
+_UNCONFIRMED = {'earnings_per_hour': 'estimativa', 'shift': 'auto'}
+
+
+def _sources(value) -> tuple[tuple[str, str], ...]:
+    """Leitura tolerante: entradas desconhecidas são ignoradas (um perfil salvo nunca cai no padrão por isso)."""
+    if not isinstance(value, dict):
+        return ()
+    return tuple(sorted((key, item) for key, item in value.items()
+                        if key in SOURCE_CHOICES and item in SOURCE_CHOICES[key]))
 
 
 @dataclass(frozen=True)
@@ -91,13 +104,32 @@ class DriverPreferences:
     shift_end: int = 22 * 60
     meals: tuple[Meal, ...] = DEFAULT_MEALS
     km_per_hour: float = 22.0
-    earnings_per_hour: float = 38.0
+    earnings_per_hour: float = DEFAULT_EARNINGS_PER_HOUR
     earnings_per_km: float | None = None
     reserve_percent: float = 15.0
     max_charge_percent: float = 80.0
     home_charging: bool = True
     home_price_per_kwh: float = 0.95
     city: str = 'São Paulo'
+    sources: tuple[tuple[str, str], ...] = ()
+
+    def _is_default(self, key: str) -> bool:
+        if key == 'earnings_per_hour':
+            return self.earnings_per_hour == DEFAULT_EARNINGS_PER_HOUR and self.earnings_per_km is None
+        return (self.shift_start, self.shift_end) == DEFAULT_SHIFT
+
+    def source(self, key: str) -> str:
+        """Origem de ``earnings_per_hour`` ou ``shift``. Sem registro (perfis antigos), um valor igual ao
+        padrão é "estimativa"/"auto" e um diferente é "informado"; "estimativa"/"auto" com valor diferente
+        do padrão (app antigo editou só o número) também vira "informado"."""
+        found = dict(self.sources).get(key)
+        if found and (found != _UNCONFIRMED[key] or self._is_default(key)):
+            return found
+        return _UNCONFIRMED[key] if self._is_default(key) else 'informado'
+
+    @property
+    def earnings_estimated(self) -> bool:
+        return self.source('earnings_per_hour') == 'estimativa'
 
     @property
     def shift_minutes(self) -> int:
@@ -118,7 +150,8 @@ class DriverPreferences:
     def to_dict(self) -> dict:
         data = asdict(self)
         data.update(shift_start=hhmm(self.shift_start), shift_end=hhmm(self.shift_end),
-                    meals=[meal.to_dict() for meal in self.meals])
+                    meals=[meal.to_dict() for meal in self.meals],
+                    sources={key: self.source(key) for key in SOURCE_CHOICES})
         return data
 
     @staticmethod
@@ -142,6 +175,7 @@ class DriverPreferences:
             home_charging=bool(data.get('home_charging', default.home_charging)),
             home_price_per_kwh=_number(data, 'home_price_per_kwh', default.home_price_per_kwh, 0, 10),
             city=str(data.get('city') or default.city)[:60],
+            sources=_sources(data.get('sources')),
         )
         if preferences.reserve_percent + 10 > preferences.max_charge_percent:
             raise ValueError('A reserva mínima precisa ficar bem abaixo do alvo máximo de carga')

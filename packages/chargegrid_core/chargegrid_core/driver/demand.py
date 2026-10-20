@@ -85,10 +85,15 @@ class WeatherSignal:
     """Clima por hora (ex.: Open-Meteo). Chuva aumenta a procura por corridas.
 
     ``hourly`` mapeia o início da hora local (sem fuso) → (precipitação mm, temperatura °C).
+    ``codes`` (opcional): código de tempo WMO por hora; ``current`` (opcional): condição agora
+    (``temperature``, ``precipitation``, ``weather_code``, ``time`` opcional). Só a chuva e a temperatura por hora mexem
+    na demanda; o resto serve para o resumo exibido ao motorista (``weather.weather_summary``).
     """
 
     hourly: dict[datetime, tuple[float | None, float | None]] = field(default_factory=dict)
     source: str = 'open-meteo'
+    codes: dict[datetime, int] = field(default_factory=dict)
+    current: dict | None = None
 
     def conditions(self, when: datetime):
         return self.hourly.get(when.replace(minute=0, second=0, microsecond=0, tzinfo=None))

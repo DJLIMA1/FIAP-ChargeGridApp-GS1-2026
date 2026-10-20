@@ -31,6 +31,13 @@ class MealInput(Input):
     enabled: bool = True
 
 
+class SourcesInput(Input):
+    """Origem dos valores: "estimativa"/"auto" = padrão do ChargeGrid que o motorista não confirmou."""
+
+    earnings_per_hour: Literal["estimativa", "informado", "uber"] | None = None
+    shift: Literal["auto", "informado"] | None = None
+
+
 class PreferencesInput(Input):
     shift_start: str | None = Field(default=None, pattern=HHMM)
     shift_end: str | None = Field(default=None, pattern=HHMM)
@@ -43,6 +50,7 @@ class PreferencesInput(Input):
     home_charging: bool | None = None
     home_price_per_kwh: float | None = number(0, 10)
     city: str | None = Field(default=None, max_length=60)
+    sources: SourcesInput | None = None
 
 
 class DriverProfileInput(Input):

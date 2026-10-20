@@ -24,7 +24,9 @@ log = logging.getLogger(__name__)
 def _request(lat: float, lng: float) -> dict:
     response = httpx.get(URL, timeout=TIMEOUT_SECONDS, params={
         "latitude": round(lat, 2), "longitude": round(lng, 2),
-        "hourly": "precipitation,temperature_2m", "timezone": "America/Sao_Paulo", "forecast_days": 2,
+        "hourly": "precipitation,temperature_2m,weather_code",
+        "current": "temperature_2m,precipitation,weather_code",
+        "timezone": "America/Sao_Paulo", "forecast_days": 2,
     })
     response.raise_for_status()
     return response.json()
@@ -32,8 +34,20 @@ def _request(lat: float, lng: float) -> dict:
 
 def _parse(data: dict) -> WeatherSignal:
     hourly = data["hourly"]
-    rows = zip(hourly["time"], hourly["precipitation"], hourly["temperature_2m"], strict=True)
-    return WeatherSignal({datetime.fromisoformat(stamp): (rain, temperature) for stamp, rain, temperature in rows})
+    times = [datetime.fromisoformat(stamp) for stamp in hourly["time"]]
+    rows = zip(times, hourly["precipitation"], hourly["temperature_2m"], strict=True)
+    codes = hourly.get("weather_code")
+    current = data.get("current") if isinstance(data.get("current"), dict) else None
+    return WeatherSignal(
+        {when: (rain, temperature) for when, rain, temperature in rows},
+        codes={when: code for when, code in zip(times, codes, strict=True) if code is not None}
+        if isinstance(codes, list) else {},
+        # Condição agora (opcional): só alimenta o resumo exibido ao motorista.
+        current={"temperature": current.get("temperature_2m"), "precipitation": current.get("precipitation"),
+                 "weather_code": current.get("weather_code"),
+                 "time": datetime.fromisoformat(current["time"]) if current.get("time") else None}
+        if current else None,
+    )
 
 
 def weather_signal(lat: float, lng: float) -> WeatherSignal | None:
