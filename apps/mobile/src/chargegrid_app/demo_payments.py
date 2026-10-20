@@ -48,7 +48,7 @@ def _label(payment):
 def row(api, payment):
     if payment is None:
         return None
-    return {**{key: value for key, value in payment.items() if key != 'confirm_at'},
+    return {**{key: value for key, value in payment.items() if key != 'confirm_at' and not key.startswith('_')},
             'status_label': _label(payment),
             'checkout_url': payment['checkout_url'] if payment['status'] in ('awaiting_payment', 'declined') else None}
 
@@ -88,7 +88,7 @@ def create(api, body):
     if set(body) - set(allowed):
         _fail('Campo não aceito pelo pagamento de demonstração.', 'validation_error', 422)
     point = api._get(api._points, body.get('connector_id'), 'Ponto não encontrado')
-    for payment in _store(api).values():
+    for payment in _mine(api):
         _advance(api, payment)
         if payment['status'] in ('authorized', 'paid') and payment['session_id'] is None:
             _fail('Você já tem um pagamento confirmado sem uso. Use-o ou cancele antes de pagar outro.',
@@ -121,16 +121,21 @@ def create(api, body):
     return row(api, payment)
 
 
+def _mine(api):
+    """Pagamentos do motorista da demo (sem os dos motoristas fictícios do movimento simulado)."""
+    return [payment for payment in _store(api).values() if not payment.get('_visitor')]
+
+
 def _owned(api, payment_id):
     payment = _store(api).get(payment_id)
-    if payment is None:
+    if payment is None or payment.get('_visitor'):
         _fail('Pagamento não encontrado', 'not_found', 404)
     return payment
 
 
 def _claimable(api, payment_id):
     payment = _store(api).get(payment_id)
-    if payment is None:
+    if payment is None or payment.get('_visitor'):
         _fail('Pagamento não encontrado', 'payment_not_found', 404)  # código do START na API
     return payment
 
@@ -150,11 +155,13 @@ def _advance(api, payment):
         payment['status'] = 'expired'
         _settle(payment, 0)
     if payment['status'] == 'in_use' and payment['session_id']:
+        from . import demo_site
         session = api._sessions.get(payment['session_id'])
-        if session and session['status'] in _ENDED:
+        # O acerto espera a permanência ficar final (carro desconectado ou taxa no teto), como a API.
+        if session and session['status'] in _ENDED and demo_site.overstay_final(api, session):
             # Mesma conta do acerto da API: energia confirmada × tarifa travada (meio para cima).
             energy = billing.energy_cents(session['energy_wh'], session['price_per_kwh'], session['discount_percent'])
-            _settle(payment, energy)
+            _settle(payment, energy, demo_site.overstay_cents(api, session))
             payment['status'] = 'completed'
     return payment
 
@@ -164,15 +171,18 @@ def _date(value):
     return parse(value)
 
 
-def _settle(payment, energy_cents):
+def _settle(payment, energy_cents, overstay_cents=0):
     amount = billing.to_cents(payment['amount'])
-    plan = billing.settle_amounts(amount_cents=amount, energy_cents=energy_cents)
+    plan = billing.settle_amounts(amount_cents=amount, energy_cents=energy_cents, overstay_cents=overstay_cents)
     money = billing.money
+    kept_overstay = max(0, plan['charge_cents'] - min(energy_cents, amount)) if plan['charge_cents'] else 0
     payment['settlement'] = {
-        'status': 'done', 'energy_amount': str(money(energy_cents)), 'overstay_amount': '0.00', 'fixed_fee': '0.00',
+        'status': 'done', 'energy_amount': str(money(energy_cents)),
+        'overstay_amount': str(money(kept_overstay)), 'fixed_fee': '0.00',
         'charged': str(money(plan['charge_cents'])), 'returned': str(money(plan['return_cents'])),
         'return_kind': 'released', 'captured': str(money(plan['charge_cents'])), 'refunded': '0.00',
-        'waived': str(money(plan['waived_cents'])), 'uncollected': '0.00', 'below_minimum': plan['below_minimum'],
+        'waived': str(money(plan['waived_cents'])), 'uncollected': str(money(plan['uncollected_cents'])),
+        'below_minimum': plan['below_minimum'],
         'provider_fee': None, 'settled_at': None,
     }
 
@@ -214,7 +224,7 @@ def route(api, method, parts, body):
     if (method, len(parts)) == ('POST', 1):
         return create(api, body)
     if (method, len(parts)) == ('GET', 2) and parts[1] == 'current':
-        payments = [p for p in _store(api).values()
+        payments = [p for p in _mine(api)
                     if p['status'] in ('awaiting_payment', 'declined', 'authorized', 'paid', 'in_use')]
         payment = max(payments, key=lambda p: p['created_at'], default=None)
         return row(api, _advance(api, payment)) if payment else None
@@ -237,6 +247,37 @@ def route(api, method, parts, body):
             payment['confirm_at'] = api._elapsed + CONFIRM_SECONDS
         return row(api, payment)
     _fail('Operação de pagamento não disponível na demonstração.', 'demo_route_not_supported', 404)
+
+
+def visitor_payment(api, point, session):
+    """Pré-pagamento (teste) de um motorista fictício do movimento simulado (``demo_site``): teto de R$ 40,00
+    na energia + a reserva do teto da permanência, em uso na sessão; o acerto segue as regras da API."""
+    terms = overstay_rules.clean_terms(session.get('overstay_terms'))
+    energy = 4000
+    reserve = overstay_rules.cents(terms['max_amount']) if terms else 0
+    pid = api._id('payment')
+    payment = {
+        'id': pid, 'status': 'in_use', 'environment': 'test', 'provider': 'stripe', 'origin': 'app',
+        'method': 'card', 'currency': billing.CURRENCY, 'amount': str(billing.money(energy + reserve)),
+        'energy_cap': str(billing.money(energy)), 'fixed_fee': '0.00', 'overstay_reserve': str(billing.money(reserve)),
+        'price_per_kwh': session['price_per_kwh'], 'base_price_per_kwh': session.get('base_price_per_kwh'),
+        'demand_multiplier': '1.00', 'discount_percent': 0, 'coupon_code': None,
+        'max_duration_minutes': session['max_duration_minutes'], 'max_power_kw': None, 'connector_id': point['id'],
+        'session_id': session['id'], 'checkout_url': None, 'expires_at': None, 'start_deadline': None,
+        'authorized_at': session['created_at'], 'created_at': session['created_at'],
+        'provider_ref': f"pi_demo_{pid.rsplit('-', 1)[-1]}", 'settlement': None,
+        'quote': {'mode': 'value', 'max_cost': '40.00', 'reservation_terms': False}, 'confirm_at': None,
+        '_visitor': True,
+    }
+    _store(api)[pid] = payment
+    return _advance(api, payment)
+
+
+def advance_visitors(api):
+    """Acerto dos pagamentos dos motoristas fictícios (eles não abrem o app; na API é o cron/webhook)."""
+    for payment in _store(api).values():
+        if payment.get('_visitor'):
+            _advance(api, payment)
 
 
 def reset(api):

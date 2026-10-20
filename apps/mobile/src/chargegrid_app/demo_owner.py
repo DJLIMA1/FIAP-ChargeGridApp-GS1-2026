@@ -14,6 +14,7 @@ from decimal import Decimal
 from chargegrid_core import analytics, economics
 from chargegrid_core.formatting import brl
 
+from . import demo_site
 from .api_client import ApiError
 
 SEED = 20261013
@@ -313,6 +314,11 @@ class DemoOwner:
             })
         return {'items': analytics.build_alerts(points, now), 'generated_at': now.isoformat()}
 
+    def _power_now(self, point, session):
+        runtime = self.api._session_runtime.get(session['id']) or {}
+        value = runtime.get('power_kw')
+        return Decimal(value) if value is not None else Decimal(point['power_kw'])
+
     def live(self, params):
         station_id = self._station(params)
         now = self.api._now()
@@ -336,15 +342,17 @@ class DemoOwner:
                     'id': session['id'], 'status': session['status'], 'started_at': session['started_at'],
                     'energy_wh': session['energy_wh'], 'cost_estimate': session['cost_estimate'],
                     'soc_percent': session['soc_percent'], 'soc_source': session.get('soc_source'),
-                    'power_w': str(int(Decimal(point['power_kw']) * 1000)) if session['status'] == 'charging' else None,
+                    # Telemetria simulada: a potência em uso agora (a do rebalanceamento, quando ligado).
+                    'power_w': str(int(self._power_now(point, session) * 1000)) if session['status'] == 'charging'
+                    else None,
                     # Potência ao vivo (aplicada, estado e motivo): nula sem rebalanceamento, como na API.
                     'applied_power_kw': session.get('applied_power_kw'), 'power_state': session.get('power_state'),
                     'power_reason': session.get('power_reason'),
                     'source': session['source'], 'last_measurement_at': session['last_measurement_at'],
                 } if session else None,
-                # Permanência aberta no ponto (``app.overstay.occupancy_by_connector``): a demo não mantém o
-                # cabo conectado depois da recarga, então nunca há ocupação.
-                'occupancy': None,
+                # Permanência aberta no ponto (``app.overstay.occupancy_by_connector``): só o movimento
+                # simulado do posto (``demo_site``) deixa o carro conectado depois da recarga.
+                'occupancy': demo_site.occupancy(self.api, point['id']),
             })
         return {'items': items, 'generated_at': now.isoformat()}
 
