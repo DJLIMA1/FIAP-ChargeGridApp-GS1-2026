@@ -12,6 +12,8 @@ from test_pricing import busy  # noqa: F401 - fixture reutilizada
 
 from app.models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, Telemetry, now
 from app.modules.economics import service as economics_service
+from app.modules.payments import receipt as payments_receipt
+from app.modules.power import receipt as power_receipt
 from app.modules.pricing.service import current_terms, locked_terms
 from app.modules.receipts import registry
 from app.presence_code import current_code
@@ -26,6 +28,8 @@ def _cleanup():
     clear_overrides()
     for name in ("payment", "overstay", "power_changes", "broken"):
         registry.unregister(name)
+    payments_receipt.install()  # provedores reais registrados no app (pagamento e potência)
+    power_receipt.install()
 
 
 def _code(factory, seed):

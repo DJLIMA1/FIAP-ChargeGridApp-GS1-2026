@@ -26,7 +26,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.device_simulator import Device, load_charger  # noqa: E402
+from tools.device_simulator import Device, load_charger
 
 
 def parse_list(value):
@@ -156,7 +156,8 @@ def run_device(api, key, device, stop, label):
                     changed = device.response(body)
                     interval = max(1, min(30, body["sync_interval_seconds"]))
                     next_sync = time.monotonic() if changed else time.monotonic() + interval
-                except Exception:  # Rede instável: o watchdog local continua valendo.
+                # Rede instável, HTTP de erro ou resposta fora do formato: o watchdog local continua valendo.
+                except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
                     interval = min(30, interval * 2)
                     next_sync = time.monotonic() + interval
                     print(f"[SIMULADO] {label}: sync indisponível")

@@ -232,9 +232,13 @@ def receipt_pdf(receipt: dict) -> bytes:
                   ("Energia", money(charges["energy_total"]))]
     if charges.get("overstay") is not None:
         value_rows.append(("Taxa de permanência", money(charges["overstay"])))
-    value_rows.append(("Total", money(charges["total"])))
     if charges.get("paid_total") is not None:
+        # Pagamento acertado: o capturado manda; a diferença para o calculado aparece linha a linha.
+        value_rows.append(("Calculado pela energia", money(charges.get("calculated_total") or charges["total"])))
+        value_rows += [(line["label"], money(line["amount"])) for line in charges.get("adjustments") or []]
         value_rows.append(("Total pago (confirmado)", money(charges["paid_total"])))
+    else:
+        value_rows.append(("Total", money(charges["total"])))
     story += [kit.p("Valores", "h2"), kit.pairs(value_rows)]
     if charges.get("note"):
         story.append(kit.p(charges["note"], "small"))
@@ -265,7 +269,8 @@ def receipt_pdf(receipt: dict) -> bytes:
     if power["changes"]:
         story.append(kit.grid(["Horário", "Potência aplicada", "Situação", "Motivo"], [
             [when(change.get("at"), "%H:%M:%S"),
-             f"{_number(change.get('applied_kw'), 1)} kW" if change.get("applied_kw") else "—",
+             f"{_number(change.get('applied_kw'), 1)} kW" if change.get("applied_kw") else
+             (f"pedido {_number(change.get('requested_kw'), 1)} kW" if change.get("requested_kw") else "—"),
              {"applied": "Confirmada pelo equipamento", "requested": "Solicitada", "failed": "Falhou"}
              .get(change.get("status"), change.get("status") or "—"),
              change.get("reason_label") or "—"] for change in power["changes"]
