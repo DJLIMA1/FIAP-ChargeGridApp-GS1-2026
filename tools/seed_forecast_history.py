@@ -27,9 +27,9 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packages" / "chargegrid_core"))
 
-from chargegrid_core.forecast import synthetic  # noqa: E402
-from chargegrid_core.forecast.aggregate import floor_hour  # noqa: E402
-from chargegrid_core.forecast.calendar import to_local  # noqa: E402
+from chargegrid_core.forecast import synthetic
+from chargegrid_core.forecast.aggregate import floor_hour
+from chargegrid_core.forecast.calendar import to_local
 
 ARCHETYPES = tuple(synthetic.ARCHETYPES)
 

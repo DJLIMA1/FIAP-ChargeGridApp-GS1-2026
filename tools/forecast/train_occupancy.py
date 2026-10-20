@@ -25,9 +25,9 @@ ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "packages" / "chargegrid_core"
 sys.path.insert(0, str(CORE))
 
-from chargegrid_core.forecast import offline  # noqa: E402
-from chargegrid_core.forecast.features import FEATURES  # noqa: E402
-from chargegrid_core.forecast.gbm import raw_predict  # noqa: E402
+from chargegrid_core.forecast import offline
+from chargegrid_core.forecast.features import FEATURES
+from chargegrid_core.forecast.gbm import raw_predict
 
 ARTIFACT = CORE / "chargegrid_core" / "forecast" / "model_v1.py"
 VERSION = "occ-gbm-v1"

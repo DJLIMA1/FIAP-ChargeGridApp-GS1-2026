@@ -9,7 +9,6 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-
 WATERMARK = "connector_hourly_stats"
 ROLLUP_MARGIN = timedelta(hours=72)
 
