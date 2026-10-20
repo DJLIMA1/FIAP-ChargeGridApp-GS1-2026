@@ -12,8 +12,6 @@ from test_pricing import busy  # noqa: F401 - fixture reutilizada
 
 from app.models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, Telemetry, now
 from app.modules.economics import service as economics_service
-from app.modules.payments import receipt as payments_receipt
-from app.modules.power import receipt as power_receipt
 from app.modules.pricing.service import current_terms, locked_terms
 from app.modules.receipts import registry
 from app.presence_code import current_code
@@ -24,12 +22,14 @@ DEVICE = {"Authorization": "Device test-key"}
 
 @pytest.fixture(autouse=True)
 def _cleanup():
+    # Providers registered by the app (payment, power and overstay) are restored after each test.
+    extras, sections = dict(registry._EXTRAS), dict(registry._SECTIONS)
     yield
     clear_overrides()
     for name in ("payment", "overstay", "power_changes", "broken"):
         registry.unregister(name)
-    payments_receipt.install()  # provedores reais registrados no app (pagamento e potência)
-    power_receipt.install()
+    registry._EXTRAS.update(extras)
+    registry._SECTIONS.update(sections)
 
 
 def _code(factory, seed):

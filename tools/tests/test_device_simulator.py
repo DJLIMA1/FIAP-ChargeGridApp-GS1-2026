@@ -300,3 +300,71 @@ def test_set_power_without_session_fails():
     command["commands"][0]["parameters"] = {"power_limit_w": 3000}
     device.response(command)
     assert device.acks[0]["status"] == "failed" and device.acks[0]["error"] == "no_active_session"
+
+
+def _overstay_start(**parameters):
+    data = response()
+    data["commands"][0]["parameters"] = {"overstay": {"grace_minutes": 10, "interval_minutes": 1,
+                                                      "amount": "1.00", "max_amount": "30.00"}, **parameters}
+    return data
+
+
+def test_stop_without_overstay_terms_still_unplugs():
+    device = Device()
+    device.response(response())
+    device.response(response(kind="STOP", version=2, identifier="stop"))
+    assert device.state == "stopped" and device.connected is False
+
+
+def test_overstay_terms_keep_the_cable_until_unplug():
+    now = [0]
+    device = Device(clock=lambda: now[0], unplug_after=None)
+    device.response(_overstay_start())
+    device.response(response(kind="STOP", version=2, identifier="stop"))
+    assert device.state == "stopped" and device.connected is True
+    assert device.payload()["connected"] is True
+    now[0] = 10_000
+    device.tick()
+    assert device.connected is True  # manual only
+    assert device.unplug() is True and device.connected is False and device.unplug() is False
+
+
+def test_unplug_after_and_never_while_charging():
+    now = [0]
+    device = Device(clock=lambda: now[0], unplug_after=30)
+    device.response(_overstay_start())
+    assert device.unplug() is False and device.connected is True  # charging
+    now[0] = 5
+    device.response(response(kind="STOP", version=2, identifier="stop"))
+    now[0] = 34
+    device.tick()
+    assert device.connected is True
+    now[0] = 35
+    device.tick()
+    assert device.connected is False
+
+
+def test_legacy_firmware_ignores_overstay_terms():
+    device = Device(legacy=True)
+    device.response(_overstay_start())
+    device.response(response(kind="STOP", version=2, identifier="stop"))
+    assert device.connected is False
+
+
+def test_reboot_reports_the_cable_disconnected(tmp_path):
+    now = [0]
+    device = Device(tmp_path / "state.json", clock=lambda: now[0], unplug_after=None)
+    device.response(_overstay_start())
+    device.response(response(kind="STOP", version=2, identifier="stop"))
+    assert device.connected is True
+    restarted = Device(tmp_path / "state.json", clock=lambda: now[0])
+    assert restarted.connected is False
+
+
+def test_overstay_terminal_text_matches_the_panel():
+    from tools.device_simulator import overstay_text
+
+    assert overstay_text(None) == ""
+    assert overstay_text({"status": "grace", "grace_remaining_seconds": 462}).endswith("desconecte em 07:42")
+    assert overstay_text({"status": "billing", "fee_due": "3.00"}).endswith("Taxa de permanência: R$ 3,00")
+    assert overstay_text({"status": "no_fee"}).endswith("desconecte o cabo")

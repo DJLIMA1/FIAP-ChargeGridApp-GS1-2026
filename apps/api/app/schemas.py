@@ -87,6 +87,8 @@ class StartInput(Input):
     max_power_kw: Decimal | None = Field(default=None, gt=0, le=1000)
     # Pré-pagamento confirmado (Stripe, modo teste): a recarga usa o teto e os termos dele.
     payment_id: UUID | None = None
+    # Versão das condições da taxa de permanência mostradas e aceitas no app (GET /stations).
+    overstay_terms_version: str | None = Field(default=None, min_length=1, max_length=40)
 
 
 class SocInput(Input):

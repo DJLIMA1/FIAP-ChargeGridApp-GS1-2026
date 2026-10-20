@@ -27,6 +27,8 @@ from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from . import overstay
+
 try:  # tzdata pode faltar em builds embarcados; o Brasil não tem horário de verão desde 2019.
     from zoneinfo import ZoneInfo
 
@@ -62,6 +64,8 @@ SESSION_EXPORT_COLUMNS = (
     ("cost_estimate", "Valor estimado (R$)"),
     ("source", "Origem da medição"),
     ("end_reason", "Motivo de término"),
+    ("overstay_minutes", "Permanência cobrada (min)"),
+    ("overstay_fee", "Taxa de permanência (R$)"),
 )
 RESERVATION_EXPORT_COLUMNS = (
     ("id", "ID da reserva"),
@@ -471,6 +475,10 @@ def session_export_row(session: Mapping, now: datetime | None = None) -> dict:
         "cost_estimate": decimal_text(session.get("cost_estimate"), "0.0001"),
         "source": session.get("source") or "",
         "end_reason": session.get("end_reason") or "",
+        # Permanência após a recarga (chargegrid_core.overstay): minutos cobrados e taxa.
+        "overstay_minutes": overstay.billable_minutes(overstay.clean_terms(session.get("overstay_terms")),
+                                                      session.get("overstay_billable_seconds") or 0),
+        "overstay_fee": decimal_text(session.get("overstay_fee") or 0, "0.01"),
     }
 
 

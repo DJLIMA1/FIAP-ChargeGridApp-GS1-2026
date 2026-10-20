@@ -13,8 +13,8 @@ Dados base do dono (``rules``)
   base de cada conector nesse horário (``{connector_id: "1.2000"}``). Fora dos horários,
   ou para um conector sem preço no horário, vale a tarifa base do conector. Horários não
   podem se sobrepor.
-* ``rotation``: taxa de ocupação após a recarga (tolerância, intervalo e valor). Fica
-  registrada com as regras; não entra no preço por kWh.
+* ``rotation``: taxa de permanência após a recarga (tolerância, intervalo, valor e teto
+  ``max_amount``). Não entra no preço por kWh; termos e cálculo em ``chargegrid_core.overstay``.
 * ``peak`` (legado): o antigo "horário de pico". Continua aceito e devolvido para apps
   antigos, mas não entra mais no cálculo (``peak_now`` é sempre ``False``).
 
@@ -52,11 +52,13 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
+from . import overstay
+
 DEFAULT_RULES = {
     "demand": {"enabled": True, "max_increase_percent": 50, "sensitivity": "medium"},
     "schedule": {"enabled": True, "intervals": []},
     "peak": {"enabled": True, "start": "18:00", "end": "21:00", "days": [0, 1, 2, 3, 4, 5, 6]},  # legado
-    "rotation": {"enabled": True, "start_after_min": 30, "interval_min": 10, "amount": "0.20"},
+    "rotation": dict(overstay.DEFAULT_ROTATION),
 }
 SENSITIVITY = {"low": Decimal("1.6"), "medium": Decimal("1"), "high": Decimal("0.6")}
 SENSITIVITY_LABELS = {"low": "Baixa", "medium": "Média", "high": "Alta"}
@@ -123,17 +125,7 @@ def clean_rules(raw) -> dict:
     if peak["enabled"] and not days:
         raise ValueError("Escolha ao menos um dia para o horário de pico.")
     peak["days"] = sorted(set(days))
-    try:
-        rotation["start_after_min"] = int(rotation["start_after_min"])
-        rotation["interval_min"] = int(rotation["interval_min"])
-        amount = _dec(rotation["amount"])
-    except (TypeError, ValueError, InvalidOperation):
-        raise ValueError("Preencha a taxa de rotatividade com números.") from None
-    if not (1 <= rotation["start_after_min"] <= 1440 and 1 <= rotation["interval_min"] <= 1440):
-        raise ValueError("Os tempos da rotatividade vão de 1 a 1440 minutos.")
-    if not amount.is_finite() or not Decimal(0) <= amount <= Decimal(100):
-        raise ValueError("O valor da rotatividade vai de R$ 0,00 a R$ 100,00.")
-    rotation["amount"] = str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    overstay.clean_rotation(rotation)
     rules["schedule"] = _clean_schedule(rules["schedule"])
     return rules
 

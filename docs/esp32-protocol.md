@@ -93,3 +93,14 @@ Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa ca
 **`authorized.session` (resposta) acrescenta:** `applied_power_kw`, `target_power_kw`, `power_state` (`applied`, `reducing`, `raising`, `waiting`, `paused`, `fixed` ou `null` sem rebalanceamento) e `power_reason_short` (até 40 caracteres, só Latin-1, cabe nas fontes do painel; ex.: `"Loja 24/30 kW · 3 carros"`). O painel mostra `applied_power_kw` depois do ACK, nunca o alvo.
 
 **Limite de taxa:** 120 syncs/min por dispositivo (antes 40/min, que derrubava cerca de 1/3 dos syncs de 1 s com 429).
+
+## Permanência após a recarga
+
+Campos aditivos; firmware anterior ignora e continua funcionando (ele desconecta ao parar, então nunca gera permanência).
+
+**START `parameters.overstay`** (só quando o motorista aceitou a taxa): `{"grace_minutes":10,"interval_minutes":1,"amount":"1.00","max_amount":"30.00"}` (minutos inteiros, valores em texto decimal). Com o campo, o equipamento **mantém `connected=true` depois da parada** (qualquer motivo) até o cabo ser desconectado — na bancada, pelo botão "Desconectar" (simulado). Sem o campo, comportamento antigo: desconecta ao parar. Após um reboot o cabo volta como `connected=false` (a API encerra a permanência com `device_reboot`, cobrando só até a última evidência). O corpo do sync não muda: `connected` já existe.
+
+**Resposta do sync, nível de cima:** `"overstay": {"session_id":"UUID","status":"grace"|"billing"|"capped"|"no_fee","grace_remaining_seconds":462,"fee_due":"3.00","max_fee":"30.00","amount":"1.00","interval_minutes":1}` ou `null`. Vem fora de `authorized` porque a sessão já terminou. O painel mostra "Recarga concluída — desconecte em mm:ss" (contagem local a partir de `grace_remaining_seconds`, como o código #F) e depois "Taxa de permanência: R$ x". `no_fee`: "Recarga concluída — desconecte o cabo". Intervalo de sync: o ocioso (5 s); ao desconectar, sincronizar imediatamente.
+
+A API conta só tempo confirmado: cada sync com `connected=true` soma até 45 s desde o anterior; intervalo maior não é cobrado; repetição de `sequence` não soma; `connected=false` encerra. Novo START continua exigindo o ponto livre (`connected=false`).
+
