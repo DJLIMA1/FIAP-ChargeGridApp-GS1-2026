@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import signal
 import sys
 import time
 import uuid
@@ -31,6 +32,10 @@ BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
 BENCH_MIN_POWER_W = 1400  # 6 A em 230 V: menor corrente de recarga AC.
 # Firmware 0.5.0+: ajuste de potência ao vivo (SET_POWER). ``legacy=True`` simula o antigo.
 CAPABILITIES = ["set_power_v1"]
+# Permanência após a recarga: com termos de taxa no START (``parameters.overstay``) o cabo
+# simulado continua conectado depois da parada, até ``unplug()`` (SIGUSR1 na linha de comando)
+# ou ``unplug_after`` segundos. Sem termos: desconecta ao parar, como antes.
+UNPLUG_AFTER_SECONDS = 120
 
 
 def load_charger(name, variant="GW7K-HCA-20", fail_writes=0, echo=None):
@@ -64,7 +69,8 @@ def power_cap_w(*sources):
 
 
 class Device:
-    def __init__(self, state_path=None, clock=time.monotonic, *, legacy=False, charger=None, transport=None):
+    def __init__(self, state_path=None, clock=time.monotonic, *, legacy=False, charger=None, transport=None,
+                 unplug_after=UNPLUG_AFTER_SECONDS):
         self.path = Path(state_path) if state_path else None
         self.clock = clock
         saved = json.loads(self.path.read_text()) if self.path and self.path.exists() else {}
@@ -94,6 +100,12 @@ class Device:
         self.transport = transport
         self.presence_code = None
         self.public_code = None
+        # Cabo simulado: segurar após a parada só quando a sessão tem termos de permanência.
+        # Após um reboot o cabo volta desconectado (a API encerra a permanência com segurança).
+        self.hold_cable = False
+        self.unplug_after = unplug_after if unplug_after is not None and unplug_after >= 0 else None
+        self.stopped_at = None
+        self.overstay = None
 
     def save(self):
         if self.path:
@@ -166,9 +178,19 @@ class Device:
 
     def stop(self, reason):
         self.state = "stopped"
-        self.connected = False
+        self.connected = self.hold_cable and self.connected
+        self.stopped_at = self.clock() if self.connected else None
         self.reason = reason
         self.save()
+
+    def unplug(self):
+        """Motorista desconecta o cabo (simulado). Nunca durante a carga."""
+        if self.state == "charging" or not self.connected:
+            return False
+        self.connected = False
+        self.hold_cable = False
+        self.stopped_at = None
+        return True
 
     def tick(self):
         now = self.clock()
@@ -176,6 +198,9 @@ class Device:
         self.last_tick = now
         if self.state == "reserved" and self.reservation_expires and time.time() >= self.reservation_expires:
             self.state = "idle"
+        if (self.state != "charging" and self.stopped_at is not None and self.unplug_after is not None
+                and now - self.stopped_at >= self.unplug_after):
+            self.unplug()
         if self.state != "charging":
             return
         # Só integra o tempo até o watchdog ou limite local.
@@ -241,6 +266,7 @@ class Device:
                 phone = number(new_session.get("soc_percent"), 0, 100)
                 self.phone_soc = phone if phone is not None else (
                     self.phone_soc if self.phone_soc is not None else self.soc_start)
+        self.overstay = response.get("overstay")
         connector = response.get("connector") or {}
         self.presence_code = connector.get("presence_code")
         self.public_code = connector.get("public_code")
@@ -273,6 +299,8 @@ class Device:
                     self.reason = None
                     self.state = "charging"
                     self.connected = True  # Conexão de bancada explicitamente simulada.
+                    self.hold_cable = not self.legacy and bool((command.get("parameters") or {}).get("overstay"))
+                    self.stopped_at = None
                     self.started = self.clock()
                     self.last_tick = self.clock()
                     self.limits = dict(session)
@@ -344,6 +372,18 @@ class Device:
         return changed
 
 
+def overstay_text(block):
+    """Linha do terminal igual ao painel: "desconecte em mm:ss" e depois a taxa."""
+    if not block:
+        return ""
+    if block.get("status") == "grace":
+        seconds = int(block.get("grace_remaining_seconds") or 0)
+        return f" | Recarga concluída — desconecte em {seconds // 60:02d}:{seconds % 60:02d}"
+    if block.get("status") in ("billing", "capped"):
+        return f" | Taxa de permanência: R$ {str(block.get('fee_due') or '0.00').replace('.', ',')}"
+    return " | Recarga concluída — desconecte o cabo"
+
+
 def main():
     import httpx
     parser = argparse.ArgumentParser(description=__doc__)
@@ -355,6 +395,9 @@ def main():
     parser.add_argument("--hca-model", default="GW7K-HCA-20", choices=["GW7K-HCA-20", "GW11K-HCA-20", "GW22K-HCA-20"])
     parser.add_argument("--hca-fail-writes", type=int, default=0, help="Perde as N primeiras escritas (teste de ACK)")
     parser.add_argument("--legacy", action="store_true", help="Simula firmware 0.4.0 (sem SET_POWER)")
+    parser.add_argument("--unplug-after", type=float, default=UNPLUG_AFTER_SECONDS,
+                        help="Com taxa de permanência aceita, desconecta o cabo simulado N s após a parada "
+                             "(negativo: só manual, com kill -USR1 <pid>)")
     args = parser.parse_args()
     from urllib.parse import urlparse
     url = urlparse(args.api)
@@ -364,12 +407,22 @@ def main():
     if not key:
         parser.error("Defina CHARGEGRID_DEVICE_KEY com a chave individual")
     charger, transport = load_charger(args.charger, args.hca_model, args.hca_fail_writes, echo=print)
-    device = Device(args.state, legacy=args.legacy, charger=charger, transport=transport)
+    device = Device(args.state, legacy=args.legacy, charger=charger, transport=transport,
+                    unplug_after=args.unplug_after)
+    unplug_requested = []
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, lambda *_: unplug_requested.append(True))
+        print(f"Desconectar o cabo simulado: kill -USR1 {os.getpid()}")
     interval = 1
     next_sync = 0
     with httpx.Client(timeout=10, follow_redirects=False) as client:
         while True:
             device.tick()
+            if unplug_requested:
+                unplug_requested.clear()
+                if device.unplug():
+                    print("Cabo simulado desconectado.")
+                    next_sync = 0  # informa a desconexão já
             if time.monotonic() >= next_sync:
                 payload = device.payload()
                 try:
@@ -382,7 +435,9 @@ def main():
                     next_sync = time.monotonic() if changed else time.monotonic() + interval
                     soc = f" soc={device.soc():.1f}% ({device.soc_source})" if device.soc_known() else ""
                     power = f" power_w={device.power_w if device.state == 'charging' else 0}"
-                    print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{power}{soc}")
+                    cable = " cabo=conectado" if device.connected else ""
+                    print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{power}{soc}{cable}"
+                          f"{overstay_text(device.overstay)}")
                 except (httpx.HTTPError, ValueError, KeyError):
                     interval = min(30, interval * 2)
                     next_sync = time.monotonic() + interval
