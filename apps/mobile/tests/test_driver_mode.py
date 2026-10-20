@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 
+import chargegrid_core.driver as driver_package
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.navigation import SCREENS, active_tab, parent_route
@@ -113,6 +114,7 @@ class DriverApp:
         self.notices.append(message)
 
 
+@patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista descontinuado
 class DemoDriverRoutesTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.api = DemoApi(start_at=TUESDAY_NOON)
@@ -186,6 +188,7 @@ class DemoDriverRoutesTests(unittest.IsolatedAsyncioTestCase):
                 await self.api.request('PATCH', f"stations/{station['id']}", {'amenities': bad})
 
 
+@patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista descontinuado
 class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.api = DemoApi(start_at=TUESDAY_NOON)
@@ -299,6 +302,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
             await demo.close()
 
 
+@patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista descontinuado
 class LeanDriverScreenTests(unittest.IsolatedAsyncioTestCase):
     """Tela enxuta: nada a preencher, Ajustes recolhido, GPS opcional, compatível com APIs antigas."""
 
@@ -523,7 +527,7 @@ class DriverIntegrationTests(unittest.IsolatedAsyncioTestCase):
                          'Próximo turno 10:00–22:00')
         self.assertIn('estimativa', helpers.vehicle_summary({'preset': 'byd_dolphin'}))
 
-    async def test_home_highlights_driver_mode(self):
+    async def test_driver_mode_is_discontinued_everywhere(self):
         app = DriverApp(SimpleNamespace(is_demo=False))
         state = {'reservations/current': None, 'charging-sessions/current': None,
                  'stations': {'items': [], 'total': 0}, 'me/summary': {}}
@@ -532,16 +536,16 @@ class DriverIntegrationTests(unittest.IsolatedAsyncioTestCase):
             return state[path]
         app.api.request = request
         app.set_poll = lambda callback, interval: None
-        screen = await home.build(app)
-        visible = texts(screen)
-        self.assertIn('Modo motorista', visible)
-        # Logo abaixo da foto do carro, antes de "Perto de Você".
-        self.assertLess(visible.index('Modo motorista'), visible.index('Perto de Você'))
-        row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
-                   and 'Modo motorista' in texts(item))
-        await row.on_click(None)
-        app.go.assert_awaited_once_with('driver')
-
+        self.assertNotIn('Modo motorista', texts(await home.build(app)))  # sem entrada no Início
+        app.api.request = AsyncMock(side_effect=AssertionError('não chama a API'))
+        old_link = await driver.build(app)  # links antigos: aviso, sem consultar a API
+        self.assertIn('O Modo motorista foi descontinuado.', texts(old_link))
+        demo = DemoApi()
+        await demo.login(DEMO_EMAIL, DEMO_PASSWORD)
+        with self.assertRaises(ApiError) as raised:
+            await demo.request('GET', 'driver/profile')
+        self.assertEqual((raised.exception.status, raised.exception.code), (410, 'driver_mode_discontinued'))
+        await demo.close()
 
 if __name__ == '__main__':
     unittest.main()

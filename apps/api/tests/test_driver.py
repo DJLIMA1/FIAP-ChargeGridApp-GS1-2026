@@ -14,6 +14,7 @@ SAO_PAULO = {'lat': -23.5505, 'lng': -46.6333}
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
     weather.clear_cache()
+    monkeypatch.setattr(routes, 'DISCONTINUED', False)  # testes do código guardado (descontinuado)
     monkeypatch.setattr(routes, 'local_now', lambda: datetime(2026, 10, 13, 14, 0))  # terça, 14h
     monkeypatch.setattr(routes, 'weather_signal', lambda lat, lng: None)
     yield
@@ -216,3 +217,13 @@ def test_driver_routes_require_authentication(factory, seed):
     assert anonymous.get('/v1/driver/profile').status_code == 401
     assert anonymous.post('/v1/driver/plan', json={'soc_percent': 50}).status_code == 401
     assert anonymous.get('/v1/driver/context').status_code == 401
+
+
+def test_driver_mode_is_discontinued_in_production(factory, seed, monkeypatch):
+    monkeypatch.setattr(routes, 'DISCONTINUED', True)
+    client, _ = client_for(factory, seed['a'])
+    for method, path in (('GET', '/v1/driver/profile'), ('POST', '/v1/driver/plan'),
+                         ('POST', '/v1/driver/next-stop'), ('GET', '/v1/driver/context')):
+        response = client.request(method, path, json={} if method == 'POST' else None)
+        assert response.status_code == 410, (path, response.text)
+        assert response.json()['error']['code'] == 'driver_mode_discontinued'

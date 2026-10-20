@@ -36,7 +36,7 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Olá, Conta', visible)
         # O Início não leva mais ao assistente; o chat segue na barra inferior.
         self.assertNotIn('Assistente com IA', visible)
-        self.assertLess(visible.index('Modo motorista'), visible.index('Perto de Você'))
+        self.assertNotIn('Modo motorista', visible)  # descontinuado
 
     async def test_home_without_ai_has_no_assistant_entry(self):
         app = HomeApp()

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 
+import chargegrid_core.driver as driver_package
 from chargegrid_app.api_client import ApiClient, ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import chat, history, operator, stations
@@ -86,8 +87,8 @@ class ChatAiTests(unittest.IsolatedAsyncioTestCase):
                                 'context': {'mode': 'driver'}})
         last = app.chat_messages[-1]
         self.assertEqual(last['source'], 'ai')
-        self.assertEqual([a['label'] for a in last['actions']], ['Ver Posto Demo', 'Reservar P1', 'Modo motorista'])
-        self.assertEqual(last['actions'][2]['route'], 'driver')
+        # "Modo motorista" foi descontinuado: a ação da IA não vira botão.
+        self.assertEqual([a['label'] for a in last['actions']], ['Ver Posto Demo', 'Reservar P1'])
         self.assertEqual(last['actions'][1], {'label': 'Reservar P1', 'route': 'stations', 'data': {'station_id': 's1'}})
         typing = next(c for c in descendants(screen) if isinstance(c, ft.Semantics) and c.label == 'Assistente digitando')
         self.assertFalse(typing.visible)
@@ -193,6 +194,7 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('demonstração', calls[0][0]['content'])
         self.assertEqual([a['type'] for a in result['suggested_actions']], ['open_station', 'reserve'])
 
+    @patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista
     async def test_demo_chat_plans_driver_shift_with_driver_engine(self):
         calls = []
 
@@ -211,8 +213,9 @@ class DemoAiTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('error', data)
         self.assertTrue(data['stops'])
         self.assertEqual(result['suggested_actions'][0]['type'], 'open_driver')
+        # O app não abre mais o Modo motorista (descontinuado): a ação é ignorada.
         mapped = chat._ai_actions(result['suggested_actions'])
-        self.assertEqual(mapped[0]['route'], 'driver')
+        self.assertNotIn('driver', [action['route'] for action in mapped])
 
     async def test_demo_validation_and_rate_limit(self):
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1', 'OPENROUTER_API_KEY': 'k'}):

@@ -179,7 +179,8 @@ def test_owner_search_treats_like_wildcards_literally(factory, seed):
 
 # --- Modo Motorista -------------------------------------------------------------------------
 
-def test_next_stop_with_empty_battery_never_says_keep_driving(factory, seed):
+def test_next_stop_with_empty_battery_never_says_keep_driving(factory, seed, monkeypatch):
+    monkeypatch.setattr(driver_routes, 'DISCONTINUED', False)  # código guardado (descontinuado)
     with factory.begin() as db:
         station = Station(owner_id=seed["owner"], name="Hub Rápido", address="Rua Teste", latitude=-23.552,
                           longitude=-46.634)
@@ -217,6 +218,7 @@ def test_session_insight_only_for_finished_sessions(factory, seed):
 
 
 def test_driver_planner_is_rate_limited_per_user(factory, seed, monkeypatch):
+    monkeypatch.setattr(driver_routes, 'DISCONTINUED', False)  # código guardado (descontinuado)
     monkeypatch.setattr(driver_routes, "PLAN_LIMIT", (2, 60))
     client, selected, _ = client_for(factory, seed["a"])
     codes = [client.post("/v1/driver/next-stop", json={"soc_percent": 50}).status_code for _ in range(3)]

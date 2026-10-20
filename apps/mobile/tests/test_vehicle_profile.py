@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import flet as ft
 
+import chargegrid_core.driver as driver_package
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
@@ -160,6 +161,7 @@ class SignupVehicleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(other.calls, [])
 
 
+@patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista descontinuado
 class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         # 9h UTC = 6h in São Paulo: before the default 10:00 shift.

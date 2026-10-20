@@ -230,7 +230,7 @@ async def answer(app, question):
 AI_DISCLAIMER = 'Respostas geradas por IA podem conter erros. Confira valores antes de confirmar.'
 _AI_ROUTES = {'open_station': 'stations', 'reserve': 'stations', 'open_reservation': 'reservations',
               'open_charging': 'charging', 'open_history': 'history', 'open_operator': 'operator',
-              'search_stations': 'stations', 'open_driver': 'driver'}
+              'search_stations': 'stations'}  # open_driver: Modo motorista descontinuado
 
 
 def _ai_actions(suggested):

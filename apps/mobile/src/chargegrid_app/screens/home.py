@@ -260,7 +260,6 @@ async def build(app, **_):
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance_card, top=-8.5),
         _spaced(_car_scene(app), top=27.5),
-        _spaced(_driver_row(app), top=-8),
         _spaced(design.txt('Perto de Você', 15, 'bold'), top=0, bottom=-1),
         rows,
         _spaced(find_button, top=0),

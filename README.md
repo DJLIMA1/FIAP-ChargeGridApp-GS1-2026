@@ -26,9 +26,9 @@ Este `main` documenta a fundação integrada com app, API e painel físico. A br
 
 | Componente | Função | Código |
 | --- | --- | --- |
-| Aplicativo | Cadastro/login, busca de postos (também em linguagem natural), reserva, recarga em etapas, histórico com resumo inteligente, **Modo Motorista**, chat com **assistente de IA** e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
+| Aplicativo | Cadastro/login, busca de postos (também em linguagem natural), reserva, recarga em etapas, histórico com resumo inteligente, chat com **assistente de IA** e gestão pelo vendedor | [`apps/mobile/`](apps/mobile/) |
 | Painel do vendedor (web) | Painel oficial em React, exclusivo para vendedores: KPIs, gráficos, mapa de calor, status ao vivo dos pontos, alertas, estações/tarifas/comodidades, sessões e exportação CSV/JSON, cupons e **Insights IA** | [`apps/owner-web/`](apps/owner-web/) (a versão Flet anterior segue em [`apps/dashboard/`](apps/dashboard/)) |
-| API | Autenticação, autorização, regras de reserva/recarga, comandos para dispositivos, Modo Motorista, indicadores do dono e rotas de IA | [`apps/api/`](apps/api/) |
+| API | Autenticação, autorização, regras de reserva/recarga, comandos para dispositivos, indicadores do dono e rotas de IA | [`apps/api/`](apps/api/) |
 | Núcleo compartilhado | Regras puras usadas por app, dashboard e API: planejador do turno, indicadores, formatação pt-BR e o laço de IA com ferramentas somente leitura | [`packages/chargegrid_core/`](packages/chargegrid_core/) |
 | Banco | Perfis, postos, pontos, reservas, sessões, dispositivos, comandos e telemetria | [`apps/api/migrations/`](apps/api/migrations/) |
 | Painel ESP32 | Interface touch, sincronização HTTPS, confirmação de comandos e parada local | [`firmware/esp32/`](firmware/esp32/) |
@@ -42,7 +42,7 @@ Na experiência atual, o motorista compara pontos por conector, disponibilidade,
 
 | Diferencial | O que faz | Onde ver |
 | --- | --- | --- |
-| **Modo Motorista** | Para motoristas de app com carro elétrico: monta o turno decidindo quando, onde e quanto recarregar, evitando parar nos picos estimados de corridas e juntando a refeição com a recarga em postos com restaurante ou café. Mostra lucro líquido estimado, linha do tempo, bateria projetada e a "próxima parada agora", com reserva direto do plano. | Início → **Planejar meu turno** · [documentação](docs/modo-motorista.md) |
+| **Modo Motorista** *(descontinuado em 20/10/2026, desligado em produção)* | Para motoristas de app com carro elétrico: monta o turno decidindo quando, onde e quanto recarregar, evitando parar nos picos estimados de corridas e juntando a refeição com a recarga em postos com restaurante ou café. Mostra lucro líquido estimado, linha do tempo, bateria projetada e a "próxima parada agora", com reserva direto do plano. | Início → **Planejar meu turno** · [documentação](docs/modo-motorista.md) |
 | **Assistente com IA** | Chat que consulta postos, estimativas, reserva, recargas e o plano do turno por ferramentas **somente leitura**; sugere botões que abrem as telas normais (reservar continua exigindo confirmação). Também há **busca em linguagem natural** na aba Recarga e **resumo inteligente** de cada recarga no Histórico. | Aba **Chat** · [documentação](docs/ia-openrouter.md) |
 | **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/owner-web`](apps/owner-web/README.md) · [painel do vendedor online](https://chargegrid-painel.vercel.app) (entre com uma conta de vendedor) |
 
@@ -197,7 +197,7 @@ As escolhas, consequências e o **diagrama do circuito funcional da bancada** es
 | Comandos e telemetria | [Protocolo ESP32](docs/esp32-protocol.md) |
 | Instalação e provisionamento | [Guia de configuração](docs/setup.md) |
 | Firmware e painel | [README do firmware](firmware/esp32/README.md) · [Validação do painel](docs/waveshare-panel.md) |
-| Modo Motorista | [Planejamento do turno](docs/modo-motorista.md) |
+| Modo Motorista (descontinuado) | [Planejamento do turno](docs/modo-motorista.md) |
 | IA (chat, busca, resumos, insights) | [IA com OpenRouter](docs/ia-openrouter.md) |
 | Painel do vendedor | [README do painel React](apps/owner-web/README.md) · [prévia Flet anterior](apps/dashboard/README.md) |
 | Qualidade e segurança | [Auditoria de QA](docs/qa-auditoria-2026-10.md) · [Revisão de integração](docs/revisao-integracao-2026-10.md) |

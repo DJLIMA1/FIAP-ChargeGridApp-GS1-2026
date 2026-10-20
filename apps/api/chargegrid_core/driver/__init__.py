@@ -1,5 +1,9 @@
 """Modo Motorista: planejamento de turno e recarga para motoristas de app com carro elétrico.
 
+**DESCONTINUADO em 20/10/2026** (``DISCONTINUED``): desligado em produção. A API responde 410 em
+``/v1/driver/*``, o assistente de IA não oferece mais o planejamento e o app não mostra a entrada.
+O código fica no repositório como referência; nada aqui é chamado em produção.
+
 Lógica pura (stdlib, determinística). Demanda é sempre **estimativa** — não há API
 oficial pública de demanda da Uber/99.
 """
@@ -55,3 +59,6 @@ __all__ = [
     'peak_windows', 'plan_shift', 'presets', 'rain_note', 'resolve_earnings', 'shift_window',
     'simulated_weather', 'validate_profile', 'vehicle_from_dict', 'weather_summary',
 ]
+
+# Descontinuado em 20/10/2026: API (410), assistente e app não usam mais este módulo.
+DISCONTINUED = True

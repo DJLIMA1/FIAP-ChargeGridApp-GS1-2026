@@ -758,6 +758,9 @@ class DemoApi(OwnerApiMixin):
             from .demo_owner import owner_for
             return owner_for(self).route(method, path, params, body)
         if parts[0] == 'driver':
+            from chargegrid_core.driver import DISCONTINUED
+            if DISCONTINUED:  # como a API: 410 em /driver/*
+                _fail('O Modo motorista foi descontinuado.', 'driver_mode_discontinued', 410)
             from .services.driver_demo import driver_route
             return driver_route(self, method, path, body, params)
         _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.', 'demo_route_not_supported', 404)

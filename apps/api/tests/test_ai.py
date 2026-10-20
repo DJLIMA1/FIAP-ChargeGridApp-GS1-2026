@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import chargegrid_core.driver as driver_package
 from app.database import db_session
 from app.main import app
 from app.models import AiUsage, ChargingSession, Profile, Reservation, Station, now
@@ -293,7 +294,8 @@ def test_configured_models_deduplicate_and_limit():
     assert configured_models(Config()) == ["a", "b", "c"]
 
 
-def test_chat_plan_driver_shift_uses_saved_driver_profile(factory, seed):
+def test_chat_plan_driver_shift_uses_saved_driver_profile(factory, seed, monkeypatch):
+    monkeypatch.setattr(driver_package, 'DISCONTINUED', False)  # código guardado (descontinuado)
     from app.models import DriverProfile
     with factory.begin() as db:
         db.add(DriverProfile(user_id=seed["a"], vehicle={"preset": "byd_dolphin"},

@@ -1,5 +1,12 @@
 # Modo Motorista — planejamento de turno e recarga para motoristas de app
 
+> **DESCONTINUADO em 20/10/2026.** O modo foi desligado em produção:
+> - a API responde `410 driver_mode_discontinued` em todas as rotas `/v1/driver/*`;
+> - o assistente de IA não oferece mais "planejar turno" nem "Abrir modo motorista";
+> - o app não mostra a entrada no Início, e links antigos exibem "O Modo motorista foi descontinuado".
+>
+> O código continua no repositório só como referência, desligado pela constante `DISCONTINUED` em `packages/chargegrid_core/chargegrid_core/driver/__init__.py`. Os testes desse código rodam com a chave religada apenas dentro deles. O texto abaixo descreve o comportamento anterior.
+
 Motoristas de Uber/99 com carro elétrico perdem dinheiro de duas formas: parando para recarregar
 no horário em que as corridas pagam mais e fazendo paradas extras que poderiam coincidir com o
 almoço ou o jantar. O Modo Motorista monta o turno inteiro, decidindo **quando**, **onde** e

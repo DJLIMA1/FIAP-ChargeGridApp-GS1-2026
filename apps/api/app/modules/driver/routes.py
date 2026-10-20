@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from chargegrid_core.driver import (
+    DISCONTINUED,
     build_context,
     build_next_stop,
     build_plan,
@@ -31,7 +32,14 @@ from ..auth.routes import limit
 from .schemas import DriverProfileInput, NextStopInput, PlanInput
 from .weather import weather_signal
 
-router = APIRouter()
+
+def _discontinued():
+    """Modo Motorista descontinuado (20/10/2026): nenhuma rota /driver/* funciona em produção."""
+    if DISCONTINUED:
+        fail("driver_mode_discontinued", "O Modo motorista foi descontinuado.", 410)
+
+
+router = APIRouter(dependencies=[Depends(_discontinued)])
 
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 MAX_STATIONS = 40

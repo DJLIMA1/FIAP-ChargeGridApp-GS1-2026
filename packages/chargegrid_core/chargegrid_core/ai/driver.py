@@ -44,8 +44,10 @@ def _module():
 
 
 def planner():
-    """Função de planejamento para o assistente, ou None se o Modo Motorista não estiver instalado."""
-    return plan_for_assistant if _module() else None
+    """Função de planejamento para o assistente, ou None se o Modo Motorista não estiver instalado
+    ou estiver descontinuado (``chargegrid_core.driver.DISCONTINUED``)."""
+    module = _module()
+    return plan_for_assistant if module and not getattr(module, "DISCONTINUED", False) else None
 
 
 def _preset(module, text: str | None) -> str | None:

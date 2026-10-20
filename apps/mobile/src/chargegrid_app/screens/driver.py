@@ -258,6 +258,14 @@ async def send(app, state, method, path, body):
 
 
 async def build(app, run=None, soc=None, ajustes=False, **_):
+    from chargegrid_core.driver import DISCONTINUED
+    if DISCONTINUED:
+        # Descontinuado (20/10/2026): links antigos caem aqui, sem chamar a API.
+        return design.page(design.txt('O Modo motorista foi descontinuado.', 15, 'bold'),
+                           design.txt('Use Recarga para encontrar e reservar um ponto.', 12.5, 'regular',
+                                      theme.GRAY_TEXT),
+                           design.primary_button('Encontrar um ponto', app.link('stations'), height=48),
+                           title='Modo motorista', on_back=app.link('home'))
     demo = getattr(app.api, 'is_demo', False) is True
     state = getattr(app, 'driver_state', None)
     if not isinstance(state, dict):

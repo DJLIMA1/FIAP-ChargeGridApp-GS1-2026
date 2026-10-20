@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
+import chargegrid_core.driver as driver_package
 from chargegrid_core.ai import (
     LLMUnavailable,
     Toolbox,
@@ -26,7 +28,11 @@ from chargegrid_core.ai import driver as driver_slot
 from chargegrid_core.ai.estimates import EstimateError, estimate_charge
 from chargegrid_core.ai.places import resolve_place
 from chargegrid_core.ai.schema import ToolArgumentError, validate
-from chargegrid_core.ai.stations import filter_stations, normalize_connector, station_amenities
+from chargegrid_core.ai.stations import (
+    filter_stations,
+    normalize_connector,
+    station_amenities,
+)
 from chargegrid_core.ai.text import plain_text, strip_identifiers
 from chargegrid_core.ai.writer import parse_owner_insights, parse_session_insight
 
@@ -368,7 +374,8 @@ class DriverSource(Source):
         return {"vehicle": {"preset": "byd_dolphin"}, "preferences": {"shift_start": "08:00", "shift_end": "20:00"}}
 
 
-def test_plan_driver_shift_uses_real_driver_planner_and_saved_profile():
+def test_plan_driver_shift_uses_real_driver_planner_and_saved_profile(monkeypatch):
+    monkeypatch.setattr(driver_package, 'DISCONTINUED', False)  # código guardado (descontinuado)
     toolbox = Toolbox(DriverSource(), now=datetime(2026, 10, 13, 10, 0, tzinfo=timezone.utc))
     assert "plan_driver_shift" in toolbox.names()
     data = run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 25, "vehicle": "Dolphin Mini",
@@ -389,7 +396,10 @@ def test_plan_driver_shift_uses_real_driver_planner_and_saved_profile():
 
 def test_indicators_from_dashboard_analytics_feed_rules_and_writer():
     from chargegrid_core import analytics
-    from chargegrid_core.ai import indicators_from_dashboard, owner_insights_from_indicators
+    from chargegrid_core.ai import (
+        indicators_from_dashboard,
+        owner_insights_from_indicators,
+    )
 
     start, end = NOW - timedelta(days=7), NOW
     sessions = [{"connector_id": "p1", "status": "interrupted" if i == 0 else "completed", "energy_wh": "10000",
@@ -465,7 +475,8 @@ def test_loop_timeout_after_tools_degrades_to_actions_instead_of_error():
         run(run_chat(Script(timeout), Toolbox(Source(), now=NOW), [{"role": "user", "content": "oi"}], system="s"))
 
 
-def test_plan_driver_shift_lists_stations_around_the_driver():
+def test_plan_driver_shift_lists_stations_around_the_driver(monkeypatch):
+    monkeypatch.setattr(driver_package, 'DISCONTINUED', False)  # código guardado (descontinuado)
     class Nearby(DriverSource):
         def list_stations(self, near=None, radius_km=None):
             self.calls.append(("list", near, radius_km))
@@ -479,3 +490,10 @@ def test_plan_driver_shift_lists_stations_around_the_driver():
     run(toolbox.execute("plan_driver_shift", {"current_soc_percent": 30, "near_place": "Paulista"}))
     near = source.calls[-1][1]
     assert source.calls[-1][2] == 30.0 and abs(near["lat"] + 23.5614) < 1e-6
+
+
+def test_discontinued_driver_mode_is_not_offered_by_the_assistant():
+    """Modo motorista descontinuado: a ferramenta e a ação "Abrir modo motorista" somem."""
+    assert driver_package.DISCONTINUED is True
+    assert driver_slot.planner() is None
+    assert "plan_driver_shift" not in Toolbox(object(), now=datetime(2026, 10, 20, tzinfo=timezone.utc)).names()

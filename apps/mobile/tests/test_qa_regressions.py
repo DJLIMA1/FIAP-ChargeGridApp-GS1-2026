@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import flet as ft
 from PIL import Image
 
+import chargegrid_core.driver as driver_package
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import POLL_BACKOFF_MAX, ChargeGridApp
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, DemoApi
@@ -268,6 +269,7 @@ class DeferredContentTests(unittest.IsolatedAsyncioTestCase):
         app.page.update.assert_not_called()
 
 
+@patch.object(driver_package, 'DISCONTINUED', False)  # código guardado do Modo motorista descontinuado
 class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
     async def test_screen_opens_offline_from_local_profile_without_battery_question(self):
         import tempfile
