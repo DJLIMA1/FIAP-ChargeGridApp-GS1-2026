@@ -48,6 +48,8 @@ Ele sobe `version` e `build_number`, grava o config empacotado (URL da API, vers
 
 No celular, ao abrir, o app Android consulta `releases/latest` do repositório (API pública do GitHub, sem chave). Se houver uma versão maior que a instalada, mostra **Atualização disponível** com as notas e o tamanho. **Baixar** abre o APK no navegador; ao terminar, a pessoa toca na notificação e instala por cima. A assinatura é a mesma, então conta e dados continuam. Sem rede, sem release ou com limite da API do GitHub, nada aparece. Só tags `app-v*` contam, então outras releases do repositório não interferem. A 0.6.4 é a última versão instalada manualmente; as seguintes chegam pelo aviso.
 
+O APK 0.6.4 (build 32) está em `builds/chargegrid-0.6.4.apk` (SHA-256 `da17d9b4ee28b860af18e65b481568aeb9fdadd9645747ad3883efff899cc2e9`). Publicado em 20/10/2026 na release `app-v0.6.4` do GitHub; os apps instalados oferecem a atualização ao abrir. Atualização automática pelo app (esta é a última instalação manual), autocomplete de endereço no cadastro da estação, recarga vinda do assistente sem repetir a cobrança, indicador de bateria legível e atualização da recarga a cada segundo.
+
 O APK 0.3.5 (build 19) foi gerado a partir de checkout limpo da revisão `b87eb6c` em `builds/chargegrid-0.3.5.apk` (SHA-256 `492fa0db671baba0d67e3212f2c995d3a61346c506b4359839079c93abbd47c0`). Ele usa a URL de prévia existente da API; alterações locais não relacionadas em `stations.py` e `maps.py` não foram incluídas.
 
 O APK 0.3.6 (build 20) está em `builds/chargegrid-0.3.6.apk` (SHA-256 `acf1048920f793a316cc9a92893379f1007b652ec3b7f7d5a7e10ae87b73e7a4`). Ele usa o mesmo endereço público da API e inclui o campo de validação do código `#F`.
