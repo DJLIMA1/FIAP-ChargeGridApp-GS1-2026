@@ -59,9 +59,16 @@ class Station(Base):
     power_limit_notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     # Tarifa dinâmica (migração a7c2e9d4b6f1): dados base do dono; o cálculo é chargegrid_core.pricing.
     pricing: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    # Resultado do dono (migração b6d2f9a4c8e1): custo do kWh informado pelo dono (NULL = não
+    # informado) e comissão da plataforma (contrato; só leitura para o dono).
+    energy_cost_per_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    platform_fee_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=25, server_default=text("25"))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
+        CheckConstraint("energy_cost_per_kwh IS NULL OR energy_cost_per_kwh BETWEEN 0 AND 100",
+                        name="station_energy_cost_range"),
+        CheckConstraint("platform_fee_percent BETWEEN 0 AND 100", name="station_platform_fee_range"),
     )
 
 
@@ -128,6 +135,8 @@ class Reservation(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Multiplicador da tarifa dinâmica travado ao reservar (vale para a recarga desta reserva).
     demand_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 2))
+    # Explicação do preço travado ao reservar (chargegrid_core.receipt.price_terms).
+    price_terms: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = tuple(
         Index(
             f"one_reservation_{field}",
@@ -171,6 +180,11 @@ class ChargingSession(Base):
     last_measurement_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cost_estimate: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     end_reason: Mapped[str | None] = mapped_column(String(100))
+    # Recibo e resultado do dono (migração b6d2f9a4c8e1), gravados ao travar o preço no início:
+    # explicação do preço (chargegrid_core.receipt.price_terms), custo do kWh e comissão do posto.
+    price_terms: Mapped[dict | None] = mapped_column(JSONB)
+    energy_cost_per_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    platform_fee_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
     __table_args__ = (
         CheckConstraint(
             "energy_wh >= 0 AND (soc_percent IS NULL OR soc_percent BETWEEN 0 AND 100) AND discount_percent BETWEEN 0 AND 100"
@@ -182,6 +196,10 @@ class ChargingSession(Base):
         CheckConstraint("soc_source IS NULL OR soc_source IN ('simulated', 'phone')", name="session_soc_source"),
         CheckConstraint("power_limit_kw IS NULL OR power_limit_kw > 0", name="session_power_limit_positive"),
         CheckConstraint("demand_multiplier BETWEEN 1 AND 2", name="session_demand_multiplier_range"),
+        CheckConstraint("energy_cost_per_kwh IS NULL OR energy_cost_per_kwh BETWEEN 0 AND 100",
+                        name="session_energy_cost_range"),
+        CheckConstraint("platform_fee_percent IS NULL OR platform_fee_percent BETWEEN 0 AND 100",
+                        name="session_platform_fee_range"),
         Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(

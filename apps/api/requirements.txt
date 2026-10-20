@@ -6,5 +6,7 @@ alembic>=1.14,<2
 PyJWT[crypto]>=2.10,<3
 httpx>=0.28,<1
 pydantic-settings>=2.7,<3
+# PDFs (recibo, resultado do dono, histórico); importado só nas rotas de PDF.
+reportlab>=5.0.1,<6
 pytest>=8,<10
 ruff>=0.9,<1

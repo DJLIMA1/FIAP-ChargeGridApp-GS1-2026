@@ -12,7 +12,7 @@ from ...service import (
     lock_point,
     remember,
 )
-from ..pricing.service import current_multiplier
+from ..pricing.service import reservation_terms
 
 
 def reserve(db, user, data, key):
@@ -23,10 +23,12 @@ def reserve(db, user, data, key):
     ensure_user_free(db, user)
     if not free(db, connector):
         fail("point_unavailable", "Ponto indisponível")
+    # Tarifa dinâmica travada ao reservar: a recarga desta reserva paga este multiplicador;
+    # ``price_terms`` guarda o motivo (demanda e horário) para o recibo.
+    multiplier, terms = reservation_terms(db, connector)
     reservation = Reservation(
         user_id=user.id, connector_id=connector.id, confirmation_deadline=now() + timedelta(seconds=30),
-        # Tarifa dinâmica travada ao reservar: a recarga desta reserva paga este multiplicador.
-        demand_multiplier=current_multiplier(db, connector),
+        demand_multiplier=multiplier, price_terms=terms,
     )
     db.add(reservation)
     db.flush()

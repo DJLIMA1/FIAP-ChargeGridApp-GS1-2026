@@ -56,6 +56,12 @@ def _eligible(window):
     )
 
 
+def _charged():
+    """Valor cobrado de cada sessão: ``cost_estimate`` ao centavo (mesma regra do recibo e da margem,
+    ``chargegrid_core.economics.charged_amount``); somas ao centavo por sessão fecham com a margem."""
+    return func.round(ChargingSession.cost_estimate, 2)
+
+
 def _busy_seconds(window, moment):
     finished = func.least(func.coalesce(ChargingSession.ended_at, moment), window.end)
     began = func.greatest(ChargingSession.started_at, window.start)
@@ -94,7 +100,7 @@ def overview(db, scope, window, ranking_limit=10):
     revenue, energy, sessions, busy, interrupted, failed, active = db.execute(
         _owned_sessions(
             scope,
-            func.coalesce(func.sum(ChargingSession.cost_estimate).filter(_eligible(window)), 0),
+            func.coalesce(func.sum(_charged()).filter(_eligible(window)), 0),
             func.coalesce(func.sum(ChargingSession.energy_wh).filter(_eligible(window)), 0),
             func.count(ChargingSession.id).filter(_eligible(window)),
             _busy_seconds(window, moment),
@@ -142,7 +148,7 @@ def ranking(db, scope, window, moment, limit=None):
                 Station.id.label("station_id"),
                 Station.name.label("station_name"),
                 Connector.public_code,
-                func.coalesce(func.sum(ChargingSession.cost_estimate).filter(_eligible(window)), 0).label("revenue"),
+                func.coalesce(func.sum(_charged()).filter(_eligible(window)), 0).label("revenue"),
                 func.coalesce(func.sum(ChargingSession.energy_wh).filter(_eligible(window)), 0).label("energy_wh"),
                 func.count(ChargingSession.id).filter(_eligible(window)).label("sessions"),
                 _busy_seconds(window, moment).label("busy_seconds"),
@@ -164,7 +170,7 @@ def timeseries(db, scope, window, granularity):
         _owned_sessions(
             scope,
             bucket,
-            func.coalesce(func.sum(ChargingSession.cost_estimate), 0),
+            func.coalesce(func.sum(_charged()), 0),
             func.coalesce(func.sum(ChargingSession.energy_wh), 0),
             func.count(ChargingSession.id),
         ).where(_eligible(window)).group_by(bucket)

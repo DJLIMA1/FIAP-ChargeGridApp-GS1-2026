@@ -16,6 +16,11 @@ from .service import (
     row,
 )
 
+# Campos do recibo/resultado do dono (migração b6d2f9a4c8e1) fora das respostas existentes:
+# o formato de postos, reservas e sessões não muda e o custo do dono não vai ao motorista.
+ECONOMICS_FIELDS = ("energy_cost_per_kwh", "platform_fee_percent")
+SESSION_RECEIPT_FIELDS = ("price_terms", *ECONOMICS_FIELDS)
+
 
 def update(obj, data):
     for key, value in data.model_dump(exclude_unset=True).items():
@@ -165,6 +170,8 @@ def station_rows(db, stations, viewer=None):
         result = row(station)
         result.pop("presence_secret", None)
         result.pop("pricing", None)  # dados base do dono: GET /stations/{id}/pricing
+        for key in ECONOMICS_FIELDS:  # resultado do dono: GET /stations/{id}/economics
+            result.pop(key, None)
         status = demand[station.id]
         result["demand"] = {key: status[key] for key in ("multiplier", "level", "level_label", "increase_percent",
                                                           "reason", "reason_label")}
@@ -209,6 +216,7 @@ def reservation_row(db, reservation):
 
     result = row(reservation)
     if result:
+        result.pop("price_terms", None)  # explicação completa no recibo da recarga
         point = db.get(Connector, reservation.connector_id)
         result.update(point_context(db, point))
         multiplier = Decimal(reservation.demand_multiplier) if reservation.demand_multiplier is not None else Decimal(1)
@@ -243,6 +251,8 @@ def session_rows(db, sessions):
     results = []
     for session in sessions:
         result = row(session)
+        for key in SESSION_RECEIPT_FIELDS:  # GET /charging-sessions/{id}/receipt e /owner/margin
+            result.pop(key, None)
         connector = db.get(Connector, session.connector_id)
         result.update(point_context(db, connector))
         result["online"] = online(devices.get(connector.id))
