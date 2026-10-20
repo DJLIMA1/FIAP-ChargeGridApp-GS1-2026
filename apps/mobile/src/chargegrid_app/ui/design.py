@@ -411,6 +411,22 @@ def input_field(value='', hint='', *, password=False, keyboard=None, prefix=None
         height=None if multiline else height)
 
 
+def number_field(value='', *, prefix=None, suffix=None, decimals=True, hint=None, **kwargs):
+    """Campo numérico com prefixo/sufixo fixos (``R$`` … ``/kWh``, ``+`` … ``%``, … ``min``).
+
+    O valor fica só com o número (``1,89``); o teclado é numérico e o filtro aceita apenas dígitos
+    (e vírgula, com ``decimals``). Para ler, use ``services.tariffs.parse_decimal``/``parse_minutes``.
+    """
+    field = input_field(value, hint or '', keyboard=ft.KeyboardType.NUMBER, **kwargs)
+    field.input_filter = ft.InputFilter(regex_string=r'[0-9,]' if decimals else r'[0-9]', allow=True)
+    affix = ft.TextStyle(size=12.5, font_family=FONT, color=theme.GRAY_TEXT)
+    if prefix:
+        field.prefix = ft.Text(f'{prefix} ', style=affix)
+    if suffix:
+        field.suffix = ft.Text(f' {suffix}', style=affix)
+    return field
+
+
 def labeled_input(text, value='', hint='', **kwargs):
     """Rótulo + campo. O ``TextField`` é ``resultado.controls[1]``."""
     return labeled(text, input_field(value, hint, **kwargs))

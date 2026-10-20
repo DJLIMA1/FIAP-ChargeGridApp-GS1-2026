@@ -57,6 +57,8 @@ class Station(Base):
     # ativos e aviso ao vendedor quando uma recarga roda limitada (chargegrid_core.power).
     max_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     power_limit_notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Tarifa dinâmica (migração a7c2e9d4b6f1): dados base do dono; o cálculo é chargegrid_core.pricing.
+    pricing: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
@@ -124,6 +126,8 @@ class Reservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     confirmation_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Multiplicador da tarifa dinâmica travado ao reservar (vale para a recarga desta reserva).
+    demand_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 2))
     __table_args__ = tuple(
         Index(
             f"one_reservation_{field}",
@@ -150,6 +154,9 @@ class ChargingSession(Base):
     max_duration_minutes: Mapped[int] = mapped_column(Integer)
     max_cost: Mapped[float | None] = mapped_column(Numeric(12, 4))
     price_per_kwh: Mapped[float] = mapped_column(Numeric(10, 4))
+    # Tarifa dinâmica: price_per_kwh = base_price_per_kwh × demand_multiplier (travado no início).
+    base_price_per_kwh: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    demand_multiplier: Mapped[float] = mapped_column(Numeric(4, 2), default=1, server_default=text("1"))
     discount_percent: Mapped[int] = mapped_column(Integer, default=0)
     energy_wh: Mapped[float] = mapped_column(Numeric(16, 3), default=0)
     soc_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
@@ -174,6 +181,7 @@ class ChargingSession(Base):
         CheckConstraint("battery_kwh IS NULL OR battery_kwh BETWEEN 5 AND 250", name="session_battery_kwh_range"),
         CheckConstraint("soc_source IS NULL OR soc_source IN ('simulated', 'phone')", name="session_soc_source"),
         CheckConstraint("power_limit_kw IS NULL OR power_limit_kw > 0", name="session_power_limit_positive"),
+        CheckConstraint("demand_multiplier BETWEEN 1 AND 2", name="session_demand_multiplier_range"),
         Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(

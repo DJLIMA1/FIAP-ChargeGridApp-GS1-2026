@@ -3,6 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from chargegrid_core import power as power_rules
+from chargegrid_core import pricing
 
 from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
@@ -156,10 +157,16 @@ def station_rows(db, stations, viewer=None):
     by_station = {}
     for point in connectors:
         by_station.setdefault(point.station_id, []).append(point)
+    from .modules.pricing.service import demand_by_station  # evita import circular
+
+    demand = demand_by_station(db, stations, by_station, state)
     results = []
     for station in stations:
         result = row(station)
         result.pop("presence_secret", None)
+        result.pop("pricing", None)  # dados base do dono: GET /stations/{id}/pricing
+        status = demand[station.id]
+        result["demand"] = {key: status[key] for key in ("multiplier", "level", "level_label", "increase_percent")}
         result["latitude"] = float(station.latitude)
         result["longitude"] = float(station.longitude)
         points = by_station.get(station.id, [])
@@ -171,6 +178,9 @@ def station_rows(db, stations, viewer=None):
         result["connectors"] = [
             _render_point(db, point, station, *state, power["connectors"], station_energy) for point in points
         ]
+        for point in result["connectors"]:
+            # Preço que o motorista paga agora (base × demanda); travado ao reservar ou iniciar.
+            point["dynamic_price_per_kwh"] = str(pricing.dynamic_price(point["price_per_kwh"], status["multiplier"]))
         results.append(result)
     return results
 
@@ -195,6 +205,12 @@ def reservation_row(db, reservation):
     result = row(reservation)
     if result:
         result.update(point_context(db, db.get(Connector, reservation.connector_id)))
+        multiplier = reservation.demand_multiplier
+        if multiplier is not None and Decimal(multiplier) != 1:
+            # O ponto da reserva mostra o preço travado ao reservar (base × multiplicador).
+            connector = result["connector"]
+            connector["base_price_per_kwh"] = connector["price_per_kwh"]
+            connector["price_per_kwh"] = str(pricing.dynamic_price(connector["price_per_kwh"], multiplier))
     return result
 
 

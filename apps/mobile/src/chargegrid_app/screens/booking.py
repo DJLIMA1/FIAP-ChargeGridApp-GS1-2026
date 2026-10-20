@@ -337,6 +337,17 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                   if ready else ft.Container(design.txt('Continuar', 16, 'bold', '#6C6C6C', text_align=ft.TextAlign.CENTER), height=55,
                                         bgcolor='#1C1C1C', border_radius=design.RADIUS_BTN,
                                         alignment=ft.Alignment(0, 0)))
+        demand = station.get('demand') or {}
+        if str(demand.get('multiplier') or '1.00') != '1.00':
+            # Tarifa dinâmica (calculada pela API): o motorista vê antes de escolher, como num app de corrida.
+            label = str(demand['multiplier']).rstrip('0').rstrip('.').replace('.', ',')
+            cards.insert(0, ft.Container(
+                ft.Row([ft.Icon(ft.Icons.TRENDING_UP, size=20, color=theme.TEXT_COLOR),
+                        design.txt(f"Demanda {demand.get('level_label', 'alta').lower()} agora: tarifa {label}× a base. "
+                                   'O preço fica travado ao reservar ou iniciar.', 12, 'regular', expand=True)],
+                       spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='demand-note',
+                padding=ft.Padding(left=13, right=13, top=10, bottom=10)))
         return _page(*cards, title='Qual conector deseja usar?', on_back=app.back, steps=4, step=1, edge='c1',
                            footer=_footer(button), **wizard)
 

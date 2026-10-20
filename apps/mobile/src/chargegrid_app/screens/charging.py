@@ -704,10 +704,28 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                                           (not old_point.get('id') and point.get('public_code') == draft['public_code'])), None)
                     if current_point is None:
                         raise ApiError('O ponto selecionado não está mais disponível. Volte à lista para escolher outro.')
-                    terms = ('price_per_kwh', 'power_kw', 'max_duration_minutes')
+                    terms = ('power_kw', 'max_duration_minutes')
                     changed_terms = any(Decimal(str(old_point.get(key))) != Decimal(str(current_point.get(key)))
                                         for key in terms if old_point.get(key) is not None and current_point.get(key) is not None)
-                    draft['point_context'] = context_from_station(station, current_point)
+                    # Preço que o motorista paga (base × demanda): se mudou desde a revisão, revisa de novo.
+                    # Com reserva, a API usa o multiplicador travado ao reservar.
+                    if not draft['reservation_id']:
+                        charged = current_point.get('dynamic_price_per_kwh') or current_point.get('price_per_kwh')
+                        changed_terms = changed_terms or (
+                            old_point.get('price_per_kwh') is not None and charged is not None
+                            and Decimal(str(old_point['price_per_kwh'])) != Decimal(str(charged)))
+                    fresh_context = context_from_station(station, current_point)
+                    if draft['reservation_id']:
+                        # Reserva: vale o preço travado ao reservar, não a demanda de agora.
+                        locked = draft['point_context']
+                        fresh_context['connector'].pop('base_price_per_kwh', None)
+                        fresh_context.pop('demand_multiplier', None)
+                        for key in ('price_per_kwh', 'base_price_per_kwh'):
+                            if old_point.get(key) is not None:
+                                fresh_context['connector'][key] = old_point[key]
+                        if locked.get('demand_multiplier') is not None:
+                            fresh_context['demand_multiplier'] = locked['demand_multiplier']
+                    draft['point_context'] = fresh_context
                     if changed_terms:
                         draft['furthest'] = 2
                         draft['planned'] = False  # tarifa/potência mudou: o motorista revê os limites

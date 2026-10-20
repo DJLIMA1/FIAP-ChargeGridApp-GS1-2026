@@ -21,6 +21,7 @@ from .modules.driver.routes import router as driver_router
 from .modules.geo.routes import router as geo_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
+from .modules.pricing.routes import router as pricing_router
 from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
 from .modules.users.routes import router as users_router
@@ -44,6 +45,7 @@ for router in (
     owner_router,
     driver_router,
     geo_router,
+    pricing_router,
     ai_router,
 ):
     app.include_router(router, prefix="/v1")

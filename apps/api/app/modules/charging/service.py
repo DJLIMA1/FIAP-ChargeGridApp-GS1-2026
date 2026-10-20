@@ -3,6 +3,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from sqlalchemy import func, select
 
 from chargegrid_core import power as power_rules
+from chargegrid_core import pricing
 
 from ...errors import fail
 from ...http_helpers import allocation, retired_ids
@@ -23,6 +24,7 @@ from ...service import (
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
+from ..pricing.service import current_multiplier
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
 _BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw")
@@ -147,6 +149,9 @@ def start(db, user, data, key):
         ):
             fail("invalid_coupon", "Cupom inválido", 422)
         discount = coupon.discount_percent
+    # Tarifa dinâmica: o multiplicador da reserva (travado ao reservar) ou o vigente agora.
+    multiplier = Decimal(reservation.demand_multiplier) if reservation and reservation.demand_multiplier is not None \
+        else current_multiplier(db, connector)
     if reservation:
         reservation.status = "consumed"
     session = ChargingSession(
@@ -155,7 +160,9 @@ def start(db, user, data, key):
         reservation_id=reservation.id if reservation else None,
         max_duration_minutes=data.max_duration_minutes,
         max_cost=data.max_cost,
-        price_per_kwh=connector.price_per_kwh,
+        price_per_kwh=pricing.dynamic_price(connector.price_per_kwh, multiplier),
+        base_price_per_kwh=connector.price_per_kwh,
+        demand_multiplier=multiplier,
         discount_percent=discount,
         power_limit_kw=session_power_limit(db, connector, data.max_power_kw),
         **_battery_fields(data),

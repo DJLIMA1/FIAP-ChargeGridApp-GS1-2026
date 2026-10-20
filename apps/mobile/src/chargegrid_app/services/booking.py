@@ -60,9 +60,12 @@ def group_connectors(station):
         if point.get('retired') or point.get('active') is False:
             continue
         key = f"{point.get('connector_type')}|{fmt_number(point.get('power_kw'), 1)}"
+        # ``price``: o que o motorista paga agora (base × demanda, calculado pela API).
         group = groups.setdefault(key, {'key': key, 'type': point.get('connector_type') or 'Conector',
                                         'power_kw': to_decimal(point.get('power_kw')), 'price': to_decimal(
-                                            point.get('price_per_kwh')), 'connectors': [], 'free': []})
+                                            point.get('dynamic_price_per_kwh') or point.get('price_per_kwh')),
+                                        'base_price': to_decimal(point.get('price_per_kwh')),
+                                        'connectors': [], 'free': []})
         group['connectors'].append(point)
         if is_available(station, point):
             group['free'].append(point)

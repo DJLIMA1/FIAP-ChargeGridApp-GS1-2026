@@ -52,6 +52,35 @@ No início, `soc_percent` (SoC inicial do carro), `battery_kwh` (capacidade úti
 
 Ao chegar a 100 % com a sessão ativa (energia derivada, equipamento ou `/soc`), a API faz o mesmo que uma parada solicitada: sessão `stopping`, `end_reason: "battery_full"` já registrado e um único `STOP` com `parameters.reason = "battery_full"`. Após a confirmação física a sessão termina `completed` com `end_reason: "battery_full"`, independentemente do motivo informado pelo equipamento. Chamadas repetidas não emitem nova parada. Detalhes do protocolo do equipamento em [esp32-protocol.md](esp32-protocol.md).
 
+## Tarifa dinâmica por demanda
+
+O dono define só dados base; o cálculo é do ChargeGrid (`chargegrid_core.pricing`, o mesmo na API e na conta demo do app). `GET /stations/{id}/pricing` (dono) devolve `{rules, status, connectors}` e `PUT /stations/{id}/pricing` grava `rules` validadas (`422 invalid_pricing` com a mensagem em pt-BR):
+
+- `demand`: `enabled`, `max_increase_percent` (0–100) e `sensitivity` (`low`/`medium`/`high`);
+- `peak`: janela `start`/`end` (`HH:MM`) e `days` (0 = segunda). É um sinal do cálculo, não um valor fixo;
+- `rotation`: `start_after_min`, `interval_min` e `amount` da taxa de ocupação. Fica registrada; ainda não é cobrada automaticamente.
+
+**Sinais medidos pelo servidor em cada posto:** conectores publicados e online; recargas ativas e reservas; ocupação média dos últimos 15 min, ponderada pelo tempo; recargas iniciadas na última hora; média de inícios no mesmo dia da semana e horário nas 4 semanas anteriores; e o horário local (pico).
+
+**Cálculo:**
+1. Ocupação combinada = 60% a de agora + 40% a média.
+2. Abaixo de 50% de ocupação não há pressão.
+3. A tendência compara a última hora com a média histórica, com suavização de Laplace.
+4. Posto lotado com reserva aguardando soma pressão.
+5. O horário de pico amplifica a procura existente; com o posto vazio, não muda nada.
+6. A sensibilidade curva a pressão.
+7. Multiplicador = `1 + teto × pressão`, em passos de 0,05× para baixo. Abaixo de 1,05× fica 1×.
+
+`status` traz `multiplier`, `increase_percent`, `pressure` (0–100), `level` (`low`/`normal`/`high`/`very_high`) com `level_label`, `peak_now` e `factors`, os valores exibidos ao dono.
+
+**Para o motorista:** `GET /stations` e `GET /stations/{id}` trazem `demand` e, em cada conector, `dynamic_price_per_kwh` (base × multiplicador). As regras do dono (`pricing`) não são públicas.
+
+**Trava do preço:** o preço é travado como num app de corrida. `POST /reservations` grava `demand_multiplier`, e a recarga daquela reserva usa esse valor. Sem reserva, `POST /charging-sessions` usa o multiplicador do momento. A sessão guarda `base_price_per_kwh`, `demand_multiplier` e `price_per_kwh` = base × multiplicador. É esse preço que o totem recebe e que a API usa no custo, de modo que mudanças posteriores de demanda não alteram uma recarga em curso.
+
+Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`).
+
+**No app:** a tela **Tarifas** do posto mostra a demanda agora (nível, multiplicador, preço atual, pressão e fatores, atualizada a cada 30 s). Ela também tem a tarifa base de cada conector e as regras, com campos numéricos de prefixo e sufixo (`R$ … /kWh`, `até + … %`, `… min`), horário pelo seletor do sistema e dias por botões. O motorista vê "Demanda alta agora: tarifa 1,3× a base" ao escolher o conector, e o resumo e a estimativa da recarga já usam o preço dinâmico.
+
 ## Autocomplete de endereço
 
 `GET /geo/address-suggestions?q=<texto ou CEP>[&lat=&lng=]` (usuário autenticado, 60 consultas/min) devolve `{items:[{label,street,number,district,city,state,postcode,latitude,longitude,place?}],available,attribution}`. É um endpoint próprio, sem chave e sem custo: texto livre consulta o [Photon](https://photon.komoot.io) (geocodificador do OpenStreetMap feito para busca enquanto se digita; o Nominatim proíbe esse uso), limitado ao Brasil e com viés por `lat/lng`; um CEP de 8 dígitos consulta o [ViaCEP](https://viacep.com.br) e o Photon completa as coordenadas. `label` segue o formato dos endereços salvos (`Rua X, 123, Bairro, Cidade - UF`); se a rua vier sem número, o número digitado é aproveitado. Cache em memória (24 h; falha, 60 s), timeout de 2,5 s e falha silenciosa (`available: false`, lista vazia): o cadastro continua aceitando o texto digitado. Menos de 3 caracteres (e não CEP) não consulta ninguém. A interface mostra a atribuição exigida pelo OpenStreetMap.

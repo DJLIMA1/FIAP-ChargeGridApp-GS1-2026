@@ -105,7 +105,9 @@ def journey_summary(record, *, reservation=False, demo=False):
 
 
 def point_context(station, connector):
-    return {
+    """Contexto do ponto para o assistente de início. ``price_per_kwh`` é o preço que o motorista paga
+    agora (tarifa base × demanda); ``base_price_per_kwh`` aparece quando a demanda mudou o preço."""
+    result = {
         'station_id': station['id'],
         'station_name': station['name'],
         'station_address': station['address'],
@@ -114,6 +116,11 @@ def point_context(station, connector):
             'price_per_kwh', 'max_duration_minutes', 'effective_power_kw',
         ) if connector.get(key) is not None or key != 'effective_power_kw'},
     }
+    charged = connector.get('dynamic_price_per_kwh')
+    if charged is not None and str(charged) != str(connector.get('price_per_kwh')):
+        result['connector'].update(price_per_kwh=charged, base_price_per_kwh=connector.get('price_per_kwh'))
+        result['demand_multiplier'] = (station.get('demand') or {}).get('multiplier')
+    return result
 
 
 def point_summary(data, heading='Ponto selecionado'):
@@ -138,7 +145,10 @@ def point_summary(data, heading='Ponto selecionado'):
         # the immutable session snapshot describes that session's tariff.
         terms.append(f"Tarifa da sessão: {money(data['price_per_kwh'])}/kWh")
     elif connector.get('price_per_kwh') is not None:
-        terms.append(f"{money(connector['price_per_kwh'])}/kWh")
+        dynamic = connector.get('base_price_per_kwh') is not None and data.get('demand_multiplier')
+        terms.append(f"{money(connector['price_per_kwh'])}/kWh"
+                     + (f" (demanda {str(data['demand_multiplier']).rstrip('0').rstrip('.').replace('.', ',')}×)"
+                        if dynamic else ''))
     if session_terms and data.get('max_duration_minutes') is not None:
         terms.append(f"limite de {data['max_duration_minutes']} min")
     elif connector.get('max_duration_minutes') is not None:
