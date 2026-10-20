@@ -98,6 +98,37 @@ def blob_put(path, pathname, token, *, content_type, overwrite=False, max_age=No
     return url
 
 
+def _blob_cli(args, token):
+    env = {key: value for key, value in os.environ.items() if key not in ("VERCEL_OIDC_TOKEN", "BLOB_STORE_ID")}
+    result = subprocess.run(["vercel", "blob", *args, "--rw-token", token], cwd=ROOT / "apps" / "api", env=env,
+                            capture_output=True, text=True, check=False)
+    return result.returncode, (result.stdout + result.stderr).replace(token, "***")
+
+
+def old_apk_urls(output, keep_pathname):
+    """URLs de ``app/chargegrid-*.apk`` na saída do ``vercel blob list``, exceto o APK que fica."""
+    pattern = re.compile(rf"https://\S+/{re.escape(BLOB_PREFIX)}/chargegrid-\d+\.\d+\.\d+\.apk")
+    return sorted({url for url in pattern.findall(output) if not url.endswith("/" + keep_pathname)})
+
+
+def delete_old_apks(token, keep_pathname):
+    """Apaga do Blob os APKs anteriores: o plano gratuito tem cota pequena e cada APK tem ~170 MB.
+
+    Roda só depois que o APK novo e o manifesto já estão no ar; uma falha aqui só avisa.
+    """
+    code, output = _blob_cli(["list", "--prefix", f"{BLOB_PREFIX}/chargegrid-", "--limit", "100"], token)
+    if code:
+        print(f"Aviso: não consegui listar os APKs antigos para apagar:\n{output}", flush=True)
+        return []
+    removed = []
+    for url in old_apk_urls(output, keep_pathname):
+        code, output = _blob_cli(["del", url], token)
+        print(f"{'Apagado' if code == 0 else 'Aviso: não apaguei'} {url.rsplit('/', 1)[-1]}", flush=True)
+        if code == 0:
+            removed.append(url)
+    return removed
+
+
 def manifest(version, build, url, apk, sha, notes):
     return {"version": version, "build": build, "url": url, "size_bytes": apk.stat().st_size, "sha256": sha,
             "notes": notes.strip() or f"ChargeGrid {version}.",
@@ -155,6 +186,8 @@ def main():
         latest.write_text(json.dumps(manifest(args.version, build, url, apk, sha, args.notes), ensure_ascii=False),
                           encoding="utf-8")
         blob_put(latest, f"{BLOB_PREFIX}/latest.json", token, content_type="application/json", overwrite=True, max_age=60)
+    # Só a versão nova fica no Blob (o manifesto já aponta para ela).
+    delete_old_apks(token, f"{BLOB_PREFIX}/chargegrid-{args.version}.apk")
     SETUP_DOC.write_text(with_note(SETUP_DOC.read_text(encoding="utf-8"),
                                    setup_note(args.version, build, sha, args.notes)), encoding="utf-8")
     run(["git", "add", PYPROJECT, SETUP_DOC], False)
