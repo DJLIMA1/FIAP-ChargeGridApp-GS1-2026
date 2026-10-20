@@ -56,7 +56,14 @@ def main():
             assert [result.text for result in found] == [expected], f"Unexpected rendered QR in {name}"
         for name in ("panel-factory-claimed-inactive", "panel-factory-claimed-active", "panel-legacy-owner-no-qr"):
             assert not zxingcpp.read_barcodes(Image.open(output / (name + ".ppm"))), f"Claim QR leaked in {name}"
+        kiosk = "https://chargegrid-api-preview-djlima1s-projects.vercel.app/pay/k/CG-01?c=12345"
+        for name in ("panel-kiosk-qr", "panel-kiosk-awaiting"):
+            found = zxingcpp.read_barcodes(Image.open(output / (name + ".ppm")))
+            assert [result.text for result in found] == [kiosk], f"Unexpected payment QR in {name}"
+        for name in ("panel-idle", "panel-overstay-fee"):
+            assert not zxingcpp.read_barcodes(Image.open(output / (name + ".ppm"))), f"Payment QR leaked in {name}"
         print("PASS: actual LVGL QR decoded offline/online, absent after ownership and for legacy owner")
+        print("PASS: payment kiosk QR decoded on the Ready screen, absent without kiosk_url")
     print(f"Actual firmware LVGL frames: {output}")
 
 
