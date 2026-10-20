@@ -1,13 +1,19 @@
-"""Generate the public API configuration that is packaged with the Flet app."""
+"""Generate the public configuration packaged with the Flet app (API URL, version and build).
+
+The version/build let the installed app compare itself with the latest GitHub release
+(``chargegrid_app.services.updates``).
+"""
 
 import argparse
 import json
+import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ROOT_ENV_FILE = ROOT_DIR / ".env"
 MOBILE_CONFIG_FILE = ROOT_DIR / "apps" / "mobile" / "assets" / "app_config.json"
+MOBILE_PYPROJECT = ROOT_DIR / "apps" / "mobile" / "pyproject.toml"
 
 
 def validate_api_url(value: str) -> str:
@@ -35,10 +41,17 @@ def api_url_from_env(path: Path) -> str:
     raise ValueError("CHARGEGRID_API_URL não está definido no arquivo de configuração.")
 
 
-def configure_mobile(env_file: Path = ROOT_ENV_FILE, output: Path = MOBILE_CONFIG_FILE) -> None:
+def app_version(pyproject: Path = MOBILE_PYPROJECT) -> tuple[str, int]:
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return data["project"]["version"], int(data["tool"]["flet"]["build_number"])
+
+
+def configure_mobile(env_file: Path = ROOT_ENV_FILE, output: Path = MOBILE_CONFIG_FILE,
+                     pyproject: Path = MOBILE_PYPROJECT) -> None:
+    version, build = app_version(pyproject)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps({"api_url": api_url_from_env(env_file)}, indent=2) + "\n",
+        json.dumps({"api_url": api_url_from_env(env_file), "version": version, "build": build}, indent=2) + "\n",
         encoding="utf-8",
     )
 

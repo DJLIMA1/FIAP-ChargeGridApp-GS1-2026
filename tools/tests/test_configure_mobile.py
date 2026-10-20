@@ -21,9 +21,12 @@ def test_mobile_configuration_contains_only_public_api_url(tmp_path):
         encoding="utf-8",
     )
 
-    load_module().configure_mobile(env_file, output)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nversion = "1.2.3"\n[tool.flet]\nbuild_number = 45\n', encoding="utf-8")
+
+    load_module().configure_mobile(env_file, output, pyproject)
 
     assert json.loads(output.read_text(encoding="utf-8")) == {
-        "api_url": "https://api.example.test/v1"
+        "api_url": "https://api.example.test/v1", "version": "1.2.3", "build": 45
     }
     assert "private-password" not in output.read_text(encoding="utf-8")

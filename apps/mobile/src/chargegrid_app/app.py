@@ -8,7 +8,7 @@ from pathlib import Path
 import flet as ft
 
 from .api_client import ApiClient, ApiError
-from .config import demo_enabled
+from .config import demo_enabled, packaged_version
 from .navigation import (
     SCREENS,
     active_tab,
@@ -21,6 +21,7 @@ from .navigation import (
     tab_entries,
 )
 from .preferences import Preferences
+from .services import updates
 from .services.driver_profile import apply_signup_vehicle
 from .ui import design, motion, theme
 from .ui.components import button, title
@@ -241,6 +242,36 @@ class ChargeGridApp:
 
     def notice(self, message):
         self.page.show_dialog(ft.SnackBar(ft.Text(message)))
+
+    async def offer_update(self, current=None, delay=2.5):
+        """Android: se o GitHub tiver um APK mais novo, oferece o download (uma vez por abertura)."""
+        current = current or packaged_version()
+        info = await updates.available_update(current)
+        if not info or self.closed:
+            return False
+        await asyncio.sleep(delay)  # deixa a primeira tela terminar de abrir
+        while self.prompting:  # não cobre o diálogo "Descartar alterações?"
+            await asyncio.sleep(1)
+
+        async def download(event=None):
+            self.page.pop_dialog()
+            await ft.UrlLauncher().launch_url(info['url'])
+            self.notice('Download iniciado. Ao terminar, toque na notificação e instale por cima: '
+                        'sua conta e seus dados continuam.')
+
+        def later(event=None):
+            self.page.pop_dialog()
+        size = f" ({info['size_mb']} MB)" if info.get('size_mb') else ''
+        body = [ft.Text(f"A versão {info['version']} do ChargeGrid está disponível{size}. "
+                        f"Você está na {current}.")]
+        if info.get('notes'):
+            body.append(ft.Text(info['notes'][:600], size=12, color=theme.GRAY_TEXT))
+        self.page.show_dialog(ft.AlertDialog(
+            title=ft.Text('Atualização disponível'),
+            content=ft.Column(body, tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
+            actions=[ft.TextButton('Agora não', on_click=later), ft.TextButton('Baixar', on_click=download)],
+            data='app-update'))
+        return True
 
     def cancel_screen(self):
         current = asyncio.current_task()
@@ -677,3 +708,5 @@ async def main(page: ft.Page):
         return
     if not booted:
         await app.go('auth')
+    if page.platform == ft.PagePlatform.ANDROID and not booted:
+        app.update_task = asyncio.create_task(app.offer_update())

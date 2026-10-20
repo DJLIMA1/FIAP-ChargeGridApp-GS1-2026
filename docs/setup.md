@@ -36,6 +36,18 @@ cd apps/mobile
 
 O primeiro comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/mobile/assets/app_config.json`, que contém apenas essa URL pública. O Flet 1.0.0 prepara automaticamente o Flutter 3.44.8, o JDK 17 e o Android SDK usados pelo build na primeira execução. O APK gerado fica em `apps/mobile/build/apk/chargegrid.apk`. Instale esse arquivo novamente no aparelho depois de cada build; o APK já instalado conserva os metadados da versão com que foi compilado. O build usa a identidade visual aprovada em `apps/mobile/assets/icon.png` e `apps/mobile/assets/splash_android.png`.
 
+#### Publicar uma versão (atualização automática)
+
+A partir da 0.6.4, não é preciso enviar o APK manualmente. Um comando faz tudo:
+
+```bash
+.venv/bin/python tools/release_apk.py 0.6.5 "O que mudou nesta versão"
+```
+
+Ele sobe `version` e `build_number`, grava o config empacotado (URL da API, versão e build), roda `flet build apk`, copia para `builds/chargegrid-<versão>.apk`, apaga `apps/mobile/build`, registra o SHA-256 aqui, faz commit e push e cria a release pública `app-v<versão>` no GitHub com o APK (`gh` autenticado). `--dry-run` mostra os passos; `--skip-build` publica um APK já gerado.
+
+No celular, ao abrir, o app Android consulta `releases/latest` do repositório (API pública do GitHub, sem chave). Se houver uma versão maior que a instalada, mostra **Atualização disponível** com as notas e o tamanho. **Baixar** abre o APK no navegador; ao terminar, a pessoa toca na notificação e instala por cima. A assinatura é a mesma, então conta e dados continuam. Sem rede, sem release ou com limite da API do GitHub, nada aparece. Só tags `app-v*` contam, então outras releases do repositório não interferem. A 0.6.4 é a última versão instalada manualmente; as seguintes chegam pelo aviso.
+
 O APK 0.3.5 (build 19) foi gerado a partir de checkout limpo da revisão `b87eb6c` em `builds/chargegrid-0.3.5.apk` (SHA-256 `492fa0db671baba0d67e3212f2c995d3a61346c506b4359839079c93abbd47c0`). Ele usa a URL de prévia existente da API; alterações locais não relacionadas em `stations.py` e `maps.py` não foram incluídas.
 
 O APK 0.3.6 (build 20) está em `builds/chargegrid-0.3.6.apk` (SHA-256 `acf1048920f793a316cc9a92893379f1007b652ec3b7f7d5a7e10ae87b73e7a4`). Ele usa o mesmo endereço público da API e inclui o campo de validação do código `#F`.

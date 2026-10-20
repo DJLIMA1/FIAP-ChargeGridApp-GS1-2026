@@ -76,6 +76,15 @@ def packaged_api_url(path=PACKAGED_CONFIG_FILE):
     return value if isinstance(value, str) else None
 
 
+def packaged_version(path=PACKAGED_CONFIG_FILE):
+    """Versão gravada no build (``tools/configure_mobile.py``); ``None`` fora de um APK configurado."""
+    try:
+        value = json.loads(path.read_text()).get('version')
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
 def validate_api_url(value):
     value = value.rstrip('/')
     parsed = urlparse(value)
