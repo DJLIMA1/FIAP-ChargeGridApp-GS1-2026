@@ -23,8 +23,10 @@ Regra de alocação
 5. Motorista: ``min(efetivo do conector, carro (DC: max_dc_kw / AC: max_ac_kw),
    escolha do assistente)``. A API aplica esse valor no início da recarga.
 
-O limite vale para o próximo início de recarga: uma recarga em andamento mantém
-a potência com que começou.
+Sem o rebalanceamento ao vivo, o limite vale para o próximo início de recarga: uma
+recarga em andamento mantém a potência com que começou. Com ele ligado no posto
+(``rebalance_enabled``), ``chargegrid_core.balancing`` redivide a cada evento entre as
+sessões que estão carregando, descontando o consumo do estabelecimento.
 """
 
 from __future__ import annotations
@@ -70,13 +72,18 @@ def requested_kw(rating, limit=None) -> Decimal:
     return min(rating, limit) if limit is not None and limit > 0 else rating
 
 
-def share(requests: dict, cap) -> dict:
-    """Parcela de cada participante sob o teto ``cap`` (ver regra 2 do módulo)."""
+def share(requests: dict, cap, floors: dict | None = None) -> dict:
+    """Parcela de cada participante sob o teto ``cap`` (ver regra 2 do módulo).
+
+    ``floors`` (opcional): piso próprio de cada participante (ex.: 4,2 kW num carregador
+    trifásico); ausente, vale o piso padrão de 1,4 kW (ou o próprio pedido, se menor).
+    """
     cap = to_kw(cap)
     requests = {key: max(Decimal(0), to_kw(value) or Decimal(0)) for key, value in requests.items()}
     if cap is None or not requests or sum(requests.values()) <= cap:
         return dict(requests)
-    floors = {key: min(floor_for(value), value) for key, value in requests.items()}
+    floors = {key: min((to_kw((floors or {}).get(key)) or floor_for(value)), value)
+              for key, value in requests.items()}
     if sum(floors.values()) > cap:
         each = _down(cap / len(requests))
         return {key: min(value, each) for key, value in requests.items()}
