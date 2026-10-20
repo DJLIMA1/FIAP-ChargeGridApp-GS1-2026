@@ -45,11 +45,18 @@ describe('mock do painel (modo demonstração)', () => {
     ops.putBuildingLoad(villaLobos, { building_load_kw: '30' })
   })
 
-  it('PUT de tarifa parcial é recusado (o painel manda as regras inteiras)', () => {
+  it('PUT de tarifa parcial é mesclado como na API (rotation sozinho e sugestão da Previsão)', () => {
     const id = data.STATIONS[0].id
-    expect(() => ops.putPricing(id, { rotation: { enabled: true } })).toThrow(/regras inteiras/)
-    const rules = ops.pricing(id).rules
-    expect(ops.putPricing(id, rules).rules).toEqual(rules)
+    const before = ops.pricing(id).rules
+    const next = ops.putPricing(id, { rotation: { enabled: true, start_after_min: 5, grace_minutes: 99 } }).rules
+    expect(next.rotation).toEqual({ enabled: true, start_after_min: 5, interval_min: 1, amount: '1.00', max_amount: '30.00' })
+    expect(next.demand).toEqual(before.demand)
+    expect(next.schedule).toEqual(before.schedule)
+    // Sugestão da Previsão (`action.patch`) só com `demand`: a permanência fica igual.
+    const suggested = ops.putPricing(id, { demand: { max_increase_percent: 30 } }).rules
+    expect(suggested.rotation).toEqual(next.rotation)
+    expect(() => ops.putPricing(id, { rotation: { max_amount: '1000.01' } })).toThrow(/1\.000,00/)
+    ops.putPricing(id, { rotation: before.rotation })
   })
 })
 

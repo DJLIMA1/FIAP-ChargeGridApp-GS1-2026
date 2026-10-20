@@ -9,7 +9,7 @@ import { downloadText, exportFilename, sessionsCsv, sessionsJson } from '../lib/
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatDateTime, formatDuration, formatEnergy, formatNumber, formatShortDateTime, formatTariff } from '../lib/format'
 import { END_REASON_LABELS, SESSION_STATUS, SESSION_STATUS_ORDER, SOURCE_LABELS } from '../lib/labels'
-import { OVERSTAY_STATUS, overstayCell, paymentBadge } from '../lib/overstay'
+import { overstayCell, paymentBadge } from '../lib/overstay'
 import { periodLabel } from '../lib/period'
 import { useApi } from '../lib/useApi'
 
@@ -40,14 +40,6 @@ function PaymentBadge({ session, detail }: { session: SessionItem; detail?: bool
 
 function OverstayValue({ session }: { session: SessionItem }) {
   const cell = overstayCell(session)
-  if (cell.badge) {
-    return (
-      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-        <Badge tone={cell.tone ?? 'gray'}>{cell.badge}</Badge>
-        {cell.text ? <span>{cell.text}</span> : null}
-      </span>
-    )
-  }
   return <span className={cell.text === '—' ? 'dim' : undefined}>{cell.text}</span>
 }
 
@@ -123,11 +115,10 @@ function SessionDrawer({ session, onClose }: { session: SessionItem; onClose(): 
             </dd>
           </div>
         ) : null}
-        {'overstay' in session || 'overstay_fee' in session ? (
+        {'overstay_fee' in session ? (
           <div className="full">
             <dt>Permanência após a recarga</dt>
             <dd>
-              {session.overstay?.status && session.overstay.status !== 'none' ? `${OVERSTAY_STATUS[session.overstay.status]?.label ?? session.overstay.status} · ` : ''}
               <OverstayValue session={session} />
             </dd>
           </div>
@@ -170,7 +161,7 @@ export default function Sessions() {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   // Colunas das frentes A e D só aparecem quando a API envia os campos.
   const showPayment = Boolean(data?.items.some((item) => 'payment' in item))
-  const showOverstay = Boolean(data?.items.some((item) => 'overstay' in item || 'overstay_fee' in item))
+  const showOverstay = Boolean(data?.items.some((item) => 'overstay_fee' in item))
 
   const toggle = (status: string) => setStatuses((list) => (list.includes(status) ? list.filter((s) => s !== status) : [...list, status]))
 

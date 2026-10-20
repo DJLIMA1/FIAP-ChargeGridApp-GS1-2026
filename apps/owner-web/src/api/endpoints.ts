@@ -81,7 +81,8 @@ export function endpoints(api: ApiClient) {
     putPowerSite: (id: string, body: PowerSiteInput) => api.put<StationPower>(`/stations/${encodeURIComponent(id)}/power-site`, body),
     putBuildingLoad: (id: string, kw: string) =>
       api.put<StationPower>(`/stations/${encodeURIComponent(id)}/building-load`, { building_load_kw: kw }),
-    // D · Tarifa do posto (a taxa de permanência fica em rules.rotation; PUT com as regras inteiras).
+    // D · Tarifa do posto (a taxa de permanência fica em rules.rotation). O PUT é parcial na API
+    // (`pricing.merge_rules`): o que não vier no corpo continua como está.
     pricing: (id: string, signal?: AbortSignal) => api.get<StationPricing>(`/stations/${encodeURIComponent(id)}/pricing`, undefined, signal),
     putPricing: (id: string, rules: PricingRules) => api.put<StationPricing>(`/stations/${encodeURIComponent(id)}/pricing`, rules),
     coupons: (signal?: AbortSignal) => api.get<Page<Coupon>>('/coupons', { mine: true, limit: 100 }, signal),

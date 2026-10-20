@@ -1,13 +1,13 @@
 /**
  * Taxa de permanência (frente D) e selo de pagamento (frente A).
  *
- * A taxa fica em `rules.rotation` da tarifa do posto (`GET/PUT /stations/{id}/pricing`).
- * O PUT sempre leva as regras inteiras: só `rotation` muda, e `demand`, `schedule`,
- * `peak` e qualquer chave futura voltam como vieram. A API em andamento ainda
- * grava as chaves antigas (`start_after_min`/`interval_min`); o contrato novo usa
- * `grace_minutes`/`interval_minutes`. Lemos as duas e gravamos no formato que veio.
+ * A taxa fica em `rules.rotation` da tarifa do posto (`GET/PUT /stations/{id}/pricing`),
+ * com as chaves que a API grava e devolve: `enabled`, `start_after_min` (tolerância),
+ * `interval_min`, `amount` e `max_amount` (`chargegrid_core.overstay`). O PUT da API é
+ * parcial (`pricing.merge_rules`): enviamos só `{ rotation }` e a tarifa por horário e
+ * por demanda continuam como estão no servidor (sem sobrescrever com uma cópia velha).
  */
-import type { LiveOccupancy, PricingRules, RotationRule, SessionOverstay, SessionPayment } from '../api/operations'
+import type { LiveOccupancy, PricingRules, RotationRule, SessionPayment } from '../api/operations'
 import { formatCurrency, toNumber } from './format'
 import type { Tone } from './labels'
 
@@ -19,6 +19,7 @@ export interface RotationForm {
   max: string
 }
 
+/** Mesmo padrão da API (`DEFAULT_ROTATION`): desligada, 10 min, R$ 1,00/min, até R$ 30,00. */
 const DEFAULT_FORM: RotationForm = { enabled: false, grace: '10', interval: '1', amount: '1,00', max: '30,00' }
 
 function money(value: unknown, fallback: string): string {
@@ -31,23 +32,18 @@ function int(value: unknown, fallback: string): string {
 }
 
 export function rotationForm(rules: PricingRules | null | undefined): RotationForm {
-  const rule = (rules?.rotation ?? {}) as RotationRule
+  const rule: Partial<RotationRule> = rules?.rotation ?? {}
   return {
     enabled: Boolean(rule.enabled),
-    grace: int(rule.grace_minutes ?? rule.start_after_min, DEFAULT_FORM.grace),
-    interval: int(rule.interval_minutes ?? rule.interval_min, DEFAULT_FORM.interval),
+    grace: int(rule.start_after_min, DEFAULT_FORM.grace),
+    interval: int(rule.interval_min, DEFAULT_FORM.interval),
     amount: money(rule.amount, DEFAULT_FORM.amount),
     max: money(rule.max_amount, DEFAULT_FORM.max),
   }
 }
 
-export interface RotationValues {
-  enabled: boolean
-  grace_minutes: number
-  interval_minutes: number
-  amount: string
-  max_amount: string
-}
+/** Valores validados, já com as chaves de `rules.rotation` da API. */
+export type RotationValues = RotationRule
 
 const MONEY = /^\d{1,4}([.,]\d{1,2})?$/
 
@@ -65,35 +61,21 @@ export function validateRotation(form: RotationForm): { values?: RotationValues;
   if (Object.keys(errors).length) return { errors }
   return {
     errors,
-    values: { enabled: form.enabled, grace_minutes: grace, interval_minutes: interval, amount: amount.toFixed(2), max_amount: max.toFixed(2) },
+    values: { enabled: form.enabled, start_after_min: grace, interval_min: interval, amount: amount.toFixed(2), max_amount: max.toFixed(2) },
   }
 }
 
-/**
- * Regras inteiras com a nova `rotation`. Preserva as outras chaves de `rotation`
- * e grava as minutagens no formato em uso (antigo, novo ou ambos se nenhum veio).
- */
-export function withRotation(rules: PricingRules, values: RotationValues): PricingRules {
-  const current = (rules.rotation ?? {}) as RotationRule
-  const legacy = 'start_after_min' in current || 'interval_min' in current
-  const modern = 'grace_minutes' in current || 'interval_minutes' in current
-  const rotation: RotationRule = { ...current, enabled: values.enabled, amount: values.amount, max_amount: values.max_amount }
-  if (legacy || !modern) {
-    rotation.start_after_min = values.grace_minutes
-    rotation.interval_min = values.interval_minutes
-  }
-  if (modern || !legacy) {
-    rotation.grace_minutes = values.grace_minutes
-    rotation.interval_minutes = values.interval_minutes
-  }
-  return { ...structuredClone(rules), rotation }
+/** Corpo do `PUT /stations/{id}/pricing` que muda só a taxa de permanência. */
+export function rotationPatch(values: RotationValues): PricingRules {
+  const { enabled, start_after_min, interval_min, amount, max_amount } = values
+  return { rotation: { enabled, start_after_min, interval_min, amount, max_amount } }
 }
 
 /** "Após a recarga: 10 min de tolerância, depois R$ 1,00/min (máx. R$ 30,00)". */
-export function rotationSummary(values: Pick<RotationValues, 'enabled' | 'grace_minutes' | 'interval_minutes' | 'amount' | 'max_amount'>): string {
+export function rotationSummary(values: RotationValues): string {
   if (!values.enabled) return 'Sem taxa de permanência: o carro pode ficar na vaga depois da recarga sem cobrança.'
-  const grace = values.grace_minutes ? `${values.grace_minutes} min de tolerância` : 'sem tolerância'
-  const each = values.interval_minutes === 1 ? `${formatCurrency(values.amount)}/min` : `${formatCurrency(values.amount)} a cada ${values.interval_minutes} min`
+  const grace = values.start_after_min ? `${values.start_after_min} min de tolerância` : 'sem tolerância'
+  const each = values.interval_min === 1 ? `${formatCurrency(values.amount)}/min` : `${formatCurrency(values.amount)} a cada ${values.interval_min} min`
   return `Após a recarga: ${grace}, depois ${each} (máx. ${formatCurrency(values.max_amount)})`
 }
 
@@ -138,15 +120,13 @@ export function occupancyText(occupancy: LiveOccupancy, elapsedSeconds = 0): str
   }
 }
 
-/** Coluna "Permanência" das sessões: valor + minutos, status ou "—". */
-export function overstayCell(item: { overstay?: SessionOverstay | null; overstay_fee?: string | null; overstay_minutes?: string | number | null }): { text: string; tone?: Tone; badge?: string } {
-  const status = item.overstay?.status
-  if (status === 'grace' || status === 'billing' || status === 'capped') {
-    const meta = OVERSTAY_STATUS[status]
-    return { text: item.overstay?.fee_due ? formatCurrency(item.overstay.fee_due) : '', tone: meta.tone, badge: meta.label }
-  }
-  const fee = toNumber(item.overstay_fee ?? item.overstay?.fee_due ?? null)
-  const minutes = toNumber(item.overstay_minutes ?? null) ?? (item.overstay?.billable_seconds ? item.overstay.billable_seconds / 60 : null)
+/**
+ * Coluna "Permanência" das sessões, com os campos de `/owner/sessions`:
+ * `overstay_fee` ("0.00" sem permanência) e `overstay_minutes` (inteiro).
+ */
+export function overstayCell(item: { overstay_fee?: string | null; overstay_minutes?: number | null }): { text: string } {
+  const fee = toNumber(item.overstay_fee ?? null)
+  const minutes = item.overstay_minutes ?? 0
   if (fee && fee > 0) return { text: `${formatCurrency(fee)}${minutes ? ` · ${Math.round(minutes)} min` : ''}` }
   return { text: '—' }
 }

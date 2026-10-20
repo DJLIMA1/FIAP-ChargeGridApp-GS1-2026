@@ -171,8 +171,9 @@ export interface PowerSiteInput {
 
 /* ------------------------------------------------------------ A · pagamentos */
 
+/** `settlement` de `payment_row` (`modules/payments/funding.py`); `settlement_status` do modelo. */
 export interface PaymentSettlement {
-  status: 'due' | 'settling' | 'done' | 'failed' | string
+  status: 'none' | 'due' | 'settling' | 'done' | 'failed' | string
   energy_amount: Decimal
   overstay_amount: Decimal
   fixed_fee: Decimal
@@ -188,9 +189,20 @@ export interface PaymentSettlement {
   settled_at: string | null
 }
 
+export type PaymentStatus =
+  | 'awaiting_payment'
+  | 'declined'
+  | 'authorized'
+  | 'paid'
+  | 'in_use'
+  | 'expired'
+  | 'canceled'
+  | 'completed'
+
+/** `payment` de cada item de `/owner/sessions` (`payment_row(..., owner=True)`; `null` sem pagamento). */
 export interface SessionPayment {
   id: string
-  status: string
+  status: PaymentStatus | string
   status_label: string
   environment: 'test' | string
   provider?: string
@@ -198,21 +210,42 @@ export interface SessionPayment {
   method?: 'card' | 'pix' | string | null
   currency?: string
   amount: Decimal
+  energy_cap?: Decimal
+  fixed_fee?: Decimal
+  overstay_reserve?: Decimal
+  price_per_kwh?: Decimal
+  base_price_per_kwh?: Decimal
+  demand_multiplier?: Decimal
+  discount_percent?: number
+  max_duration_minutes?: number
+  max_power_kw?: Decimal | null
+  connector_id?: string
+  session_id?: string | null
+  expires_at?: string | null
+  start_deadline?: string | null
+  authorized_at?: string | null
+  created_at?: string | null
+  provider_ref?: string | null
   settlement: PaymentSettlement | null
 }
 
 /* ----------------------------------------------------------- D · permanência */
 
-/** `rules.rotation` ("Taxa de permanência"). Aceita as chaves do contrato e as antigas. */
+/**
+ * `rules.rotation` ("Taxa de permanência"), exatamente como a API grava e devolve
+ * (`chargegrid_core.overstay.DEFAULT_ROTATION` / `clean_rotation`). Chaves fora destas
+ * são descartadas em silêncio pelo `clean_rules` (ex.: `grace_minutes`).
+ */
 export interface RotationRule {
-  enabled?: boolean
-  grace_minutes?: number
-  interval_minutes?: number
-  start_after_min?: number
-  interval_min?: number
-  amount?: Decimal
-  max_amount?: Decimal
-  [key: string]: unknown
+  enabled: boolean
+  /** Tolerância em minutos (0–1440). */
+  start_after_min: number
+  /** Intervalo cobrado em minutos (1–1440; 1 = "por minuto"). */
+  interval_min: number
+  /** Valor por intervalo, "1.00" (R$ 0–100). */
+  amount: Decimal
+  /** Teto por recarga, "30.00" (R$ 0–1000). */
+  max_amount: Decimal
 }
 
 export interface PricingRules {
@@ -220,40 +253,50 @@ export interface PricingRules {
   [key: string]: unknown
 }
 
+/** `GET/PUT /stations/{id}/pricing` (`modules/pricing/routes.py::_payload`). */
 export interface StationPricing {
   rules: PricingRules
   status?: Record<string, unknown>
-  connectors?: Record<string, unknown>[]
+  connectors?: {
+    id: string
+    public_code: string
+    active: boolean
+    connector_type: string
+    base_price_per_kwh: Decimal
+    current_base_price_per_kwh: Decimal
+    current_price_per_kwh: Decimal
+  }[]
 }
 
+/**
+ * `overstay` público do posto (`chargegrid_core.overstay.public`). Com a taxa desligada
+ * todos os campos (menos `enabled: false`) vêm `null`.
+ */
 export interface StationOverstay {
   enabled: boolean
-  grace_minutes: number
-  interval_minutes: number
-  amount: Decimal
-  max_amount: Decimal
-  version?: string | null
-  summary?: string | null
+  grace_minutes: number | null
+  interval_minutes: number | null
+  amount: Decimal | null
+  max_amount: Decimal | null
+  fee_per_minute: Decimal | null
+  version: string | null
+  summary: string | null
 }
 
 export type OverstayStatus = 'none' | 'no_fee' | 'grace' | 'billing' | 'capped' | 'closed'
 
-export interface SessionOverstay {
-  status: OverstayStatus | string
-  started_at?: string | null
-  grace_remaining_seconds?: number | null
-  billable_seconds?: number | null
-  fee_due?: Decimal | null
-  ended_at?: string | null
-  end_reason?: string | null
-}
-
+/** `occupancy` de cada ponto em `/owner/live` (`app/overstay.py::occupancy_by_connector`). */
 export interface LiveOccupancy {
   session_id: string
   status: OverstayStatus | string
   started_at: string | null
-  grace_remaining_seconds: number | null
-  fee_due: Decimal | null
+  /** 0 fora de grace/billing/capped (nunca `null`). */
+  grace_remaining_seconds: number
+  billable_minutes: number
+  fee_due: Decimal
+  /** `null` sem termos aceitos (taxa zero). */
   max_fee: Decimal | null
-  driver_label?: string | null
+  fee_applies: boolean
+  driver_label: string
+  as_of: string | null
 }

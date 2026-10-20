@@ -6,8 +6,9 @@
  * - B · Energia do estabelecimento: limite contratado, consumo SIMULADO da loja, divisão
  *   da potência, confirmação do equipamento com atraso (excesso transitório) e decisões;
  * - A · Pagamentos (Stripe · teste): interruptores do posto e `payment` nas sessões;
- * - D · Permanência: `rules.rotation` (chaves antigas, como a API em andamento), termos no
- *   posto, `overstay` nas sessões e `occupancy` no ao vivo.
+ * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
+ *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
+ *   sessões e `occupancy` no ao vivo.
  *
  * Nunca entra no build de produção (importado só pelo mock).
  */
@@ -17,14 +18,15 @@ import type {
   MarginRow,
   PowerDecision,
   PricingRules,
+  RotationRule,
   SessionPayment,
   StationEconomics,
+  StationOverstay,
   StationPower,
   StationPricing,
 } from '../api/operations'
 import type { LiveItem, SessionItem, Station } from '../api/types'
 import { formatCurrency } from '../lib/format'
-import { rotationForm, rotationSummary, validateRotation } from '../lib/overstay'
 import * as data from './data'
 
 const START = Date.now()
@@ -85,24 +87,93 @@ export function putEconomics(stationId: string, body: Record<string, unknown>): 
 
 /* ------------------------------------------------ D · regras de permanência */
 
+/** Padrão da API (`chargegrid_core.pricing.DEFAULT_RULES`): só estas chaves sobrevivem ao PUT. */
+const DEFAULT_RULES = {
+  demand: { enabled: true, max_increase_percent: 50, sensitivity: 'medium' },
+  schedule: { enabled: true, intervals: [] as unknown[] },
+  peak: { enabled: true, start: '18:00', end: '21:00', days: [0, 1, 2, 3, 4, 5, 6] },
+  rotation: { enabled: false, start_after_min: 10, interval_min: 1, amount: '1.00', max_amount: '30.00' },
+}
+type RuleKey = keyof typeof DEFAULT_RULES
+
 const RULES: Record<string, PricingRules> = Object.fromEntries(
   S.map((station, index) => [
     station.id,
     {
       demand: { enabled: true, max_increase_percent: 30, sensitivity: 'medium' },
       schedule: { enabled: index === 2, intervals: index === 2 ? [{ start: '22:00', end: '06:00', days: [0, 1, 2, 3, 4, 5, 6], prices: {} }] : [] },
-      peak: { enabled: false, start: '18:00', end: '21:00', increase_percent: 20 },
-      // Chaves antigas, como a API grava hoje; o painel preserva o formato.
+      peak: { enabled: false, start: '18:00', end: '21:00', days: [0, 1, 2, 3, 4, 5, 6] },
       rotation: { enabled: index !== 2, start_after_min: 10, interval_min: 1, amount: '1.00', max_amount: '30.00' },
     },
   ]),
 )
 
-function stationOverstay(stationId: string): Station['overstay'] {
-  const form = rotationForm(RULES[stationId])
-  const values = validateRotation(form).values
-  if (!values) return null
-  return { ...values, version: `ovs-${hash(JSON.stringify(values)).toString(16).slice(0, 12)}`, summary: rotationSummary(values) }
+/** `overstay.clean_rotation`: mesmas faixas e mensagens da API. */
+function cleanRotation(raw: Record<string, unknown>): RotationRule {
+  const grace = Number(raw.start_after_min)
+  const interval = Number(raw.interval_min)
+  const amount = Number(raw.amount)
+  const max = Number(raw.max_amount)
+  if (typeof raw.enabled !== 'boolean') throw new MockFailure(422, 'invalid_pricing', 'Status da regra inválido.')
+  if (![grace, interval, amount, max].every(Number.isFinite) || !Number.isInteger(grace) || !Number.isInteger(interval)) {
+    throw new MockFailure(422, 'invalid_pricing', 'Preencha a taxa de permanência com números.')
+  }
+  if (grace < 0 || grace > 1440) throw new MockFailure(422, 'invalid_pricing', 'A tolerância vai de 0 a 1440 minutos.')
+  if (interval < 1 || interval > 1440) throw new MockFailure(422, 'invalid_pricing', 'O intervalo da taxa de permanência vai de 1 a 1440 minutos.')
+  if (amount < 0 || amount > 100) throw new MockFailure(422, 'invalid_pricing', 'O valor da taxa de permanência vai de R$ 0,00 a R$ 100,00.')
+  if (max < 0 || max > 1000) throw new MockFailure(422, 'invalid_pricing', 'O teto da taxa de permanência vai de R$ 0,00 a R$ 1.000,00.')
+  return { enabled: raw.enabled, start_after_min: grace, interval_min: interval, amount: amount.toFixed(2), max_amount: max.toFixed(2) }
+}
+
+/**
+ * `pricing.merge_rules` + `clean_rules`: o PUT é parcial (cada regra enviada é mesclada
+ * campo a campo sobre a salva) e chaves fora do padrão são descartadas em silêncio.
+ */
+export function mergeRules(stored: PricingRules, body: Record<string, unknown>): PricingRules {
+  const merged: Record<string, unknown> = structuredClone(stored)
+  for (const [key, value] of Object.entries(body ?? {})) {
+    const current = merged[key]
+    merged[key] = value && typeof value === 'object' && !Array.isArray(value) && current && typeof current === 'object'
+      ? { ...(current as object), ...structuredClone(value as object) }
+      : structuredClone(value)
+  }
+  const result: Record<string, Record<string, unknown>> = {}
+  for (const key of Object.keys(DEFAULT_RULES) as RuleKey[]) {
+    const defaults: Record<string, unknown> = structuredClone(DEFAULT_RULES[key])
+    const raw = merged[key]
+    if (raw && typeof raw === 'object') {
+      for (const field of Object.keys(defaults)) if (field in (raw as object)) defaults[field] = (raw as Record<string, unknown>)[field]
+    }
+    if (typeof defaults.enabled !== 'boolean') throw new MockFailure(422, 'invalid_pricing', 'Status da regra inválido.')
+    result[key] = defaults
+  }
+  const increase = Number(result.demand.max_increase_percent)
+  if (!Number.isInteger(increase)) throw new MockFailure(422, 'invalid_pricing', 'Informe o acréscimo máximo em porcentagem inteira.')
+  if (increase < 0 || increase > 100) throw new MockFailure(422, 'invalid_pricing', 'O acréscimo máximo vai de 0% a 100%.')
+  result.demand.max_increase_percent = increase
+  if (!['low', 'medium', 'high'].includes(String(result.demand.sensitivity))) throw new MockFailure(422, 'invalid_pricing', 'Escolha a sensibilidade: baixa, média ou alta.')
+  if (!Array.isArray(result.schedule.intervals)) throw new MockFailure(422, 'invalid_pricing', 'Horários da tarifa inválidos.')
+  result.rotation = cleanRotation(result.rotation) as unknown as Record<string, unknown>
+  return result
+}
+
+const brl = (value: string) => `R$ ${value.replace('.', ',')}`
+
+/** `overstay.public(terms)`: o bloco `overstay` público do posto. */
+export function stationOverstay(stationId: string): StationOverstay {
+  const rule = RULES[stationId]?.rotation
+  if (!rule?.enabled) {
+    return { enabled: false, grace_minutes: null, interval_minutes: null, amount: null, max_amount: null, fee_per_minute: null, version: null, summary: null }
+  }
+  const terms = { grace_minutes: rule.start_after_min, interval_minutes: rule.interval_min, amount: rule.amount, max_amount: rule.max_amount }
+  const every = terms.interval_minutes === 1 ? 'por minuto' : `a cada ${terms.interval_minutes} min`
+  return {
+    enabled: true,
+    ...terms,
+    version: `ovs-${hash(JSON.stringify(terms)).toString(16).padStart(12, '0').slice(0, 12)}`,
+    fee_per_minute: (Number(terms.amount) / terms.interval_minutes).toFixed(4),
+    summary: `Após a recarga: ${terms.grace_minutes} min de tolerância; depois ${brl(terms.amount)} ${every}, até ${brl(terms.max_amount)}.`,
+  }
 }
 
 function decorateStation(station: Station) {
@@ -118,18 +189,17 @@ export function pricing(stationId: string): StationPricing {
   return {
     rules: structuredClone(RULES[stationId]),
     status: { multiplier: '1.00', level: 'normal', level_label: 'Normal', reason: 'normal', reason_label: 'Preço normal' },
-    connectors: station.connectors.map((c) => ({ id: c.id, public_code: c.public_code, base_price_per_kwh: c.price_per_kwh, current_price_per_kwh: c.price_per_kwh })),
+    connectors: station.connectors.map((c) => ({
+      id: c.id, public_code: c.public_code, active: c.active, connector_type: c.connector_type,
+      base_price_per_kwh: c.price_per_kwh, current_base_price_per_kwh: c.price_per_kwh, current_price_per_kwh: c.price_per_kwh,
+    })),
   }
 }
 
-export function putPricing(stationId: string, body: PricingRules): StationPricing {
-  if (!body || typeof body !== 'object' || !body.demand || !body.schedule) {
-    // O painel sempre envia as regras inteiras; um PUT parcial apagaria horário/demanda aqui.
-    throw new MockFailure(422, 'invalid_pricing', 'Envie as regras inteiras da tarifa (demanda, horário e permanência).')
-  }
-  const check = validateRotation(rotationForm(body))
-  if (!check.values) throw new MockFailure(422, 'invalid_pricing', Object.values(check.errors)[0] ?? 'Taxa de permanência inválida.')
-  RULES[stationId] = structuredClone(body)
+/** PUT parcial, como a API: `{ rotation }` sozinho ou a sugestão da Previsão (`{ demand }`, `{ schedule }`). */
+export function putPricing(stationId: string, body: Record<string, unknown>): StationPricing {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new MockFailure(422, 'validation_error', 'Envie um objeto com as regras.')
+  RULES[stationId] = mergeRules(RULES[stationId], body)
   const station = S.find((s) => s.id === stationId)
   if (station) station.overstay = stationOverstay(stationId)
   return pricing(stationId)
@@ -140,18 +210,14 @@ export function putPricing(stationId: string, body: PricingRules): StationPricin
 const PAID_LABEL = (charged: number, returned: number) =>
   returned > 0 ? `Cobrado ${formatCurrency(charged / 100)} (teste) · Devolvido ${formatCurrency(returned / 100)}` : `Cobrado ${formatCurrency(charged / 100)} (teste)`
 
-function overstayFor(session: SessionItem) {
+/** `overstay_fee`/`overstay_minutes` de `/owner/sessions` (sem bloco `overstay`, como a API). */
+function overstayFor(session: SessionItem): Pick<SessionItem, 'overstay_fee' | 'overstay_minutes'> {
   const h = hash(`ovs-${session.id}`)
   const rule = RULES[session.station_id]?.rotation
   const eligible = session.status === 'completed' && rule?.enabled && h % 100 < 14
-  if (!eligible) return { overstay: { status: 'none' }, overstay_fee: '0.00', overstay_minutes: 0 }
+  if (!eligible) return { overstay_fee: '0.00', overstay_minutes: 0 }
   const minutes = 1 + (h % 12)
-  const fee = Math.min(minutes * 100, 3000)
-  return {
-    overstay: { status: 'closed', started_at: session.ended_at, grace_remaining_seconds: 0, billable_seconds: minutes * 60, fee_due: money(fee), ended_at: session.ended_at, end_reason: 'unplugged' },
-    overstay_fee: money(fee),
-    overstay_minutes: minutes,
-  }
+  return { overstay_fee: money(Math.min(minutes * 100, 3000)), overstay_minutes: minutes }
 }
 
 function paymentFor(session: SessionItem, overstayCents: number): SessionPayment | null {
@@ -547,23 +613,28 @@ const OCCUPIED: Record<string, { endedMinutesAgo: number; label: string }> = {
   'CG-006': { endedMinutesAgo: 14, label: 'Visitante do painel' },
 }
 
+/** `overstay.occupancy_by_connector`: mesmo formato e regras de fase da API. */
 function occupancyFor(item: LiveItem): LiveOccupancy | null {
   const spot = OCCUPIED[item.public_code]
-  const rule = rotationForm(RULES[item.station_id])
+  const rule = RULES[item.station_id]?.rotation
   if (!spot || item.availability_status !== 'available') return null
-  const since = (Date.now() - START) / 1000 + spot.endedMinutesAgo * 60
+  const since = Math.floor((Date.now() - START) / 1000 + spot.endedMinutesAgo * 60)
   const started = new Date(Date.now() - since * 1000).toISOString()
-  if (!rule.enabled) return { session_id: `ovs-${item.connector_id.slice(0, 8)}`, status: 'no_fee', started_at: started, grace_remaining_seconds: null, fee_due: '0.00', max_fee: null, driver_label: spot.label }
-  const grace = Number(rule.grace) * 60
-  const max = Number(rule.max.replace(',', '.'))
-  if (since < grace) {
-    return { session_id: `ovs-${item.connector_id.slice(0, 8)}`, status: 'grace', started_at: started, grace_remaining_seconds: Math.round(grace - since), fee_due: '0.00', max_fee: max.toFixed(2), driver_label: spot.label }
+  const base = { session_id: `ovs-${item.connector_id.slice(0, 8)}`, started_at: started, driver_label: spot.label, as_of: new Date().toISOString() }
+  if (!rule?.enabled) {
+    return { ...base, status: 'no_fee', grace_remaining_seconds: 0, billable_minutes: 0, fee_due: '0.00', max_fee: null, fee_applies: false }
   }
-  const intervals = Math.floor((since - grace) / (Number(rule.interval) * 60))
-  const fee = Math.min(round2(intervals * Number(rule.amount.replace(',', '.'))), max)
+  const grace = rule.start_after_min * 60
+  const amount = Number(rule.amount)
+  const max = Number(rule.max_amount)
+  const intervals = Math.max(0, Math.floor((since - grace) / (rule.interval_min * 60)))
+  const fee = Math.min(round2(intervals * amount), max)
+  const capped = fee >= max
+  const status = capped ? 'capped' : since <= grace ? 'grace' : 'billing'
+  const cap = amount > 0 ? Math.ceil(max / amount) : intervals
   return {
-    session_id: `ovs-${item.connector_id.slice(0, 8)}`, status: fee >= max ? 'capped' : 'billing', started_at: started, grace_remaining_seconds: 0,
-    fee_due: fee.toFixed(2), max_fee: max.toFixed(2), driver_label: spot.label,
+    ...base, status, grace_remaining_seconds: Math.max(0, grace - since), billable_minutes: Math.min(intervals, cap) * rule.interval_min,
+    fee_due: fee.toFixed(2), max_fee: rule.max_amount, fee_applies: true,
   }
 }
 

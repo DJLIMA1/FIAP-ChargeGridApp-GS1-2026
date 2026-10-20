@@ -214,7 +214,7 @@ export function Layout() {
             {item.short ?? item.label}
           </NavLink>
         ))}
-        <button type="button" onClick={() => setMenuOpen(true)} className={isActive('/cupons') || isActive('/insights') || isActive('/resultado') ? 'active' : ''} aria-label="Mais opções">
+        <button type="button" onClick={() => setMenuOpen(true)} className={NAV.slice(4).some((item) => isActive(item.to)) ? 'active' : ''} aria-label="Mais opções">
           <Icon name="menu" size={22} />
           Mais
         </button>

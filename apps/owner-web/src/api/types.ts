@@ -2,7 +2,7 @@
  * Formas das respostas da API ChargeGrid (/v1). Valores decimais chegam como
  * strings (ex.: "8420.00") para preservar precisão; `null` significa "sem dados".
  */
-import type { LiveOccupancy, SessionOverstay, SessionPayment, StationOverstay } from './operations'
+import type { LiveOccupancy, SessionPayment, StationOverstay } from './operations'
 
 export type Decimal = string
 
@@ -108,10 +108,12 @@ export interface SessionItem {
   end_reason: string
   /** Frente A (Stripe em modo teste): ausente em APIs antigas, `null` sem pagamento. */
   payment?: SessionPayment | null
-  /** Frente D (permanência): ausentes enquanto a API não os envia. */
-  overstay?: SessionOverstay | null
-  overstay_fee?: Decimal | null
-  overstay_minutes?: Decimal | number | null
+  /**
+   * Frente D (permanência), `analytics.session_export_row`: taxa ("0.00" sem permanência)
+   * e minutos cobrados (inteiro). `/owner/sessions` não traz o bloco `overstay` da sessão.
+   */
+  overstay_fee?: Decimal
+  overstay_minutes?: number
 }
 
 export type AlertSeverity = 'critical' | 'warning' | 'info'
@@ -146,11 +148,15 @@ export interface LiveSession {
   cost_estimate: Decimal
   soc_percent: Decimal | null
   power_w: Decimal | null
+  soc_source?: string | null
   source: string
   last_measurement_at: string | null
-  /** Rebalanceamento ao vivo (frente B): potência confirmada pelo equipamento e o motivo. */
+  /**
+   * Rebalanceamento ao vivo (frente B): potência confirmada pelo equipamento ("6.000"),
+   * estado e o motivo em texto (string, não objeto: `ChargingSession.power_reason`).
+   */
   applied_power_kw?: Decimal | null
-  power_state?: string | null
+  power_state?: 'applied' | 'reducing' | 'raising' | 'waiting' | 'paused' | 'fixed' | string | null
   power_reason?: string | null
 }
 

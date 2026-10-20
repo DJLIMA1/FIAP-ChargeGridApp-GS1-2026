@@ -199,7 +199,6 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     }
     return json(structuredClone(target))
   }
-  if (/^\/stations\/[^/]+\/pricing$/.test(path) && method === 'PUT') return json({ rules: body })
   const connectorMatch = /^\/connectors\/([^/]+)$/.exec(path)
   if (connectorMatch && method === 'PATCH') {
     const owner = data.STATIONS.find((s) => s.connectors.some((c) => c.id === connectorMatch[1]))

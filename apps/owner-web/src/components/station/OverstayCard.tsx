@@ -3,14 +3,14 @@ import { ApiError } from '../../api/client'
 import type { PricingRules } from '../../api/operations'
 import type { Station } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { rotationForm, rotationSummary, validateRotation, withRotation, type RotationForm } from '../../lib/overstay'
+import { rotationForm, rotationSummary, validateRotation, rotationPatch, type RotationForm } from '../../lib/overstay'
 import { useApi } from '../../lib/useApi'
 import { useToast } from '../Toast'
 import { Card, ErrorBanner, Field, Skeleton, Switch } from '../ui'
 
 /**
- * "Taxa de permanência" (frente D): edita `rules.rotation` da tarifa do posto e
- * grava as regras inteiras (tarifa por horário e por demanda continuam iguais).
+ * "Taxa de permanência" (frente D): edita `rules.rotation` da tarifa do posto. O PUT
+ * leva só `{ rotation }` (a API mescla): tarifa por horário e por demanda ficam como estão.
  */
 export function OverstayCard({ station }: { station: Station }) {
   const { ep } = useAuth()
@@ -42,7 +42,7 @@ export function OverstayCard({ station }: { station: Station }) {
     setSaving(true)
     setSaveError(null)
     try {
-      const next = await ep.putPricing(station.id, withRotation(rules, check.values))
+      const next = await ep.putPricing(station.id, rotationPatch(check.values))
       setRules(next.rules)
       setForm(rotationForm(next.rules))
       toast(check.values.enabled ? 'Taxa de permanência salva' : 'Taxa de permanência desligada')

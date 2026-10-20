@@ -9,67 +9,49 @@ import {
   overstayCell,
   paymentBadge,
   rotationForm,
+  rotationPatch,
   rotationSummary,
   validateRotation,
-  withRotation,
 } from '../src/lib/overstay'
 
+/** `rules` como `GET /stations/{id}/pricing` devolve (`pricing.stored_rules` / `clean_rules`). */
 const savedRules = (): PricingRules => ({
   demand: { enabled: true, max_increase_percent: 30, sensitivity: 'high' },
   schedule: { enabled: true, intervals: [{ start: '22:00', end: '06:00', days: [0, 1, 2, 3, 4], prices: { c1: '1.2000' } }] },
-  peak: { enabled: false, start: '18:00', end: '21:00', increase_percent: 20 },
+  peak: { enabled: false, start: '18:00', end: '21:00', days: [0, 1, 2, 3, 4, 5, 6] },
   rotation: { enabled: false, start_after_min: 30, interval_min: 10, amount: '0.20', max_amount: '30.00' },
-  future_rule: { kept: true },
 })
 
-describe('taxa de permanência: gravação preservando as regras', () => {
-  it('lê as chaves antigas e as do contrato', () => {
+describe('taxa de permanência: rules.rotation com as chaves reais da API', () => {
+  it('lê start_after_min/interval_min (únicas chaves que a API devolve)', () => {
     expect(rotationForm(savedRules())).toEqual({ enabled: false, grace: '30', interval: '10', amount: '0,20', max: '30,00' })
-    expect(rotationForm({ rotation: { enabled: true, grace_minutes: 0, interval_minutes: 5, amount: '2', max_amount: '40' } })).toEqual({ enabled: true, grace: '0', interval: '5', amount: '2,00', max: '40,00' })
-    expect(rotationForm(null)).toMatchObject({ enabled: false, grace: '10', interval: '1' })
+    // Padrão da API (DEFAULT_ROTATION) quando não há regra.
+    expect(rotationForm(null)).toEqual({ enabled: false, grace: '10', interval: '1', amount: '1,00', max: '30,00' })
   })
 
-  it('muda só rotation e devolve demanda, horários e chaves desconhecidas intactos', () => {
-    const rules = savedRules()
-    const before = structuredClone(rules)
+  it('rotationPatch grava exatamente as chaves de clean_rotation (sem grace_minutes/interval_minutes)', () => {
     const { values } = validateRotation({ enabled: true, grace: '10', interval: '1', amount: '1,00', max: '25' })
-    const next = withRotation(rules, values!)
-    expect(rules).toEqual(before) // não altera o objeto carregado
-    expect(next.demand).toEqual(before.demand)
-    expect(next.schedule).toEqual(before.schedule)
-    expect(next.peak).toEqual(before.peak)
-    expect(next.future_rule).toEqual({ kept: true })
-    // Formato antigo continua antigo (a API em andamento valida start_after_min/interval_min).
-    expect(next.rotation).toEqual({ enabled: true, start_after_min: 10, interval_min: 1, amount: '1.00', max_amount: '25.00' })
+    const body = rotationPatch(values!)
+    expect(body).toEqual({ rotation: { enabled: true, start_after_min: 10, interval_min: 1, amount: '1.00', max_amount: '25.00' } })
+    expect(Object.keys(body.rotation!).sort()).toEqual(['amount', 'enabled', 'interval_min', 'max_amount', 'start_after_min'])
   })
 
-  it('grava no formato do contrato quando é o que veio, e nos dois quando nada veio', () => {
-    const { values } = validateRotation({ enabled: true, grace: '5', interval: '2', amount: '1', max: '10' })
-    expect(withRotation({ rotation: { enabled: false, grace_minutes: 10, interval_minutes: 1, amount: '1.00', max_amount: '30.00' } }, values!).rotation).toEqual({
-      enabled: true, grace_minutes: 5, interval_minutes: 2, amount: '1.00', max_amount: '10.00',
-    })
-    expect(withRotation({ demand: { enabled: false } }, values!)).toEqual({
-      demand: { enabled: false },
-      rotation: { enabled: true, start_after_min: 5, interval_min: 2, grace_minutes: 5, interval_minutes: 2, amount: '1.00', max_amount: '10.00' },
-    })
-  })
-
-  it('PUT /stations/{id}/pricing leva as regras inteiras', async () => {
+  it('PUT /stations/{id}/pricing parcial: só { rotation } (a API mescla o resto)', async () => {
     const bodies: unknown[] = []
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
       expect(String(input)).toBe('/v1/stations/st-1/pricing')
       expect(init.method).toBe('PUT')
       bodies.push(JSON.parse(String(init.body)))
-      return new Response(JSON.stringify({ rules: bodies[0] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ rules: { ...savedRules(), ...(bodies[0] as object) } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
     const storage: KeyValueStorage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }
     const store = createTokenStore(storage)
     store.setTokens({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }, Date.now())
     const ep = endpoints(createApiClient({ store, fetchImpl: fetchImpl as unknown as typeof fetch }))
     const { values } = validateRotation({ enabled: true, grace: '10', interval: '1', amount: '1,00', max: '30,00' })
-    await ep.putPricing('st-1', withRotation(savedRules(), values!))
-    expect(Object.keys(bodies[0] as object).sort()).toEqual(['demand', 'future_rule', 'peak', 'rotation', 'schedule'])
-    expect((bodies[0] as PricingRules).schedule).toEqual(savedRules().schedule)
+    const next = await ep.putPricing('st-1', rotationPatch(values!))
+    expect(Object.keys(bodies[0] as object)).toEqual(['rotation'])
+    expect(rotationForm(next.rules)).toEqual({ enabled: true, grace: '10', interval: '1', amount: '1,00', max: '30,00' })
   })
 
   it('valida com os limites da API', () => {
@@ -80,9 +62,9 @@ describe('taxa de permanência: gravação preservando as regras', () => {
   })
 
   it('resume os termos em pt-BR', () => {
-    expect(rotationSummary({ enabled: true, grace_minutes: 10, interval_minutes: 1, amount: '1.00', max_amount: '30.00' })).toBe('Após a recarga: 10 min de tolerância, depois R$ 1,00/min (máx. R$ 30,00)')
-    expect(rotationSummary({ enabled: true, grace_minutes: 0, interval_minutes: 5, amount: '2.50', max_amount: '20.00' })).toBe('Após a recarga: sem tolerância, depois R$ 2,50 a cada 5 min (máx. R$ 20,00)')
-    expect(rotationSummary({ enabled: false, grace_minutes: 0, interval_minutes: 1, amount: '0', max_amount: '0' })).toContain('Sem taxa')
+    expect(rotationSummary({ enabled: true, start_after_min: 10, interval_min: 1, amount: '1.00', max_amount: '30.00' })).toBe('Após a recarga: 10 min de tolerância, depois R$ 1,00/min (máx. R$ 30,00)')
+    expect(rotationSummary({ enabled: true, start_after_min: 0, interval_min: 5, amount: '2.50', max_amount: '20.00' })).toBe('Após a recarga: sem tolerância, depois R$ 2,50 a cada 5 min (máx. R$ 20,00)')
+    expect(rotationSummary({ enabled: false, start_after_min: 0, interval_min: 1, amount: '0', max_amount: '0' })).toContain('Sem taxa')
   })
 })
 
@@ -92,18 +74,18 @@ describe('vaga ocupada e coluna Permanência', () => {
     expect(formatCountdown(3725)).toBe('1:02:05')
     expect(formatCountdown(-3)).toBe('00:00')
     expect(formatCountdown(null)).toBe('—')
-    const base = { session_id: 's', started_at: null, max_fee: '30.00' }
+    const base = { session_id: 's', started_at: null, max_fee: '30.00', billable_minutes: 0, fee_applies: true, driver_label: 'Ana', as_of: null }
     expect(occupancyText({ ...base, status: 'grace', grace_remaining_seconds: 300, fee_due: '0.00' })).toBe('Tolerância: restam 05:00')
     expect(occupancyText({ ...base, status: 'grace', grace_remaining_seconds: 300, fee_due: '0.00' }, 30)).toBe('Tolerância: restam 04:30')
     expect(occupancyText({ ...base, status: 'billing', grace_remaining_seconds: 0, fee_due: '4.00' })).toBe('Taxa acumulada R$ 4,00 de R$ 30,00')
     expect(occupancyText({ ...base, status: 'capped', grace_remaining_seconds: 0, fee_due: '30.00' })).toBe('Taxa no máximo: R$ 30,00')
   })
 
-  it('mostra "—" quando a API não envia os campos', () => {
+  it('coluna Permanência usa overstay_fee (texto) e overstay_minutes (inteiro) de /owner/sessions', () => {
     expect(overstayCell({})).toEqual({ text: '—' })
-    expect(overstayCell({ overstay: { status: 'none' }, overstay_fee: '0.00', overstay_minutes: 0 })).toEqual({ text: '—' })
-    expect(overstayCell({ overstay_fee: '3.00', overstay_minutes: '3' })).toEqual({ text: 'R$ 3,00 · 3 min' })
-    expect(overstayCell({ overstay: { status: 'billing', fee_due: '2.00' } })).toMatchObject({ badge: 'Cobrando permanência', text: 'R$ 2,00' })
+    // analytics.session_export_row: sem permanência vem "0.00" e 0.
+    expect(overstayCell({ overstay_fee: '0.00', overstay_minutes: 0 })).toEqual({ text: '—' })
+    expect(overstayCell({ overstay_fee: '2.00', overstay_minutes: 2 })).toEqual({ text: 'R$ 2,00 · 2 min' })
   })
 })
 
