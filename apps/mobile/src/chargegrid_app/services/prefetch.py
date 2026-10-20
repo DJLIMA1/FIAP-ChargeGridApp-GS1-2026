@@ -95,8 +95,11 @@ def after_render(app, route, data):
     elif route == 'home' and vendor:
         fetch(app, [OWNER_HISTORY, *owner_dashboard(), ('me', None), ('driver/profile', None), *owner_net()])
     elif route == 'stations' and data.get('station_id'):
-        # Próximo passo provável: o assistente de reserva (configuração do pagamento de teste).
-        fetch(app, [('payments/config', None)])
+        # Próximo passo provável: o assistente de reserva (configuração do pagamento de teste). No modo
+        # apresentação a Stripe fica de fora e o app nunca consulta ``payments/config``.
+        from . import payments
+        if payments.enabled(app):
+            fetch(app, [('payments/config', None)])
     elif route == 'stations' and not vendor:
         fetch(app, [HISTORY_TAB])
         listing = cached(app, *STATIONS_TAB) or {}

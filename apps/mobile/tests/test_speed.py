@@ -275,6 +275,17 @@ class PrefetchTests(ClockMixin, unittest.IsolatedAsyncioTestCase):
             await task
         self.assertIsNone(self.api.prefetch('charging-sessions/s1'))  # rota não guardada: nada
 
+    async def test_station_detail_prefetches_payment_config_except_in_presentation_mode(self):
+        with patch('chargegrid_app.services.payments.enabled', return_value=True):
+            prefetch.after_render(self.app, 'stations', {'station_id': 's1'})
+        await asyncio.sleep(0.01)
+        self.assertEqual(self.server.count('payments/config'), 1)
+        self.api.cache.entries.clear()
+        with patch('chargegrid_app.services.payments.enabled', return_value=False):
+            prefetch.after_render(self.app, 'stations', {'station_id': 's1'})
+        await asyncio.sleep(0.01)
+        self.assertEqual(self.server.count('payments/config'), 1)
+
     async def test_demo_and_fake_clients_never_prefetch(self):
         self.assertEqual(prefetch.fetch(SimpleNamespace(api=Mock(), closed=False), [('me', None)]), [])
 
