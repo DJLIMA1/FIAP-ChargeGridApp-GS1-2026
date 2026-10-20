@@ -13,6 +13,7 @@ from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
     availability,
+    kiosk_holds,
     online,
     owned,
     row,
@@ -107,12 +108,14 @@ def energy_totals(db, connector_ids):
     return {connector_id: Decimal(total) / 1000 for connector_id, total in rows}
 
 
-def _render_point(db, connector, station, devices, reservations, sessions, retired, power=None, energy=None):
+def _render_point(db, connector, station, devices, reservations, sessions, retired, power=None, energy=None,
+                  holds=None):
     result = row(connector)
     device = devices.get(connector.id)
     result.update(availability(
         db, connector, device=device, station=station,
         reservation=reservations.get(connector.id), session=sessions.get(connector.id),
+        hold=(holds or {}).get(connector.id),
     ))
     result.update(
         online=online(device),
@@ -143,7 +146,8 @@ def point_row(db, connector, viewer=None):
     power = allocation(station, siblings, retired)["connectors"]
     energy = energy_totals(db, [connector.id]) if _owner_view(station, viewer) else None
     devices, reservations, sessions, _ = _point_state(db, [connector])
-    return _render_point(db, connector, station, devices, reservations, sessions, retired, power, energy)
+    return _render_point(db, connector, station, devices, reservations, sessions, retired, power, energy,
+                         kiosk_holds(db, [connector.id]))
 
 
 def station_rows(db, stations, viewer=None):
@@ -158,6 +162,7 @@ def station_rows(db, stations, viewer=None):
         select(Connector).where(Connector.station_id.in_([station.id for station in stations]))
     ).all()
     state = _point_state(db, connectors)
+    holds = kiosk_holds(db, [point.id for point in connectors])
     retired = state[3]
     owned_stations = {station.id for station in stations if _owner_view(station, viewer)}
     energy = energy_totals(db, [point.id for point in connectors if point.station_id in owned_stations])
@@ -188,7 +193,7 @@ def station_rows(db, stations, viewer=None):
         result["overstay"] = overstay.public_terms(station)
         station_energy = energy if _owner_view(station, viewer) else None
         result["connectors"] = [
-            _render_point(db, point, station, *state, power["connectors"], station_energy) for point in points
+            _render_point(db, point, station, *state, power["connectors"], station_energy, holds) for point in points
         ]
         for point in result["connectors"]:
             # Preço que o motorista paga agora (base do horário × demanda); travado ao reservar ou iniciar.

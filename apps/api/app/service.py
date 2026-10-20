@@ -9,11 +9,13 @@ from sqlalchemy import select
 
 from .errors import fail
 from .models import (
+    KIOSK_ORDER_OPEN,
     ChargingSession,
     Command,
     Connector,
     Device,
     Idempotency,
+    KioskOrder,
     Profile,
     Reservation,
     Station,
@@ -98,6 +100,30 @@ def active_session(db, connector_id):
             ChargingSession.connector_id == connector_id, ChargingSession.status.in_(SESSION_ACTIVE)
         )
     )
+
+
+def kiosk_holds(db, connector_ids):
+    """Pedidos do totem que travam os pontos agora (abertos e dentro do prazo): ``{connector_id: pedido}``.
+
+    Trava vencida não conta: o ponto fica livre na hora, mesmo antes de o pedido virar ``expired``.
+    """
+    ids = list(connector_ids)
+    if not ids:
+        return {}
+    return {
+        order.connector_id: order
+        for order in db.scalars(
+            select(KioskOrder).where(
+                KioskOrder.connector_id.in_(ids),
+                KioskOrder.status.in_(KIOSK_ORDER_OPEN),
+                KioskOrder.expires_at > now(),
+            )
+        )
+    }
+
+
+def active_hold(db, connector_id):
+    return kiosk_holds(db, [connector_id]).get(connector_id)
 
 
 def issue(db, connector, device, kind, reservation=None, session=None, parameters=None, *, reconcile=True):
@@ -206,12 +232,16 @@ def lock_point(db, user, connector_id):
 
 
 def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED,
-                 station=_DEVICE_NOT_LOADED, reservation=_DEVICE_NOT_LOADED, session=_DEVICE_NOT_LOADED):
+                 station=_DEVICE_NOT_LOADED, reservation=_DEVICE_NOT_LOADED, session=_DEVICE_NOT_LOADED,
+                 hold=_DEVICE_NOT_LOADED, allow_kiosk_payment=None):
     """Public state without identity data: available/offline/reserved/charging/
     reconciling/disabled/fault/occupied. A deadline never implies availability.
 
     Batch serializers may pass rows they already loaded for this connector; any
     omitted dependency is read here, so single-point callers keep one code path.
+    A totem order holding the point (``hold``) makes it ``occupied`` with
+    ``kiosk_in_use``; ``allow_kiosk_payment`` ignores the hold paid by that payment
+    (the totem's own START).
     """
     if device is _DEVICE_NOT_LOADED:
         device = device_for(db, connector)
@@ -221,6 +251,10 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
         reservation = active_res(db, connector.id)
     if session is _DEVICE_NOT_LOADED:
         session = active_session(db, connector.id)
+    if hold is _DEVICE_NOT_LOADED:
+        hold = active_hold(db, connector.id)
+    if hold is not None and allow_kiosk_payment is not None and hold.payment_id == allow_kiosk_payment:
+        hold = None
     reserved_until = (
         reservation.expires_at
         if reservation
@@ -247,6 +281,8 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
             if reserved_until and device.physical_state == "reserved" and device.reconciled
             else "reconciling"
         )
+    elif hold is not None:
+        status = "occupied"
     elif not device.reconciled:
         status = "reconciling"
     elif device.connected or device.physical_state not in ("idle", "stopped"):
@@ -257,11 +293,20 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
         "available": status == "available",
         "availability_status": status,
         "reserved_until": reserved_until,
+        # Ponto travado por um pedido do totem ("Ponto em uso no totem").
+        "kiosk_in_use": hold is not None,
     }
 
 
 def free(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
     return availability(db, connector, allow_reservation, device=device)["available"]
+
+
+def fail_unavailable(state, message="Ponto indisponível"):
+    """409 ``point_unavailable`` com ``reason`` (estado do ponto, ou ``kiosk_in_use``)."""
+    if state.get("kiosk_in_use"):
+        fail("point_unavailable", "Ponto em uso no totem", 409, reason="kiosk_in_use")
+    fail("point_unavailable", message, 409, reason=state.get("availability_status"))
 
 
 def ensure_user_free(db, user, reservation=None):

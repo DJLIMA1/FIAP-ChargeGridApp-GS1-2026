@@ -6,21 +6,26 @@
   recarga em andamento (com "Encerrar"), valor cobrado e devolvido.
 * ``/pay/return?p=...`` — retorno da Checkout aberta pelo app: só informa; quem confirma é o
   servidor (webhook ou verificação na Stripe), nunca o redirecionamento.
+* Totem (pedido sem celular, ``modules/kiosk_totem``): ``/pay/o/{pedido}?t=...`` (QR do pedido →
+  Checkout) e ``/pay/r/{pedido}?t=...`` (status e recibo do visitante; ``.pdf`` para o PDF).
 """
 
+from decimal import Decimal
 from html import escape
 from urllib.parse import parse_qs, quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from chargegrid_core import billing, pricing
 
 from ...database import db_session
-from ...models import ChargingSession, Connector, Payment, Station
+from ...models import ChargingSession, Connector, KioskOrder, Payment, Station
+from ..kiosk_totem import service as totem
 from ..pricing.service import current_terms
+from ..receipts import service as receipts
 from . import service
 from .funding import FUNDED, PRE_START, status_label
 
@@ -47,15 +52,19 @@ font-size:17px;font-weight:700;text-align:center;text-decoration:none;cursor:poi
 """
 
 
-def page(title, body, *, refresh=None, status=200):
+TEST_FOOTER = "Pagamento processado pela Stripe em modo de teste: nenhum valor real é cobrado."
+SIMULATED_FOOTER = "Pagamento simulado (Modo apresentação do posto): nenhum valor é cobrado nem movimentado."
+
+
+def page(title, body, *, refresh=None, status=200, tag="AMBIENTE DE TESTE", footer=TEST_FOOTER):
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">' if refresh else ""
     html = (
         '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"{meta}<title>{escape(title)}</title><style>{STYLE}</style></head><body><main>"
-        '<div class="brand"><b>ChargeGrid</b><span class="tag">AMBIENTE DE TESTE</span></div>'
+        f'<div class="brand"><b>ChargeGrid</b><span class="tag">{escape(tag)}</span></div>'
         f"{body}"
-        '<p class="muted">Pagamento processado pela Stripe em modo de teste: nenhum valor real é cobrado.</p>'
+        f'<p class="muted">{escape(footer)}</p>'
         "</main></body></html>"
     )
     return HTMLResponse(html, status_code=status, headers=HEADERS)
@@ -196,6 +205,101 @@ async def kiosk_stop(payment_id: UUID, request: Request, db=Depends(db_session))
         return error_page(exc)
     return RedirectResponse(f"/pay/s/{payment_id}?t={quote(token)}", status_code=303,
                             headers={"Cache-Control": "no-store"})
+
+
+# ---------------------------------------------------------------------------- totem (pedido sem celular)
+
+
+def _comma(value, step):
+    return str(Decimal(str(value)).quantize(Decimal(step))).replace(".", ",")
+
+
+def _order_page(db, order_id, token):
+    """Status do pedido do totem e, depois do início, o recibo (``receipts.service``) do visitante."""
+    order = totem.order_by_token(db, order_id, token)
+    if order.payment_id:
+        service.advance(db, order.payment_id)
+    order = totem.refresh_order(db, db.get(KioskOrder, order.id))
+    db.commit()
+    simulated = order.method == "simulated"
+    labels = {"tag": "SIMULADO", "footer": SIMULATED_FOOTER} if simulated else {}
+    connector = db.get(Connector, order.connector_id)
+    station = db.get(Station, connector.station_id)
+    payment = db.get(Payment, order.payment_id) if order.payment_id else None
+    session = db.get(ChargingSession, order.session_id) if order.session_id else None
+    status_text = totem.STATUS_LABELS[order.status] + (" · SIMULADO" if simulated else "")
+    parts = [f'<div class="card"><p class="muted">Totem · Ponto {escape(connector.public_code)} · '
+             f'{escape(station.name)}</p><h1>{escape(status_text)}</h1>']
+    if payment is not None:
+        parts.append(f'<div class="row"><span class="muted">Pagamento</span><b>{escape(status_label(payment))}</b></div>'
+                     f'<div class="row"><span class="muted">Valor pré-autorizado</span>'
+                     f'<b>{escape(money(payment.amount_cents))}</b></div>')
+    if session is None:
+        if order.status == "awaiting_payment":
+            parts.append("<p>Conclua o pagamento no celular; o totem inicia a recarga sozinho.</p>")
+        parts.append("</div>")
+        final = order.status not in (*totem.KIOSK_ORDER_OPEN,)
+        return page("Pedido do totem", "".join(parts), refresh=None if final else 5, **labels)
+    receipt = receipts.build(db, session)
+    charges = receipt["charges"]
+    rows = [("Recibo nº", receipt["number"]), ("Situação", receipt["times"]["status_label"]),
+            ("Fim", receipt["times"]["end_reason_label"] or "—"), ("Energia", f"{receipt['energy']['kwh']} kWh"),
+            ("Tarifa", f"R$ {_comma(session.price_per_kwh, '0.0001')}/kWh"),
+            ("Total", f"R$ {_comma(charges['total'], '0.01')}")]
+    if payment is not None and payment.settlement_status == "done" and payment.charge_cents is not None:
+        returned = "Devolvido (simulado)" if simulated else "Devolvido/liberado"
+        rows.append((returned, money(payment.amount_cents - payment.charge_cents)))
+    overstay_section = receipt.get("overstay") or {}
+    if overstay_section.get("status") == "available" and overstay_section.get("summary"):
+        rows.append(("Permanência", overstay_section["summary"]))
+    parts.extend(f'<div class="row"><span class="muted">{escape(str(a))}</span><b>{escape(str(b))}</b></div>'
+                 for a, b in rows)
+    parts.append("</div>")
+    parts.extend(f'<div class="notice">{escape(note)}</div>' for note in receipt["labels"]["notes"])
+    parts.append(f'<p><a class="btn secondary" href="/pay/r/{order.id}.pdf?t={quote(token)}">Baixar PDF</a></p>')
+    final = receipt["final"] and (payment is None or payment.settlement_status in ("done", "failed"))
+    return page("Recibo da recarga", "".join(parts), refresh=None if final else 5, **labels)
+
+
+@router.get("/pay/r/{order_id}.pdf")
+def totem_receipt_pdf(order_id: UUID, t: str = Query(default="", max_length=100), db=Depends(db_session)):
+    from ...reports import pdf  # ReportLab só nesta rota
+
+    try:
+        order = totem.order_by_token(db, order_id, t)
+        if order.session_id is None:
+            return page("ChargeGrid", '<div class="card"><h1>O recibo fica pronto quando a recarga começar</h1></div>',
+                        status=404)
+        payload = receipts.build(db, db.get(ChargingSession, order.session_id))
+    except HTTPException as exc:
+        return error_page(exc)
+    return Response(pdf.receipt_pdf(payload), media_type="application/pdf",
+                    headers={"Cache-Control": "no-store",
+                             "Content-Disposition": f'attachment; filename="chargegrid-recibo-{payload["number"].lower()}.pdf"'})
+
+
+@router.get("/pay/r/{order_id}")
+def totem_receipt(order_id: UUID, t: str = Query(default="", max_length=100), db=Depends(db_session)):
+    try:
+        return _order_page(db, order_id, t)
+    except HTTPException as exc:
+        return error_page(exc)
+
+
+@router.get("/pay/o/{order_id}")
+def totem_checkout(order_id: UUID, t: str = Query(default="", max_length=100), db=Depends(db_session)):
+    """QR do pedido na tela do totem: abre a Checkout hospedada enquanto o pagamento aguarda."""
+    try:
+        order = totem.order_by_token(db, order_id, t)
+        order = totem.refresh_order(db, order)
+        db.commit()
+        payment = db.get(Payment, order.payment_id) if order.payment_id else None
+    except HTTPException as exc:
+        return error_page(exc)
+    if order.status == "awaiting_payment" and payment is not None and payment.status in PRE_START \
+            and payment.checkout_url:
+        return RedirectResponse(payment.checkout_url, status_code=303, headers={"Cache-Control": "no-store"})
+    return RedirectResponse(f"/pay/r/{order.id}?t={quote(t)}", status_code=303, headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------------------- retorno do app

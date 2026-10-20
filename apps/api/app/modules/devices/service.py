@@ -445,7 +445,11 @@ def _battery(session):
 
 
 def response(db, connector, device):
+    from ..kiosk_totem import service as totem  # evita import circular (totem → pagamentos → início)
+
     station = db.get(Station, connector.station_id)
+    # Totem (só com kiosk_mode no posto): avança o pedido aberto deste ponto, sem chamar a Stripe.
+    kiosk = totem.sync_blocks(db, connector, station)
     response_time = now()
     presence_code, presence_expires_at = current_code(station, response_time)
     reservation = active_res(db, connector.id)
@@ -459,11 +463,11 @@ def response(db, connector, device):
         )
         .order_by(Command.version)
     ).all()
-    return {
+    result = {
         "server_time": response_time.isoformat(),
-        # Sessão, reserva ou comando pendente: 1 s para app e totem mostrarem os mesmos
-        # números e o START/STOP chegar logo; ocioso: 5 s.
-        "sync_interval_seconds": 1 if session or reservation or commands else 5,
+        # Sessão, reserva, comando pendente ou pedido do totem aberto: 1 s para app e totem
+        # mostrarem os mesmos números e o START/STOP chegar logo; ocioso: 5 s.
+        "sync_interval_seconds": 1 if session or reservation or commands or (kiosk and kiosk["open"]) else 5,
         "control_version": connector.control_version,
         # Permanência aberta neste ponto (painel: "desconecte em mm:ss" / taxa), ou null.
         "overstay": overstay.sync_block(db, connector),
@@ -476,6 +480,7 @@ def response(db, connector, device):
             "presence_code": presence_code if connector.active and station.active and station.owner_id else None,
             "presence_expires_at": presence_expires_at.isoformat(),
             **payment_device_fields(db, connector, station),
+            **({"kiosk": kiosk["kiosk"]} if kiosk else {}),
         },
         "authorized": {
             "reservation": (
@@ -501,6 +506,8 @@ def response(db, connector, device):
                 }
                 | _battery(session)
                 | live_power.sync_fields(session)
+                # Quem iniciou: app, QR de pagamento do painel ou pedido do totem.
+                | {"origin": totem.session_origin(db, session)}
                 if session
                 else None
             ),
@@ -521,3 +528,7 @@ def response(db, connector, device):
             for cmd in commands
         ],
     }
+    if kiosk:
+        # Pedido do totem deste ponto (aberto, em recarga ou fechado há até 10 min), ou null.
+        result["kiosk_order"] = kiosk["order"]
+    return result

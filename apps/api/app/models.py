@@ -36,6 +36,9 @@ class Profile(Base):
     vehicle_description: Mapped[str | None] = mapped_column(String(200))
     operator_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Modo apresentação da conta (migração f4b9d2c7e1a3), sincronizado pelo app: no servidor só
+    # decide o pagamento do totem dos postos desta conta (simulado em vez de Stripe teste).
+    presentation_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     __table_args__ = (CheckConstraint("account_type IN ('consumer', 'vendor')", name="profile_account_type"),)
 
 
@@ -75,6 +78,8 @@ class Station(Base):
     building_load_source: Mapped[str | None] = mapped_column(String(20))
     building_load_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Totem de autoatendimento no painel físico (migração f4b9d2c7e1a3; modules/kiosk_totem).
+    kiosk_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
@@ -485,6 +490,53 @@ class Payment(Base):
             postgresql_where=text(
                 "origin = 'app' AND status IN ('awaiting_payment', 'declined', 'authorized', 'paid')"
             ),
+        ),
+    )
+
+
+KIOSK_ORDER_STATUSES = ("held", "awaiting_payment", "paid", "charging", "finished", "canceled", "expired", "failed")
+# Pedido aberto: trava o ponto para o totem até ``expires_at`` (a sessão assume depois do START).
+KIOSK_ORDER_OPEN = ("held", "awaiting_payment", "paid")
+KIOSK_METHODS = ("simulated", "stripe")
+
+
+class KioskOrder(Base):
+    """Pedido do totem de autoatendimento (migração f4b9d2c7e1a3; ``modules/kiosk_totem``).
+
+    Um por compra no painel, do perfil convidado do ponto: termos travados no orçamento, a trava
+    do ponto (``expires_at`` enquanto aberto), o pagamento e a sessão. O token do recibo do
+    visitante não é guardado: só o sal da derivação e o SHA-256.
+    """
+
+    __tablename__ = "kiosk_orders"
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id"))
+    guest_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id"), unique=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charging_sessions.id"), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="held")
+    method: Mapped[str] = mapped_column(String(20))
+    mode: Mapped[str] = mapped_column(String(10))
+    quote: Mapped[dict] = mapped_column(JSONB, default=dict)
+    quote_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_salt: Mapped[str] = mapped_column(String(32))
+    token_hash: Mapped[str] = mapped_column(String(64))
+    last_error: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{value}'" for value in KIOSK_ORDER_STATUSES) + ")", name="kiosk_order_status"
+        ),
+        CheckConstraint("method IN ('simulated', 'stripe')", name="kiosk_order_method"),
+        CheckConstraint("mode IN ('value', 'time', 'energy')", name="kiosk_order_mode"),
+        Index("ix_kiosk_orders_connector_created", "connector_id", "created_at"),
+        # Um pedido aberto (trava) por ponto.
+        Index(
+            "one_open_kiosk_order_connector", "connector_id", unique=True,
+            postgresql_where=text("status IN ('held', 'awaiting_payment', 'paid')"),
         ),
     )
 

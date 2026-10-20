@@ -41,6 +41,8 @@ class StationPatch(Input):
     # Pagamento (Stripe, modo teste): exigir antes do START e QR de pagamento no painel.
     prepay_required: bool | None = None
     kiosk_payments: bool | None = None
+    # Totem de autoatendimento no painel físico (padrão desligado).
+    kiosk_mode: bool | None = None
 
 
 class ConnectorInput(Input):
@@ -66,6 +68,8 @@ class ProfilePatch(Input):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     phone: str | None = Field(default=None, max_length=30)
     vehicle_description: str | None = Field(default=None, max_length=200)
+    # Modo apresentação da conta (o app sincroniza ao alternar); decide o pagamento do totem.
+    presentation_mode: bool | None = None
 
 
 class ReserveInput(Input):

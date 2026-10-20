@@ -21,9 +21,9 @@ from chargegrid_core import billing
 
 from ...config import settings
 from ...errors import fail
-from ...models import PAYMENT_OPEN, ChargingSession, Payment, Station, now
+from ...models import PAYMENT_OPEN, ChargingSession, KioskOrder, Payment, Station, now
 from ...presence_code import current_code
-from ...service import SESSION_ACTIVE, active_res, active_session
+from ...service import SESSION_ACTIVE, active_hold, active_res, active_session
 from . import gateway as gateways
 from .overstay import overstay_charge
 
@@ -157,6 +157,7 @@ def device_fields(db, connector, station):
         station.kiosk_payments and base and connector.active and station.active and station.owner_id
         and gateways.current() is not None
         and not active_session(db, connector.id) and not active_res(db, connector.id)
+        and not active_hold(db, connector.id)
     ):
         code = current_code(station)[0]
         url = f"{base}/pay/k/{quote(connector.public_code, safe='')}?c={code[2:]}"
@@ -167,6 +168,8 @@ def device_fields(db, connector, station):
             Payment.origin == "kiosk",
             Payment.status.in_(PAYMENT_OPEN),
             Payment.created_at > now() - timedelta(minutes=KIOSK_PAYMENT_VISIBLE_MINUTES),
+            # Pagamento de pedido do totem aparece no bloco ``kiosk_order``, não aqui.
+            ~select(KioskOrder.id).where(KioskOrder.payment_id == Payment.id).exists(),
         )
         .order_by(Payment.created_at.desc())
         .limit(1)
@@ -187,6 +190,12 @@ def _iso(value):
 
 
 def status_label(payment):
+    """Rótulo do pagamento; o simulado do totem (Modo apresentação) diz "(simulado)", nunca "(teste)"."""
+    label = _status_label(payment)
+    return label.replace("(teste)", "(simulado)") if payment.provider == "simulated" else label
+
+
+def _status_label(payment):
     if payment.settlement_status == "failed":
         return "Em revisão (teste)"
     if payment.status == "in_use" and payment.settlement_status in ("due", "settling"):
@@ -265,11 +274,22 @@ def payments_by_session(db, session_ids):
     return {payment.session_id: payment for payment in db.scalars(select(Payment).where(Payment.session_id.in_(ids)))}
 
 
+def payment_channel(payment, totem_payment_ids=()):
+    """Canal da recarga paga: ``app``, ``kiosk_qr`` (QR /pay/k da tela Pronto) ou ``kiosk_totem``."""
+    if payment.origin != "kiosk":
+        return "app"
+    return "kiosk_totem" if payment.id in totem_payment_ids else "kiosk_qr"
+
+
 def attach_owner_payments(db, result):
-    """``/owner/sessions``: acrescenta o pagamento de cada sessão (sem dados do motorista)."""
+    """``/owner/sessions``: acrescenta o pagamento de cada sessão (sem dados do motorista) e o canal."""
     payments = payments_by_session(db, [item.get("id") for item in result["items"]])
     by_text = {str(key): value for key, value in payments.items()}
+    kiosk_ids = [payment.id for payment in payments.values() if payment.origin == "kiosk"]
+    totem = set(db.scalars(select(KioskOrder.payment_id).where(KioskOrder.payment_id.in_(kiosk_ids)))) \
+        if kiosk_ids else set()
     for item in result["items"]:
         payment = by_text.get(str(item.get("id")))
-        item["payment"] = payment_row(payment, owner=True) if payment else None
+        item["payment"] = payment_row(payment, owner=True) | {"channel": payment_channel(payment, totem)} \
+            if payment else None
     return result
