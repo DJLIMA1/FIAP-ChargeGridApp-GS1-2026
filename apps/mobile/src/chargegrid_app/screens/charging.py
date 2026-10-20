@@ -4,6 +4,8 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
+from chargegrid_core.pricing import multiplier_label
+
 from ..api_client import ApiError
 from ..services import booking as rules
 from ..services import prepaid, vehicle_state
@@ -17,8 +19,8 @@ from ..ui.components import (
     field,
     money,
 )
-from ..ui.point_summary import event_disclosure, journey_summary, point_summary
 from ..ui.point_summary import point_context as context_from_station
+from ..ui.point_summary import point_summary
 from .reservations import btn, recharge_detail, when_text
 
 
@@ -158,6 +160,50 @@ def session_card(session, *, demo=False):
     controls.append(ft.ExpansionTile(title=ft.Text('Detalhes da recarga',color=theme.TEXT_COLOR,size=13),
         expanded_cross_axis_alignment=ft.CrossAxisAlignment.START,controls=details))
     return card(controls)
+
+
+def offline_alert(session, *, demo=False):
+    """Aviso de segurança: equipamento offline durante a recarga (vazio quando está tudo certo)."""
+    if session['status'] not in ACTIVE or session.get('online'):
+        return None
+    text = ('Equipamento simulado offline. Nenhum equipamento real é acionado.' if demo else
+            'Equipamento offline. Últimos dados mantidos; parada física não confirmada.')
+    return ft.Container(ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,size=20,color=theme.ERROR),
+                                d.txt(text,12.5,'semibold',expand=True)],
+                               spacing=10,vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        bgcolor=theme.WARN_BG,border_radius=d.RADIUS_BTN,
+                        padding=ft.Padding(left=14,right=14,top=12,bottom=12),data='offline-alert')
+
+
+def _detail_row(name, value):
+    return ft.Row([d.txt(name,11.8,'regular',theme.GRAY_TEXT),
+                   d.txt(value,11.8,'bold',text_align=ft.TextAlign.RIGHT,expand=True)],
+                  alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+
+def details_card(session, *, demo=False):
+    """Card compacto "Detalhes": só o que o painel acima não mostra."""
+    energy = f"{float(session.get('energy_wh') or 0)/1000:.3f} kWh".replace('.',',')
+    limit = f"{session['max_duration_minutes']} min"
+    if session.get('max_cost') is not None:
+        limit += f" · até {money(session['max_cost'])}"
+    rows = [_detail_row('Energia entregue',energy),_detail_row('Limite',limit)]
+    if session.get('price_per_kwh') is not None:
+        tariff = f"{money(session['price_per_kwh'])}/kWh"
+        try:
+            if session.get('demand_multiplier') is not None and Decimal(str(session['demand_multiplier'])) != 1:
+                tariff += f" · demanda {multiplier_label(session['demand_multiplier'])}"
+        except (InvalidOperation,ValueError):
+            pass
+        rows.append(_detail_row('Tarifa',tariff))
+    if session.get('discount_percent'):
+        rows.append(_detail_row('Desconto',f"{session['discount_percent']}%"))
+    if session.get('end_reason'):
+        rows.append(_detail_row('Encerramento',END_REASONS.get(session['end_reason'],session['end_reason'])))
+    controls = [d.txt('Detalhes',13,'bold'),*rows]
+    if demo:
+        controls.append(d.txt('Dados simulados nesta conta',11,'regular',theme.GRAY_TEXT))
+    return d.card_box(ft.Column(controls,spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16)
 
 
 def _owner(app):
@@ -333,8 +379,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         async def stop():
             await app.api.request('POST',f"charging-sessions/{session['id']}/stop",key=key)
             await app.go('charging',session_id=session['id'])
-        state = ft.Container(session_card(session,demo=demo))
-        journey = ft.Container(journey_summary(session, demo=demo))
+        details = ft.Container(details_card(session,demo=demo))
+        offline = ft.Container(offline_alert(session,demo=demo),data='offline-slot')
+        offline.visible = offline.content is not None
         live = {}
         async def update():
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
@@ -342,14 +389,14 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             if current['status'] != session['status']:
                 await app.go('charging',session_id=session['id'])
                 return
-            state.content = session_card(current,demo=demo)
-            journey.content = journey_summary(current, demo=demo)
+            details.content = details_card(current,demo=demo)
+            offline.content = offline_alert(current,demo=demo)
+            offline.visible = offline.content is not None
             for name,value in zip(('percent','cost','power','remaining'),_metrics(current)):
                 if name in live:
                     live[name].value = value
             app.page.update()
-        extra = [state,journey,point_summary(session)]
-        extra.extend(event_disclosure(app, session['id']))
+        extra = [offline,details]
         if session['status'] in ACTIVE:
             # 1 s: o app acompanha o totem (que sincroniza a cada 1 s durante a recarga).
             app.set_poll(update,1)
@@ -370,12 +417,6 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             action = btn('Encerrar recarga',app.action(stop),'danger')
         elif session['status'] == 'stopping':
             action = btn('Encerrando recarga...',None,'secondary')
-        extra.append(ft.Text(
-            'Atualiza a cada segundo. A evolução é simulada nesta conta; nenhum equipamento real recebe comandos.'
-            if demo and session['status'] in ACTIVE else
-            'Atualiza a cada segundo. Fechar o app ou sair da conta mantém a sessão física e seus limites.'
-            if session['status'] in ACTIVE else 'Sessão encerrada. Os dados também estão disponíveis no histórico.',
-            size=12,color=theme.GRAY_TEXT))
         percent,cost,power,remaining = _metrics(session)
         return recharge_detail(
             app,screen_title(session),
