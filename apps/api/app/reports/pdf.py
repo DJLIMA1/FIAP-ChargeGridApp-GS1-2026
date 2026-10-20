@@ -258,12 +258,10 @@ def receipt_pdf(receipt: dict) -> bytes:
             ("Minutos cobrados", str(overstay.get("billable_minutes") or "—")),
             ("Valor", money(overstay.get("amount"))),
         ])]
-    story.append(kit.p("Potência ao longo da recarga", "h2"))
     width = kit.A4[0] - 28 * kit.mm
-    if power["samples"]:
-        story.append(_power_chart(kit, power["samples"], width))
-    else:
-        story.append(kit.p(power.get("note") or "Sem amostras de potência.", "small"))
+    chart = _power_chart(kit, power["samples"], width) if power["samples"] else \
+        kit.p(power.get("note") or "Sem amostras de potência.", "small")
+    story.append(kit.KeepTogether([kit.p("Potência ao longo da recarga", "h2"), chart]))
     if power["changes"]:
         story.append(kit.grid(["Horário", "Potência aplicada", "Situação", "Motivo"], [
             [when(change.get("at"), "%H:%M:%S"),
@@ -306,8 +304,8 @@ def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
                ["= Receita da energia", money(totals["revenue"])]]
     if totals.get("overstay_revenue") is not None:
         cascade.append(["+ Taxa de permanência", money(totals["overstay_revenue"])])
-    cascade += [["= Receita cobrada", money(totals["revenue_total"])],
-                ["- Comissão da plataforma", money(totals["platform_fee"])]]
+        cascade.append(["= Receita cobrada", money(totals["revenue_total"])])
+    cascade.append(["- Comissão da plataforma", money(totals["platform_fee"])])
     if totals.get("provider_fee") is not None:
         cascade.append(["- Tarifa do provedor de pagamento", money(totals["provider_fee"])])
     cascade += [["= Repasse ao dono", money(totals["owner_net"])],

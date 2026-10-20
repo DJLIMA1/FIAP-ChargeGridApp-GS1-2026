@@ -131,6 +131,28 @@ Somente leitura, para contas com `operator_enabled` (senão 403). Escopo: postos
 
 Ações de gestão continuam nos endpoints existentes (PATCH `/stations/{id}`, PATCH `/connectors/{id}`, `/coupons`, `/devices/*`). Índices de apoio: migração `a3f1c9d2e7b4`. Insights de IA: POST `/ai/owner-insights` (contrato `{summary, recommendations:[{title, detail, impact, kind}], generated_at, model}`); o dashboard trata 404/erro como estado vazio.
 
+## Recibo explicável e resultado do dono
+
+Uma regra para tudo (`chargegrid_core.economics` e `chargegrid_core.receipt`): o **valor cobrado** de uma sessão é `cost_estimate` arredondado ao centavo (meio para cima). Recibo, `/owner/overview` (receita, ranking e série somam o valor de cada sessão ao centavo), margem, CSV e PDF usam esse valor e fecham entre si. A captura do pagamento deve usar `economics.charged_amount`.
+
+**Preço travado com motivo.** Ao reservar e ao iniciar, a API grava `price_terms` (JSONB, migração `b6d2f9a4c8e1`) com o mesmo cálculo que travou o preço: `locked_at`, `locked_by` (`reservation`/`start`), `connector_base_per_kwh`, `base_per_kwh`, `base_source` (`connector`/`schedule`) e `schedule_window`, `demand` (`multiplier`, `level_label`, `reason_label`, `factors`, `recorded`) e `coupon` (`code`, `discount_percent`). A sessão também copia do posto `energy_cost_per_kwh` e `platform_fee_percent`. Esses campos não aparecem nas respostas de sessão, reserva e posto (formato inalterado; o custo do dono nunca vai ao motorista) e não vão ao equipamento. Sessões anteriores não têm `price_terms`: o recibo diz "motivo não registrado".
+
+**Motorista (só o titular; outra conta → 404; `Cache-Control: no-store`):**
+
+- `GET /charging-sessions/{id}/receipt` → recibo `{schema:"chargegrid.receipt", schema_version:1, generated_at, final, session_id, number, labels, station, point, times, price, energy, charges, power, timeline, payment, overstay, extensions?}`. Contrato aditivo: seções novas entram como chaves novas e cada uma tem `status` (`available`/`pending`/`not_applicable`/`unavailable`). `price.lines` e `price.explanation` explicam base, horário, demanda (`1,3×` com o motivo e a ocupação no momento da trava) e cupom. `energy.confirmed_by_device` só é `true` com o evento `ended` da sincronização do equipamento e leitura final. `power.samples` (até 120 pontos de `telemetry_samples.power_w`) e `power.changes` (hoje o limite do início; a frente de rebalanceamento acrescenta as mudanças confirmadas). `charges` = energia antes do cupom, desconto, energia, permanência e total (`provisional` com a recarga ativa). `labels` traz `SIMULADO`, ambiente do pagamento e "Documento sem valor fiscal".
+- `GET /charging-sessions/{id}/receipt.pdf` → o mesmo recibo em PDF.
+- `GET /me/charging-sessions/export.csv|pdf?from&to` (padrão: 30 dias; até 366) → sessões do motorista com término no período; totais com a regra do `/me/summary` (encerradas com energia), somando o valor de cada sessão ao centavo. Acima de 10 000: 413 `export_too_large`.
+
+**Dono (operador; posto de outro dono → 404; `no-store`):**
+
+- `GET /stations/{id}/economics` → `{station_id, energy_cost_per_kwh|null, platform_fee_percent, fee_editable:false, currency, notes}`. `PUT` com `{"energy_cost_per_kwh": "0,85"|null}` (R$ 0 a R$ 100, 4 casas; `null` = não informado). Erros 422: `invalid_economics`; `fee_read_only` ao enviar `platform_fee_percent`. A comissão (padrão 25 %) é de contrato: só leitura no painel, alterada pelo administrador com `tools/set_platform_fee.py <station_id> --percent 20 [--apply]` (credencial em `MIGRATION_DATABASE_URL`). Vale para as próximas recargas.
+- `GET /owner/margin?from&to&station_id&limit&offset` → `{schema_version, period, basis:"ended_at", currency, station_id, stations:[config por posto], totals, dynamic_pricing:{demand_effect, schedule_effect, sessions_with_increase, average_multiplier}, coupons:{sessions, discount}, sources, by_station, warnings, methodology, items, total, limit, offset}`. Mesmas sessões da receita do overview. Por sessão: `gross` (antes do cupom) = `list_value` + `schedule_effect` + `demand_effect`; `discount`; `revenue` (energia); `overstay_revenue`; `revenue_total`; `platform_fee` (sobre o valor cobrado depois do cupom, com permanência); `provider_fee`; `owner_net` (repasse); `energy_cost` (kWh × custo travado no início, ou o atual do posto com `cost_basis:"current"` para recargas antigas); `margin` e `margin_percent`. **Receita bruta não é lucro**: sem custo informado, `energy_cost`/`margin` são `null` (nunca zero) e `totals.margin` é `null` com `margin_covered` e `coverage`. Totais = soma das linhas ao centavo; a paginação só recorta `items`.
+- `GET /owner/export/margin.csv|pdf` com os mesmos filtros → mesma agregação (CSV sem linhas de total, protegido contra fórmulas; PDF com a cascata receita → comissão → repasse → custo → margem, efeitos do preço dinâmico e cupons, por posto, até 1 000 recargas no detalhe e método). Acima de 10 000 sessões: 413.
+
+**Extensões das outras frentes** (`app/modules/receipts/registry.py`): `register_extras("payment"|"overstay", batch)` alimenta recibo e margem (pagamento confirmado: `net_amount` substitui a estimativa e `provider_fee` entra no repasse; permanência entra na receita e na comissão); `register_section("power_changes", provider)` alimenta `power.changes`. Um provedor com erro não derruba o recibo.
+
+PDFs com ReportLab (`reportlab>=5.0.1`), importado só nas rotas de PDF (recibo ~0,2 s; margem com 1 000 linhas ~1 s). Fonte Helvetica (WinAnsi).
+
 ## Assistente de IA
 
 Rotas autenticadas (Bearer). A chave do OpenRouter fica somente no backend. As ferramentas da IA apenas **leem** dados do
