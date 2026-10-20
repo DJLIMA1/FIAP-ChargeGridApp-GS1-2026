@@ -115,6 +115,14 @@ async def build(app, station_id=None, page=None, **params):
     if not station_id:
         from . import operator
         return await operator.build(app)
+    prefetch = getattr(app.api, 'prefetch', None)
+    if prefetch is not None:
+        # Dados da subpágina em paralelo com o posto (a página só precisa do id para pedi-los).
+        if page == 'live':
+            prefetch('owner/live', {'station_id': station_id})
+            prefetch('owner/alerts', {'station_id': station_id})
+        elif page == 'energy':
+            prefetch(f'stations/{station_id}/power')
     station, code = await _load(app, station_id)
     if page == 'data':
         return _data_page(app, station, code)

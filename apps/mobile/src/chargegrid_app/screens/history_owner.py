@@ -2,6 +2,7 @@
 
 Números reais de ``owner/overview`` e ``owner/timeseries`` (os mesmos da API do painel).
 """
+import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -151,9 +152,9 @@ def _stat(caption, value, *, align=ft.CrossAxisAlignment.START, size=22.6):
 
 async def dashboard(app, *, chart=True):
     days = 7
-    overview = await app.api.request('GET', 'owner/overview', params=_window(days))
-    result = await result_section(app, days)
-    _, labels, values = await _series(app, days)
+    overview, result, (_, labels, values) = await asyncio.gather(
+        app.api.request('GET', 'owner/overview', params=_window(days)), result_section(app, days),
+        _series(app, days))
     kpis, stations = overview['kpis'], overview['stations']
     expanded = bool(chart)
     header = ft.Row([txt('Últimos 7 dias', 11.6, 'bold'), ft.Icon(DOWN if expanded else UP, size=24,
@@ -196,9 +197,12 @@ async def dashboard(app, *, chart=True):
 
 async def energy_page(app, *, days=7):
     days = days if days in (7, 14, 30) else 7
-    current = await app.api.request('GET', 'owner/overview', params=_window(days))
-    previous = await app.api.request('GET', 'owner/overview', params=_window(days, shift=days))
-    data, labels, values = await _series(app, days)
+    prefetch = getattr(app.api, 'prefetch', None)
+    if prefetch is not None:
+        prefetch('operator/stations', {'limit': 100, 'offset': 0})  # resumo da previsão, logo abaixo
+    current, previous, (data, labels, values) = await asyncio.gather(
+        app.api.request('GET', 'owner/overview', params=_window(days)),
+        app.api.request('GET', 'owner/overview', params=_window(days, shift=days)), _series(app, days))
     if days != 7:
         labels = [f"{datetime.fromisoformat(b).day:02d}" if index % 5 == 0 else '' for index, b in enumerate(data['buckets'])]
     total = _number(current['kpis']['energy_kwh'])

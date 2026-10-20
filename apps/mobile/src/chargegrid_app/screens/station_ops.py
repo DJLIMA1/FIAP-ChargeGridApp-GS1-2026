@@ -17,6 +17,8 @@ Conta demo: ``demo_site`` responde as mesmas rotas; "Simular carros no posto (de
 fictícios carregando e na vaga.
 """
 
+import asyncio
+
 import flet as ft
 
 from chargegrid_core.formatting import kwh
@@ -185,7 +187,8 @@ async def _alerts(app, sid):
 
 async def live_page(app, station):
     sid = station['id']
-    data = await app.api.request('GET', 'owner/live', params={'station_id': sid})
+    data, alerts_payload = await asyncio.gather(app.api.request('GET', 'owner/live', params={'station_id': sid}),
+                                                _alerts(app, sid))
     summary = design.txt('', 11.5, 'regular', theme.GRAY_TEXT)
     cards = ft.Column(spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     alerts = ft.Column(spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
@@ -197,7 +200,7 @@ async def live_page(app, station):
         alerts.controls = alert_rows(payload)
         alerts_box.visible = bool(alerts.controls)
 
-    draw_alerts(await _alerts(app, sid))
+    draw_alerts(alerts_payload)
 
     def draw(payload):
         items = _live_items(payload)

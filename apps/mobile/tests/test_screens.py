@@ -368,7 +368,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         with patch('chargegrid_app.screens.stations.station_map_widget',new=AsyncMock()):
             screen=await stations.build(app)
         self.assertIsInstance(screen,ft.Column)
-        self.assertEqual(app.poll[1],10)
+        self.assertEqual(app.poll[1],15)  # só a lista, sem recarga ativa: a cada 15 s (antes 10 s)
         labels=[]
         def visit(item):
             if isinstance(item,ft.TextField): labels.append(item.hint_text)

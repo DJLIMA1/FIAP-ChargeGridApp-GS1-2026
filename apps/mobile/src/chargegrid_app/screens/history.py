@@ -1,3 +1,5 @@
+import asyncio
+
 import flet as ft
 
 from chargegrid_core.formatting import kwh
@@ -129,11 +131,15 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
         return await history_owner.economics_page(app, days=int(days or 7))
     path = (f'stations/{station_id}/charging-sessions' if station_id else
             'operator/charging-sessions' if manage else 'me/charging-sessions')
-    result = await app.api.request('GET',path,params={'limit':PAGE,'offset':offset})
-    total = result.get('total', len(result['items']))
+    listing = app.api.request('GET',path,params={'limit':PAGE,'offset':offset})
     dashboard = []
     if manage and not station_id and not offset:
-        dashboard = await history_owner.dashboard(app, chart=chart not in (False, 0, 'false'))
+        # Lista e painel do período em paralelo (antes: lista, resumo, resultado e gráfico em fila).
+        result, dashboard = await asyncio.gather(
+            listing, history_owner.dashboard(app, chart=chart not in (False, 0, 'false')))
+    else:
+        result = await listing
+    total = result.get('total', len(result['items']))
     controls = []
     if manage and not station_id:
         if result['items']:

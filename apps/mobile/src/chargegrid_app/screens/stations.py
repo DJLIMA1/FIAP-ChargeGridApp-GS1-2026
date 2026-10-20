@@ -1,3 +1,4 @@
+import asyncio
 import unicodedata
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
@@ -34,6 +35,51 @@ def _available(station, point):
             and not point.get('retired') and point.get('online') is not False
             and point.get('available') is True
             and point.get('availability_status') in (None, 'available'))
+
+
+def _map_records(items):
+    """Dados do mapa (pino, vagas, preço e distância) de cada posto da lista."""
+    records = []
+    for station in items:
+        metadata = station.get('discovery') or {}
+        matching = metadata.get('matching_connector_ids')
+        shown = {**station,'connectors':[p for p in station['connectors'] if matching is None or p['id'] in matching]}
+        record = station_map_record(shown,_available)
+        if metadata.get('point'):
+            record['price'] = float(metadata['point']['price_per_kwh'])
+            record['status'] = point_status(metadata['point'])[0]
+        if metadata.get('distance_km') is not None:
+            record['distance_km'] = float(metadata['distance_km'])
+        records.append(record)
+    return records
+
+
+def _seed_details(app, items, path, params):
+    """Cada posto da lista é a mesma resposta de ``GET stations/{id}`` (sem ``discovery``): o detalhe
+    abre na hora, com a idade da lista, e se atualiza pelo poll da tela."""
+    from ..services.prefetch import supported
+    if not supported(app):
+        return
+    seed, at = app.api.seed, app.api.cached_at(path,params)
+    for item in items:
+        if isinstance(item,dict) and item.get('id'):
+            seed(f"stations/{item['id']}",{key:value for key,value in item.items() if key != 'discovery'},at=at)
+
+
+async def warm_list_map(app, items):
+    """Compõe e guarda o mapa da aba Recarga (busca padrão) antes de a pessoa abrir a aba."""
+    if not items:
+        return
+    width = max(200,min(getattr(app.page,'width',None) or 400,600)-40)
+    await station_map_widget(_map_records(items),lambda selected_id:None,offline=False,width=width,variant='list')
+
+
+async def warm_detail_map(app, station):
+    """Compõe e guarda o mapa do detalhe de um posto (o provável próximo toque na lista)."""
+    width = max(200,min(getattr(app.page,'width',None) or 400,600)-45)
+    detail = {key:value for key,value in station.items() if key != 'discovery'}  # = GET stations/{id}
+    await station_map_widget(_map_records([detail]),lambda selected_id:None,offline=False,width=width,
+                             variant='detail')
 
 
 def _fold(text):
@@ -286,7 +332,30 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     if demo_seed:
         from .reservations import seed_demo
         await seed_demo(app,demo_seed)
+    # Aba Recarga: a busca é a tela da aba; a reserva ativa / recarga em andamento aparece no topo.
+    show_active = not station_id and getattr(app,'browsing_mode','consumer') != 'vendor'
+    active_box = ft.Column(spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,data='active-recharge')
+    active_seen = [None]
+
+    async def refresh_active(found=None):
+        from .reservations import (
+            active_recharge,
+            active_recharge_cards,
+            active_snapshot,
+        )
+        reservation, session = found if found is not None else await active_recharge(app)
+        snapshot = active_snapshot(reservation, session)
+        if snapshot == active_seen[0]:
+            return False
+        active_seen[0] = snapshot
+        active_box.controls = active_recharge_cards(app,reservation,session,demo)
+        active_box.visible = bool(active_box.controls)
+        return True
     if station_id:
+        # "Melhor horário" sai junto com o posto (em paralelo), não depois dele.
+        prefetch = getattr(app.api,'prefetch',None)
+        if prefetch is not None:
+            prefetch(f'stations/{station_id}/best-times',{'hours':12})
         stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
         total = 1
     else:
@@ -297,30 +366,16 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             params['max_price_per_kwh'] = max_price_per_kwh
         if lat is not None and lng is not None:
             params.update(lat=lat,lng=lng,radius_km=radius)
-        result = await app.api.request('GET','stations',params=params)
+        if show_active:
+            from .reservations import active_recharge
+            # Lista e cartão da recarga ativa em paralelo (antes: um depois do outro).
+            result, found = await asyncio.gather(app.api.request('GET','stations',params=params),active_recharge(app))
+            await refresh_active(found)
+        else:
+            result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
-    # Aba Recarga: a busca é a tela da aba; a reserva ativa / recarga em andamento aparece no topo.
-    show_active = not station_id and getattr(app,'browsing_mode','consumer') != 'vendor'
-    active_box = ft.Column(spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH,data='active-recharge')
-    active_seen = [None]
-
-    async def refresh_active():
-        from .reservations import (
-            active_recharge,
-            active_recharge_cards,
-            active_snapshot,
-        )
-        reservation, session = await active_recharge(app)
-        snapshot = active_snapshot(reservation, session)
-        if snapshot == active_seen[0]:
-            return False
-        active_seen[0] = snapshot
-        active_box.controls = active_recharge_cards(app,reservation,session,demo)
-        active_box.visible = bool(active_box.controls)
-        return True
-    if show_active:
-        await refresh_active()
-    else:
+        _seed_details(app,result['items'],'stations',params)
+    if not show_active:
         active_box.visible = False
     if station_id:
         first = stations[0]
@@ -396,18 +451,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     async def refresh_map(items, initial=False):
         nonlocal map_signature
         items = typed_matches(items) if not station_id else items
-        records = []
-        for station in items:
-            metadata = station.get('discovery') or {}
-            matching = metadata.get('matching_connector_ids')
-            shown = {**station,'connectors':[p for p in station['connectors'] if matching is None or p['id'] in matching]}
-            record = station_map_record(shown,_available)
-            if metadata.get('point'):
-                record['price'] = float(metadata['point']['price_per_kwh'])
-                record['status'] = point_status(metadata['point'])[0]
-            if metadata.get('distance_km') is not None:
-                record['distance_km'] = float(metadata['distance_km'])
-            records.append(record)
+        records = _map_records(items)
         signature = [{key:record.get(key) for key in ('id','name','latitude','longitude','free_points','status','price','distance_km')}
                      for record in records] + [demo_crop(records)]
         if signature == map_signature:
@@ -656,7 +700,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         refresh_pagination()
         app.page.update()
     stations_seen = [stations]
-    app.set_poll(update,10)
+    # Detalhe e cartão de recarga ativa: a cada 10 s; só a lista de busca: a cada 15 s.
+    app.set_poll(update,10 if station_id or (show_active and active_box.visible) else 15)
     if station_id:
         controls += [empty_state]
     column = ft.Column(controls,scroll=ft.ScrollMode.AUTO,spacing=15 if not station_id else 14,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

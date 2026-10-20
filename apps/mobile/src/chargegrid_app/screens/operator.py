@@ -26,6 +26,12 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
                 claim=False, onboarding=False, point_id=None, step=1, existing_station=False, edited=False,
                 show_real=False, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
+    prefetch = getattr(app.api,'prefetch',None)
+    if prefetch is not None and not (claim or onboarding or connector_id or station_id == 'new'):
+        # A lista (ou o posto) sai junto com o perfil, em paralelo, e não depois dele.
+        prefetch('operator/stations',{'limit':100,'offset':0 if station_id else offset})
+        if station_id:
+            prefetch(f'stations/{station_id}')
     profile = await app.api.request('GET','me')
     app.profile = profile
     if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
@@ -95,8 +101,11 @@ def text_button(text, on_click, *, primary=True, height=48):
 
 
 async def station_list(app, offset, is_demo):
-    result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': offset})
+    params = {'limit': 100, 'offset': offset}
+    result = await app.api.request('GET', 'operator/stations', params=params)
     stations = result['items']
+    from .stations import _seed_details
+    _seed_details(app, stations, 'operator/stations', params)
     add_label = 'Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela'
     rows = [menu_row(station['name'], _station_state(station), '/design/icon_station_charge.svg',
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
