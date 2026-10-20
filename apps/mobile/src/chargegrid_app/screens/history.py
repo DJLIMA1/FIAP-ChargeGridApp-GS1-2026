@@ -9,7 +9,8 @@ from ..ui.design import card_box, icon_tile, page_title, section_label, txt
 from ..ui.design import page as layout
 from ..ui.point_summary import event_disclosure, point_summary
 from ..ui.states import SESSION_TONES, empty_state, status_chip
-from . import history_owner
+from . import history_export, history_owner
+from . import receipt as receipt_screen
 from .charging import DEMO_LABELS, LABELS, session_card
 
 PAGE = 20
@@ -61,19 +62,34 @@ def _summary(app, session, *, demo, events):
 
     head = ft.Row([txt(f'DATA: {day}', 11.8, 'regular'), txt(hour, 11.8, 'regular')],
                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+    # Recibo explicável (só o titular da recarga: histórico do motorista).
+    trailing = [receipt_link(app, session['id'])] if events and session.get('id') else []
     row = ft.Row([icon_tile(None, size=46),
                   ft.Column([txt(session.get('station_name') or 'Posto não identificado', 13.5, 'semibold'),
                              txt(_area(session.get('station_address')) or identity or '—', 10.5, 'regular', theme.GRAY_TEXT,
                                  max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)],
-                            spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER)],
+                            spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                  *trailing],
                  spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return ft.Column([head, card_box(ft.Column([ft.Container(row, on_click=toggle, ink=False,
                                                               tooltip='Detalhes da sessão'), panel], spacing=0),
                                      padding=16, radius=18)], spacing=12.5)
 
 
-async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, **_):
+RECEIPT_LABEL = 'Ver recibo'
+
+
+def receipt_link(app, session_id):
+    """Atalho "Ver recibo" no cartão da recarga (abre ``history?receipt=<id>``)."""
+    return ft.Container(txt(RECEIPT_LABEL, 11, 'semibold', theme.BTN_PRIMARY_FG), bgcolor=theme.BTN_PRIMARY,
+                        border_radius=10, padding=ft.Padding(left=11, right=11, top=7, bottom=7),
+                        on_click=app.link('history', receipt=session_id), ink=True, tooltip='Recibo explicável')
+
+
+async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, receipt=None, **_):
     demo = getattr(app.api,'is_demo',False) is True
+    if receipt and not manage and not station_id:
+        return await receipt_screen.build(app, receipt)
     demo_controls = [ft.Column([txt('CONTA DEMO · HISTÓRICO SIMULADO', 10, 'bold', theme.ACCENT),
                                 txt('Sessões de exemplo e testes feitos nesta conta. Estes valores não são cobranças ou medições reais.',
                                     10, 'regular', theme.GRAY_TEXT)], spacing=2)] if demo else []
@@ -84,6 +100,8 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
         ], spacing=15)
     if manage and not station_id and page == 'energy':
         return await history_owner.energy_page(app, days=int(days or 7))
+    if manage and not station_id and page == 'economics':
+        return await history_owner.economics_page(app, days=int(days or 7))
     path = (f'stations/{station_id}/charging-sessions' if station_id else
             'operator/charging-sessions' if manage else 'me/charging-sessions')
     result = await app.api.request('GET',path,params={'limit':PAGE,'offset':offset})
@@ -120,6 +138,8 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
                       ft.Container(ft.Column([*controls, *demo_controls], spacing=30),
                                    margin=ft.Margin(left=0, top=36 if chart not in (False, 0, 'false') else 240, right=0, bottom=0)),
                       gap=0)
+    if not station_id and not offset and result['items']:
+        controls.append(history_export.history_card(app))
     heading = [] if station_id else [ft.Container(page_title('Histórico', size=14.7), margin=ft.Margin(left=0, top=4, right=0, bottom=0))]
     # A conta demo avisa que os dados são simulados, mas abaixo da dobra (a referência não mostra o aviso).
     notice = [ft.Container(height=500), *demo_controls] if demo_controls and not station_id else demo_controls
