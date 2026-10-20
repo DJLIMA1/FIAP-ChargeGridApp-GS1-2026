@@ -11,6 +11,7 @@ Os testes trocam o gateway por ``FakeStripe`` (``use()``) e nunca acessam a rede
 import hashlib
 import hmac
 import time
+from urllib.parse import urlencode
 
 import httpx
 
@@ -59,9 +60,13 @@ class StripeGateway:
 
     def _request(self, method, path, data=None, params=None, idempotency_key=None):
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+        content = None
+        if data:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            content = urlencode(encode(data))
         try:
             response = self._client.request(
-                method, path, data=encode(data or {}) or None, params=encode(params or {}) or None, headers=headers
+                method, path, content=content, params=encode(params or {}) or None, headers=headers
             )
         except httpx.TimeoutException as exc:
             raise GatewayError("timeout", "Stripe não respondeu a tempo", retryable=True) from exc

@@ -225,6 +225,7 @@ def create_payment(db, user, data, key, request_base=""):
             previous.status = "canceled"
             previous.last_error = "replaced"
             replaced = previous
+            db.flush()  # libera o índice de um pagamento em aberto antes de inserir o novo
         fields = quote(db, user, connector, data)
         payment = Payment(user_id=user.id, connector_id=connector.id, origin="app", status="awaiting_payment",
                           expires_at=now() + timedelta(minutes=CHECKOUT_MINUTES), **fields)
