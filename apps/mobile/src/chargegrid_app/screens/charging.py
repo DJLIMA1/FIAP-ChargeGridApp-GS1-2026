@@ -340,12 +340,13 @@ def _pending_end(session, payment):
             or payments.pending_settlement(payment))
 
 
-def end_panels(app, session):
+def end_panels(app, session, show_payment=True):
     """Fim da recarga: permanência (contagem local de 1 s) e acerto do pagamento, consultando a cada 5 s.
 
     Devolve os controles (vazio quando a API não manda ``overstay`` nem ``payment``) e liga a consulta.
+    ``show_payment`` falso (modo apresentação, sem Stripe): nada de acerto nem ``GET payments``.
     """
-    state = {'session':session,'payment':session.get('payment'),'seen':time.monotonic(),'tick':END_POLL_SECONDS-1}  # 1ª consulta já no 1º segundo
+    state = {'session':session,'payment':session.get('payment') if show_payment else None,'seen':time.monotonic(),'tick':END_POLL_SECONDS-1}  # 1ª consulta já no 1º segundo
     lines = overstay_lines(session.get('overstay'))
     stay = ft.Container(info_card(*lines,'overstay-status') if lines else None,data='overstay-slot')
     stay.visible = stay.content is not None
@@ -374,7 +375,7 @@ def end_panels(app, session):
             current = await app.api.request('GET',f"charging-sessions/{session['id']}")
             if isinstance(current,dict) and current.get('id') == session['id']:
                 state['session'],state['seen'] = current,time.monotonic()
-                state['payment'] = current.get('payment') or state['payment']
+                state['payment'] = (current.get('payment') if show_payment else None) or state['payment']
             payment = state['payment']
             if payments.pending_settlement(payment):
                 # O GET do pagamento faz o servidor concluir o acerto (captura/liberação na Stripe, teste).
@@ -594,7 +595,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             offline.visible = offline.content is not None
             reason.content = reason_line(current)
             reason.visible = reason.content is not None
-            if current.get('payment'):
+            if current.get('payment') and stripe_view:
                 badge.content = payment_badge(current['payment'])
                 badge.visible = badge.content is not None
             for name,value in zip(('percent','cost','power','remaining'),_metrics(current)):
@@ -604,7 +605,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         # Motivo da potência (rebalanceamento ao vivo) e selo do pagamento: ocultos sem os campos.
         reason = ft.Container(reason_line(session),data='power-reason',margin=ft.Margin(6,0,6,0))
         reason.visible = reason.content is not None
-        badge = ft.Container(payment_badge(session.get('payment')),data='payment-slot')
+        # Modo apresentação: sem Stripe, sem selo nem acerto de teste (pagamento simulado da 0.6.x).
+        stripe_view = payments.enabled(app)
+        badge = ft.Container(payment_badge(session.get('payment')) if stripe_view else None,data='payment-slot')
         badge.visible = badge.content is not None
         extra = [offline,details]
         if session['status'] in ACTIVE:
@@ -617,7 +620,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             credited = prepaid.settle(app,session)
             if credited:
                 extra.insert(0,credit_notice(credited))
-            ending = end_panels(app,session)
+            ending = end_panels(app,session,show_payment=stripe_view)
             if ending:
                 extra[0:0] = ending
             async def again():
@@ -708,7 +711,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         # Vindo do assistente (booking), cobrança, valor e potência já foram escolhidos:
         # a etapa "Definir limites" não é mostrada de novo (só código #F → revisar).
         draft['planned'] = bool(intention)
-        if intention and intention.get('payment_id'):
+        if intention and intention.get('payment_id') and payments.enabled(app):
             draft['payment'] = {'id':intention['payment_id'],'amount':intention.get('payment_amount')}
         if intention and intention.get('overstay_terms_version'):
             draft['overstay_version'] = intention['overstay_terms_version']
@@ -756,6 +759,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         except ApiError:
             step = draft['furthest'] = 2
     draft['step'] = step
+    if not uncertain and draft.get('payment') and not payments.enabled(app):
+        draft.pop('payment',None)  # modo apresentação: nenhum payment_id no início
     _metadata(app,_route(draft,step))
     station_id = draft['point_context'].get('station_id')
     if step == 3 and not uncertain and station_id and not draft.get('overstay_loaded'):
@@ -1060,6 +1065,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     await navigate(1)
                     app.notice(str(exc))
                     return
+                if exc.code == 'payment_required' and not payments.enabled(app):
+                    raise ApiError(payments.PRESENTATION_PREPAY,exc.status,exc.code) from None
                 if definite and exc.code == 'overstay_terms_changed':
                     draft.update(overstay_loaded=False,overstay_version=None,overstay=None)
                     await navigate(3)

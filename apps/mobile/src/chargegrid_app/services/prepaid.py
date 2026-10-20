@@ -11,6 +11,9 @@ conta real: JSON em ``FLET_APP_STORAGE_DATA`` por id de usuário.
 Conta real: a carteira NÃO recebe mais crédito. O pré-pagamento é o da Stripe (teste), que cobra só a
 energia confirmada e libera/devolve o resto no próprio meio de pagamento; a tela lê ``session.payment``.
 Na demo (Saldo simulado) tudo continua igual; uma recarga paga pela Stripe simulada também não credita.
+
+Modo apresentação (``vehicle_state.presentation_mode``): sem Stripe, como na 0.6.x — a sobra de um
+pré-pagamento simulado (Saldo / Pix / Cartão) volta ao saldo também na conta real.
 """
 
 import json
@@ -20,7 +23,7 @@ from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-from . import wallet
+from . import vehicle_state, wallet
 
 CREDIT_TITLE = 'Crédito de recarga não utilizada'
 CENT = Decimal('0.01')
@@ -133,8 +136,8 @@ def settle(app, session):
     """
     if not isinstance(session, dict) or not session.get('id') or session.get('status') in ACTIVE:
         return None
-    if not _is_demo(app) or session.get('payment'):
-        return None  # conta real ou pagamento Stripe (teste): o acerto vem de ``session.payment``
+    if session.get('payment') or not (_is_demo(app) or vehicle_state.presentation_mode(app)):
+        return None  # pagamento Stripe (teste) ou conta real fora do modo apresentação: acerto em ``payment``
     rows = _load(app)
     row = next((item for item in rows if item.get('session_id') == session['id']), None)
     if row is None and session.get('reservation_id'):

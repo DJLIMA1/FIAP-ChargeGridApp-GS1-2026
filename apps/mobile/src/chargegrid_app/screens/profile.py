@@ -172,7 +172,7 @@ async def build(app, mode=None, **_):
             if not vehicle_state.set_presentation_mode(app, bool(e.control.value)):
                 app.notice('Modo apresentação aplicado nesta sessão. Não foi possível salvar no dispositivo.')
             app.page.update()
-        rows.append(_row('Modo apresentação', 'Usa a bateria do celular como bateria do carro',
+        rows.append(_row('Modo apresentação', 'Bateria do celular como a do carro e pagamento simulado (sem Stripe)',
                          ft.Icons.BATTERY_CHARGING_FULL, None, chevron=False,
                          trailing=ft.Switch(value=vehicle_state.presentation_mode(app), on_change=presentation,
                                             data='presentation', active_color=theme.RED)))

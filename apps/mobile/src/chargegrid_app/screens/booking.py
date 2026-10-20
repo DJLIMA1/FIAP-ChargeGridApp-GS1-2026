@@ -20,6 +20,11 @@ consulta o estado a cada 2 s; só com o pagamento confirmado pelo servidor segue
 início da recarga). Nenhum dado de cartão é lido, guardado ou enviado pelo app. "Saldo" (simulado,
 ``services.wallet``) fica na conta demo, ou como única opção quando a API não tem pagamento.
 
+Modo apresentação (preferência do aparelho em Conta): sem Stripe nenhuma. O app nem consulta
+``payments/config`` e volta ao pagamento simulado da 0.6.x — Saldo / Pix / Cartão, com o formulário de
+cartão ilustrativo e o Pix "Já paguei" na etapa 7 ("Efetuar Pagamento") e a sobra creditada no saldo. Um
+posto com ``prepay_required`` mostra o aviso para desligar o modo (a API recusaria o início com 402).
+
 "Por autonomia": o motorista pede N km; a energia sai do carro do perfil (consumo) e é limitada ao espaço
 livre da bateria (SoC escondido de ``services.vehicle_state``, nunca exibido aqui). Todo pagamento feito
 aqui fica registrado em ``services.prepaid``: a sobra (ex.: bateria cheia) volta como crédito no saldo.
@@ -36,8 +41,13 @@ from ..ui.point_summary import point_context
 
 AMBER_BG = '#4E3F24'
 AMBER = '#E8922B'
-PAY_LABELS = {'balance': 'Saldo Disponível', 'stripe': payments.METHOD_LABEL}
-PAY_ICONS = {'balance': ft.Icons.WALLET, 'stripe': ft.Icons.CREDIT_CARD}
+PAY_LABELS = {'balance': 'Saldo Disponível', 'stripe': payments.METHOD_LABEL,
+              'pix': 'Pix', 'card': 'Cartão de Crédito / Débito'}
+PAY_ICONS = {'balance': ft.Icons.WALLET, 'stripe': ft.Icons.CREDIT_CARD, 'pix': ft.Icons.MONEY,
+             'card': ft.Icons.CREDIT_CARD}
+# Modo apresentação: as opções e o Pix simulados da 0.6.x (nada é cobrado nem enviado).
+SIMULATED_OPTIONS = ['balance', 'pix', 'card']
+PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-demo-simulado5204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
 STRIPE_SUBTITLE = 'Página segura da Stripe · ambiente de teste'
 POLL_SECONDS = 2
 LAST_STEP = 8
@@ -244,8 +254,10 @@ def pay_options(demo, stripe_enabled, prepay=False):
     return ['stripe'] if stripe_enabled else ['balance']
 
 
-def prepay_note(stripe_enabled):
+def prepay_note(stripe_enabled, presentation=False):
     """Aviso do posto que exige pagamento antecipado (``prepay_required``)."""
+    if presentation:
+        return ft.Container(design.warning_box(payments.PRESENTATION_PREPAY), data='prepay-presentation')
     text = ('Este posto exige pagamento antecipado pelo app (Stripe · teste): a recarga só começa depois da '
             'confirmação.' if stripe_enabled else
             'Este posto exige pagamento antecipado, mas o pagamento pelo app está indisponível agora: '
@@ -360,10 +372,12 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             state['by'] = 'time'
 
     demo = getattr(app.api, 'is_demo', False) is True
-    stripe_config = await payments.config(app) if step >= 2 else {}
+    simulated = not payments.enabled(app)  # modo apresentação: sem Stripe, pagamento simulado da 0.6.x
+    stripe_config = await payments.config(app) if step >= 2 and not simulated else {}
     prepay = station.get('prepay_required') is True
-    options = pay_options(demo, stripe_config.get('enabled') is True, prepay)
-    if state['pay'] in ('pix', 'card'):  # atalhos antigos: o formulário falso de cartão/Pix saiu
+    options = SIMULATED_OPTIONS if simulated else pay_options(demo, stripe_config.get('enabled') is True, prepay)
+    blocked = simulated and prepay  # a API recusaria o início sem pagamento Stripe (402)
+    if state['pay'] in ('pix', 'card') and not simulated:  # atalhos antigos: o formulário falso saiu
         state['pay'] = 'stripe'
     if state['pay'] is not None and state['pay'] not in options:
         state['pay'] = options[0]
@@ -500,13 +514,15 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                 state['pay'] = key
                 await app.go('booking', step=5, station_id=station_id)
             return handler
-        cards = [_option(PAY_LABELS[key], rules.money(balance) if key == 'balance' else STRIPE_SUBTITLE,
+        cards = [_option(PAY_LABELS[key], _pay_subtitle(key, balance),
                                      selected=state['pay'] == key, on_click=choose_pay(key), icon=PAY_ICONS[key])
                  for key in options]
         if prepay:
-            cards.append(prepay_note(stripe_config.get('enabled') is True))
+            cards.append(prepay_note(stripe_config.get('enabled') is True, presentation=simulated))
 
         async def pay_next():
+            if blocked:
+                raise failing(payments.PRESENTATION_PREPAY)
             if not state['pay']:
                 raise failing('Escolha uma forma de pagamento para continuar.')
             if state['pay'] == 'balance' and balance < rules.total(quote()['cost'], reserving):
@@ -615,7 +631,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         when = (f'Reservado por {rules.TOLERANCE_MINUTES} min' if reserving else 'Início no ponto com o código #F')
         kind = KIND_LABELS.get(state['by'], 'Por tempo')
         power_note = rules.power_options(group, car_power)[state['power'] or 'max'][1]
-        pay_sub = rules.money(balance) if state['pay'] == 'balance' else STRIPE_SUBTITLE
+        pay_sub = _pay_subtitle(state['pay'], balance)
         first = block('Recarga', row(f"{kind} | {'Reservar estação' if reserving else 'Carregar agora'}", f'{detail} | {when}',
                                      ft.Icons.ACCESS_TIME, 3), 11, 18.5)
         second = block('Método de Pagamento', row(PAY_LABELS[state['pay']], pay_sub, PAY_ICONS[state['pay']], 5),
@@ -645,9 +661,17 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         extra = [ft.Container(overstay_box(overstay), margin=ft.Margin(left=0, top=18, right=0, bottom=0))] \
             if overstay else []
 
+        if blocked:
+            extra.append(ft.Container(prepay_note(False, presentation=True),
+                                      margin=ft.Margin(left=0, top=18, right=0, bottom=0)))
+
         async def confirm():
+            if blocked:
+                raise failing(payments.PRESENTATION_PREPAY)
             if stripe:
                 await open_payment()
+            elif state['pay'] in ('pix', 'card'):
+                await app.go('booking', step=7, station_id=station_id)  # Pix/cartão simulados (0.6.x)
             else:
                 await finish()
         return _page(first, second, third, place, total_block, *extra, title='Revisar Dados', on_back=app.back,
@@ -656,6 +680,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                                    app.action(confirm), height=55, size=16, weight='bold')])
 
     if step == 7:
+        if state['pay'] in ('pix', 'card'):
+            return _simulated_payment(app, state, amount, finish, failing, blocked)
         return _awaiting_payment(app, state, station_id, finish, open_payment, stripe_config, nav)
 
     # ------------------------------------------------------------------ 8: confirmada
@@ -710,6 +736,80 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         gutter=0, gap=16, title_size=18.5)
     column.controls[0] = ft.Container(column.controls[0], margin=ft.Margin(left=0, top=2.5, right=0, bottom=0))
     return column
+
+
+def _pay_subtitle(key, balance):
+    if key == 'balance':
+        return rules.money(balance)
+    return STRIPE_SUBTITLE if key == 'stripe' else None
+
+
+# ---------------------------------------------------------------------- 7: Pix/cartão simulados (0.6.x)
+def _simulated_payment(app, state, amount, finish, failing, blocked=False):
+    """Etapa 7 do modo apresentação, como na 0.6.x: formulário de cartão ilustrativo ou Pix "Já paguei".
+
+    Nada é cobrado; os campos do cartão nunca são guardados nem enviados.
+    """
+    async def pay():
+        if blocked:
+            raise failing(payments.PRESENTATION_PREPAY)
+        await finish()
+
+    async def copy_code():
+        await ft.Clipboard().set(PIX_CODE)
+        app.notice('Código Pix copiado (demonstração).')
+    if state['pay'] == 'card':
+        def card_field(text, hint, **kwargs):
+            field = design.input_field('', hint, **kwargs)
+            field.hint_style = ft.TextStyle(color='#96989D', size=12, font_family=design.FONT)
+            field.text_style = ft.TextStyle(size=12, font_family=design.FONT, color=theme.INPUT_TEXT)
+            field.content_padding = ft.Padding(left=9, right=9, top=13, bottom=13)
+            return ft.Column([design.txt(text, 10.6, 'bold', theme.GRAY_TEXT), field], spacing=4,
+                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        fields = {'number': card_field('Número do cartão', '0000 0000 0000 0000', keyboard=ft.KeyboardType.NUMBER),
+                  'name': card_field('Nome impresso', 'Nome no cartão'),
+                  'valid': card_field('Validade', 'MM/AA', keyboard=ft.KeyboardType.NUMBER),
+                  'cvv': card_field('CVV', '•••', keyboard=ft.KeyboardType.NUMBER, password=True)}
+
+        async def pay_card():
+            # Os campos são apenas ilustrativos: valores nunca são guardados nem enviados.
+            if not all((item.controls[1].value or '').strip() for item in fields.values()):
+                raise failing('Preencha os dados do cartão (demonstração: nada é enviado ou guardado).')
+            for item in fields.values():
+                item.controls[1].value = ''
+            await pay()
+        for item in fields.values():
+            item.controls[1].can_reveal_password = False
+        body = [ft.Container(height=5.5), fields['number'], fields['name'],
+                ft.Row([ft.Container(fields['valid'], expand=True), ft.Container(fields['cvv'], expand=True)],
+                       spacing=34)]
+        footer = [ft.Container(_secure_note(), margin=ft.Margin(left=0, top=0, right=0, bottom=3.5)),
+                  design.primary_button('Efetuar Pagamento', app.action(pay_card), height=55, size=16,
+                                        weight='bold')]
+    else:
+        plate = ft.Container(
+            ft.Container(ft.Image(src=design.QR_SRC, width=260, height=260, fit=ft.BoxFit.COVER,
+                                  exclude_from_semantics=True), scale=1.09),
+            width=260, height=262, bgcolor='#F7F7F7', border_radius=18, alignment=ft.Alignment(0, 0),
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
+        body = [ft.Container(plate, alignment=ft.Alignment(0, 0), margin=ft.Margin(left=0, top=52.5, right=0,
+                                                                                     bottom=0)),
+                ft.Column([ft.Container(design.txt(rules.money(amount).replace('R$', 'R$ '), 28, 'bold'), height=35.5,
+                                        alignment=ft.Alignment(0, -1)),
+                           design.txt('Expira em 14:59', 11.6, 'bold', '#ABABAB')], spacing=0,
+                          horizontal_alignment=ft.CrossAxisAlignment.CENTER)]
+        footer = [ft.Container(_secure_note(), margin=ft.Margin(left=0, top=0, right=0, bottom=3.5)),
+                  ft.Container(
+                      ft.Container(ft.Row([ft.Icon(ft.Icons.CONTENT_COPY, size=13, color=theme.BTN_SECONDARY_FG),
+                                           design.txt('Copiar código Pix', 12.5, 'bold', theme.BTN_SECONDARY_FG)],
+                                          spacing=8, alignment=ft.MainAxisAlignment.CENTER),
+                                   height=45, bgcolor='#252525', border_radius=design.RADIUS_BTN,
+                                   on_click=app.action(copy_code), ink=True),
+                      margin=ft.Margin(left=0, top=0, right=0, bottom=4)),
+                  design.primary_button('Já paguei (Confirmar)', app.action(pay), height=55, size=16,
+                                        weight='bold')]
+    return _page(*body, title='Efetuar Pagamento', on_back=app.back, steps=1, step=1, footer=footer,
+                 edge='c7c' if state['pay'] == 'card' else 'c7p', gap=15.5 if state['pay'] == 'card' else 13.5)
 
 
 # ---------------------------------------------------------------------- 7: aguardando pagamento
