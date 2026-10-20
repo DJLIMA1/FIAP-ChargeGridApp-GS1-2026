@@ -22,6 +22,7 @@ from .modules.driver.routes import router as driver_router
 from .modules.geo.routes import router as geo_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
+from .modules.power.routes import router as power_router
 from .modules.pricing.routes import router as pricing_router
 from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
@@ -51,6 +52,8 @@ for router in (
     app_updates_router,
 ):
     app.include_router(router, prefix="/v1")
+# Rebalanceamento de potência ao vivo (painel do vendedor e motorista).
+app.include_router(power_router, prefix="/v1")
 
 
 @app.get("/health")

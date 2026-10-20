@@ -166,5 +166,7 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
 
 @router.post("/devices/sync")
 def device_sync(data: SyncInput, device=Depends(current_device), db=Depends(db_session)):
-    limit(db, "device:" + str(device.id), maximum=40)
+    # Sync de 1 s em recarga + sync imediato após aplicar comando: 120/min (antes 40/min
+    # derrubava cerca de 1/3 dos syncs com 429 e atrasava os ACKs).
+    limit(db, "device:" + str(device.id), maximum=120)
     return sync(db, device, data)

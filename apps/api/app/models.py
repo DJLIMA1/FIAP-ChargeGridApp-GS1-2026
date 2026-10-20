@@ -59,9 +59,20 @@ class Station(Base):
     power_limit_notify: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     # Tarifa dinâmica (migração a7c2e9d4b6f1): dados base do dono; o cálculo é chargegrid_core.pricing.
     pricing: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    # Rebalanceamento ao vivo (migração b7d2f4a91c36): limite contratado da instalação (loja
+    # incluída) e consumo do estabelecimento, hoje só simulado pelo vendedor.
+    site_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    building_load_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    building_load_source: Mapped[str | None] = mapped_column(String(20))
+    building_load_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),
+        CheckConstraint("site_limit_kw IS NULL OR site_limit_kw > 0", name="station_site_limit_positive"),
+        CheckConstraint("building_load_kw IS NULL OR building_load_kw >= 0", name="station_building_load_range"),
+        CheckConstraint("building_load_source IS NULL OR building_load_source IN ('simulated')",
+                        name="station_building_load_source"),
     )
 
 
@@ -100,6 +111,10 @@ class Device(Base):
     physical_state: Mapped[str] = mapped_column(String(20), default="unknown")
     connected: Mapped[bool] = mapped_column(Boolean, default=False)
     reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Declarado pelo próprio equipamento a cada sync: ["set_power_v1"] e o carregador que ele
+    # controla ({model, variant, transport, min_power_w, max_power_w, step_w, phases}).
+    capabilities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    charger: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
     )
@@ -168,6 +183,16 @@ class ChargingSession(Base):
     soc_source: Mapped[str | None] = mapped_column(String(20))
     # Potência máxima aplicada no início (efetivo do conector ∩ limite do motorista).
     power_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    # Potência ao vivo: limite do motorista/carro pedido no início, alvo da última decisão,
+    # potência aplicada confirmada pelo equipamento e o motivo em texto (app, painel e recibo).
+    requested_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    target_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    applied_power_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    power_state: Mapped[str | None] = mapped_column(String(20))
+    power_reason: Mapped[str | None] = mapped_column(String(300))
+    power_reason_short: Mapped[str | None] = mapped_column(String(60))
+    power_reason_code: Mapped[str | None] = mapped_column(String(30))
+    power_decision_id: Mapped[int | None] = mapped_column(BigInteger)
     last_measurement_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cost_estimate: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     end_reason: Mapped[str | None] = mapped_column(String(100))
@@ -182,6 +207,11 @@ class ChargingSession(Base):
         CheckConstraint("soc_source IS NULL OR soc_source IN ('simulated', 'phone')", name="session_soc_source"),
         CheckConstraint("power_limit_kw IS NULL OR power_limit_kw > 0", name="session_power_limit_positive"),
         CheckConstraint("demand_multiplier BETWEEN 1 AND 2", name="session_demand_multiplier_range"),
+        CheckConstraint(
+            "power_state IS NULL OR power_state IN ('applied','reducing','raising','waiting','paused','fixed')",
+            name="session_power_state",
+        ),
+        CheckConstraint("applied_power_kw IS NULL OR applied_power_kw >= 0", name="session_applied_power_range"),
         Index("ix_charging_sessions_user_created", "user_id", "created_at"),
         *tuple(
             Index(
@@ -205,6 +235,8 @@ class SessionEvent(Base):
     kind: Mapped[str] = mapped_column(String(40))
     source: Mapped[str] = mapped_column(String(30))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Dados do fato (ex.: potência aplicada e motivo); null nos eventos sem detalhe.
+    data: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = (UniqueConstraint("session_id", "event_key"),)
 
 
@@ -310,3 +342,19 @@ class AiUsage(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     tools: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class PowerDecision(Base):
+    """Registro legível de cada decisão de divisão de potência de um posto (append-only)."""
+
+    __tablename__ = "power_decisions"
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    station_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stations.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    trigger: Mapped[str] = mapped_column(String(40))
+    inputs: Mapped[dict] = mapped_column(JSONB)
+    available_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    exceeded_kw: Mapped[float] = mapped_column(Numeric(10, 3), default=0)
+    summary: Mapped[str] = mapped_column(String(300))
+    input_hash: Mapped[str] = mapped_column(String(64))
+    __table_args__ = (Index("ix_power_decisions_station_created", "station_id", "created_at"),)

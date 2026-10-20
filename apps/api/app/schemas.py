@@ -94,6 +94,20 @@ class Ack(Input):
     error: str | None = Field(default=None, max_length=200)
     new_device_key_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     new_claim_token_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # SET_POWER: limite que o equipamento instalou (W), confirmado por ele.
+    applied_power_w: Decimal | None = Field(default=None, ge=0, le=1000000)
+
+
+class ChargerInfo(Input):
+    """Carregador controlado pelo equipamento (declarado por ele; transporte simulado rotulado)."""
+
+    model: str = Field(min_length=1, max_length=40)
+    variant: str | None = Field(default=None, max_length=40)
+    transport: Literal["simulated", "modbus_tcp", "modbus_rtu", "none"] = "none"
+    min_power_w: int = Field(ge=0, le=1000000)
+    max_power_w: int = Field(gt=0, le=1000000)
+    step_w: int = Field(default=100, gt=0, le=100000)
+    phases: int | None = Field(default=None, ge=1, le=3)
 
 
 class SyncInput(Input):
@@ -110,6 +124,10 @@ class SyncInput(Input):
     captured_at: datetime
     end_reason: str | None = Field(default=None, max_length=100)
     acks: list[Ack] = Field(default_factory=list, max_length=20)
+    # Aditivos (firmware 0.5.0+/simulador): capacidade de ajuste ao vivo e limite aplicado agora.
+    capabilities: list[Annotated[str, StringConstraints(max_length=40)]] = Field(default_factory=list, max_length=10)
+    applied_power_w: Decimal | None = Field(default=None, ge=0, le=1000000)
+    charger: ChargerInfo | None = None
 
 
 class CouponInput(Input):
@@ -158,3 +176,16 @@ class PasswordUpdateInput(Input):
 
 class RefreshInput(Input):
     refresh_token: str = Field(min_length=1, max_length=4096)
+
+
+class PowerSiteInput(Input):
+    """Limite contratado da instalação e liga/desliga do rebalanceamento ao vivo."""
+
+    site_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    rebalance_enabled: bool | None = None
+
+
+class BuildingLoadInput(Input):
+    """Consumo do estabelecimento (simulado pelo vendedor)."""
+
+    building_load_kw: Decimal = Field(ge=0, le=10000, allow_inf_nan=False)

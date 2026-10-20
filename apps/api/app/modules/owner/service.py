@@ -311,6 +311,9 @@ def live(db, scope):
                 "soc_percent": str(session.soc_percent) if session.soc_percent is not None else None,
                 "soc_source": session.soc_source,
                 "power_w": str(power) if power is not None else None,
+                # Potência ao vivo: aplicada confirmada pelo equipamento, estado e motivo.
+                "applied_power_kw": str(session.applied_power_kw) if session.applied_power_kw is not None else None,
+                "power_state": session.power_state, "power_reason": session.power_reason,
                 "source": session.source,
                 "last_measurement_at": session.last_measurement_at.isoformat()
                 if session.last_measurement_at else None,

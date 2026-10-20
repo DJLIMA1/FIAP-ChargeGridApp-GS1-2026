@@ -24,6 +24,7 @@ from ...service import (
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
+from ..power.service import start_power
 from ..pricing.service import current_terms
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
@@ -164,10 +165,14 @@ def start(db, user, data, key):
         demand_multiplier=multiplier,
         discount_percent=discount,
         power_limit_kw=session_power_limit(db, connector, data.max_power_kw),
+        requested_power_kw=data.max_power_kw.quantize(Decimal("0.001"), rounding=ROUND_DOWN)
+        if data.max_power_kw is not None else None,
         **_battery_fields(data),
     )
     db.add(session)
     db.flush()
+    # Rebalanceamento ao vivo: potência inicial pela decisão do posto (409 sem capacidade).
+    live_power = start_power(db, connector, device, session)
     limits = {
         "session_id": str(session.id),
         "max_duration_minutes": session.max_duration_minutes,
@@ -177,6 +182,7 @@ def start(db, user, data, key):
         # Older firmware ignores it; newer firmware/simulator cap the simulated power.
         "max_power_kw": float(session.power_limit_kw) if session.power_limit_kw is not None else None,
         **battery_parameters(session),
+        **live_power,
     }
     issue(db, connector, device, "START", session=session, parameters=limits)
     remember(db, user, "start", key, body_hash, session)
