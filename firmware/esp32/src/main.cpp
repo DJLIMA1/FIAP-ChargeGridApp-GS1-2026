@@ -312,10 +312,11 @@ void handleSerialMaintenance() {
       step = 4; Serial.println("[setup] Device key (input hidden):"); return;
     }
     if (line == "CG_STATUS") {
-      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f source=simulated firmware=0.3.6\n",
+      Serial.printf("[status] state=%s wifi=%s identity=%s synced=%s http=%d session=%s energy_wh=%.3f power_w=%.0f connected=%s source=simulated firmware=%s\n",
         state.c_str(), WiFi.status() == WL_CONNECTED ? "connected" : "offline",
         panelIdentityConfigured ? "configured" : "missing", hasSynced ? "yes" : "no",
-        lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW);
+        lastSyncHttpStatus, sessionId.length() ? "present" : "none", reading.energyWh, reading.powerW,
+        reading.connected ? "yes" : "no", CHARGEGRID_FIRMWARE_VERSION);
       return;
     }
     if (line == "CG_STOP") {
@@ -384,7 +385,7 @@ void setup() {
     if (socSource == "phone") phoneSocPercent = socStartPercent;
   }
   reading.socPercent = currentSessionSoc(reading.energyWh);
-  if (sessionId.length()) { state = "stopped"; endReason = "communication_lost"; }
+  applyBootSafety();
   bootId = String(esp_random(), HEX) + String(esp_random(), HEX) + String(esp_random(), HEX);
   acknowledgements.to<JsonArray>();
   lastContact = lastTick = millis();

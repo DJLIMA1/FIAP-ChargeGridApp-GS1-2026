@@ -2,6 +2,19 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+// Estado 0.7.0 definido aqui (e não em main.cpp) para os testes de host o reutilizarem.
+float sessionAppliedPowerKw = -1;
+String powerReasonShort;
+String kioskUrl, paymentStatus;
+float paymentAmount = -1;
+bool paymentTest = false;
+bool overstayEnabled = false;
+String overstayStatus;
+long overstayGraceSeconds = 0;
+unsigned long overstayReceivedAt = 0;
+float overstayFeeDue = -1, overstayMaxFee = -1, overstayAmount = -1;
+long overstayIntervalMinutes = 0;
 // A API serializa Decimal como texto ("42.50"); aceita número ou texto numérico.
 static float jsonNumber(JsonVariantConst value, float fallback) {
   if (value.is<const char*>()) {
@@ -28,8 +41,51 @@ static void readStartSoc(JsonObjectConst source) {
   const char* kind = source["soc_source"].as<const char*>();
   if (validSocSource(kind)) socSource = kind;
 }
-// max_power_kw do START (parameters prevalecem sobre a sessão); ausente/inválido: nominal.
-static float readPowerCap(JsonObjectConst parameters, JsonObjectConst session) {
+float chargerLimitW(float requestedW) {
+  if (!(requestedW > 0)) return 0;
+  const float capped = min(requestedW, (float)kChargerMaxPowerW);
+  const float stepped = floorf(capped / kChargerStepW) * kChargerStepW;
+  return stepped >= kChargerMinPowerW ? stepped : 0;
+}
+static bool validPowerLimit(float watts) { return watts >= 0 && watts <= 1000000; }
+String panelLatin1(const char* text, size_t maxChars) {
+  char out[64 * 3 + 1]{};
+  size_t length = 0, kept = 0;
+  maxChars = min(maxChars, (size_t)64);
+  const unsigned char* c = reinterpret_cast<const unsigned char*>(text ? text : "");
+  while (*c && kept < maxChars) {
+    uint32_t cp = *c; int extra = 0;
+    if (cp >= 0xF0) { cp &= 0x07; extra = 3; }
+    else if (cp >= 0xE0) { cp &= 0x0F; extra = 2; }
+    else if (cp >= 0xC0) { cp &= 0x1F; extra = 1; }
+    else if (cp >= 0x80) { ++c; continue; } // Byte de continuação solto: descarta.
+    ++c;
+    bool valid = true;
+    for (int i = 0; i < extra; ++i, ++c) {
+      if ((*c & 0xC0) != 0x80) { valid = false; break; }
+      cp = (cp << 6) | (*c & 0x3F);
+    }
+    if (!valid) continue;
+    // Sem espaço no início nem espaços repetidos (ex.: onde havia um travessão).
+    if (cp == ' ' && (kept == 0 || out[length - 1] == ' ')) continue;
+    if (cp >= 0x20 && cp <= 0x7E) out[length++] = static_cast<char>(cp);
+    else if (cp >= 0xA0 && cp <= 0xFF) {
+      out[length++] = static_cast<char>(0xC0 | (cp >> 6));
+      out[length++] = static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp == 0x2022) { out[length++] = '\xE2'; out[length++] = '\x80'; out[length++] = '\xA2'; }
+    else continue; // Fora das fontes do painel (ex.: travessão, emoji): omitido.
+    ++kept;
+  }
+  while (length && out[length - 1] == ' ') out[--length] = '\0';
+  return String(out);
+}
+// Potência inicial do START: power_limit_w (0 = começa pausado) prevalece quando presente;
+// sem o campo, max_power_kw legado (parameters prevalecem sobre a sessão) ou o nominal.
+static float readStartPower(JsonObjectConst parameters, JsonObjectConst session) {
+  if (!parameters["power_limit_w"].isNull()) {
+    const float limit = jsonNumber(parameters["power_limit_w"], -1);
+    if (validPowerLimit(limit)) return chargerLimitW(limit);
+  }
   float cap = jsonNumber(parameters["max_power_kw"], -1);
   if (!(cap >= 0.1f && cap <= 1000)) cap = jsonNumber(session["max_power_kw"], -1);
   return cap >= 0.1f && cap <= 1000 ? min(kBenchPowerW, cap * 1000.0f) : kBenchPowerW;
@@ -75,15 +131,32 @@ void persist() {
 void stop(const char* reason) {
   state = "stopped";
   reading.powerW = 0;
-  reading.connected = false;
+  // Com permanência o carro continua conectado até o toque em "Desconectar".
+  reading.connected = overstayEnabled;
   endReason = reason;
   persist();
+}
+// Reboot: saída desenergizada, carro tratado como desconectado (conservador) e sessão
+// anterior apenas relatada para reconciliação, nunca retomada.
+void applyBootSafety() {
+  reading.powerW = 0;
+  reading.connected = false;
+  overstayEnabled = false;
+  chargePowerW = kBenchPowerW;
+  if (sessionId.length()) { state = "stopped"; endReason = "communication_lost"; }
 }
 void requestLocalSafeStop() {
   if (state == "charging") {
     stop("requested");
     nextSync = millis();
   }
+}
+bool requestLocalDisconnect() {
+  if (state == "charging" || !reading.connected) return false;
+  reading.connected = false;
+  overstayEnabled = false;
+  nextSync = millis(); // A API encerra a permanência no próximo sync.
+  return true;
 }
 JsonObject ack(const String& id, const char* status, const char* error = nullptr) {
   JsonObject item = acknowledgements.as<JsonArray>().add<JsonObject>();
@@ -104,14 +177,15 @@ void tick() {
     unsigned long permittedElapsed = elapsed > overdue ? elapsed - overdue : 0;
     const float effectivePrice = price * (1 - discount / 100);
     bool costCapped = false, fullCapped = false;
-    if (maxCost >= 0 && effectivePrice > 0) {
+    // Pausado (0 W): nenhum limite de tempo derivado da potência (sem divisão por zero).
+    if (maxCost >= 0 && effectivePrice > 0 && chargePowerW > 0) {
       const float remainingWh = max(0.0f, maxCost * 1000 / effectivePrice - reading.energyWh);
       const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
       if (costElapsed < permittedElapsed) { permittedElapsed = costElapsed; costCapped = true; }
     }
     // Bateria simulada: não entrega energia além dos 100 %, mesmo com a rede bloqueada.
     const float fullWh = batteryFullWh();
-    if (fullWh >= 0) {
+    if (fullWh >= 0 && chargePowerW > 0) {
       const float remainingWh = max(0.0f, fullWh - reading.energyWh);
       const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
       if (fullElapsed < permittedElapsed) { permittedElapsed = fullElapsed; fullCapped = true; }
@@ -131,10 +205,64 @@ void tick() {
     state = "idle";
   }
 }
+// Pagamento no painel (connector.kiosk_url / connector.payment), modo teste. Ausente: sem QR.
+static void readKiosk(JsonObjectConst connector) {
+  const char* url = connector["kiosk_url"].as<const char*>();
+  kioskUrl = url && strlen(url) <= 160 && strncmp(url, "https://", 8) == 0 ? url : "";
+  JsonObjectConst payment = connector["payment"].as<JsonObjectConst>();
+  const char* status = payment["status"].as<const char*>();
+  const bool known = status && (strcmp(status, "awaiting_payment") == 0 || strcmp(status, "authorized") == 0 ||
+      strcmp(status, "paid") == 0 || strcmp(status, "declined") == 0);
+  paymentStatus = known ? status : "";
+  paymentAmount = known ? jsonNumber(payment["amount"], -1) : -1;
+  paymentTest = known && payment["environment"] == "test";
+}
+// Permanência (overstay no nível de cima da resposta). null/ausente: sem permanência.
+static void readOverstay(JsonObjectConst overstay) {
+  const char* status = overstay["status"].as<const char*>();
+  const bool known = status && (strcmp(status, "grace") == 0 || strcmp(status, "billing") == 0 ||
+      strcmp(status, "capped") == 0 || strcmp(status, "closed") == 0 || strcmp(status, "no_fee") == 0);
+  overstayStatus = known ? status : "";
+  overstayGraceSeconds = known ? max(0L, (long)jsonNumber(overstay["grace_remaining_seconds"], 0)) : 0;
+  overstayReceivedAt = millis();
+  overstayFeeDue = known ? jsonNumber(overstay["fee_due"], -1) : -1;
+  overstayMaxFee = known ? jsonNumber(overstay["max_fee"], -1) : -1;
+  overstayAmount = known ? jsonNumber(overstay["amount"], -1) : -1;
+  overstayIntervalMinutes = known ? (long)jsonNumber(overstay["interval_minutes"], 0) : 0;
+}
+// Potência aplicada e motivo da sessão ativa (authorized.session). Só exibição.
+static void readSessionPower(JsonObjectConst session) {
+  const float applied = jsonNumber(session["applied_power_kw"], -1);
+  sessionAppliedPowerKw = applied >= 0 && applied <= 1000 ? applied : -1;
+  powerReasonShort = panelLatin1(session["power_reason_short"].as<const char*>(), 40);
+}
+void fillSyncBody(JsonDocument& body, bool extensions) {
+  body["firmware_version"] = CHARGEGRID_FIRMWARE_VERSION;
+  if (sessionId.length()) body["session_id"] = sessionId; else body["session_id"] = nullptr;
+  body["physical_state"] = state; body["connected"] = reading.connected;
+  // SoC próprio só na fonte simulada com bateria conhecida (o valor do ponto prevalece
+  // na API). Fonte phone ou sessão sem dados de bateria: null, nunca eco da API.
+  if (sessionId.length() && socSource == "simulated" && sessionSocKnown()) body["soc_percent"] = reading.socPercent;
+  else body["soc_percent"] = nullptr;
+  body["energy_wh"] = reading.energyWh; body["power_w"] = reading.powerW;
+  body["source"] = "simulated"; body["captured_at"] = isoTime();
+  if (endReason.length()) body["end_reason"] = endReason; else body["end_reason"] = nullptr;
+  body["acks"] = acknowledgements.as<JsonArray>();
+  if (!extensions) return;
+  body["capabilities"].to<JsonArray>().add("set_power_v1");
+  // Limite instalado agora: 0 fora de recarga ou pausado (resolve ACK perdido na API).
+  body["applied_power_w"] = state == "charging" ? lroundf(chargePowerW) : 0L;
+  JsonObject charger = body["charger"].to<JsonObject>();
+  charger["model"] = "esp32_bench"; charger["transport"] = "simulated";
+  charger["min_power_w"] = kChargerMinPowerW; charger["max_power_w"] = kChargerMaxPowerW;
+  charger["step_w"] = kChargerStepW; charger["phases"] = 1;
+}
 bool apply(JsonDocument& response) {
   acknowledgements.to<JsonArray>();
   connectorPublicCode = response["connector"]["public_code"] | "--";
   JsonObjectConst connector = response["connector"].as<JsonObjectConst>();
+  readKiosk(connector);
+  readOverstay(response["overstay"].as<JsonObjectConst>());
   if (connector["owned"].is<bool>()) {
     connectorOwnershipKnown = true;
     if (connector["owned"].as<bool>()) confirmPanelOwnership();
@@ -143,7 +271,9 @@ bool apply(JsonDocument& response) {
   JsonObject authorization = response["authorized"].as<JsonObject>();
   reservationDeadline = parseTime(authorization["reservation"]["expires_at"]);
   JsonObject authorizedSession = authorization["session"].as<JsonObject>();
+  sessionAppliedPowerKw = -1; powerReasonShort = "";
   if (!authorizedSession.isNull() && authorizedSession["id"].as<String>() == sessionId) {
+    readSessionPower(authorizedSession);
     price = authorizedSession["price_per_kwh"].as<float>();
     discount = authorizedSession["discount_percent"] | 0.0f;
     sessionPricingKnown = true;
@@ -192,6 +322,12 @@ bool apply(JsonDocument& response) {
       }
       else if (type == "START" && state != "charging") ack(id, "failed", "previous_session_requires_reconciliation");
       else if (type == "RESERVE" && state != "reserved") ack(id, "failed", "reservation_requires_reconciliation");
+      else if (type == "SET_POWER") {
+        // Reentrega do mesmo SET_POWER: confirma de novo com o valor instalado agora.
+        if (state == "charging" && sessionId == command["session_id"].as<String>())
+          ack(id, "applied")["applied_power_w"] = lroundf(chargePowerW);
+        else ack(id, "failed", "no_active_session");
+      }
       else ack(id, "applied");
       continue;
     }
@@ -214,7 +350,8 @@ bool apply(JsonDocument& response) {
         resetSessionSoc();
         readStartSoc(session);
         readStartSoc(command["parameters"].as<JsonObjectConst>()); // parameters prevalecem.
-        chargePowerW = readPowerCap(command["parameters"].as<JsonObjectConst>(), session);
+        chargePowerW = readStartPower(command["parameters"].as<JsonObjectConst>(), session);
+        overstayEnabled = command["parameters"]["overstay"].is<JsonObjectConst>();
         if (socStartPercent >= 0 && !socSource.length()) socSource = "simulated";
         if (socSource == "phone") phoneSocPercent = socStartPercent;
         reading.energyWh = 0; persistSessionSoc(); persist(); // Sessão salva antes de autorizar a bancada.
@@ -239,9 +376,21 @@ bool apply(JsonDocument& response) {
         // Uma parada local já reportada (ex.: battery_full) mantém o motivo original.
         if (!(state == "stopped" && endReason.length())) stop(full ? "battery_full" : "requested");
       }
+    } else if (type == "SET_POWER") {
+      const float requested = jsonNumber(command["parameters"]["power_limit_w"], -1);
+      if (state != "charging" || !sessionId.length() || sessionId != command["session_id"].as<String>()) error = "no_active_session";
+      else if (!validPowerLimit(requested)) error = "invalid_power_limit";
+      else {
+        tick(); // Integra a potência antiga até o instante da troca.
+        if (state != "charging") error = "no_active_session";
+        else {
+          chargePowerW = chargerLimitW(requested); // 0 pausa: continua charging, sem energia.
+          reading.powerW = chargePowerW;
+        }
+      }
     } else if (type == "RELEASE") {
       if (state == "charging") error = "charging_requires_stop";
-      else { state = "idle"; reading.connected = false; }
+      else { state = "idle"; reading.connected = false; overstayEnabled = false; }
     } else if (type == "FACTORY_RESET") {
       if (state != "idle" || sessionId.length() || reading.connected || reading.powerW > 0 ||
           !response["authorized"]["reservation"].isNull() ||
@@ -253,6 +402,7 @@ bool apply(JsonDocument& response) {
       result["new_device_key_hash"] = resetKeyHash;
       result["new_claim_token_hash"] = resetClaimHash;
     }
+    if (!error && type == "SET_POWER") result["applied_power_w"] = lroundf(chargePowerW);
     if (!error) { version = incoming; lastCommand = id; persist(); changed = true; }
   }
   version = max(version, current);

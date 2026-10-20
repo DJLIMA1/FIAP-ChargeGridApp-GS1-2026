@@ -37,19 +37,15 @@ void syncDevice() {
   backoffMs = min(30000UL, backoffMs * 2);
   if (!String(deviceApiBaseUrl()).startsWith("https://")) return;
   persist(); // Não regredir a energia já enviada após reboot.
+  // API anterior à 0.7.0 recusa campos desconhecidos (422): o ponto volta ao corpo 0.6
+  // e continua funcionando como carga fixa; tenta de novo os campos novos a cada 10 min
+  // apenas ocioso, para nunca perder um sync com sessão por causa da sondagem.
+  static bool legacyBody = false;
+  static unsigned long legacySince = 0;
+  if (legacyBody && millis() - legacySince >= 600000UL && state == "idle" && !sessionId.length()) legacyBody = false;
   JsonDocument body;
   body["boot_id"] = bootId; body["sequence"] = ++sequence;
-  body["firmware_version"] = "0.4.0";
-  if (sessionId.length()) body["session_id"] = sessionId; else body["session_id"] = nullptr;
-  body["physical_state"] = state; body["connected"] = reading.connected;
-  // SoC próprio só na fonte simulada com bateria conhecida (o valor do ponto prevalece
-  // na API). Fonte phone ou sessão sem dados de bateria: null, nunca eco da API.
-  if (sessionId.length() && socSource == "simulated" && sessionSocKnown()) body["soc_percent"] = reading.socPercent;
-  else body["soc_percent"] = nullptr;
-  body["energy_wh"] = reading.energyWh; body["power_w"] = reading.powerW;
-  body["source"] = "simulated"; body["captured_at"] = isoTime();
-  if (endReason.length()) body["end_reason"] = endReason; else body["end_reason"] = nullptr;
-  body["acks"] = acknowledgements.as<JsonArray>();
+  fillSyncBody(body, !legacyBody);
   String payload; serializeJson(body, payload);
   // Conexão TLS mantida entre syncs (keep-alive): sem novo handshake a cada envio,
   // o sync de 1 s em recarga custa ~100-300 ms em vez de 1-2 s.
@@ -69,6 +65,11 @@ void syncDevice() {
   http.addHeader("Authorization", String("Device ") + deviceAuthorizationKey());
   int code = http.POST(payload);
   lastSyncHttpStatus = code;
+  if (code == 422 && !legacyBody) {
+    legacyBody = true; legacySince = millis();
+    backoffMs = 5000; nextSync = millis(); // Reenvia já com o corpo anterior.
+    Serial.println("[sync] API anterior: campos 0.7.0 recusados; usando corpo 0.6");
+  }
   tick(); // Inclui o tempo de bloqueio de rede no watchdog.
   String confirmedReset;
   if (code == 200) {

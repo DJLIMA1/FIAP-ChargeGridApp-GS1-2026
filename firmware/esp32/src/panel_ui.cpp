@@ -55,12 +55,16 @@ lv_obj_t *pumpBody, *pumpSide, *pumpScreen, *pumpBolt, *pumpNozzle, *pumpHose;
 lv_obj_t *configScreen, *configKeyboard, *ssidInput, *passwordInput, *configStatus;
 lv_obj_t *claimCard, *claimQr, *claimNetworkButton;
 char lastClaimQr[80]{};
+// 0.7.0: QR de pagamento (modo teste) na tela Pronto e botão "Desconectar" da permanência.
+lv_obj_t *kioskCard, *kioskTitle, *kioskDetail, *kioskQrBox, *kioskQr, *disconnectButton;
+char lastKioskQr[164]{};
 unsigned long logoPressedAt = 0, clearArmedAt = 0;
 volatile bool configSaveRequested = false, configClearRequested = false;
 char requestedSsid[33]{}, requestedPassword[65]{};
 unsigned long lastRefresh = 0;
 bool ready = false;
 volatile bool localStopRequested = false;
+volatile bool localDisconnectRequested = false;
 portMUX_TYPE snapshotMux = portMUX_INITIALIZER_UNLOCKED;
 enum class PanelMode : uint8_t { Ready, Reserved, Charging, Message, Unavailable, Maintenance };
 struct PanelSnapshot {
@@ -71,6 +75,9 @@ struct PanelSnapshot {
   uint8_t codeProgress;
   char messageTitle[64], messageDetail[128];
   char claimUrl[80];
+  char kioskUrl[164], kioskDetail[80];
+  uint8_t kioskTone; // 0 neutro, 1 aguardando, 2 confirmado, 3 recusado
+  bool showKiosk, showDisconnect;
   char soc[8], socDetail[32];
   uint8_t socProgress;
   bool showSoc;
@@ -133,6 +140,17 @@ lv_obj_t* hline(lv_obj_t* parent, int y) {
 }
 
 void stopClicked(lv_event_t*) { localStopRequested = true; }
+void disconnectClicked(lv_event_t*) { localDisconnectRequested = true; }
+
+// Números em pt-BR (vírgula decimal) para os textos novos do painel.
+void decimalComma(char* out, size_t size, const char* format, float value) {
+  snprintf(out, size, format, value);
+  for (char* c = out; *c; ++c) if (*c == '.') *c = ',';
+}
+void brl(char* out, size_t size, float value) { decimalComma(out, size, "R$ %.2f", value); }
+
+// Permanência: o carro continua conectado depois de parar (START com overstay).
+bool overstayView() { return reading.connected && (state == "stopped" || state == "idle"); }
 
 void inputFocused(lv_event_t* event) {
   lv_keyboard_set_textarea(configKeyboard, static_cast<lv_obj_t*>(lv_event_get_target(event)));
@@ -180,7 +198,8 @@ void logoEvent(lv_event_t* event) {
 bool batteryFullStop() { return state == "stopped" && endReason == "battery_full"; }
 
 const char* statusTitle() {
-  if (state == "charging") return "Recarga em andamento";
+  if (state == "charging") return chargePowerW > 0 ? "Recarga em andamento" : "Recarga pausada";
+  if (overstayView()) return batteryFullStop() ? "Bateria cheia" : "Recarga concluída";
   if (batteryFullStop()) return "Bateria cheia";
   if (state == "reserved") return "Ponto reservado";
   if (state == "stopped") return "Recarga encerrada";
@@ -196,6 +215,7 @@ const char* statusTitle() {
 
 const char* instruction() {
   if (state == "charging") return "Acompanhe pelo app. Para parar, toque em Encerrar.";
+  if (overstayView()) return "Retire o cabo do carro e toque em Desconectar.";
   if (state == "reserved") return WiFi.status() == WL_CONNECTED ?
       "Sua reserva está ativa. Inicie pelo app antes do prazo." :
       "Sua reserva continua ativa. Aguarde a conexão para iniciar.";
@@ -291,20 +311,44 @@ void refresh() {
   setHiddenIfChanged(codeCard, !(detail && (mode == PanelMode::Ready || mode == PanelMode::Reserved)));
   setHiddenIfChanged(rowLineTop, !detail);
   setHiddenIfChanged(rowLineBottom, !detail);
-  setHiddenIfChanged(stepsCard, !(detail && mode == PanelMode::Ready));
+  const bool kiosk = detail && mode == PanelMode::Ready && current.showKiosk;
+  setHiddenIfChanged(stepsCard, !(detail && mode == PanelMode::Ready) || kiosk);
+  setHiddenIfChanged(kioskCard, !kiosk);
+  setHiddenIfChanged(kioskQrBox, !kiosk);
+  // Com o QR de pagamento, o cartão do código sobe e as linhas param antes do QR.
+  const int codeY = kiosk ? 118 : 130, codeHeight = kiosk ? 172 : 180, lineWidth = kiosk ? 531 : 711;
+  if (lv_obj_get_y(codeCard) != codeY) { lv_obj_set_y(codeCard, codeY); lv_obj_set_height(codeCard, codeHeight); }
+  if (lv_obj_get_width(rowLineTop) != lineWidth) {
+    lv_obj_set_width(rowLineTop, lineWidth); lv_obj_set_width(rowLineBottom, lineWidth);
+  }
+  if (kiosk && std::strcmp(lastKioskQr, current.kioskUrl) != 0 &&
+      lv_qrcode_update(kioskQr, current.kioskUrl, std::strlen(current.kioskUrl)) == LV_RES_OK)
+    snprintf(lastKioskQr, sizeof(lastKioskQr), "%s", current.kioskUrl);
+  setTextIfChanged(kioskDetail, current.kioskDetail);
+  static uint8_t lastKioskTone = 255;
+  if (lastKioskTone != current.kioskTone) {
+    const lv_color_t tones[] = {COLOR_MUTED, COLOR_AMBER, COLOR_GREEN, LV_COLOR_MAKE(0xFF, 0x6B, 0x70)};
+    lv_obj_set_style_text_color(kioskDetail, tones[current.kioskTone & 3], 0);
+    lastKioskTone = current.kioskTone;
+  }
   setHiddenIfChanged(reservationCard, !(detail && mode == PanelMode::Reserved));
   setHiddenIfChanged(sessionCard, !(detail && mode == PanelMode::Charging));
   setHiddenIfChanged(messageCard, !(detail && mode == PanelMode::Message));
   setHiddenIfChanged(stopButton, !(detail && current.showStop));
-  // Bateria do veículo: acima do Encerrar durante a carga; centrada no fim da sessão.
+  setHiddenIfChanged(disconnectButton, !(detail && current.showDisconnect && !current.showStop));
+  // Bateria do veículo: acima do botão (Encerrar/Desconectar); centrada no fim da sessão.
   const bool battery = detail && current.showSoc &&
       (mode == PanelMode::Charging || mode == PanelMode::Message);
   setHiddenIfChanged(batteryCard, !battery);
-  const int batteryY = current.showStop ? 112 : 152, stopY = battery ? 270 : 188;
+  const bool actionButton = current.showStop || current.showDisconnect;
+  const int batteryY = actionButton ? 112 : 152, stopY = battery ? 270 : 188;
   const int stopHeight = battery ? 56 : 64;
   if (lv_obj_get_y(batteryCard) != batteryY) lv_obj_set_y(batteryCard, batteryY);
   if (lv_obj_get_y(stopButton) != stopY) {
     lv_obj_set_y(stopButton, stopY); lv_obj_set_height(stopButton, stopHeight);
+  }
+  if (lv_obj_get_y(disconnectButton) != stopY) {
+    lv_obj_set_y(disconnectButton, stopY); lv_obj_set_height(disconnectButton, stopHeight);
   }
   setHiddenIfChanged(codeProgressBar, mode != PanelMode::Ready);
   setHiddenIfChanged(codeTimerLabel, mode != PanelMode::Ready);
@@ -461,6 +505,17 @@ void buildDark(lv_obj_t* screen) {
   lv_obj_center(stopText);
   lv_obj_add_flag(stopButton, LV_OBJ_FLAG_HIDDEN);
 
+  // Permanência: o motorista confirma que retirou o cabo (mesmo lugar do Encerrar).
+  disconnectButton = lv_btn_create(darkRoot);
+  lv_obj_set_pos(disconnectButton, 439, 188); lv_obj_set_size(disconnectButton, 311, 64);
+  lv_obj_set_style_bg_color(disconnectButton, lv_color_white(), 0);
+  lv_obj_set_style_radius(disconnectButton, 14, 0);
+  lv_obj_set_style_shadow_width(disconnectButton, 0, 0);
+  lv_obj_add_event_cb(disconnectButton, disconnectClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* disconnectText = label(disconnectButton, "Desconectar", &chargegrid_body_22, LV_COLOR_MAKE(0x10, 0x10, 0x10));
+  lv_obj_center(disconnectText);
+  lv_obj_add_flag(disconnectButton, LV_OBJ_FLAG_HIDDEN);
+
   rowLineTop = hline(darkRoot, 340);
   rowLineBottom = hline(darkRoot, 432);
 
@@ -516,6 +571,20 @@ void buildDark(lv_obj_t* screen) {
     lv_obj_set_width(*metricValues[i], 220);
     lv_label_set_long_mode(*metricValues[i], LV_LABEL_LONG_DOT);
   }
+
+  // Pagamento sem app (modo teste): legenda na linha inferior, QR à direita dela.
+  kioskCard = plain(darkRoot, 39, 341, 531, 90);
+  kioskTitle = label(kioskCard, "Sem o app? Pague aqui · TESTE", &chargegrid_body_22, COLOR_TEXT);
+  lv_obj_set_pos(kioskTitle, 8, 18);
+  kioskDetail = label(kioskCard, "", &chargegrid_body_17, COLOR_MUTED);
+  lv_obj_set_pos(kioskDetail, 8, 50); lv_obj_set_width(kioskDetail, 515);
+  lv_label_set_long_mode(kioskDetail, LV_LABEL_LONG_DOT);
+  lv_obj_add_flag(kioskCard, LV_OBJ_FLAG_HIDDEN);
+  kioskQrBox = shape(darkRoot, 584, 302, 166, 166, 12);
+  lv_obj_set_style_bg_color(kioskQrBox, lv_color_white(), 0);
+  kioskQr = lv_qrcode_create(kioskQrBox, 150, lv_color_black(), lv_color_white());
+  lv_obj_center(kioskQr);
+  lv_obj_add_flag(kioskQrBox, LV_OBJ_FLAG_HIDDEN);
 
   messageCard = plain(darkRoot, 39, 341, 711, 90);
   messageTitle = label(messageCard, "Precisa de ajuda?", &chargegrid_body_22, COLOR_TEXT);
@@ -671,6 +740,10 @@ void panelTick() {
     localStopRequested = false;
     requestLocalSafeStop();
   }
+  if (localDisconnectRequested) {
+    localDisconnectRequested = false;
+    requestLocalDisconnect();
+  }
   if (configSaveRequested) {
     char ssid[sizeof(requestedSsid)], password[sizeof(requestedPassword)];
     taskENTER_CRITICAL(&snapshotMux);
@@ -711,13 +784,15 @@ void panelTick() {
   const bool apiOnline = WiFi.status() == WL_CONNECTED && !authRejected &&
       hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
   const bool unavailable = state != "stopped" && std::strcmp(statusTitle(), "Ponto indisponível") == 0;
+  const bool overstay = overstayView();
   next.mode = state == "charging" ? PanelMode::Charging :
+      overstay ? PanelMode::Message :
       state == "reserved" ? PanelMode::Reserved :
       state == "idle" && apiOnline && connectorActive && panelOwned ? PanelMode::Ready :
       unavailable ? PanelMode::Unavailable :
       state == "idle" && apiOnline && panelOwned && !connectorActive ? PanelMode::Maintenance :
       PanelMode::Message;
-  next.online = apiOnline && (next.mode != PanelMode::Message || state == "stopped");
+  next.online = apiOnline && (next.mode != PanelMode::Message || state == "stopped" || overstay);
   snprintf(next.status, sizeof(next.status), "%s", statusTitle());
   snprintf(next.alertTitle, sizeof(next.alertTitle), "%s",
       next.mode == PanelMode::Maintenance ? "Estamos em manutenção" : "Ponto Indisponível");
@@ -744,7 +819,7 @@ void panelTick() {
         "Novo código em instantes" : "Aguardando código");
   next.codeProgress = codeVisible ? static_cast<uint8_t>(min(100UL, (codeRemaining * 100UL) / 300000UL)) : 0;
   const char* connection = apiOnline ?
-      (state == "charging" ? "Em uso" : state == "reserved" ? "Reservado" :
+      (state == "charging" ? "Em uso" : overstay ? "Carro conectado" : state == "reserved" ? "Reservado" :
       state == "stopped" ? "Recarga concluída" : !panelOwned ? "Aguardando vínculo" :
       !connectorActive ? "Em preparação" : "Pronto para uso") :
       "Temporariamente offline";
@@ -765,6 +840,43 @@ void panelTick() {
     snprintf(next.remaining, sizeof(next.remaining), "%ld min", ((long)(reservationDeadline - time(nullptr)) + 59) / 60L);
   } else snprintf(next.remaining, sizeof(next.remaining), "--");
   snprintf(next.instruction, sizeof(next.instruction), "%s", instruction());
+  // Potência aplicada confirmada pela API (nunca o alvo) e o motivo curto da divisão.
+  if (state == "charging" && sessionAppliedPowerKw >= 0) {
+    char kw[16]; decimalComma(kw, sizeof(kw), "%.1f", sessionAppliedPowerKw);
+    if (sessionAppliedPowerKw <= 0)
+      snprintf(next.instruction, sizeof(next.instruction), "Pausada para dividir a potência%s%s",
+               powerReasonShort.length() ? ": " : " do posto.", powerReasonShort.c_str());
+    else if (powerReasonShort.length())
+      snprintf(next.instruction, sizeof(next.instruction), "Potência %s kW · %s", kw, powerReasonShort.c_str());
+    else
+      snprintf(next.instruction, sizeof(next.instruction), "Potência %s kW. Para parar, toque em Encerrar.", kw);
+  }
+  // Pagamento pelo QR do painel (sempre modo teste na API atual).
+  const char* testMark = paymentTest ? " (teste)" : "";
+  char amount[24] = "";
+  if (paymentAmount > 0) { char value[20]; brl(value, sizeof(value), paymentAmount); snprintf(amount, sizeof(amount), " · %s", value); }
+  if (paymentStatus == "awaiting_payment") {
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Aguardando pagamento%s%s", testMark, amount);
+    next.kioskTone = 1;
+  } else if (paymentStatus == "authorized" || paymentStatus == "paid") {
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento confirmado%s · iniciando", testMark);
+    next.kioskTone = 2;
+  } else if (paymentStatus == "declined") {
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento recusado%s. Tente de novo.", testMark);
+    next.kioskTone = 3;
+  } else {
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Escaneie com a câmera do celular e escolha o valor.");
+    next.kioskTone = 0;
+  }
+  if (next.mode == PanelMode::Ready) {
+    next.showKiosk = kioskUrl.length() > 0 && kioskUrl.length() < sizeof(next.kioskUrl);
+    if (next.showKiosk) {
+      snprintf(next.kioskUrl, sizeof(next.kioskUrl), "%s", kioskUrl.c_str());
+      snprintf(next.instruction, sizeof(next.instruction), "Use o código ao lado no app ChargeGrid ou pague pelo QR, sem app.");
+    } else if (paymentStatus.length()) {
+      snprintf(next.instruction, sizeof(next.instruction), "%s", next.kioskDetail);
+    }
+  }
   if (next.mode == PanelMode::Reserved) {
     // O cartão de destaque mostra o prazo da reserva no lugar do código.
     snprintf(next.codeCaption, sizeof(next.codeCaption), "TEMPO PARA INICIAR");
@@ -790,6 +902,28 @@ void panelTick() {
       "Veja o resumo da sua recarga no app ChargeGrid." :
       "Abra o app ChargeGrid para encontrar uma opção próxima.");
   next.showStop = state == "charging";
+  if (overstay) {
+    // Contagem local a partir de grace_remaining_seconds; a taxa vem sempre da API.
+    char fee[20] = "", cap[20] = "", rate[20] = "";
+    if (overstayFeeDue >= 0) brl(fee, sizeof(fee), overstayFeeDue);
+    if (overstayMaxFee >= 0) brl(cap, sizeof(cap), overstayMaxFee);
+    if (overstayAmount > 0) brl(rate, sizeof(rate), overstayAmount);
+    const unsigned long elapsed = (millis() - overstayReceivedAt) / 1000UL;
+    const long grace = overstayGraceSeconds > (long)elapsed ? overstayGraceSeconds - (long)elapsed : 0L;
+    if (overstayStatus == "grace")
+      snprintf(next.messageTitle, sizeof(next.messageTitle), "Recarga concluída · desconecte em %02ld:%02ld", grace / 60L, grace % 60L);
+    else if ((overstayStatus == "billing" || overstayStatus == "capped") && fee[0])
+      snprintf(next.messageTitle, sizeof(next.messageTitle), "Taxa de permanência: %s%s", fee,
+               overstayStatus == "capped" ? " (valor máximo)" : "");
+    else snprintf(next.messageTitle, sizeof(next.messageTitle), "Recarga concluída · desconecte o carro");
+    if (overstayStatus == "no_fee")
+      snprintf(next.messageDetail, sizeof(next.messageDetail), "Sem taxa de permanência neste ponto.");
+    else if (overstayStatus.length() && overstayStatus != "closed" && rate[0] && overstayIntervalMinutes > 0)
+      snprintf(next.messageDetail, sizeof(next.messageDetail), "Após a tolerância: %s a cada %ld min%s%s.", rate,
+               overstayIntervalMinutes, cap[0] ? ", até " : "", cap);
+    else snprintf(next.messageDetail, sizeof(next.messageDetail), "Veja o resumo da sua recarga no app ChargeGrid.");
+    next.showDisconnect = true;
+  }
   }
   // "Bateria cheia" fica visível por alguns segundos: a API encerra a sessão no mesmo
   // sync e o ponto voltaria a "Pronto" antes de o motorista ver o motivo da parada.
@@ -799,7 +933,7 @@ void panelTick() {
     batteryFullHeld = next; batteryFullHoldUntil = millis() + 10000UL;
     if (!batteryFullHoldUntil) batteryFullHoldUntil = 1;
   } else if (batteryFullHoldUntil && (long)(millis() - batteryFullHoldUntil) < 0 &&
-             state == "idle" && !sessionId.length() && !next.showClaim) {
+             state == "idle" && !sessionId.length() && !next.showClaim && !reading.connected) {
     next = batteryFullHeld;
   } else batteryFullHoldUntil = 0;
   taskENTER_CRITICAL(&snapshotMux);

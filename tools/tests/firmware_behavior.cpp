@@ -278,6 +278,188 @@ int main(int argc, char** argv) {
   reservation["control_version"] = 2; reserve["id"] = "reserve-restored"; reserve["version"] = 2;
   assert(apply(reservation) && state == "reserved" && reservationDeadline == deadline);
 
+  // ---- 0.7.0: live power (SET_POWER), power_limit_w START, overstay, sync extensions ----
+  auto resetSession = [] {
+    sessionId = ""; lastCommand = ""; version = 0; state = "idle"; endReason = "";
+    socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1;
+    reading = {20, 0, 0, false}; overstayEnabled = false; chargePowerW = kBenchPowerW;
+    maxCost = -1; lastContact = testMillis;
+  };
+  assert(chargerLimitW(0) == 0 && chargerLimitW(-5) == 0);
+  assert(chargerLimitW(6000) == 6000 && chargerLimitW(6049) == 6000 && chargerLimitW(9000) == 7200);
+  assert(chargerLimitW(1399) == 0 && chargerLimitW(1400) == 1400); // Below the floor pauses, never exceeds.
+  assert(panelLatin1("Loja 24/30 kW \u00B7 3 carros", 40) == "Loja 24/30 kW \u00B7 3 carros");
+  assert(panelLatin1("  Pico \u2014 2 carros \U0001F697", 40) == "Pico 2 carros"); // Glyphs the fonts lack.
+  assert(panelLatin1(std::string(50, 'a').c_str(), 40) == std::string(40, 'a'));
+  assert(panelLatin1(nullptr, 40).empty());
+  resetSession();
+  JsonDocument syncBody; fillSyncBody(syncBody, true);
+  assert(syncBody["firmware_version"] == "0.7.0" && syncBody["connected"] == false);
+  assert(syncBody["capabilities"].size() == 1 && syncBody["capabilities"][0] == "set_power_v1");
+  assert(syncBody["applied_power_w"] == 0); // Idle: nothing installed.
+  assert(syncBody["charger"]["model"] == "esp32_bench" && syncBody["charger"]["transport"] == "simulated");
+  assert(syncBody["charger"]["min_power_w"] == 1400 && syncBody["charger"]["max_power_w"] == 7200);
+  assert(syncBody["charger"]["step_w"] == 100);
+  JsonDocument legacySync; fillSyncBody(legacySync, false); // Older API (extra="forbid").
+  assert(legacySync["firmware_version"] == "0.7.0" && legacySync["capabilities"].isNull());
+  assert(legacySync["applied_power_w"].isNull() && legacySync["charger"].isNull());
+  assert(!legacySync["acks"].isNull() && !legacySync["energy_wh"].isNull());
+  // START: power_limit_w wins over the legacy max_power_kw; integer W, rounded down to the step.
+  auto powered = startResponse();
+  powered["commands"][0]["parameters"]["max_power_kw"] = "3.6";
+  powered["commands"][0]["parameters"]["power_limit_w"] = 5000;
+  apply(powered); lastContact = testMillis;
+  assert(state == "charging" && chargePowerW == 5000 && reading.powerW == 5000);
+  assert(acknowledgements[0]["status"] == "applied");
+  testMillis += 3600; tick(); assert(std::abs(reading.energyWh - 5) < 0.01);
+  syncBody.clear(); fillSyncBody(syncBody, true); assert(syncBody["applied_power_w"] == 5000);
+  // START paused (power_limit_w = 0): charging, no energy, no division by zero on the limits.
+  resetSession();
+  auto paused = startResponse();
+  paused["authorized"]["session"]["max_cost"] = 5;
+  paused["commands"][0]["parameters"]["power_limit_w"] = 0;
+  paused["commands"][0]["parameters"]["soc_percent"] = 50;
+  paused["commands"][0]["parameters"]["battery_kwh"] = 40;
+  paused["commands"][0]["parameters"]["soc_source"] = "simulated";
+  apply(paused); lastContact = testMillis;
+  assert(state == "charging" && chargePowerW == 0 && reading.powerW == 0 && reading.connected);
+  testMillis += 20000; lastContact = testMillis; tick();
+  assert(state == "charging" && reading.energyWh == 0 && reading.powerW == 0 && endReason.empty());
+  syncBody.clear(); fillSyncBody(syncBody, true);
+  assert(syncBody["applied_power_w"] == 0 && syncBody["physical_state"] == "charging");
+  // SET_POWER: raise from pause, reduce, replay, 0 W pause, wrong session, invalid, after STOP.
+  auto setPower = [](const char* id, int commandVersion, JsonVariantConst limit, const char* session = "test-session") {
+    JsonDocument doc = startResponse();
+    doc["control_version"] = commandVersion;
+    auto cmd = doc["commands"].to<JsonArray>().add<JsonObject>();
+    cmd["id"] = id; cmd["type"] = "SET_POWER"; cmd["version"] = commandVersion;
+    cmd["session_id"] = session; cmd["expires_at"] = "2026-09-21T13:00:00Z";
+    cmd["reservation_id"] = nullptr;
+    if (!limit.isNull()) cmd["parameters"]["power_limit_w"] = limit;
+    cmd["parameters"]["previous_power_w"] = 0; cmd["parameters"]["decision_id"] = 123;
+    cmd["parameters"]["reason_short"] = "Loja 24/30 kW";
+    return doc;
+  };
+  JsonDocument limits; limits.add(7200); limits.add(3600); limits.add(0); limits.add(6049); limits.add(-1);
+  auto raise = setPower("power-1", 2, limits[0]);
+  assert(apply(raise) && chargePowerW == 7200 && version == 2 && lastCommand == "power-1");
+  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 7200);
+  assert(acknowledgements[0]["error"].isNull());
+  testMillis += 10000; lastContact = testMillis; // 10 s at 7.2 kW before the reduction arrives.
+  auto reduce = setPower("power-2", 3, limits[1]);
+  assert(apply(reduce) && chargePowerW == 3600 && reading.powerW == 3600);
+  assert(std::abs(reading.energyWh - 20) < 0.01); // Old power integrated up to the switch.
+  assert(acknowledgements[0]["applied_power_w"] == 3600);
+  testMillis += 10000; lastContact = testMillis; tick();
+  assert(std::abs(reading.energyWh - 30) < 0.01); // New power from the switch on.
+  assert(!apply(reduce) && acknowledgements[0]["status"] == "applied"); // Redelivery: same value again.
+  assert(acknowledgements[0]["applied_power_w"] == 3600 && version == 3);
+  auto pause = setPower("power-3", 4, limits[2]);
+  assert(apply(pause) && state == "charging" && chargePowerW == 0 && reading.powerW == 0);
+  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 0);
+  const float pausedEnergy = reading.energyWh;
+  const unsigned long pausedStarted = started;
+  testMillis += 30000; lastContact = testMillis; tick();
+  assert(state == "charging" && reading.energyWh == pausedEnergy && started == pausedStarted);
+  auto rounded = setPower("power-4", 5, limits[3]);
+  assert(apply(rounded) && chargePowerW == 6000 && acknowledgements[0]["applied_power_w"] == 6000);
+  auto mismatch = setPower("power-5", 6, limits[1], "other-session");
+  assert(!apply(mismatch) && acknowledgements[0]["status"] == "failed");
+  assert(acknowledgements[0]["error"] == "no_active_session" && chargePowerW == 6000 && lastCommand == "power-4");
+  auto invalid = setPower("power-6", 7, limits[4]);
+  assert(!apply(invalid) && acknowledgements[0]["error"] == "invalid_power_limit" && chargePowerW == 6000);
+  auto missing = setPower("power-7", 8, JsonVariantConst());
+  assert(!apply(missing) && acknowledgements[0]["error"] == "invalid_power_limit");
+  requestLocalSafeStop(); assert(state == "stopped" && !reading.connected); // No overstay: disconnects.
+  auto late = setPower("power-8", 9, limits[1]);
+  assert(!apply(late) && acknowledgements[0]["error"] == "no_active_session" && reading.powerW == 0);
+  // Authorized session power fields are shown only (sanitised reason, applied value).
+  resetSession();
+  auto shown = startResponse(); apply(shown); lastContact = testMillis;
+  shown["commands"].to<JsonArray>();
+  shown["authorized"]["session"]["applied_power_kw"] = 6.0;
+  shown["authorized"]["session"]["target_power_kw"] = 7.2;
+  shown["authorized"]["session"]["power_state"] = "raising";
+  shown["authorized"]["session"]["power_reason_short"] = "Loja 24/30 kW \u00B7 3 carros \u2014 pico";
+  apply(shown);
+  assert(sessionAppliedPowerKw == 6.0f && powerReasonShort == "Loja 24/30 kW \u00B7 3 carros pico");
+  shown["authorized"]["session"].remove("applied_power_kw"); shown["authorized"]["session"].remove("power_reason_short");
+  apply(shown); assert(sessionAppliedPowerKw < 0 && powerReasonShort.empty()); // Older API: nothing shown.
+
+  // Overstay: without parameters.overstay the old disconnect-on-stop behaviour is kept.
+  resetSession();
+  apply(response); lastContact = testMillis; assert(!overstayEnabled);
+  requestLocalSafeStop(); assert(state == "stopped" && !reading.connected);
+  assert(!requestLocalDisconnect()); // Nothing connected: no extra sync.
+  resetSession();
+  auto withOverstay = startResponse();
+  auto terms = withOverstay["commands"][0]["parameters"]["overstay"].to<JsonObject>();
+  terms["grace_minutes"] = 5; terms["interval_minutes"] = 10; terms["amount"] = "1.50"; terms["max_amount"] = "15.00";
+  apply(withOverstay); lastContact = testMillis;
+  assert(state == "charging" && overstayEnabled && reading.connected);
+  assert(!requestLocalDisconnect() && reading.connected); // Never during charging.
+  requestLocalSafeStop();
+  assert(state == "stopped" && reading.connected && reading.powerW == 0 && endReason == "requested");
+  syncBody.clear(); fillSyncBody(syncBody, true);
+  assert(syncBody["connected"] == true && syncBody["physical_state"] == "stopped" && syncBody["applied_power_w"] == 0);
+  JsonDocument closed; // The API ends the session; the car is still plugged in.
+  closed["server_time"] = "2026-09-21T12:00:00Z"; closed["control_version"] = 1;
+  closed["connector"]["public_code"] = "CG-01";
+  closed["authorized"]["session"] = nullptr; closed["authorized"]["reservation"] = nullptr;
+  closed["commands"].to<JsonArray>();
+  closed["overstay"]["session_id"] = "test-session"; closed["overstay"]["status"] = "grace";
+  closed["overstay"]["grace_remaining_seconds"] = 300; closed["overstay"]["fee_due"] = "0.00";
+  closed["overstay"]["max_fee"] = "15.00"; closed["overstay"]["amount"] = "1.50";
+  closed["overstay"]["interval_minutes"] = 10;
+  apply(closed);
+  assert(state == "idle" && sessionId.empty() && reading.connected && overstayStatus == "grace");
+  assert(overstayGraceSeconds == 300 && overstayMaxFee == 15.0f && overstayAmount == 1.5f && overstayIntervalMinutes == 10);
+  JsonDocument busyReset; // FACTORY_RESET is refused while a car is connected.
+  busyReset["server_time"] = "2026-09-21T12:00:00Z"; busyReset["control_version"] = 2;
+  busyReset["authorized"]["session"] = nullptr; busyReset["authorized"]["reservation"] = nullptr;
+  auto busyCommand = busyReset["commands"].to<JsonArray>().add<JsonObject>();
+  busyCommand["id"] = "reset-busy"; busyCommand["type"] = "FACTORY_RESET"; busyCommand["version"] = 2;
+  busyCommand["expires_at"] = "2030-01-01T12:00:00Z";
+  panelOwned = true;
+  apply(busyReset);
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "factory_reset_requires_idle");
+  panelOwned = false;
+  nextSync = testMillis + 5000;
+  assert(requestLocalDisconnect() && !reading.connected && !overstayEnabled && nextSync == testMillis);
+  closed["overstay"] = nullptr; apply(closed); assert(overstayStatus.empty());
+  // RELEASE clears the connection; a reboot always starts disconnected.
+  resetSession();
+  apply(withOverstay); lastContact = testMillis; requestLocalSafeStop();
+  JsonDocument release;
+  release["server_time"] = "2026-09-21T12:00:00Z"; release["control_version"] = 2;
+  release["authorized"]["session"]["id"] = "test-session"; release["authorized"]["reservation"] = nullptr;
+  auto releaseCommand = release["commands"].to<JsonArray>().add<JsonObject>();
+  releaseCommand["id"] = "release-1"; releaseCommand["type"] = "RELEASE"; releaseCommand["version"] = 2;
+  releaseCommand["session_id"] = "test-session"; releaseCommand["expires_at"] = "2030-01-01T12:00:00Z";
+  assert(apply(release) && state == "idle" && !reading.connected && !overstayEnabled);
+  resetSession();
+  apply(withOverstay); lastContact = testMillis; requestLocalSafeStop(); assert(reading.connected);
+  applyBootSafety(); // Simulated reboot with the session journal still present.
+  assert(!reading.connected && !overstayEnabled && state == "stopped" && endReason == "communication_lost");
+  assert(chargePowerW == kBenchPowerW && reading.powerW == 0);
+  // Payment kiosk fields: https URL only; unknown/absent fields mean no QR (older API).
+  JsonDocument kiosk;
+  kiosk["connector"]["public_code"] = "CG-01";
+  kiosk["connector"]["kiosk_url"] = "https://api.example.test/pay/k/CG-01?c=12345";
+  kiosk["connector"]["payment"]["status"] = "awaiting_payment";
+  kiosk["connector"]["payment"]["amount"] = "20.00";
+  kiosk["connector"]["payment"]["environment"] = "test";
+  kiosk["authorized"]["session"] = nullptr; kiosk["authorized"]["reservation"] = nullptr;
+  kiosk["commands"].to<JsonArray>();
+  apply(kiosk);
+  assert(kioskUrl == "https://api.example.test/pay/k/CG-01?c=12345");
+  assert(paymentStatus == "awaiting_payment" && paymentAmount == 20.0f && paymentTest);
+  kiosk["connector"]["kiosk_url"] = "javascript:alert(1)"; kiosk["connector"]["payment"]["status"] = "refunded";
+  apply(kiosk); assert(kioskUrl.empty() && paymentStatus.empty());
+  kiosk["connector"].remove("kiosk_url"); kiosk["connector"].remove("payment");
+  apply(kiosk); assert(kioskUrl.empty() && paymentStatus.empty() && paymentAmount < 0);
+  resetSession(); sessionId = ""; state = "idle";
+
   lv_init();
   static lv_disp_draw_buf_t db; lv_disp_draw_buf_init(&db, drawbuf, nullptr, 800 * 48);
   static lv_disp_drv_t dd; lv_disp_drv_init(&dd);
@@ -351,6 +533,69 @@ int main(int argc, char** argv) {
   lv_event_send(stopButton, LV_EVENT_CLICKED, nullptr); panelTick();
   assert(state == "stopped" && reading.powerW == 0 && endReason == "requested");
   screenshot(argv[1], "panel-stopped");
+  auto text = [](lv_obj_t* target) { return std::string(lv_label_get_text(target)); };
+  auto hidden = [](lv_obj_t* target) { return lv_obj_has_flag(target, LV_OBJ_FLAG_HIDDEN); };
+  // 0.7.0 live power: the applied value confirmed by the API and the short reason; 0 W is a pause.
+  state = "charging"; endReason = ""; reading = {42, 3210, 6000, true}; chargePowerW = 6000;
+  sessionAppliedPowerKw = 6.0f; powerReasonShort = "Loja 24/30 kW \u00B7 3 carros";
+  screenshot(argv[1], "panel-charging-power");
+  assert(text(statusLabel) == "Recarga em andamento");
+  assert(text(instructionLabel) == "Potência 6,0 kW \u00B7 Loja 24/30 kW \u00B7 3 carros");
+  chargePowerW = 0; sessionAppliedPowerKw = 0; reading.powerW = 0;
+  screenshot(argv[1], "panel-charging-paused");
+  assert(text(statusLabel) == "Recarga pausada" && !hidden(stopButton));
+  assert(text(instructionLabel) == "Pausada para dividir a potência: Loja 24/30 kW \u00B7 3 carros");
+  sessionAppliedPowerKw = -1; powerReasonShort = ""; chargePowerW = kBenchPowerW; reading.powerW = 7200;
+  panelTick(); refresh();
+  assert(text(instructionLabel) == "Acompanhe pelo app. Para parar, toque em Encerrar."); // Older API.
+  // 0.7.0 overstay: stopped but still plugged in; local countdown, then the fee from the API.
+  overstayEnabled = true; requestLocalSafeStop(); assert(state == "stopped" && reading.connected);
+  overstayStatus = "grace"; overstayGraceSeconds = 300; overstayReceivedAt = testMillis;
+  overstayAmount = 1.5f; overstayIntervalMinutes = 10; overstayMaxFee = 15; overstayFeeDue = 0;
+  screenshot(argv[1], "panel-overstay-grace");
+  assert(text(statusLabel) == "Recarga concluída" && text(connectionLabel) == "Carro conectado");
+  assert(text(messageTitle) == "Recarga concluída \u00B7 desconecte em 05:00");
+  assert(text(messageDetail) == "Após a tolerância: R$ 1,50 a cada 10 min, até R$ 15,00.");
+  assert(!hidden(disconnectButton) && hidden(stopButton) && !hidden(messageCard));
+  testMillis += 61000; lastContact = testMillis; panelTick(); refresh();
+  assert(text(messageTitle) == "Recarga concluída \u00B7 desconecte em 03:59");
+  state = "idle"; sessionId = ""; endReason = ""; // The API ended the session; the car stays.
+  overstayStatus = "billing"; overstayFeeDue = 1.5f;
+  screenshot(argv[1], "panel-overstay-fee");
+  assert(text(messageTitle) == "Taxa de permanência: R$ 1,50");
+  assert(hidden(codeCard) && !hidden(disconnectButton) && text(statusLabel) == "Recarga concluída");
+  overstayStatus = "capped"; overstayFeeDue = 15; panelTick(); refresh();
+  assert(text(messageTitle) == "Taxa de permanência: R$ 15,00 (valor máximo)");
+  overstayStatus = "no_fee"; panelTick(); refresh();
+  assert(text(messageTitle) == "Recarga concluída \u00B7 desconecte o carro");
+  assert(text(messageDetail) == "Sem taxa de permanência neste ponto.");
+  nextSync = testMillis + 5000;
+  lv_event_send(disconnectButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  assert(!reading.connected && !overstayEnabled && nextSync == testMillis);
+  overstayStatus = ""; panelTick(); refresh();
+  assert(text(statusLabel) == "Pronto para você" && hidden(disconnectButton));
+  // 0.7.0 payment kiosk QR on the Ready screen (Stripe test mode).
+  kioskUrl = "https://chargegrid-api-preview-djlima1s-projects.vercel.app/pay/k/CG-01?c=12345";
+  paymentStatus = ""; paymentAmount = -1; paymentTest = false;
+  screenshot(argv[1], "panel-kiosk-qr");
+  assert(!hidden(kioskCard) && !hidden(kioskQrBox) && hidden(stepsCard) && !hidden(codeCard));
+  assert(std::string(lastKioskQr) == kioskUrl && text(kioskTitle) == "Sem o app? Pague aqui \u00B7 TESTE");
+  assert(text(kioskDetail) == "Escaneie com a câmera do celular e escolha o valor.");
+  assert(text(instructionLabel).find("pague pelo QR") != std::string::npos);
+  assert(lv_obj_get_width(rowLineTop) == 531 && lv_obj_get_y(codeCard) == 118);
+  paymentStatus = "awaiting_payment"; paymentAmount = 20; paymentTest = true;
+  screenshot(argv[1], "panel-kiosk-awaiting");
+  assert(text(kioskDetail) == "Aguardando pagamento (teste) \u00B7 R$ 20,00");
+  paymentStatus = "paid"; panelTick(); refresh();
+  assert(text(kioskDetail) == "Pagamento confirmado (teste) \u00B7 iniciando");
+  kioskUrl = ""; panelTick(); refresh(); // QR gone (e.g. START on its way): status stays visible.
+  assert(hidden(kioskCard) && hidden(kioskQrBox) && !hidden(stepsCard));
+  assert(text(instructionLabel) == "Pagamento confirmado (teste) \u00B7 iniciando");
+  lv_obj_update_layout(lv_scr_act());
+  assert(lv_obj_get_width(rowLineTop) == 711 && lv_obj_get_y(codeCard) == 130);
+  paymentStatus = ""; paymentAmount = -1; paymentTest = false; panelTick(); refresh();
+  assert(text(instructionLabel) == "Abra o app ChargeGrid e use o código ao lado para iniciar a recarga.");
+  state = "stopped"; sessionId = "test-session"; endReason = "requested";
   state = "idle"; sessionId = ""; lastSyncHttpStatus = 401;
   screenshot(argv[1], "panel-key-error");
   assert(std::string(lv_label_get_text(statusLabel)) == "Ponto indisponível");
@@ -452,5 +697,7 @@ int main(int argc, char** argv) {
   assert(acknowledgements[0]["new_device_key_hash"].isNull());
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
-  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 14 LVGL frames");
+  puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");
+  puts("PASS: 0.7.0 overstay (keep connected, disconnect + immediate sync, RELEASE, reboot, factory reset refusal, texts), payment kiosk QR and status, live power texts");
+  puts("PASS: factory claim token validation/storage, QR lifecycle, reset command safety and 20 LVGL frames");
 }

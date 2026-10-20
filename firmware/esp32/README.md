@@ -34,4 +34,13 @@ O helper precisa de `pyserial` (já incluído no ambiente PlatformIO). No macOS,
 
 Veja [docs/waveshare-panel.md](../../docs/waveshare-panel.md) para o fluxo completo e [builds/chargegrid-waveshare-7-0.3.6.zip](../../builds/chargegrid-waveshare-7-0.3.6.zip) para o firmware, componentes de recuperação e hashes. Em atualizações, grave somente `firmware.bin` em `0x10000` para preservar o NVS.
 
+## Firmware 0.7.0
+
+Versão única (`CHARGEGRID_FIRMWARE_VERSION` em `include/runtime.h`, enviada no sync e mostrada no `CG_STATUS`). Tudo é aditivo; o fluxo anterior continua igual quando a API não manda os campos novos:
+
+- **Potência ao vivo:** o sync declara `capabilities: ["set_power_v1"]`, `applied_power_w` e `charger` (`esp32_bench`, `simulated`, 1.400–7.200 W, passo 100 W). `SET_POWER` aplica o limite (arredonda para baixo no passo; 0 W pausa sem encerrar) e confirma com `applied_power_w`. START usa `power_limit_w` quando presente (inclusive 0); sem ele, `max_power_kw` como antes. A tela mostra a potência aplicada confirmada pela API e o motivo curto.
+- **Pagamento pelo QR (teste):** com `connector.kiosk_url`, a tela Pronto mostra o QR "Sem o app? Pague aqui · TESTE" e o estado de `connector.payment`.
+- **Permanência:** START com `parameters.overstay` mantém o carro conectado depois de parar e mostra **Desconectar**, a tolerância (contagem local) e a taxa informada pela API. Reboot volta desconectado.
+- **API anterior:** se o sync receber 422 (campos novos recusados), o painel reenvia no formato 0.6 e segue como carga fixa; tenta os campos novos de novo a cada 10 min, só ocioso.
+
 Pré-visualização das telas do totem no host: `python firmware/esp32/preview/render.py --output tmp/panel-preview` (LVGL real, sem serial/hardware). Veja "Redesign do totem" em `docs/waveshare-panel.md`.
