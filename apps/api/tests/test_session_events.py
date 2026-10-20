@@ -72,6 +72,8 @@ def test_request_ack_retry_reconcile_end_and_owner_isolation(factory, seed):
     assert [kind for kind, _ in events(factory)] == [
         "start_requested", "command_received", "start_applied", "offline_reconciled",
         "stop_requested", "stop_applied", "ended",
+        # Cable reported disconnected at the end: no overstay, the final amount is known.
+        "vehicle_disconnected", "settlement_ready",
     ]
 
     client, selected = client_for(factory, seed["a"])

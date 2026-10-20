@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
+from . import overstay
 from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
 from .modules.payments.funding import payment_row, payments_by_session
@@ -183,6 +184,8 @@ def station_rows(db, stations, viewer=None):
         result["allocated_power_kw"] = _kw(power["allocated_kw"])
         result["requested_power_kw"] = _kw(power["requested_kw"])
         result["power_shared"] = power["shared"]
+        # Condições públicas da taxa de permanência, mostradas antes de aceitar a recarga.
+        result["overstay"] = overstay.public_terms(station)
         station_energy = energy if _owner_view(station, viewer) else None
         result["connectors"] = [
             _render_point(db, point, station, *state, power["connectors"], station_energy) for point in points
@@ -260,6 +263,10 @@ def session_rows(db, sessions):
         result["online"] = online(devices.get(connector.id))
         # Pré-pagamento (Stripe, teste) desta recarga, ou null.
         result["payment"] = payment_row(payments[session.id]) if session.id in payments else None
+        # Permanência após a recarga: colunas internas viram o bloco calculado ``overstay``.
+        for key in [name for name in result if name.startswith("overstay_")]:
+            result.pop(key)
+        result.update(overstay.session_fields(session))
         results.append(result)
     del loaded
     return results

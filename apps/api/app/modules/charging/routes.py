@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import func, select
 
+from ... import overstay
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, session_row, session_rows
@@ -49,6 +50,22 @@ def current_session(user=Depends(current_user), db=Depends(db_session)):
         if obj.status not in SESSION_ACTIVE:
             return None
     return session_row(db, obj)
+
+
+@router.get("/overstays/current")
+def current_overstay(user=Depends(current_user), db=Depends(db_session)):
+    """Permanência aberta da pessoa (recarga encerrada e cabo ainda conectado), ou null."""
+    obj = overstay.current_for_user(db, user)
+    if obj is None:
+        return None
+    lock_point(db, user, obj.connector_id)  # fecha a permanência sem notícia do equipamento
+    db.flush()
+    db.refresh(obj)
+    if not overstay.is_open(obj):
+        return None
+    context = session_row(db, obj)
+    return {key: context[key] for key in ("station_id", "station_name", "station_address", "connector")} | {
+        "session_id": str(obj.id), "ended_at": context["ended_at"], **context["overstay"]}
 
 
 @router.get("/charging-sessions/{session_id}")

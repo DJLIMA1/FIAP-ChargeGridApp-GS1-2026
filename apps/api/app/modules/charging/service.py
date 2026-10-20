@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
+from ... import overstay
 from ...errors import fail
 from ...http_helpers import allocation, retired_ids
 from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, now
@@ -31,7 +32,7 @@ from ..power.service import start_power
 from ..pricing.service import locked_terms
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
-_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw", "payment_id")
+_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw", "payment_id", "overstay_terms_version")
 
 
 def _point_for_code(db, user, data):
@@ -186,6 +187,7 @@ def start(db, user, data, key):
         requested_power_kw=data.max_power_kw.quantize(Decimal("0.001"), rounding=ROUND_DOWN)
         if data.max_power_kw is not None else None,
         **_battery_fields(data),
+        overstay_terms=overstay.terms_for_start(db, connector, data, payment),
     )
     db.add(session)
     db.flush()
@@ -203,6 +205,7 @@ def start(db, user, data, key):
         "max_power_kw": float(session.power_limit_kw) if session.power_limit_kw is not None else None,
         **battery_parameters(session),
         **live_power,
+        **overstay.start_parameters(session),
     }
     issue(db, connector, device, "START", session=session, parameters=limits)
     if payment:

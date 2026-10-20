@@ -14,6 +14,7 @@ from sqlalchemy import String, and_, case, cast, extract, func, or_, select
 
 from chargegrid_core import analytics
 
+from ... import overstay
 from ...models import ChargingSession, Command, Connector, Device, Reservation, Station, Telemetry, now
 from ...service import RES_ACTIVE, SESSION_ACTIVE
 
@@ -197,7 +198,8 @@ SESSION_COLUMNS = (
     ChargingSession.id, ChargingSession.connector_id, ChargingSession.status, ChargingSession.created_at,
     ChargingSession.started_at, ChargingSession.ended_at, ChargingSession.energy_wh,
     ChargingSession.price_per_kwh, ChargingSession.discount_percent, ChargingSession.cost_estimate,
-    ChargingSession.source, ChargingSession.end_reason, Station.id.label("station_id"),
+    ChargingSession.source, ChargingSession.end_reason, ChargingSession.overstay_terms,
+    ChargingSession.overstay_billable_seconds, ChargingSession.overstay_fee, Station.id.label("station_id"),
     Station.name.label("station_name"), Connector.public_code,
 )
 
@@ -325,6 +327,10 @@ def live(db, scope):
                 if session.last_measurement_at else None,
             } if session else None,
         })
+    # Permanência após a recarga: quem ocupa a vaga (primeiro nome + veículo) e a taxa até agora.
+    occupancy = overstay.occupancy_by_connector(db, ids)
+    for item in items:
+        item["occupancy"] = occupancy.get(UUID(item["connector_id"]))
     return {"items": items, "generated_at": moment.isoformat()}
 
 

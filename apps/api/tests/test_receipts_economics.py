@@ -22,10 +22,16 @@ DEVICE = {"Authorization": "Device test-key"}
 
 @pytest.fixture(autouse=True)
 def _cleanup():
+    # Restore the providers registered by the app (e.g. the real overstay section) after each test.
+    extras, sections = dict(registry._EXTRAS), dict(registry._SECTIONS)
+    for name in ("payment", "overstay", "power_changes", "broken"):
+        registry.unregister(name)
     yield
     clear_overrides()
     for name in ("payment", "overstay", "power_changes", "broken"):
         registry.unregister(name)
+    registry._EXTRAS.update(extras)
+    registry._SECTIONS.update(sections)
 
 
 def _code(factory, seed):

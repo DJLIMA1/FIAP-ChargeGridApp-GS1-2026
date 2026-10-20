@@ -185,6 +185,9 @@ def reconcile_expiry(db, connector):
         if cmd and cmd.expires_at <= now() and cmd.status not in ("applied", "superseded"):
             session.status = "stopping"
             issue(db, connector, device, "STOP", session=session, parameters={"reason": "start_timeout"})
+    from .overstay import reconcile as reconcile_overstay  # evita import circular
+
+    reconcile_overstay(db, connector, device)
     return reservation, session
 
 

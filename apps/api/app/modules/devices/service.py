@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 
+from ... import overstay
 from ...errors import fail
 from ...models import (
     ChargingSession,
@@ -265,6 +266,9 @@ def sync(db, authenticated_device, data):
             stop_if_battery_full(db, connector, device, reported)
     recover_safety_command(db, connector, device, reservation, session)
     restore_reservation(db, connector, device, reservation, session, reboot)
+    # Permanência após a recarga: abre/acumula/fecha antes do acerto do pagamento deste sync.
+    overstay.on_sync(db, connector, data, reboot=reboot,
+                     finished=[session] if session is not None and session.status in overstay.TERMINAL else [])
     prepare_recent_settlements(db, connector)
     pending = db.scalar(
         select(Command.id).where(
@@ -461,6 +465,8 @@ def response(db, connector, device):
         # números e o START/STOP chegar logo; ocioso: 5 s.
         "sync_interval_seconds": 1 if session or reservation or commands else 5,
         "control_version": connector.control_version,
+        # Permanência aberta neste ponto (painel: "desconecte em mm:ss" / taxa), ou null.
+        "overstay": overstay.sync_block(db, connector),
         "connector": {
             "id": str(connector.id),
             "public_code": connector.public_code,

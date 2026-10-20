@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from . import overstay
 from .auth_page import AUTH_PAGE
 from .config import settings
 from .database import db_session
@@ -31,6 +32,7 @@ from .modules.payments.kiosk import router as payments_pages
 from .modules.payments.routes import router as payments_router
 from .modules.power.routes import router as power_router
 from .modules.pricing.routes import router as pricing_router
+from .modules.receipts import registry as receipt_registry
 from .modules.receipts.routes import router as receipts_router
 from .modules.reservations.routes import router as reservations_router
 from .modules.stations.routes import router as stations_router
@@ -66,6 +68,8 @@ for router in (
 ):
     app.include_router(router, prefix="/v1")
 app.include_router(payments_pages)
+# Permanência após a recarga: seção ``overstay`` do recibo e da margem do dono.
+receipt_registry.register_extras("overstay", overstay.receipt_extras)
 # Rebalanceamento de potência ao vivo (painel do vendedor e motorista).
 app.include_router(power_router, prefix="/v1")
 

@@ -226,7 +226,8 @@ def test_csv_and_json_exports(client, owner_data):
     rows = list(csv.reader(io.StringIO(response.text)))
     assert rows[0][0] == "ID da sessão" and len(rows) == 6
     assert all("RIVAL" not in cell for row in rows for cell in row)
-    assert "'=HYPERLINK(1)" in [row[-1] for row in rows]  # fórmula neutralizada
+    reason = rows[0].index("Motivo de término")
+    assert "'=HYPERLINK(1)" in [row[reason] for row in rows]  # fórmula neutralizada
     data = http.get("/v1/owner/export/sessions.json", params=window(owner_data, status="completed")).json()
     assert data["schema_version"] == 1 and data["dataset"] == "sessions" and data["total"] == 2
     assert data["filters"]["status"] == "completed"
