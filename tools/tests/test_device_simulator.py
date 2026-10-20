@@ -368,3 +368,58 @@ def test_overstay_terminal_text_matches_the_panel():
     assert overstay_text({"status": "grace", "grace_remaining_seconds": 462}).endswith("desconecte em 07:42")
     assert overstay_text({"status": "billing", "fee_due": "3.00"}).endswith("Taxa de permanência: R$ 3,00")
     assert overstay_text({"status": "no_fee"}).endswith("desconecte o cabo")
+
+
+def test_payload_reports_the_panel_firmware_version():
+    from pathlib import Path
+
+    runtime = (Path(__file__).resolve().parents[2] / "firmware/esp32/include/runtime.h").read_text()
+    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.7.0"' in runtime
+    assert Device().payload()["firmware_version"] == "0.7.0"
+    assert Device(legacy=True).payload()["firmware_version"] == "0.4.0"
+
+
+def test_real_api_timestamps_with_a_local_offset_still_apply():
+    # The API serialises DB timestamps in the PostgreSQL session time zone (e.g. -03:00).
+    data = response()
+    server = datetime(2026, 10, 20, 7, 9, 20, 765272, tzinfo=timezone.utc)
+    data["server_time"] = server.isoformat()
+    data["commands"][0]["expires_at"] = (server + timedelta(seconds=30)).astimezone(
+        timezone(timedelta(hours=-3))).isoformat()
+    assert data["commands"][0]["expires_at"] == "2026-10-20T04:09:50.765272-03:00"
+    device = Device()
+    assert device.response(data) and device.state == "charging"
+    expired = response(version=2, identifier="late")
+    expired["server_time"] = server.isoformat()
+    expired["commands"][0]["expires_at"] = (server - timedelta(seconds=1)).astimezone(
+        timezone(timedelta(hours=-3))).isoformat()
+    assert not Device().response(expired)
+
+
+def _kiosk(connector):
+    data = response()
+    data["authorized"]["session"] = None
+    data["commands"] = []
+    data["connector"] = {"public_code": "CG-01", "owned": True, "active": True, **connector}
+    return data
+
+
+def test_kiosk_fields_from_the_real_sync_are_read_like_the_panel():
+    from tools.device_simulator import kiosk_text
+
+    device = Device()
+    url = "https://api.chargegrid.test/pay/k/CG-01?c=62600"
+    device.response(_kiosk({"kiosk_url": url, "payment": None}))
+    assert device.kiosk_url == url and device.payment is None
+    assert kiosk_text(device) == f" | Sem o app? Pague aqui · TESTE: {url}"
+    device.response(_kiosk({"kiosk_url": url, "payment": {
+        "status": "awaiting_payment", "status_label": "Aguardando pagamento", "amount": "20.00", "environment": "test"}}))
+    assert device.payment == {"status": "awaiting_payment", "amount": "20.00", "environment": "test"}
+    assert kiosk_text(device) == " | Aguardando pagamento (teste) · R$ 20,00"
+    device.response(_kiosk({"kiosk_url": None, "payment": {"status": "paid", "amount": "20.00", "environment": "test"}}))
+    assert device.kiosk_url is None and kiosk_text(device) == " | Pagamento confirmado (teste) · R$ 20,00"
+    # Not https, unknown status or an older API without the fields: no QR, no payment line.
+    device.response(_kiosk({"kiosk_url": "http://api/pay/k/CG-01?c=1", "payment": {"status": "in_use"}}))
+    assert device.kiosk_url is None and device.payment is None and kiosk_text(device) == ""
+    device.response(_kiosk({}))
+    assert device.kiosk_url is None and device.payment is None

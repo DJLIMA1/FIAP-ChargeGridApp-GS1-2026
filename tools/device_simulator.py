@@ -28,9 +28,14 @@ def number(value, low, high):
 
 
 SOC_SOURCES = ("simulated", "phone")
+# Mesma versão do firmware do painel cujo protocolo a bancada reproduz (runtime.h).
+FIRMWARE_VERSION = "0.7.0"
+LEGACY_FIRMWARE_VERSION = "0.4.0"
+# Pagamento pelo QR do painel (connector.payment): estados que o painel mostra; outros são ignorados.
+PAYMENT_STATUSES = ("awaiting_payment", "authorized", "paid", "declined")
 BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
 BENCH_MIN_POWER_W = 1400  # 6 A em 230 V: menor corrente de recarga AC.
-# Firmware 0.5.0+: ajuste de potência ao vivo (SET_POWER). ``legacy=True`` simula o antigo.
+# Firmware 0.7.0 (SET_POWER desde a 0.5.0): ajuste de potência ao vivo. ``legacy=True`` simula o 0.4.0.
 CAPABILITIES = ["set_power_v1"]
 # Permanência após a recarga: com termos de taxa no START (``parameters.overstay``) o cabo
 # simulado continua conectado depois da parada, até ``unplug()`` (SIGUSR1 na linha de comando)
@@ -106,6 +111,9 @@ class Device:
         self.unplug_after = unplug_after if unplug_after is not None and unplug_after >= 0 else None
         self.stopped_at = None
         self.overstay = None
+        # connector.kiosk_url / connector.payment (modo teste), validados como no firmware.
+        self.kiosk_url = None
+        self.payment = None
 
     def save(self):
         if self.path:
@@ -179,6 +187,19 @@ class Device:
         self.power_w = result["applied_power_w"]
         return self.power_w, None
 
+    def read_kiosk(self, connector):
+        """``connector.kiosk_url``/``payment`` do sync (API com pagamento pelo QR). Só ``https://``
+        com até 160 caracteres vira QR; status desconhecido ou campo ausente (API antiga): nada."""
+        url = connector.get("kiosk_url")
+        self.kiosk_url = url if isinstance(url, str) and url.startswith("https://") and len(url) <= 160 else None
+        payment = connector.get("payment")
+        if isinstance(payment, dict) and payment.get("status") in PAYMENT_STATUSES:
+            amount = number(payment.get("amount"), 0, 1000000)
+            self.payment = {"status": payment["status"], "amount": f"{amount:.2f}" if amount is not None else None,
+                            "environment": payment.get("environment")}
+        else:
+            self.payment = None
+
     def stop(self, reason):
         self.state = "stopped"
         self.connected = self.hold_cable and self.connected
@@ -233,7 +254,7 @@ class Device:
         self.save()
         # SoC próprio só na fonte simulada; phone ou sem dados de bateria: null (nunca eco da API).
         report_soc = self.session_id and self.soc_source == "simulated" and self.soc_known()
-        body = {"boot_id": self.boot_id, "sequence": self.sequence, "firmware_version": "0.4.0" if self.legacy else "0.5.0",
+        body = {"boot_id": self.boot_id, "sequence": self.sequence, "firmware_version": LEGACY_FIRMWARE_VERSION if self.legacy else FIRMWARE_VERSION,
                 "session_id": self.session_id, "physical_state": self.state, "connected": self.connected,
                 "soc_percent": round(self.soc(), 2) if report_soc else None,
                 "energy_wh": self.energy, "power_w": self.power_w if self.state == "charging" else 0,
@@ -273,6 +294,7 @@ class Device:
         connector = response.get("connector") or {}
         self.presence_code = connector.get("presence_code")
         self.public_code = connector.get("public_code")
+        self.read_kiosk(connector)
         changed = False
         for command in response["commands"]:
             identifier = command["id"]
@@ -375,6 +397,18 @@ class Device:
         return changed
 
 
+def kiosk_text(device):
+    """Linha do terminal igual ao painel: QR de pagamento (teste) e o último pagamento."""
+    payment = device.payment
+    if payment:
+        test = " (teste)" if payment["environment"] == "test" else ""
+        amount = f" · R$ {payment['amount'].replace('.', ',')}" if payment["amount"] else ""
+        label = {"awaiting_payment": "Aguardando pagamento", "authorized": "Pagamento confirmado",
+                 "paid": "Pagamento confirmado", "declined": "Pagamento recusado"}[payment["status"]]
+        return f" | {label}{test}{amount}"
+    return f" | Sem o app? Pague aqui · TESTE: {device.kiosk_url}" if device.kiosk_url else ""
+
+
 def overstay_text(block):
     """Linha do terminal igual ao painel: "desconecte em mm:ss" e depois a taxa."""
     if not block:
@@ -440,7 +474,7 @@ def main():
                     power = f" power_w={device.power_w if device.state == 'charging' else 0}"
                     cable = " cabo=conectado" if device.connected else ""
                     print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{power}{soc}{cable}"
-                          f"{overstay_text(device.overstay)}")
+                          f"{overstay_text(device.overstay)}{kiosk_text(device)}")
                 except (httpx.HTTPError, ValueError, KeyError):
                     interval = min(30, interval * 2)
                     next_sync = time.monotonic() + interval
