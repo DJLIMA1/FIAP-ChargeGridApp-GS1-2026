@@ -7,14 +7,25 @@ Cada frente pluga o seu fato confirmado com **um arquivo próprio + uma linha de
   ``batch(db, sessions) -> {session_id: dict}`` (uma consulta para várias sessões, sem N+1).
   Nomes conhecidos:
 
-  - ``"payment"`` (frente A): ``{environment: "mock"|"sandbox"|"production", provider,
-    provider_reference, method, status, authorized_amount, captured_amount, refunded_amount,
-    net_amount, provider_fee, refund_status, confirmed_at}``. Valores em strings decimais (R$).
-    Só registrar pagamento confirmado pelo provedor (webhook). ``net_amount`` (capturado −
-    devolvido) substitui a receita estimada na margem; a captura deve usar
-    ``chargegrid_core.economics.charged_amount``.
-  - ``"overstay"`` (frente D): ``{status, grace_minutes, started_at, ended_at,
-    billable_minutes, rate, amount, waived}``. ``amount`` entra na receita e na comissão.
+  - ``"payment"`` (frente A, ``payments/receipt.py``): ``{environment: "mock"|"sandbox"|"production",
+    provider, provider_reference, method, status, settlement_status, authorized_amount,
+    captured_amount, refunded_amount, net_amount, charged_amount, energy_amount, overstay_amount,
+    waived_amount, uncollected_amount, below_minimum, provider_fee, refund_status, confirmed_at,
+    settled_at}``. Valores em strings decimais (R$). Só registrar pagamento confirmado pelo
+    provedor (webhook). ``net_amount`` (capturado − devolvido) substitui a receita estimada na
+    margem; a captura deve usar ``chargegrid_core.economics.charged_amount``.
+  - ``"overstay"`` (frente D, ``app/overstay.py::receipt_extras``): ``{phase, grace_minutes,
+    started_at, ended_at, end_reason, billable_minutes, rate, max_amount, amount, final, summary,
+    waived}``. ``amount`` entra na receita e na comissão (``None`` = sem termos aceitos, sem taxa).
+
+  ``status`` x ``phase``: no recibo, ``status`` de **toda** seção é reservado ao core
+  (``chargegrid_core.receipt``) e diz se a seção existe — ``"available"`` | ``"pending"`` |
+  ``"not_applicable"`` | ``"unavailable"`` — então o estado de negócio de uma frente não pode
+  usar essa chave. Na seção ``payment`` o core sobrescreve ``status`` e preserva o original em
+  ``payment_status``; a seção ``overstay`` já nasce com ``phase`` (``grace`` | ``billing`` |
+  ``capped`` | ``no_fee`` | ``closed``, o mesmo valor de ``status`` no bloco ``overstay`` da
+  sessão e do sync) para não colidir. Clientes leem ``section["status"]`` para saber se mostram
+  a seção e ``phase``/``payment_status`` para o estado.
 
 * ``register_section(name, provider)``: seção só do recibo. ``provider(db, session)``.
   Nome conhecido: ``"power_changes"`` (frente B): lista
