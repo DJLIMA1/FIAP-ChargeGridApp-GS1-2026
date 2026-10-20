@@ -135,7 +135,12 @@ async def build(app, station_id=None, page=None, **params):
     if page == 'energy':
         return await station_ops.energy_page(app, station)
     if page == 'payments':
-        return station_ops.payments_page(app, station)
+        config = None
+        if station_ops.has_kiosk(station) and not station_ops.account_presentation(app):
+            # Status do totem: conta oficial sem Stripe no servidor → indisponível (payments_unavailable).
+            from ..services import payments
+            config = await payments.config(app, refresh=True)
+        return station_ops.payments_page(app, station, config)
     return _main_page(app, station, code)
 
 

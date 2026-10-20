@@ -390,7 +390,7 @@ def _visitor_session(api, point, *, label, status, started, ended=None, energy_w
     return session
 
 
-def _finished(api, point, *, label, ended, minutes, unplug, paid):
+def _finished(api, point, *, label, ended, minutes, unplug, paid, totem=False):
     """Recarga encerrada por um motorista fictício, com permanência até ``unplug`` (s do relógio da demo)."""
     started = ended - minutes * 60
     power = min(Decimal(point['power_kw']), Decimal('22'))
@@ -402,7 +402,7 @@ def _finished(api, point, *, label, ended, minutes, unplug, paid):
     api._event(session['id'], 'ended', at=session['ended_at'])
     if paid:
         from . import demo_payments
-        demo_payments.visitor_payment(api, point, session)
+        demo_payments.visitor_payment(api, point, session, totem=totem)
     return session
 
 
@@ -426,7 +426,8 @@ def traffic(api, station):
     if first_visit:
         # Recarga paga de 1 h atrás (histórico do vendedor: pagamento acertado e permanência encerrada).
         _finished(api, free[-1], label=VISITORS[3], ended=now - PAST_ENDED_HOURS * 3600, minutes=35,
-                  unplug=now - PAST_ENDED_HOURS * 3600 + 14 * 60, paid=True)
+                  unplug=now - PAST_ENDED_HOURS * 3600 + 14 * 60, paid=True,
+                  totem=station.get('kiosk_mode') is True)  # totem ligado: a recarga paga veio do totem
     charging, parked = (free[:-1], free[-1]) if len(free) > 1 else (free, None)
     for index, point in enumerate(charging[:2]):
         start = now - CHARGED_AGO_MINUTES * 60

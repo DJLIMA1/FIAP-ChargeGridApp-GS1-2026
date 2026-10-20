@@ -5,6 +5,7 @@
  * `schema_version`.
  */
 import type { SessionItem } from '../api/types'
+import { CHANNEL_LABELS, paymentChannel, paymentMethodLabel } from './kiosk'
 
 export const SESSION_COLUMNS: [keyof SessionItem, string][] = [
   ['id', 'ID da sessão'],
@@ -43,8 +44,21 @@ export function toCsv<T extends object>(rows: T[], columns: [keyof T, string][])
   return lines.join('\r\n') + '\r\n'
 }
 
+/** Colunas do totem 0.8.0, só quando a API manda `payment` (canal e método da recarga paga). */
+type PaymentExport = SessionItem & { payment_channel: string; payment_method: string }
+export const PAYMENT_COLUMNS: [keyof PaymentExport, string][] = [
+  ['payment_channel', 'Canal'],
+  ['payment_method', 'Pagamento'],
+]
+
 export function sessionsCsv(rows: SessionItem[]): string {
-  return toCsv(rows, SESSION_COLUMNS)
+  if (!rows.some((row) => 'payment' in row)) return toCsv(rows, SESSION_COLUMNS)
+  const extended: PaymentExport[] = rows.map((row) => ({
+    ...row,
+    payment_channel: CHANNEL_LABELS[paymentChannel(row.payment)],
+    payment_method: paymentMethodLabel(row.payment),
+  }))
+  return toCsv(extended, [...(SESSION_COLUMNS as [keyof PaymentExport, string][]), ...PAYMENT_COLUMNS])
 }
 
 export function sessionsJson(rows: SessionItem[], filters: Record<string, unknown>, generatedAt: Date = new Date()): string {

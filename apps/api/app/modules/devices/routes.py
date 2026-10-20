@@ -25,6 +25,7 @@ from ...service import (
 )
 from ..auth.routes import limit
 from ..devices.service import sync
+from ..kiosk_totem import service as totem
 
 router = APIRouter()
 
@@ -169,4 +170,12 @@ def device_sync(data: SyncInput, device=Depends(current_device), db=Depends(db_s
     # Sync de 1 s em recarga + sync imediato após aplicar comando: 120/min (antes 40/min
     # derrubava cerca de 1/3 dos syncs com 429 e atrasava os ACKs).
     limit(db, "device:" + str(device.id), maximum=120)
-    return sync(db, device, data)
+    result = sync(db, device, data)
+    if "kiosk_order" in result:
+        # Totem: verificação na Stripe, START pago e acerto do pedido depois de gravar o sync
+        # (fora da trava do ponto); o START sai em ``commands`` no sync seguinte.
+        db.commit()
+        block = totem.after_sync(db, device.connector_id)
+        if block is not None:
+            result["kiosk_order"] = block
+    return result

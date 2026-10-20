@@ -33,6 +33,11 @@ FIRMWARE_VERSION = "0.7.0"
 LEGACY_FIRMWARE_VERSION = "0.4.0"
 # Pagamento pelo QR do painel (connector.payment): estados que o painel mostra; outros são ignorados.
 PAYMENT_STATUSES = ("awaiting_payment", "authorized", "paid", "declined")
+# Totem de autoatendimento 0.8.0 (connector.kiosk, kiosk_order, authorized.session.origin).
+TOTEM_METHODS = ("simulated", "stripe")
+TOTEM_ORDER_STATUSES = ("held", "awaiting_payment", "paid", "charging", "finished", "canceled", "expired", "failed")
+TOTEM_OPEN = ("held", "awaiting_payment", "paid")
+SESSION_ORIGINS = ("app", "kiosk_qr", "kiosk_totem")
 BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
 BENCH_MIN_POWER_W = 1400  # 6 A em 230 V: menor corrente de recarga AC.
 # Firmware 0.7.0 (SET_POWER desde a 0.5.0): ajuste de potência ao vivo. ``legacy=True`` simula o 0.4.0.
@@ -114,6 +119,10 @@ class Device:
         # connector.kiosk_url / connector.payment (modo teste), validados como no firmware.
         self.kiosk_url = None
         self.payment = None
+        # Totem 0.8.0: connector.kiosk, kiosk_order e authorized.session.origin (API nova; ausentes = desligado).
+        self.totem = None
+        self.kiosk_order = None
+        self.session_origin = None
 
     def save(self):
         if self.path:
@@ -199,6 +208,15 @@ class Device:
                             "environment": payment.get("environment")}
         else:
             self.payment = None
+
+    def read_totem(self, response):
+        """Totem 0.8.0 (contrato em docs/esp32-protocol.md): só com o totem ligado no posto."""
+        kiosk = (response.get("connector") or {}).get("kiosk")
+        self.totem = kiosk if isinstance(kiosk, dict) and kiosk.get("method") in TOTEM_METHODS + (None,) else None
+        order = response.get("kiosk_order")
+        self.kiosk_order = order if isinstance(order, dict) and order.get("status") in TOTEM_ORDER_STATUSES else None
+        session = (response.get("authorized") or {}).get("session") or {}
+        self.session_origin = session.get("origin") if session.get("origin") in SESSION_ORIGINS else None
 
     def stop(self, reason):
         self.state = "stopped"
@@ -295,6 +313,7 @@ class Device:
         self.presence_code = connector.get("presence_code")
         self.public_code = connector.get("public_code")
         self.read_kiosk(connector)
+        self.read_totem(response)
         changed = False
         for command in response["commands"]:
             identifier = command["id"]
@@ -398,7 +417,10 @@ class Device:
 
 
 def kiosk_text(device):
-    """Linha do terminal igual ao painel: QR de pagamento (teste) e o último pagamento."""
+    """Linha do terminal igual ao painel: QR de pagamento (teste), o último pagamento e o totem."""
+    order = device.kiosk_order
+    if order:
+        return f" | Totem: {order.get('status_label') or order['status']}"
     payment = device.payment
     if payment:
         test = " (teste)" if payment["environment"] == "test" else ""
@@ -421,6 +443,133 @@ def overstay_text(block):
     return " | Recarga concluída — desconecte o cabo"
 
 
+def _reais(value):
+    return "R$ " + f"{float(value):.2f}".replace(".", ",")
+
+
+def _kwh(value):
+    return f"{float(value):.1f}".replace(".", ",") + " kWh"
+
+
+class KioskRunner:
+    """Percorre o totem 0.8.0 pelos endpoints do dispositivo e imprime as "telas" (T0…T8).
+
+    ``request(method, path, json=None, headers=None)`` chama a API com a chave do dispositivo;
+    ``exchange()`` faz um sync do ``Device`` (o START/STOP chegam por ele, como no painel).
+    Encerrar é local (``Device.stop``), sem endpoint. Funciona nos dois modos do dono do posto:
+    simulado (Modo apresentação) e Stripe teste (QR do pedido; alguém paga pelo celular).
+    """
+
+    def __init__(self, device, request, exchange, *, echo=print, wait=time.sleep, timeout=60, pay_timeout=600):
+        self.device, self.request, self.exchange = device, request, exchange
+        self.echo, self.wait, self.timeout, self.pay_timeout = echo, wait, timeout, pay_timeout
+        self.screens = []
+
+    def screen(self, name, text):
+        line = f"[{name}] {text}"
+        self.screens.append(line)
+        self.echo(line)
+
+    def _json(self, response, *expected):
+        if response.status_code not in (expected or (200,)):
+            raise RuntimeError(f"{response.status_code}: {response.text[:200]}")
+        return response.json()
+
+    def _until(self, done, limit, step=1):
+        waited = 0
+        while not done():
+            if waited >= limit:
+                return False
+            self.wait(step)
+            waited += step
+            self.exchange()
+        return True
+
+    def run(self, mode="value", value="20.00", charge_seconds=20):
+        self.exchange()
+        totem = self.device.totem
+        if not totem:
+            self.screen("T0", "Totem desligado neste posto (sem connector.kiosk): telas atuais")
+            return {"status": "disabled"}
+        code = self.device.presence_code or "#F-----"
+        self.screen("T0", f"Pronto · [Carregar agora] · Tem o app? Use este código {code}")
+        offer = self._json(self.request("GET", "/v1/devices/kiosk/offer"))
+        if not offer["enabled"] or not offer["available"]:
+            self.screen("TE", f"Indisponível: {offer.get('reason_label') or offer.get('reason')}")
+            return {"status": "unavailable", "reason": offer.get("reason")}
+        label = f" · {offer['label']}" if offer.get("label") else ""
+        self.screen("T1", f"Como cobrar? Por valor (R$) · Por tempo (min) · Por energia (kWh){label} "
+                          "· Conecte o cabo ao carro")
+        limits = offer["modes"][mode]
+        shortcuts = ", ".join(str(item) for item in limits["shortcuts"])
+        self.screen("T2", f"Quanto ({mode})? Atalhos: {shortcuts} · Outro valor {limits['min']}–{limits['max']} "
+                          f"· escolhido: {value}")
+        field = {"value": "amount", "time": "minutes", "energy": "energy_kwh"}[mode]
+        body = {"mode": mode, field: int(value) if mode == "time" else str(value)}
+        quote = self._json(self.request("POST", "/v1/devices/kiosk/quote", json=body))
+        order = None
+        for _ in range(2):
+            demand = quote["demand"].get("reason_label") or "Preço normal"
+            overstay = (quote.get("overstay") or {}).get("summary") or "Sem taxa de permanência"
+            self.screen("T3", f"Revisar: {_reais(quote['price_per_kwh'])}/kWh travado ({demand}, "
+                              f"{quote['demand_multiplier']}×) · teto {_reais(quote['total'])} · "
+                              f"~{_kwh(quote['estimated_energy_kwh'])} · até {quote['max_duration_minutes']} min · "
+                              f"{overstay} · {quote['label']} · [Aceitar e pagar]")
+            payload = {**body, "quote_hash": quote["quote_hash"],
+                       "overstay_terms_version": (quote.get("overstay") or {}).get("version")}
+            response = self.request("POST", "/v1/devices/kiosk/orders", json=payload,
+                                    headers={"Idempotency-Key": f"sim-order-{uuid.uuid4()}"})
+            if response.status_code == 409 and response.json()["error"]["code"] == "quote_changed":
+                quote = response.json()["error"]["quote"]
+                self.screen("T3", "O orçamento mudou: revise os novos valores")
+                continue
+            order = self._json(response, 201)
+            break
+        if order is None:
+            return {"status": "quote_changed"}
+        paid = self._json(self.request("POST", f"/v1/devices/kiosk/orders/{order['id']}/pay", json={},
+                                       headers={"Idempotency-Key": f"sim-pay-{order['id']}"}))
+        if order["method"] == "simulated":
+            self.screen("T4", f"Simular pagamento de {_reais(quote['total'])} (sem cobrança) · SIMULADO")
+        else:
+            self.screen("T4", f"Pague pelo QR (Stripe · TESTE): {paid['payment']['qr_url']} · cartão 4242 4242 4242 4242")
+            confirmed = self._until(lambda: (self.device.kiosk_order or {}).get("status") not in TOTEM_OPEN[:2],
+                                    self.pay_timeout)
+            if not confirmed:
+                self.request("POST", f"/v1/devices/kiosk/orders/{order['id']}/cancel")
+                self.screen("T0", "Tempo esgotado: pedido cancelado, nada cobrado")
+                return {"status": "canceled", "order": order["id"]}
+        status = (self.device.kiosk_order or paid)["status"]
+        if status in ("failed", "expired", "canceled"):
+            self.screen("TE", "Não foi possível iniciar; valor devolvido")
+            return {"status": status, "order": order["id"]}
+        self.screen("T5", "Pagamento confirmado · iniciando")
+        if not self._until(lambda: self.device.state == "charging", self.timeout):
+            self.screen("TE", "Não foi possível iniciar; valor devolvido")
+            return {"status": "start_timeout", "order": order["id"]}
+        origin = self.device.session_origin or "?"
+        elapsed = 0
+        while self.device.state == "charging" and elapsed < charge_seconds:
+            self.wait(1)
+            elapsed += 1
+            self.exchange()
+            cap = self.device.limits.get("max_cost")
+            self.screen("T6", f"Ao vivo ({origin}): {self.device.energy / 1000:.3f} kWh · "
+                              f"{self.device.power_w if self.device.state == 'charging' else 0} W · "
+                              f"teto {_reais(cap) if cap else '-'} · {elapsed} s · [Encerrar]")
+        if self.device.state == "charging":
+            self.screen("T7", "Encerrar a recarga? [Sim] [Não] → Sim (parada local)")
+            self.device.stop("requested_stop")
+        self._until(lambda: ((self.device.kiosk_order or {}).get("receipt") or {}).get("final"), self.timeout)
+        receipt = (self.device.kiosk_order or {}).get("receipt") or {}
+        returned = f" · devolvido {_reais(receipt['returned'])}" if receipt.get("returned") else ""
+        self.screen("T8", f"Recibo {receipt.get('number')} · {receipt.get('end_reason_label') or receipt.get('end_reason')}"
+                          f" · {receipt.get('energy_kwh')} kWh · total {_reais(receipt.get('total') or 0)}{returned}"
+                          f" ({receipt.get('return_kind')}) · QR do recibo: {receipt.get('url')}")
+        return {"status": (self.device.kiosk_order or {}).get("status"), "order": order["id"], "receipt": receipt,
+                "method": order["method"]}
+
+
 def main():
     import httpx
     parser = argparse.ArgumentParser(description=__doc__)
@@ -432,6 +581,12 @@ def main():
     parser.add_argument("--hca-model", default="GW7K-HCA-20", choices=["GW7K-HCA-20", "GW11K-HCA-20", "GW22K-HCA-20"])
     parser.add_argument("--hca-fail-writes", type=int, default=0, help="Perde as N primeiras escritas (teste de ACK)")
     parser.add_argument("--legacy", action="store_true", help="Simula firmware 0.4.0 (sem SET_POWER)")
+    parser.add_argument("--kiosk", action="store_true",
+                        help="Totem 0.8.0: percorre oferta → orçamento → pedido → pagar → START → recarga → "
+                             "Encerrar → recibo pelos endpoints do dispositivo e sai")
+    parser.add_argument("--kiosk-mode", choices=["value", "time", "energy"], default="value")
+    parser.add_argument("--kiosk-amount", default=None, help="R$ (valor), minutos (tempo) ou kWh (energia)")
+    parser.add_argument("--kiosk-charge-seconds", type=int, default=20, help="Segundos carregando antes de Encerrar")
     parser.add_argument("--unplug-after", type=float, default=UNPLUG_AFTER_SECONDS,
                         help="Com taxa de permanência aceita, desconecta o cabo simulado N s após a parada "
                              "(negativo: só manual, com kill -USR1 <pid>)")
@@ -450,6 +605,24 @@ def main():
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, lambda *_: unplug_requested.append(True))
         print(f"Desconectar o cabo simulado: kill -USR1 {os.getpid()}")
+    if args.kiosk:
+        with httpx.Client(timeout=10, follow_redirects=False) as client:
+            auth = {"Authorization": "Device " + key}
+
+            def request(method, path, json=None, headers=None):
+                return client.request(method, args.api.rstrip("/") + path, json=json, headers={**auth, **(headers or {})})
+
+            def exchange():
+                result = client.post(args.api.rstrip("/") + "/v1/devices/sync", json=device.payload(), headers=auth)
+                result.raise_for_status()
+                device.response(result.json())
+                return result.json()
+
+            default = {"value": "20.00", "time": "15", "energy": "5.0"}[args.kiosk_mode]
+            outcome = KioskRunner(device, request, exchange).run(args.kiosk_mode, args.kiosk_amount or default,
+                                                                 args.kiosk_charge_seconds)
+            print(json.dumps(outcome, ensure_ascii=False))
+            sys.exit(0 if outcome.get("status") == "finished" else 1)
     interval = 1
     next_sync = 0
     with httpx.Client(timeout=10, follow_redirects=False) as client:

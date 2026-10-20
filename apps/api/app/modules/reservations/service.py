@@ -1,12 +1,12 @@
 from datetime import timedelta
 
-from ...errors import fail
 from ...models import Reservation, now
 from ...service import (
     RESERVATION_MINUTES,
+    availability,
     device_for,
     ensure_user_free,
-    free,
+    fail_unavailable,
     idempotent,
     issue,
     lock_point,
@@ -21,8 +21,9 @@ def reserve(db, user, data, key):
     if old:
         return old
     ensure_user_free(db, user)
-    if not free(db, connector):
-        fail("point_unavailable", "Ponto indisponível")
+    state = availability(db, connector)
+    if not state["available"]:
+        fail_unavailable(state)
     # Tarifa dinâmica travada ao reservar: a recarga desta reserva paga este multiplicador;
     # ``price_terms`` guarda o motivo (demanda e horário) para o recibo.
     multiplier, terms = reservation_terms(db, connector)

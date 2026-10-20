@@ -80,15 +80,22 @@ def group_title(group):
     return f"{group['type']} - {fmt_number(group['power_kw'])} kW"
 
 
+def kiosk_held(group):
+    """Conectores do grupo travados por um pedido do totem (``kiosk_in_use`` do ponto)."""
+    return sum(1 for point in group['connectors'] if point.get('kiosk_in_use') is True)
+
+
 def group_subtitle(group):
     total, free = len(group['connectors']), len(group['free'])
+    held = kiosk_held(group)
     if total == 1:
-        return '1 conector livre' if free else 'Indisponível no momento'
+        return '1 conector livre' if free else ('Ponto em uso no totem' if held else 'Indisponível no momento')
     if free == total:
         return f'{total} conectores livres'
     if not free:
-        return 'Nenhum conector livre'
-    return f"{free} de {total} conectores {'livre' if free == 1 else 'livres'}"
+        return 'Nenhum conector livre' + (f' · {held} em uso no totem' if held else '')
+    return (f"{free} de {total} conectores {'livre' if free == 1 else 'livres'}"
+            + (f' · {held} em uso no totem' if held else ''))
 
 
 def driver_power(group, car=None):

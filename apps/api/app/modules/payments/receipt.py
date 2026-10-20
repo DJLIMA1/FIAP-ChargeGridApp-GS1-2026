@@ -40,8 +40,10 @@ def _refund_status(payment, settled):
 def receipt_payment(payment) -> dict:
     """Fatos do pagamento no formato do recibo (strings decimais em R$)."""
     settled = payment.settlement_status == "done"
+    # Simulado (totem com o dono em Modo apresentação): "mock" = "Pagamento simulado" no recibo.
+    environment = "mock" if payment.provider == "simulated" else ENVIRONMENTS.get(payment.environment, "sandbox")
     return {
-        "environment": ENVIRONMENTS.get(payment.environment, "sandbox"),
+        "environment": environment,
         "provider": payment.provider,
         "provider_reference": payment.provider_payment_intent_id,
         "method": payment.method,

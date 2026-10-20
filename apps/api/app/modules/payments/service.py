@@ -28,7 +28,7 @@ from ...errors import fail
 from ...models import PAYMENT_OPEN, ChargingSession, Connector, Payment, PaymentEvent, Profile, Station, now
 from ...presence_code import current_code, valid_code
 from ...schemas import StartInput
-from ...service import SESSION_ACTIVE, active_res, free, idempotent, remember
+from ...service import SESSION_ACTIVE, active_res, availability, fail_unavailable, idempotent, remember
 from ..auth.routes import limit
 from ..charging.service import find_coupon, session_power_limit, start, stop
 from ..pricing.service import locked_terms
@@ -48,6 +48,8 @@ PROVIDER_CHECK_SECONDS = 3
 SETTLING_STALE_SECONDS = 120
 MAX_SETTLE_ATTEMPTS = 5
 KIOSK_AMOUNTS_CENTS = (1000, 2000, 4000)
+# Pagamento simulado do totem (dono em Modo apresentação): confirmado e acertado sem provedor.
+SIMULATED = "simulated"
 # Erros de início que podem passar sozinhos (ponto reconciliando): o pagamento do painel espera
 # até o prazo de início em vez de ser devolvido na hora.
 TRANSIENT_START_ERRORS = ("point_unavailable", "user_busy", "invalid_presence_code")
@@ -206,6 +208,11 @@ def _expire_checkout(payment):
         pass  # já concluída/expirada: o estado real chega pela verificação/webhook
 
 
+def expire_checkout(payment):
+    """Expira a Checkout aberta (fora da trava do ponto); já concluída/expirada: nada a fazer."""
+    _expire_checkout(payment)
+
+
 def create_payment(db, user, data, key, request_base=""):
     db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
     old, body_hash = idempotent(db, user, "payment", key, data.model_dump(), Payment)
@@ -355,6 +362,8 @@ def settle(db, payment_id):
     """
     gateway = gateways.current()
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update(skip_locked=True))
+    if payment is not None and payment.provider == SIMULATED:
+        return _settle_simulated(db, payment)
     if gateway is None or payment is None:
         return payment
     stale = payment.settlement_status == "settling" and payment.updated_at < now() - timedelta(
@@ -407,6 +416,17 @@ def settle(db, payment_id):
     return payment
 
 
+def _settle_simulated(db, payment):
+    """Pagamento simulado (totem com o dono em Modo apresentação): acerto local, sem provedor.
+
+    Mesma regra do cartão: fica o valor devido (``charge_cents``) e o resto é "liberado".
+    """
+    if payment.settlement_status in ("due", "settling"):
+        _finish(payment, captured=payment.charge_cents or 0, refunded=0, fee=None)
+        db.commit()
+    return payment
+
+
 def _finish(payment, *, captured, refunded, fee):
     payment.captured_cents = captured
     payment.refunded_cents = refunded
@@ -429,6 +449,10 @@ def _needs_settle(payment):
     )
 
 
+def needs_settle(payment):
+    return _needs_settle(payment)
+
+
 # ---------------------------------------------------------------------------- painel físico
 
 
@@ -444,9 +468,25 @@ def guest_profile(db, connector):
 
 
 def start_kiosk(db, payment_id):
-    """Pagamento do painel confirmado: emite START uma vez (presença provada ao pagar no QR)."""
+    """Pagamento do painel confirmado: emite START uma vez (presença provada ao pagar no QR/totem).
+
+    Pedido do totem fechado (trava vencida ou cancelada antes da confirmação): nada inicia e o
+    valor volta inteiro. Cada tentativa de START roda num savepoint (falha não desfaz o resto).
+    """
     payment = db.get(Payment, payment_id)
     if payment is None or payment.origin != "kiosk" or payment.status not in FUNDED or payment.session_id:
+        return payment
+    from ..kiosk_totem import service as totem  # pedido do totem (evita import circular)
+
+    order = totem.order_for_payment(db, payment.id)
+    if order is not None and not totem.may_start(order, payment):
+        payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
+        if payment.status in FUNDED and payment.session_id is None:
+            payment.status = "canceled"
+            payment.last_error = "kiosk_order_closed"
+            mark_zero_settlement(payment)
+        totem.refresh_order(db, order)
+        db.commit()
         return payment
     guest = db.get(Profile, payment.user_id)
     connector = db.get(Connector, payment.connector_id)
@@ -456,11 +496,13 @@ def start_kiosk(db, payment_id):
         data = StartInput(public_code=connector.public_code, presence_code=current_code(station)[0],
                           max_duration_minutes=payment.max_duration_minutes, payment_id=payment.id)
         try:
-            start(db, guest, data, f"kiosk:{payment.id}")
+            with db.begin_nested():
+                session = start(db, guest, data, f"kiosk:{payment.id}")
+                if order is not None:
+                    totem.on_started(order, session)
             db.commit()
             return db.get(Payment, payment_id)
         except HTTPException as exc:
-            db.rollback()
             error = exc.detail.get("code") if isinstance(exc.detail, dict) else "start_failed"
             if error != "invalid_presence_code":
                 break
@@ -470,6 +512,8 @@ def start_kiosk(db, payment_id):
         if error not in TRANSIENT_START_ERRORS:
             payment.status = "canceled"
             mark_zero_settlement(payment)
+    if order is not None:
+        totem.refresh_order(db, order)
     db.commit()
     return payment
 
@@ -494,8 +538,9 @@ def create_kiosk_payment(db, public_code, code_digits, amount_cents, request_bas
         fail("invalid_amount", "Escolha um dos valores", 422)
     limit(db, f"kiosk:{connector.id}", maximum=10, seconds=300)
     connector = db.scalar(select(Connector).where(Connector.id == connector.id).with_for_update())
-    if not free(db, connector):
-        fail("point_unavailable", "Ponto em uso ou indisponível agora", 409)
+    state = availability(db, connector)
+    if not state["available"]:
+        fail_unavailable(state, "Ponto em uso ou indisponível agora")
     guest = guest_profile(db, connector)
     request = SimpleNamespace(mode="value", minutes=None, max_cost=billing.money(amount_cents), energy_kwh=None,
                               max_power_kw=None, coupon_code=None)

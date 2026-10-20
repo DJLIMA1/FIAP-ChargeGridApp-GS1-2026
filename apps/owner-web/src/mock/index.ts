@@ -26,6 +26,8 @@ import * as ops from './operations'
 
 const PROFILE_KEY = 'chargegrid.mock.profile'
 const NAME_KEY = 'chargegrid.mock.name'
+/** Modo apresentação da conta (totem 0.8.0): `?mock_presentation=1` liga (pagamento simulado no totem). */
+const PRESENTATION_KEY = 'chargegrid.mock.presentation'
 let calls = 0
 
 function json(body: unknown, status = 200): Response {
@@ -37,9 +39,11 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 function profile(): Profile {
   let kind = 'vendor'
   let name: string | null = null
+  let presentation = false
   try {
     kind = sessionStorage.getItem(PROFILE_KEY) ?? 'vendor'
     name = sessionStorage.getItem(NAME_KEY)
+    presentation = sessionStorage.getItem(PRESENTATION_KEY) === '1'
   } catch {
     /* ignora */
   }
@@ -50,6 +54,7 @@ function profile(): Profile {
     operator_enabled: kind === 'vendor',
     phone: null,
     vehicle_description: null,
+    presentation_mode: presentation,
     created_at: '2026-08-01T12:00:00Z',
   }
 }
@@ -107,6 +112,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
   if (!auth?.startsWith('Bearer mock-access')) return fail(401, 'unauthorized', 'Não autenticado')
   if (path === '/auth/logout') return json({})
   if (path === '/me') return json(profile())
+  if (path === '/payments/config') return json({ enabled: true, provider: 'stripe', environment: 'test', currency: 'BRL', methods: ['card'] })
 
   const from = Date.parse(p.get('from') ?? '') || Date.now() - 7 * 86_400_000
   const to = Date.parse(p.get('to') ?? '') || Date.now()
@@ -226,6 +232,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
 
 export function installMock(): void {
   const params = new URLSearchParams(window.location.search)
+  const seeded = params.get('mock_login') === '1' || params.has('mock_presentation')
   if (params.get('mock_login') === '1') {
     try {
       localStorage.setItem(REFRESH_KEY, 'mock-refresh-seed')
@@ -235,6 +242,16 @@ export function installMock(): void {
     }
     params.delete('mock_login')
     params.delete('mock_profile')
+  }
+  if (params.has('mock_presentation')) {
+    try {
+      sessionStorage.setItem(PRESENTATION_KEY, params.get('mock_presentation') === '1' ? '1' : '0')
+    } catch {
+      /* ignora */
+    }
+    params.delete('mock_presentation')
+  }
+  if (seeded) {
     const query = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
   }

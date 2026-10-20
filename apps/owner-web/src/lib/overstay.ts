@@ -152,5 +152,6 @@ export function paymentBadge(payment: SessionPayment | null | undefined): { labe
     const returned = toNumber(s.returned) ?? 0
     detail = `Capturado ${formatCurrency(s.charged)}${returned > 0 ? ` · ${s.return_kind === 'refunded' ? 'devolvido' : 'liberado'} ${formatCurrency(s.returned)}` : ''}`
   }
-  return { label: payment.status_label || status, tone, test: payment.environment === 'test', detail }
+  // O simulado do totem (Modo apresentação) diz "(simulado)", nunca "teste".
+  return { label: payment.status_label || status, tone, test: payment.environment === 'test' && payment.provider !== 'simulated' && payment.method !== 'simulated', detail }
 }

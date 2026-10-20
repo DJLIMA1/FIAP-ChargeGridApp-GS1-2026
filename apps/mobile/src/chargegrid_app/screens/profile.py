@@ -8,8 +8,8 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..config import packaged_version
+from ..services import account_mode, vehicle_state
 from ..services import driver as helpers
-from ..services import vehicle_state
 from ..services.driver_profile import save_vehicle
 from ..ui import design, theme
 from ..ui.components import button, money
@@ -168,14 +168,34 @@ async def build(app, mode=None, **_):
                                         active_color=theme.RED)))
     if vehicle_state.presentation_available(app):
         # Pitch: o celular carregado pelo ChargeGrid Mini faz o papel do carro (preferência do aparelho).
+        # Também é atributo da conta (PATCH /me): na conta de dono, define o pagamento do totem dos postos.
+        owner = account_mode.is_owner(app, profile)
+        totem = design.txt(account_mode.totem_caption(app), 11, 'semibold', theme.GRAY_TEXT, visible=owner,
+                           data='presentation-totem')
+
         async def presentation(e):
-            if not vehicle_state.set_presentation_mode(app, bool(e.control.value)):
+            switch = e.control
+            switch.disabled = True
+            app.page.update()
+            try:
+                saved, synced = await account_mode.toggle(app, bool(switch.value))
+            finally:
+                switch.disabled = False
+            switch.value = vehicle_state.presentation_mode(app)
+            totem.value = account_mode.totem_caption(app)
+            if synced is False:
+                app.notice(account_mode.SAVE_FAILED)
+            elif not saved:
                 app.notice('Modo apresentação aplicado nesta sessão. Não foi possível salvar no dispositivo.')
             app.page.update()
         rows.append(_row('Modo apresentação', 'Bateria do celular como a do carro e pagamento simulado (sem Stripe)',
                          ft.Icons.BATTERY_CHARGING_FULL, None, chevron=False,
                          trailing=ft.Switch(value=vehicle_state.presentation_mode(app), on_change=presentation,
                                             data='presentation', active_color=theme.RED)))
+        if owner:
+            rows.append(ft.Container(ft.Column([totem, design.txt(
+                'O totem de autoatendimento dos seus postos segue este modo da conta.', 10.5, 'regular',
+                theme.GRAY_TEXT)], spacing=2), padding=ft.Padding(left=56, right=5, top=0, bottom=4)))
     version = packaged_version()
     if version and hasattr(app, 'offer_update'):
         # Versão instalada + checagem na hora (o aviso automático roda ao abrir e ao voltar ao app).

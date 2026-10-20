@@ -25,6 +25,7 @@ from .modules.economics.routes import router as economics_router
 from .modules.forecast.rollup import rollup as forecast_rollup
 from .modules.forecast.routes import router as forecast_router
 from .modules.geo.routes import router as geo_router
+from .modules.kiosk_totem.routes import router as kiosk_totem_router
 from .modules.owner.routes import router as owner_router
 from .modules.ownership.routes import router as ownership_router
 from .modules.payments import receipt as payments_receipt
@@ -67,6 +68,7 @@ for router in (
     economics_router,
     payments_router,
     forecast_router,
+    kiosk_totem_router,
 ):
     app.include_router(router, prefix="/v1")
 app.include_router(payments_pages)

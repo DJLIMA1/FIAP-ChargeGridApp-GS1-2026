@@ -73,7 +73,7 @@ class LatencyBackend:
                                       headers={'content-type': 'application/json'})
         except ApiError as exc:
             record['status'] = exc.status
-            response = httpx.Response(exc.status or 400, json={'error': {'message': str(exc), 'code': exc.code}})
+            response = httpx.Response(exc.status or 400, json={'error': {'message': str(exc), 'code': exc.code, 'reason': getattr(exc, 'reason', None)}})
         record['end'] = loop.time()
         return response
 

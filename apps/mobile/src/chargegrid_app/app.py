@@ -26,7 +26,7 @@ from .navigation import (
     tab_entries,
 )
 from .preferences import Preferences
-from .services import prefetch, updates
+from .services import account_mode, prefetch, updates
 from .services.driver_profile import apply_signup_vehicle
 from .ui import design, motion, theme
 from .ui.components import button, title
@@ -664,6 +664,8 @@ class ChargeGridApp:
             # O Início do motorista sai junto com o perfil (em paralelo), não depois dele.
             prefetch.fetch(self, prefetch.consumer_home())
         self.profile = await self.api.request('GET','me')
+        # Modo apresentação: na conta de dono o servidor manda (o totem dos postos usa o modo da conta).
+        await account_mode.adopt(self, self.profile)
         await apply_signup_vehicle(self.api, self.profile)
         self.browsing_mode = 'vendor' if can_manage(self.profile) and not getattr(self.api,'is_demo',False) else 'consumer'
         destination = destination or 'home'

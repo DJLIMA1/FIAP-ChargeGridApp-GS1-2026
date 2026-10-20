@@ -18,10 +18,26 @@ LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10, keepaliv
 RETRYABLE = (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError)
 
 
+# 409 point_unavailable com reason "kiosk_in_use": o ponto está travado por um pedido do totem.
+KIOSK_IN_USE = 'kiosk_in_use'
+KIOSK_IN_USE_MESSAGE = 'Ponto em uso no totem'
+
+
 class ApiError(Exception):
-    def __init__(self, message, status=0, code="network_error"):
+    def __init__(self, message, status=0, code="network_error", reason=None):
         super().__init__(message)
-        self.status, self.code = status, code
+        self.status, self.code, self.reason = status, code, reason
+
+    @property
+    def kiosk_in_use(self):
+        return self.code == 'point_unavailable' and self.reason == KIOSK_IN_USE
+
+
+def api_error(message, status, code, reason=None):
+    """``ApiError`` com o texto do app para os motivos conhecidos (ex.: "Ponto em uso no totem")."""
+    if code == 'point_unavailable' and reason == KIOSK_IN_USE:
+        message = KIOSK_IN_USE_MESSAGE
+    return ApiError(message, status, code, reason)
 
 
 class ApiClient(OwnerApiMixin):
@@ -111,11 +127,12 @@ class ApiClient(OwnerApiMixin):
                 error = response.json().get('error', {})
                 message = error.get('message') or 'Confira os dados informados.'
                 code = error.get('code', 'invalid_request')
+                reason = error.get('reason') if isinstance(error.get('reason'), str) else None
             except (ValueError, AttributeError):
-                message, code = 'O servidor não pôde concluir o pedido.', 'server_error'
+                message, code, reason = 'O servidor não pôde concluir o pedido.', 'server_error', None
             if response.status_code == 429:
                 message = 'Muitas tentativas. Aguarde antes de tentar novamente.'
-            raise ApiError(message, response.status_code, code)
+            raise api_error(message, response.status_code, code, reason)
         try:
             return response.json() if response.content else None
         except ValueError as exc:

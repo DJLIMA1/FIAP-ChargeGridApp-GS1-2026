@@ -8,13 +8,14 @@ import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { EconomicsCard } from '../components/station/EconomicsCard'
+import { KioskCard } from '../components/station/KioskCard'
 import { OverstayCard } from '../components/station/OverstayCard'
 import { PaymentsCard } from '../components/station/PaymentsCard'
 import { SitePowerCard } from '../components/station/SitePowerCard'
 import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
 import { useFilters } from '../lib/filters'
 import { formatPower, formatRelative, formatTariff } from '../lib/format'
-import { AMENITY_KINDS, AMENITY_LABELS, AVAILABILITY } from '../lib/labels'
+import { AMENITY_KINDS, AMENITY_LABELS, availabilityMeta } from '../lib/labels'
 import { useApi } from '../lib/useApi'
 import { toInputDecimal, validateDuration, validatePower, validatePrice, validateText } from '../lib/validate'
 
@@ -168,7 +169,7 @@ function ConnectorEditor({ connector, onSaved }: { connector: Connector; onSaved
     return changes
   }, [price.value, power.value, duration.value, draft.active, connector])
   const dirty = Object.keys(body).length > 0
-  const status = AVAILABILITY[connector.availability_status ?? ''] ?? null
+  const status = availabilityMeta(connector)
   const busy = ['charging', 'reserved', 'reconciling'].includes(connector.availability_status ?? '')
 
   const save = async (event: FormEvent) => {
@@ -446,6 +447,7 @@ export default function StationDetail() {
         <EconomicsCard stationId={station.id} />
         <OverstayCard station={station} />
         <PaymentsCard station={station} onSaved={update} />
+        <KioskCard station={station} onSaved={update} />
         <AmenitiesEditor station={station} onSaved={update} />
       </div>
     </>

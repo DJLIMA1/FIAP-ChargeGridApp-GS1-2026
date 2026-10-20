@@ -14,8 +14,10 @@ from ...service import (
     SESSION_ACTIVE,
     SOC_STEP,
     active_res,
+    availability,
     device_for,
     ensure_user_free,
+    fail_unavailable,
     free,
     idempotent,
     issue,
@@ -154,8 +156,11 @@ def start(db, user, data, key):
             or device.physical_state != "reserved"
         ):
             fail("point_unavailable", "Ponto sem confirmação recente")
-    elif not free(db, connector):
-        fail("point_unavailable", "Ponto indisponível")
+    else:
+        # O pedido do totem pago por este pagamento não bloqueia o próprio START.
+        state = availability(db, connector, device=device, allow_kiosk_payment=data.payment_id)
+        if not state["available"]:
+            fail_unavailable(state)
     payment = claim_for_start(db, user, connector, data.payment_id)
     if payment:
         data = funded_input(data, payment)
