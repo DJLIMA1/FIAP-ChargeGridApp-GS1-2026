@@ -130,9 +130,8 @@ async def _warm_list_map(app, result):
 
 
 def _warm_details(app, stations):
-    """Os primeiros postos da lista: "Melhor horário" e o mapa do detalhe já prontos ao tocar."""
+    """O primeiro posto da lista: o mapa do detalhe já pronto ao tocar."""
     stations = [station for station in stations if isinstance(station, dict) and station.get('id')]
-    fetch(app, [(f"stations/{station['id']}/best-times", {'hours': 12}) for station in stations])
     if stations:
         from ..screens.stations import warm_detail_map
 
