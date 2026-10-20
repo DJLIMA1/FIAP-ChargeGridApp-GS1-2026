@@ -1,0 +1,3 @@
+# Treino offline do modelo de previsão (tools/forecast/train_occupancy.py). Nunca vai para a API.
+scikit-learn==1.6.1
+numpy==2.5.4
