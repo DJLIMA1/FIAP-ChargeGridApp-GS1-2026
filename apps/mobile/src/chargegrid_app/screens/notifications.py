@@ -9,6 +9,7 @@ _ICONS = {
     service.KIND_BATTERY: (ft.Icons.BATTERY_0_BAR, '#3EBF80'),
     service.KIND_OFFLINE: (ft.Icons.NOTIFICATIONS_NONE, '#F2B84A'),
     service.KIND_POWER: (ft.Icons.BOLT_OUTLINED, '#F2B84A'),
+    service.KIND_OVERSTAY: (ft.Icons.TIMER_OUTLINED, '#E8922B'),
 }
 
 

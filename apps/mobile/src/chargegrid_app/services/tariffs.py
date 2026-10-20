@@ -1,4 +1,4 @@
-"""Tarifas do posto: leitura/formatação de números e a taxa de rotatividade.
+"""Tarifas do posto: leitura/formatação de números e a taxa de permanência (regra ``rotation``).
 
 As regras ficam na API (``GET/PUT stations/{id}/pricing``) e o cálculo da tarifa por demanda
 é ``chargegrid_core.pricing`` (o mesmo na API e na conta demo). Aqui só há utilidades de tela.
@@ -86,6 +86,14 @@ def rotation_fee(rules, minutes):
     """Valor adicional de rotatividade (R$) para ``minutes`` de ocupação."""
     rule = (rules or {}).get('rotation')
     return Decimal(str(rule['amount'])) * rotation_intervals(rule, minutes) if rule else Decimal('0')
+
+
+def rotation_summary(rule):
+    """``R$ 1,00 a cada 1 min após 10 min · máx. R$ 30,00`` (teto só quando a API o devolve)."""
+    text = f"{fmt_money(rule['amount'])} a cada {rule['interval_min']} min após {rule['start_after_min']} min"
+    if rule.get('max_amount') is not None:
+        text += f" · máx. {fmt_money(rule['max_amount'])}"
+    return text + ('' if rule.get('enabled') else ' · Inativa')
 
 
 def base_price(connectors):

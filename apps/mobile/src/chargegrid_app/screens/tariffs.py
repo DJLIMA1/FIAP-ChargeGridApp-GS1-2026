@@ -3,7 +3,8 @@
 A visão geral mostra o que o motorista paga agora (tarifa atual), a tarifa base e o motivo
 ("Alta demanda", "Horário 22:00–06:00", "Preço normal"). O cálculo fica em **Detalhes**.
 O dono define só dados base em subtelas: tarifa base por conector (``PATCH connectors/{id}``),
-tarifação por horário, tarifa por demanda e taxa de rotatividade (``PUT stations/{id}/pricing``).
+tarifação por horário, tarifa por demanda e taxa de permanência (``PUT stations/{id}/pricing``; a chave JSON
+continua ``rotation``; o campo Teto ``max_amount`` só aparece quando a API o devolve).
 O cálculo é ``chargegrid_core.pricing`` na API.
 
 Rota ``tariffs``: ``station_id``, ``page`` (None | 'base' | 'schedule' | 'demand' | 'rotation'),
@@ -29,7 +30,8 @@ PAGES = {
                                           'tarifa base de cada conector.'),
     'demand': ('Tarifa por demanda', 'O ChargeGrid ajusta o preço pela procura real do posto, como um app de '
                                      'corrida. Você define só o limite e quão rápido ele reage.'),
-    'rotation': ('Taxa de rotatividade', 'Cobre a ocupação prolongada da vaga depois do tempo de tolerância.'),
+    'rotation': ('Taxa de permanência', 'Cobrada quando o carro continua conectado depois que a recarga '
+                                        'terminou, passada a tolerância. O motorista vê e aceita antes de iniciar.'),
 }
 SENSITIVITY_HELP = {
     'low': 'Só sobe com o posto bem cheio.',
@@ -300,9 +302,7 @@ def overview(app, sid, data, details=False):
         entry('Tarifa por demanda', f"Até +{demand['max_increase_percent']}% · sensibilidade "
                                     f"{pricing.SENSITIVITY_LABELS[demand['sensitivity']].lower()}"
                                     f"{'' if demand['enabled'] else ' · Inativa'}", 'demand', ft.Icons.TRENDING_UP),
-        entry('Taxa de rotatividade', f"{svc.fmt_money(rotation['amount'])} a cada {rotation['interval_min']} min "
-                                      f"após {rotation['start_after_min']} min{'' if rotation['enabled'] else ' · Inativa'}",
-              'rotation', ft.Icons.ACCESS_TIME),
+        entry('Taxa de permanência', svc.rotation_summary(rotation), 'rotation', ft.Icons.ACCESS_TIME),
     ]
     return design.page(heading(app, 'Tarifa'), slot, design.section_label('Ajustes'), *entries, gap=16)
 
@@ -625,41 +625,57 @@ def interval_page(app, sid, data, index):
 
 
 def rotation_page(app, sid, data):
+    """Taxa de permanência (regra ``rotation``): tolerância, intervalo, valor e, com a API nova, o Teto."""
     rule = data['rules']['rotation']
+    capped = 'max_amount' in rule  # API antiga não tem teto: o campo fica oculto
     after = design.number_field(str(rule['start_after_min']), suffix='min', decimals=False)
     every = design.number_field(str(rule['interval_min']), suffix='min', decimals=False)
     amount = design.number_field(svc.input_number(rule['amount']), prefix='R$')
+    cap = design.number_field(svc.input_number(rule['max_amount']) if capped else '', prefix='R$')
     line1 = design.txt('', 12.5, 'regular', theme.GRAY_TEXT)
     line2 = design.txt('', 12.5, 'bold')
 
     def values():
-        return (svc.parse_int(after.value), svc.parse_int(every.value),
-                svc.parse_decimal(amount.value, maximum=Decimal('100')))
+        return (svc.parse_int(after.value, minimum=0 if capped else 1), svc.parse_int(every.value),
+                svc.parse_decimal(amount.value, maximum=Decimal('100')),
+                svc.parse_decimal(cap.value, maximum=Decimal('1000')) if capped else None)
 
     def refresh(event=None):
-        start, step, value = values()
-        if None in (start, step, value):
+        start, step, value, maximum = values()
+        if None in (start, step, value) or (capped and maximum is None):
             line1.value, line2.value = 'Preencha valores válidos.', ''
         else:
             sample = {'enabled': True, 'start_after_min': start, 'interval_min': step}
             minutes = start + 2 * step
             count = svc.rotation_intervals(sample, minutes)
-            line1.value = f'Vaga ocupada por {minutes} min após a recarga:'
-            line2.value = f'{count} intervalos × {svc.fmt_money(value)} = {svc.fmt_money(value * count)}'
+            total = value * count
+            line1.value = f'Carro conectado por {minutes} min após a recarga:'
+            line2.value = f'{count} intervalos × {svc.fmt_money(value)} = {svc.fmt_money(total)}'
+            if capped and total > maximum:
+                line2.value = f'{count} intervalos × {svc.fmt_money(value)}, limitado ao teto: {svc.fmt_money(maximum)}'
         _refresh(line1, line2)
-    for field in (after, every, amount):
+    for field in (after, every, amount, cap):
         field.on_change = refresh
     refresh()
 
     def collect(enabled):
-        start, step, value = values()
+        start, step, value, maximum = values()
         if start is None:
-            return 'Informe a tolerância de 1 a 1440 minutos.'
+            return f"Informe a tolerância de {0 if capped else 1} a 1440 minutos."
         if step is None:
             return 'Informe o intervalo de 1 a 1440 minutos.'
         if value is None:
             return 'Informe um valor de R$ 0,00 a R$ 100,00.'
-        return {'enabled': enabled, 'start_after_min': start, 'interval_min': step, 'amount': str(value)}
-    fields = [_labeled('Começar a cobrar após', _rounded(after)), _labeled('Repetir a cobrança a cada', _rounded(every)),
-              _labeled('Valor por intervalo', _rounded(amount)), _card('Exemplo', line1, line2, spacing=5)]
+        result = {'enabled': enabled, 'start_after_min': start, 'interval_min': step, 'amount': str(value)}
+        if capped:
+            if maximum is None:
+                return 'Informe o teto de R$ 0,00 a R$ 1.000,00.'
+            result['max_amount'] = str(maximum)
+        return result
+    fields = [_labeled('Tolerância depois da recarga', _rounded(after)),
+              _labeled('Repetir a cobrança a cada', _rounded(every)),
+              _labeled('Valor por intervalo', _rounded(amount))]
+    if capped:
+        fields.append(_labeled('Teto por recarga', _rounded(cap), 'A cobrança para ao chegar neste valor.'))
+    fields.append(_card('Exemplo', line1, line2, spacing=5))
     return _form_page(app, sid, 'rotation', data, fields, rule['enabled'], collect)
