@@ -10,7 +10,7 @@ Protótipo acadêmico da equipe **FFIVE** que integra aplicativo, dashboard web,
 
 `Flet` · `FastAPI` · `PostgreSQL` · `ESP32-S3` · `LVGL` · `OpenRouter`
 
-[Diferenciais](#diferenciais-desta-versão) · **[Painel do vendedor online](https://chargegrid-painel.vercel.app)** · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
+[Diferenciais](#diferenciais-desta-versão) · **[Site e painel online](https://chargegrid-ffive.vercel.app)** · [Como executar](#como-executar) · [Arquitetura](#arquitetura-e-fluxo) · [Resultados](#resultados-observados) · [Documentação técnica](#documentação-e-código)
 
 </div>
 
@@ -44,7 +44,7 @@ Na experiência atual, o motorista compara pontos por conector, disponibilidade,
 | --- | --- | --- |
 | **Modo Motorista** *(descontinuado em 20/10/2026, desligado em produção)* | Para motoristas de app com carro elétrico: monta o turno decidindo quando, onde e quanto recarregar, evitando parar nos picos estimados de corridas e juntando a refeição com a recarga em postos com restaurante ou café. Mostra lucro líquido estimado, linha do tempo, bateria projetada e a "próxima parada agora", com reserva direto do plano. | Início → **Planejar meu turno** · [documentação](docs/modo-motorista.md) |
 | **Assistente com IA** | Chat que consulta postos, estimativas, reserva, recargas e o plano do turno por ferramentas **somente leitura**; sugere botões que abrem as telas normais (reservar continua exigindo confirmação). Também há **busca em linguagem natural** na aba Recarga e **resumo inteligente** de cada recarga no Histórico. | Aba **Chat** · [documentação](docs/ia-openrouter.md) |
-| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/owner-web`](apps/owner-web/README.md) · [painel do vendedor online](https://chargegrid-painel.vercel.app) (entre com uma conta de vendedor) |
+| **Dashboard web do proprietário** | Receita, energia, ocupação, disponibilidade, não comparecimento, picos por dia e hora, ranking, alertas, gestão de postos/tarifas/comodidades, exportação e **Insights IA** com recomendações de preço e operação. Mesma conta e mesma API do app. | [`apps/owner-web`](apps/owner-web/README.md) · [painel do vendedor online](https://chargegrid-ffive.vercel.app/dashboard) (entre com uma conta de vendedor) |
 
 Sem a chave do OpenRouter, nada quebra: o chat responde com orientações locais, e a busca, o resumo e os insights usam regras determinísticas (`model = chargegrid-regras`). Demanda de corridas, consumo e custos são **estimativas**; não há dados oficiais da Uber/99.
 
@@ -149,7 +149,7 @@ pio run -d firmware/esp32 -e waveshare_panel_ui
 # App (abra http://127.0.0.1:8855 e toque em "Entrar na conta demo")
 PYTHONPATH=apps/mobile/src .venv/bin/python tools/preview_mobile_flows.py
 
-# Painel do vendedor em React com dados fictícios (abra http://localhost:5199/?mock_login=1)
+# Painel do vendedor em React com dados fictícios (abra http://localhost:5199/dashboard/?mock_login=1)
 cd apps/owner-web && npm ci && npm run dev:mock
 
 # Prévia Flet anterior do dashboard (abra http://localhost:8610 e entre na conta demo)

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AUTH_ROUTES } from './auth/routes'
+import { DASHBOARD_BASE } from './basePath'
 import { Layout } from './components/Layout'
 import { ToastProvider } from './components/Toast'
 import { EmptyState, Logo, Skeleton } from './components/ui'
@@ -111,7 +112,7 @@ function Gate() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={DASHBOARD_BASE}>
       <ToastProvider>
         <AuthProvider>
           <Gate />

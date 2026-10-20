@@ -153,10 +153,10 @@ class BrowserConfigTests(unittest.TestCase):
         self.addCleanup(config.set_build_options)
 
     def test_browser_api_url_is_same_origin(self):
-        with fake_js('https://chargegrid-painel.vercel.app'), patch.object(sys, 'platform', 'emscripten'):
-            self.assertEqual(config.api_url(), 'https://chargegrid-painel.vercel.app/v1')
+        with fake_js('https://chargegrid-ffive.vercel.app'), patch.object(sys, 'platform', 'emscripten'):
+            self.assertEqual(config.api_url(), 'https://chargegrid-ffive.vercel.app/v1')
             config.set_build_options(api_url='/api/v1')
-            self.assertEqual(config.api_url(), 'https://chargegrid-painel.vercel.app/api/v1')
+            self.assertEqual(config.api_url(), 'https://chargegrid-ffive.vercel.app/api/v1')
             config.set_build_options(api_url='https://api.example.test/v1')
             self.assertEqual(config.api_url(), 'https://api.example.test/v1')
 

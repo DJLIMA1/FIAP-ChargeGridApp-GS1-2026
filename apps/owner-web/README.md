@@ -2,7 +2,7 @@
 
 Painel web oficial e **exclusivo para vendedores** (donos e operadores de estações). Ele mostra os dados da operação e permite gerenciá-la: indicadores, gráficos, status ao vivo dos pontos, estações e tarifas, sessões com exportação, cupons e Insights IA. Substitui a prévia Flet/Pyodide de [`apps/dashboard/`](../dashboard/), que continua no repositório.
 
-Produção: <https://chargegrid-painel.vercel.app>
+Produção: <https://chargegrid-ffive.vercel.app> (apresentação do projeto na raiz; painel em <https://chargegrid-ffive.vercel.app/dashboard>)
 
 ## Stack
 
@@ -58,7 +58,7 @@ npm run dev        # http://localhost:5199, com proxy de /v1 para a API pública
 npm run dev:mock   # mesmo servidor com dados fictícios (VITE_MOCK=1)
 ```
 
-**Modo demonstração** (somente `npm run dev`): use `http://localhost:5199/?mock_login=1` para entrar direto, ou entre com qualquer e-mail e senha.
+**Modo demonstração** (somente `npm run dev`): use `http://localhost:5199/dashboard/?mock_login=1` para entrar direto, ou entre com qualquer e-mail e senha.
 
 | E-mail | Resultado |
 | --- | --- |
