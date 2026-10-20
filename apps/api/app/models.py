@@ -310,3 +310,41 @@ class AiUsage(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     tools: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class ConnectorHourlyStats(Base):
+    """Agregado horário durável por conector (migração c5f0a7e3d912; ``chargegrid_core.forecast.aggregate``).
+
+    Ocupação vem das sessões (registro permanente) e energia das diferenças de telemetria,
+    ou da energia da sessão espalhada no tempo quando a telemetria já foi limpa. ``origin``
+    separa medido, simulado (bancada) e sintético (demonstração rotulada).
+    """
+
+    __tablename__ = "connector_hourly_stats"
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id"), primary_key=True)
+    hour_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    origin: Mapped[str] = mapped_column(String(12), primary_key=True)
+    busy_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    energy_wh: Mapped[float] = mapped_column(Numeric(16, 3), default=0)
+    energy_basis: Mapped[str] = mapped_column(String(16))
+    sessions_started: Mapped[int] = mapped_column(Integer, default=0)
+    max_power_w: Mapped[float | None] = mapped_column(Numeric(12, 1))
+    generator: Mapped[str | None] = mapped_column(String(20))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, server_default=text("now()"))
+    __table_args__ = (
+        CheckConstraint("origin IN ('measured', 'simulated', 'synthetic')", name="hourly_stats_origin"),
+        CheckConstraint("energy_basis IN ('telemetry', 'session_spread', 'synthetic')", name="hourly_stats_basis"),
+        CheckConstraint("busy_seconds BETWEEN 0 AND 3600 AND energy_wh >= 0 AND sessions_started >= 0",
+                        name="hourly_stats_ranges"),
+        CheckConstraint("mod(CAST(EXTRACT(EPOCH FROM hour_start) AS bigint), 3600) = 0", name="hourly_stats_hour_aligned"),
+        Index("ix_connector_hourly_stats_hour", "hour_start"),
+    )
+
+
+class AggregateWatermark(Base):
+    """Até onde os agregados duráveis estão fechados (a limpeza de telemetria respeita isto)."""
+
+    __tablename__ = "aggregate_watermarks"
+    name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    rolled_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
