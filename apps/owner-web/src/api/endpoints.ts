@@ -18,6 +18,12 @@ import type {
 import type { PeriodQuery } from '../lib/period'
 import type { MarginReport, PowerSiteInput, PricingRules, StationEconomics, StationPower, StationPricing } from './operations'
 
+export interface PaymentsConfig {
+  enabled: boolean
+  provider?: string
+  environment?: string
+}
+
 export interface SessionFilters extends PeriodQuery {
   status?: string
   q?: string
@@ -25,7 +31,7 @@ export interface SessionFilters extends PeriodQuery {
   offset?: number
 }
 
-export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities' | 'prepay_required' | 'kiosk_payments'>> & {
+export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities' | 'prepay_required' | 'kiosk_payments' | 'kiosk_mode'>> & {
   latitude?: number
   longitude?: number
 }
@@ -51,7 +57,9 @@ export function marginExportQuery(q: PeriodQuery): PeriodQuery {
 
 export function endpoints(api: ApiClient) {
   return {
-    me: () => api.get<Profile>('/me'),
+    me: (signal?: AbortSignal) => api.get<Profile>('/me', undefined, signal),
+    /** Stripe (teste) configurada no servidor; `enabled: false` → totem de conta oficial indisponível. */
+    paymentsConfig: (signal?: AbortSignal) => api.get<PaymentsConfig>('/payments/config', undefined, signal),
     overview: (q: PeriodQuery, signal?: AbortSignal) => api.get<Overview>('/owner/overview', { ...q }, signal),
     timeseries: (q: PeriodQuery & { granularity?: 'hour' | 'day' }, signal?: AbortSignal) =>
       api.get<Timeseries>('/owner/timeseries', { ...q }, signal),

@@ -21,6 +21,8 @@ export interface Profile {
   phone?: string | null
   vehicle_description?: string | null
   operator_enabled: boolean
+  /** Modo apresentação da conta (totem 0.8.0): decide o pagamento do totem dos postos (simulado × Stripe teste). */
+  presentation_mode?: boolean
   created_at?: string
 }
 
@@ -181,6 +183,8 @@ export interface LiveItem {
   available: boolean
   availability_status: AvailabilityStatus | string
   reserved_until: string | null
+  /** Totem 0.8.0 (aditivo; `/owner/live` ainda não manda). */
+  kiosk_in_use?: boolean
   session: LiveSession | null
   /** Frente D: quem continua na vaga depois da recarga (ou `null`). */
   occupancy?: LiveOccupancy | null
@@ -205,6 +209,8 @@ export interface Connector {
   available?: boolean
   availability_status?: AvailabilityStatus | string
   reserved_until?: string | null
+  /** Totem 0.8.0: ponto travado por um pedido do totem (`occupied` + "Em uso no totem"). */
+  kiosk_in_use?: boolean
   online?: boolean
   physical_state?: string
   retired?: boolean
@@ -223,6 +229,8 @@ export interface Station {
   /** Frente A: exigir pagamento antes do START e QR de pagamento no painel físico. */
   prepay_required?: boolean
   kiosk_payments?: boolean
+  /** Totem 0.8.0: totem de autoatendimento no painel físico (padrão desligado). */
+  kiosk_mode?: boolean
   /** Frente D: termos vigentes da taxa de permanência. */
   overstay?: StationOverstay | null
 }

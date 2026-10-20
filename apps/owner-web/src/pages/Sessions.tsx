@@ -9,6 +9,7 @@ import { downloadText, exportFilename, sessionsCsv, sessionsJson } from '../lib/
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatDateTime, formatDuration, formatEnergy, formatNumber, formatShortDateTime, formatTariff } from '../lib/format'
 import { END_REASON_LABELS, SESSION_STATUS, SESSION_STATUS_ORDER, SOURCE_LABELS } from '../lib/labels'
+import { CHANNEL_LABELS, channelTone, isSimulated, paymentChannel, paymentMethodLabel } from '../lib/kiosk'
 import { overstayCell, paymentBadge } from '../lib/overstay'
 import { periodLabel } from '../lib/period'
 import { useApi } from '../lib/useApi'
@@ -34,6 +35,17 @@ function PaymentBadge({ session, detail }: { session: SessionItem; detail?: bool
       </span>
       {rest.length && !(detail && badge.detail) ? <span className="dim" style={{ fontSize: 11.5 }}>{rest.join(' · ')}</span> : null}
       {detail && badge.detail ? <span className="dim" style={{ fontSize: 11.5 }}>{badge.detail}</span> : null}
+    </span>
+  )
+}
+
+/** Selo do canal (App / QR do painel / Totem) e o método (Simulado / Stripe). */
+function ChannelBadge({ session }: { session: SessionItem }) {
+  const channel = paymentChannel(session.payment)
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Badge tone={channelTone(channel)}>{CHANNEL_LABELS[channel]}</Badge>
+      {session.payment ? <span className="dim" style={{ fontSize: 11.5 }}>{isSimulated(session.payment) ? 'Simulado' : 'Stripe'}</span> : null}
     </span>
   )
 }
@@ -102,17 +114,31 @@ function SessionDrawer({ session, onClose }: { session: SessionItem; onClose(): 
         </div>
         {'payment' in session ? (
           <div className="full">
-            <dt>Pagamento (Stripe · teste)</dt>
+            <dt>{isSimulated(session.payment) ? 'Pagamento (simulado)' : 'Pagamento (Stripe · teste)'}</dt>
             <dd>
               <PaymentBadge session={session} detail />
               {session.payment ? (
                 <div className="dim" style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
                   Teto autorizado {formatCurrency(session.payment.amount)}
-                  {session.payment.origin === 'kiosk' ? ' · QR do painel' : session.payment.origin === 'app' ? ' · app' : ''}
-                  {session.payment.method ? ` · ${session.payment.method === 'pix' ? 'Pix' : 'cartão'}` : ''}
+                  {` · ${CHANNEL_LABELS[paymentChannel(session.payment)]}`}
+                  {isSimulated(session.payment) ? ' · simulado (sem cobrança real)' : session.payment.method ? ` · ${session.payment.method === 'pix' ? 'Pix' : 'cartão'}` : ''}
                 </div>
               ) : null}
             </dd>
+          </div>
+        ) : null}
+        {'payment' in session ? (
+          <div>
+            <dt>Canal</dt>
+            <dd>
+              <ChannelBadge session={session} />
+            </dd>
+          </div>
+        ) : null}
+        {'payment' in session ? (
+          <div>
+            <dt>Método</dt>
+            <dd>{paymentMethodLabel(session.payment)}</dd>
           </div>
         ) : null}
         {'overstay_fee' in session ? (
@@ -243,6 +269,7 @@ export default function Sessions() {
                     <th className="right">Tarifa</th>
                     <th className="right">Valor</th>
                     {showOverstay ? <th className="right">Permanência</th> : null}
+                    {showPayment ? <th>Canal</th> : null}
                     {showPayment ? <th>Pagamento</th> : null}
                   </tr>
                 </thead>
@@ -269,6 +296,11 @@ export default function Sessions() {
                       {showOverstay ? (
                         <td className="right tabular">
                           <OverstayValue session={item} />
+                        </td>
+                      ) : null}
+                      {showPayment ? (
+                        <td>
+                          <ChannelBadge session={item} />
                         </td>
                       ) : null}
                       {showPayment ? (

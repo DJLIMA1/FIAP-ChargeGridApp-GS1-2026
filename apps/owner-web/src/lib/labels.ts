@@ -24,6 +24,12 @@ export const AVAILABILITY: Record<string, { label: string; tone: Tone }> = {
   disabled: { label: 'Desativado', tone: 'gray' },
 }
 
+/** Rótulo do ponto: `occupied` com `kiosk_in_use` (pedido do totem) vira "Em uso no totem". */
+export function availabilityMeta(point: { availability_status?: string | null; kiosk_in_use?: boolean }): { label: string; tone: Tone } | null {
+  if (point.availability_status === 'occupied' && point.kiosk_in_use) return { label: 'Em uso no totem', tone: 'amber' }
+  return AVAILABILITY[point.availability_status ?? ''] ?? null
+}
+
 export const SOURCE_LABELS: Record<string, string> = { simulated: 'Simulada', measured: 'Medida', estimated: 'Estimada' }
 
 export const END_REASON_LABELS: Record<string, string> = {

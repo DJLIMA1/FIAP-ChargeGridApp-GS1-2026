@@ -3,7 +3,7 @@ import type { LiveItem } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatEnergy, formatPower, formatRelative, formatTariff, formatTime, toNumber } from '../lib/format'
-import { AVAILABILITY } from '../lib/labels'
+import { availabilityMeta } from '../lib/labels'
 import { OVERSTAY_STATUS, occupancyText } from '../lib/overstay'
 import { formatKw } from '../lib/power'
 import { useApi } from '../lib/useApi'
@@ -32,7 +32,7 @@ function Occupancy({ item }: { item: LiveItem }) {
 }
 
 function PointCard({ item, now }: { item: LiveItem; now: Date }) {
-  const status = AVAILABILITY[item.availability_status] ?? { label: item.availability_status, tone: 'gray' as const }
+  const status = availabilityMeta(item) ?? { label: item.availability_status, tone: 'gray' as const }
   const session = item.session
   const powerKw = session?.power_w ? (toNumber(session.power_w) ?? 0) / 1000 : null
   const energyKwh = session ? (toNumber(session.energy_wh) ?? 0) / 1000 : null

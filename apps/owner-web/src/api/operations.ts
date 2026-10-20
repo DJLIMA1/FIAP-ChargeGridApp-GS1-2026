@@ -207,6 +207,8 @@ export interface SessionPayment {
   environment: 'test' | string
   provider?: string
   origin?: 'app' | 'kiosk' | string
+  /** `/owner/sessions` (totem 0.8.0): canal da recarga paga. */
+  channel?: 'app' | 'kiosk_qr' | 'kiosk_totem' | string
   method?: 'card' | 'pix' | string | null
   currency?: string
   amount: Decimal
