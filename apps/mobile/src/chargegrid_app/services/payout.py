@@ -9,7 +9,7 @@ como ``preferences.py``).
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -66,12 +66,20 @@ def set_owner_net(app, owner_net):
     app._payout_net = _cents(owner_net)
 
 
+def net_params(now=None):
+    """Período do repasse: ``NET_DAYS`` dias até agora (fim arredondado para cima, ``period_end``).
+
+    Os mesmos parâmetros por alguns minutos: o Início, a Conta e o Resgate reaproveitam a consulta."""
+    from .prefetch import period_end
+    end = period_end(now)
+    return {'from': (end - timedelta(days=NET_DAYS)).isoformat(), 'to': end.isoformat(), 'limit': 1}
+
+
 async def load_owner_net(app, now=None):
     """Busca o repasse dos últimos ``NET_DAYS`` dias e guarda em ``app``; sem rede, mantém o último valor."""
     if is_demo(app):
         return None
-    end = now or datetime.now(timezone.utc)
-    params = {'from': (end - timedelta(days=NET_DAYS)).isoformat(), 'to': end.isoformat(), 'limit': 1}
+    params = net_params(now)
     api = app.api
     report = await (api.owner_margin(params) if hasattr(api, 'owner_margin') else
                     api.request('GET', 'owner/margin', params=params))

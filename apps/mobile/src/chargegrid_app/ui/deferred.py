@@ -11,7 +11,11 @@ import flet as ft
 
 from . import motion, theme
 
-FIRST_PAINT_WAIT = 0.35
+# API real: conteúdo já pronto (mapa composto, resposta no cache) entra na primeira pintura; senão o
+# esqueleto aparece logo e o conteúdo troca no lugar quando chegar (antes a tela esperava até 0,35 s).
+FIRST_PAINT_WAIT = 0.05
+# Demonstração (tudo calculado no aparelho, sem rede): espera o cálculo como antes.
+LOCAL_FIRST_PAINT_WAIT = 0.35
 _log = logging.getLogger(__name__)
 
 
@@ -29,8 +33,12 @@ def skeleton(height, label='Carregando mapa…'):
     )
 
 
-async def fill_when_ready(app, container, factory, *, placeholder, wait=FIRST_PAINT_WAIT):
+async def fill_when_ready(app, container, factory, *, placeholder, wait=None):
     """Put ``await factory()`` into ``container``; never block longer than ``wait``."""
+    if wait is None:
+        from ..api_cache import ResponseCache
+        remote = isinstance(getattr(getattr(app, 'api', None), 'cache', None), ResponseCache)
+        wait = FIRST_PAINT_WAIT if remote else LOCAL_FIRST_PAINT_WAIT
     generation = getattr(app, 'generation', None)
     task = asyncio.ensure_future(factory())
     try:

@@ -16,6 +16,9 @@ from .charging import SOURCE
 from .reservations import DEMO_LABELS as DEMO_RESERVATION_LABELS
 from .reservations import LABELS as RESERVATION_LABELS
 
+ACTIVE_POLL_SECONDS = 10
+IDLE_POLL_SECONDS = 20
+
 
 def _enabled_points(station):
     if station.get('active') is False:
@@ -140,6 +143,11 @@ def _row_price(station):
 def _area(address):
     from .stations import _area as area
     return area(address)
+
+
+def _seed_details(app, items, path, params):
+    from .stations import _seed_details as seed
+    seed(app, items, path, params)
 
 
 def _station_row(station, on_click, *, carded=True, right=None, subtitle=None):
@@ -285,10 +293,16 @@ async def build(app, **_):
         if fresh[2]['items'] != previous[2]['items']:
             rows.controls = _station_rows(app, fresh[2]['items'][:2])
         previous = fresh
+        app.poll_interval = poll_seconds(fresh[1], fresh[0])
         app.page.update()
 
-    app.set_poll(update, 10)
+    app.set_poll(update, poll_seconds(session, reservation))
     return ft.ListView(controls, spacing=16, expand=True, padding=0)
+
+
+def poll_seconds(session, reservation):
+    """Reserva ou recarga ativa: o cartão acompanha a cada 10 s; sem nada ativo, a cada 20 s."""
+    return ACTIVE_POLL_SECONDS if session or reservation else IDLE_POLL_SECONDS
 
 
 async def build_vendor(app, empty=False, **_):
@@ -296,8 +310,10 @@ async def build_vendor(app, empty=False, **_):
     demo = getattr(app.api, 'is_demo', False) is True
 
     async def snapshot():
-        profile = await app.api.request('GET', 'me')
-        result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': 0})
+        params = {'limit': 100, 'offset': 0}
+        profile, result = await asyncio.gather(app.api.request('GET', 'me'),
+                                               app.api.request('GET', 'operator/stations', params=params))
+        _seed_details(app, result.get('items') or [], 'operator/stations', params)
         return profile, deepcopy(result.get('items') or [])
 
     profile, stations = await snapshot()

@@ -1,6 +1,8 @@
 import asyncio
+import contextlib
 import hashlib
 import json
+import logging
 import os
 import time
 from datetime import datetime
@@ -8,6 +10,7 @@ from pathlib import Path
 
 import flet as ft
 
+from . import api_cache
 from .api_client import ApiClient, ApiError
 from .config import demo_enabled, packaged_version
 from .navigation import (
@@ -23,7 +26,7 @@ from .navigation import (
     tab_entries,
 )
 from .preferences import Preferences
-from .services import updates
+from .services import prefetch, updates
 from .services.driver_profile import apply_signup_vehicle
 from .ui import design, motion, theme
 from .ui.components import button, title
@@ -31,6 +34,30 @@ from .ui.components import button, title
 ASSETS_DIR = str(Path(__file__).resolve().parents[2] / 'assets')
 POLL_BACKOFF_MAX = 60
 UPDATE_RECHECK_SECONDS = 15 * 60
+_log = logging.getLogger(__name__)
+
+
+# Recarga em andamento e reserva decidem o próximo passo (iniciar, encerrar, cancelar) com o estado
+# do servidor: sempre montadas da rede, nunca do cache.
+NETWORK_ROUTES = ('auth', 'charging', 'reservations')
+
+
+def stale_allowed(route, data):
+    """Telas que podem abrir com a última resposta conhecida e se atualizar logo em seguida.
+
+    O Modo motorista, o vínculo de equipamento, o cadastro guiado, o formulário de ponto e o fim do
+    assistente de reserva (revisão e pagamento) abrem só com respostas frescas (segundos)."""
+    if route in NETWORK_ROUTES or route == 'driver':
+        return False
+    if route == 'operator' and any(data.get(key) for key in ('claim', 'onboarding', 'connector_id')):
+        return False
+    if route == 'booking':
+        # Escolhas do assistente (conector, horário, cobrança) sim; revisão, pagamento e conclusão, não.
+        try:
+            return int(data.get('step') or 1) < 6
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 class ChargeGridApp:
@@ -62,6 +89,8 @@ class ChargeGridApp:
         self.refresh_failed = False
         self.refresh_in_progress = False
         self.refresh_task = None
+        self.silent_next = False
+        self.superseded_polls = set()
         self.freshness_text = ft.Text(size=11, color=theme.GRAY_TEXT, expand=True)
         self.freshness_retry = ft.TextButton('Atualizar', on_click=self.retry_refresh,
                                             style=ft.ButtonStyle(color=theme.TEXT_COLOR))
@@ -324,6 +353,8 @@ class ChargeGridApp:
             self.profile = {}
             self.reset_account_ui()
             self.reset_account_operations()
+        # Revalidação: a mesma tela, remontada com as respostas novas, sem barra de carregamento nem transição.
+        silent, self.silent_next = self.silent_next, False
         self.generation += 1
         generation = self.generation
         self.building_generation = generation
@@ -336,15 +367,21 @@ class ChargeGridApp:
         self.freshness.visible = False
         self.refresh_in_progress = False
         self.freshness_retry.disabled = False
-        self.scene.content.disabled = True
         self.form_baseline = []
         self.loading.visible = False
-        self.loading_task = asyncio.create_task(self.delayed_loading(generation))
-        self.page.update()
+        if not silent:
+            self.scene.content.disabled = True
+            self.loading_task = asyncio.create_task(self.delayed_loading(generation))
+            self.page.update()
         task = asyncio.current_task()
         self.tasks.add(task)
+        # Montagem da tela: respostas guardadas valem (cache); polls e ações continuam indo à rede.
+        caching = isinstance(getattr(self.api, 'cache', None), api_cache.ResponseCache) and route not in NETWORK_ROUTES
+        reads = None
         try:
-            body = await SCREENS[route](self, **screen_params(data))
+            with (api_cache.reading(stale_ok=stale_allowed(route, data)) if caching
+                  else contextlib.nullcontext()) as reads:
+                body = await SCREENS[route](self, **screen_params(data))
         except ApiError as exc:
             if exc.status == 401 and not self.api.session.access_token and route != 'auth':
                 await self.go('auth')
@@ -407,20 +444,77 @@ class ChargeGridApp:
             )
         max_width = 520 if not authenticated else 600
         self.root.content.width = min(self.page.width or 400,max_width)
+        durations = self.scene.duration, self.scene.reverse_duration
+        if silent:
+            self.scene.duration = self.scene.reverse_duration = 0
         self.scene.content = ft.Container(content, expand=True)
         if self.poll_callback:
             self.mark_refresh(True)
         self.page.update()
+        self.scene.duration, self.scene.reverse_duration = durations
         if self.poll_callback:
             self.start_poll()
         if authenticated and isinstance(self.page, ft.Page):
             asyncio.create_task(self.refresh_notification_badge(generation))
+        if reads is not None and reads.served and not silent:
+            self.track(asyncio.create_task(self.revalidate_screen(generation, reads.served)))
+        if authenticated and not silent:
+            try:
+                prefetch.after_render(self, route, data)
+            except Exception:  # noqa: BLE001 - busca antecipada nunca derruba a navegação
+                _log.debug('Busca antecipada falhou', exc_info=True)
+
+    def track(self, task):
+        """Tarefa da tela atual: a próxima navegação a cancela."""
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
+
+    async def revalidate_screen(self, generation, reads):
+        """A tela abriu com respostas guardadas: confere na rede e atualiza só se algo mudou.
+
+        Com poll, a própria atualização da tela troca só os controles que mudaram (lendo as respostas
+        que acabaram de chegar). Sem poll, ou se o poll não cobre o que mudou, a tela é remontada em
+        silêncio, exceto se houver formulário editado, ação em andamento ou diálogo aberto."""
+        try:
+            changed = await self.api.revalidate(reads)
+        except Exception:  # noqa: BLE001 - sem rede: a tela segue com o último estado e o poll tenta de novo
+            return
+        if not changed or generation != self.generation or self.closed:
+            return
+        callback = self.poll_callback
+        if callback:
+            if self.active_actions or self.prompting or self.refresh_in_progress:
+                return  # o poll em andamento (ou o próximo) traz o estado novo
+            self.refresh_in_progress = True
+            seen = None
+            try:
+                with api_cache.reading() as mode:
+                    await callback()
+                seen = mode.seen
+            except ApiError:
+                pass
+            finally:
+                if generation == self.generation:
+                    self.refresh_in_progress = False
+            if generation != self.generation or self.closed:
+                return
+            if seen is not None and set(changed) <= seen:
+                self.mark_refresh(True)
+                self.page.update()
+                return
+        if self.active_actions or self.prompting or self.dirty_form() or generation != self.generation:
+            return
+        self.silent_next = True
+        await self.go(self.route, **self.data)
 
     async def refresh_notification_badge(self, generation=None):
         """Acende a bolinha do sino só quando há aviso não lido (nunca bloqueia a tela)."""
         from .services import notifications
         try:
-            items = await notifications.collect(self)
+            # Reaproveita as respostas frescas que a tela acabou de buscar (sem um segundo pedido igual).
+            with api_cache.reading():
+                items = await notifications.collect(self)
             has_unread = bool(notifications.unread(self, items))
         except Exception:  # noqa: BLE001 - aviso é opcional
             return
@@ -442,6 +536,8 @@ class ChargeGridApp:
     def start_poll(self, immediate=False):
         if self.poll_task and self.poll_task is not asyncio.current_task():
             self.poll_task.cancel()
+        elif self.poll_task:
+            self.superseded_polls.add(self.poll_task)
         self.poll_task = asyncio.create_task(
             self.poll(self.poll_callback, self.poll_interval, self.generation, immediate=immediate))
 
@@ -517,6 +613,12 @@ class ChargeGridApp:
         delay = 0 if immediate else interval
         while self.generation == generation and not self.closed:
             await asyncio.sleep(delay)
+            superseded = getattr(self, 'superseded_polls', set())
+            if asyncio.current_task() in superseded:
+                # A tela trocou o poll (``set_poll`` de dentro do próprio poll): este laço para aqui,
+                # senão os dois continuariam consultando.
+                superseded.discard(asyncio.current_task())
+                return
             delay = interval
             if self.active_actions or self.prompting or getattr(self, 'refresh_in_progress', False):
                 continue
@@ -526,6 +628,9 @@ class ChargeGridApp:
             self.refresh_in_progress = True
             try:
                 await callback()
+                # A tela pode espaçar ou apressar o próprio poll (``poll_interval``), ex.: sem recarga ativa.
+                if getattr(self, 'poll_callback', None) is callback and getattr(self, 'poll_interval', None):
+                    interval = delay = self.poll_interval
                 if generation == self.generation and hasattr(self, 'mark_refresh'):
                     self.mark_refresh(True)
                     self.freshness.live_region = failed
@@ -555,6 +660,9 @@ class ChargeGridApp:
     async def signed_in(self, destination=None):
         self.reset_account_ui()
         self.reset_account_operations()
+        if not destination:
+            # O Início do motorista sai junto com o perfil (em paralelo), não depois dele.
+            prefetch.fetch(self, prefetch.consumer_home())
         self.profile = await self.api.request('GET','me')
         await apply_signup_vehicle(self.api, self.profile)
         self.browsing_mode = 'vendor' if can_manage(self.profile) and not getattr(self.api,'is_demo',False) else 'consumer'
@@ -732,6 +840,10 @@ async def main(page: ft.Page):
     if page.platform in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS):
         await page.set_allowed_device_orientations([ft.DeviceOrientation.PORTRAIT_UP])
     app = ChargeGridApp(page)
+    warm_up = getattr(app.api, 'warm_up', None)
+    if warm_up is not None and not os.getenv('CHARGEGRID_CAPTURE_ROUTE'):
+        # Conexão e função do servidor acordadas enquanto a tela de login aparece.
+        app.warm_task = asyncio.create_task(warm_up())
     await app.configure_motion()
     try:
         booted = await capture_boot(app)

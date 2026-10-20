@@ -114,6 +114,9 @@ async def build(app, mode=None, **_):
     demo = getattr(app.api, 'is_demo', False)
     if mode == 'password':
         return password_form(app)
+    if getattr(app, 'browsing_mode', 'consumer') == 'vendor' and mode != 'edit':
+        from ..services import prefetch
+        prefetch.fetch(app, prefetch.owner_net())  # saldo da carteira junto com a conta, não depois
     # Conta e carro são independentes: buscados em paralelo.
     profile, driver = await asyncio.gather(app.api.request('GET','me'), driver_profile(app))
     app.profile = profile

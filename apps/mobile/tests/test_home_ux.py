@@ -151,6 +151,7 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         app.state['reservations/current'] = {'id': 'reserve', 'status': 'pending_device'}
         await app.poll()
         self.assertIn('Acompanhar reserva', text_values(screen, visible_only=True))
+        self.assertEqual(app.poll_interval, home.ACTIVE_POLL_SECONDS)  # reserva ativa: acompanha mais de perto
         app.state['reservations/current']['status'] = 'confirmed'
         await app.poll()
         self.assertIn('Cheguei: informar código', text_values(screen, visible_only=True))
@@ -169,7 +170,9 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.page.update.call_count, 4)
         await app.poll()
         self.assertEqual(app.page.update.call_count, 4)
-        self.assertEqual(app.interval, 10)
+        # Sem reserva nem recarga ativa o Início consulta a cada 20 s (antes: sempre 10 s).
+        self.assertEqual(app.interval, home.IDLE_POLL_SECONDS)
+        self.assertEqual(app.poll_interval, home.IDLE_POLL_SECONDS)
 
     async def test_poll_refreshes_balance_from_wallet_service(self):
         app = HomeApp()

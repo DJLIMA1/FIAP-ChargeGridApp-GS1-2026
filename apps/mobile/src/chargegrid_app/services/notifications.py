@@ -9,6 +9,7 @@ Um aviso por conector por dia; lidas/não lidas usam o mesmo mecanismo dos demai
 Na demonstração, quando nada gera aviso, mostra os exemplos da referência.
 """
 
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -147,26 +148,27 @@ async def collect(app):
     demo = getattr(api, 'is_demo', False) is True
     vendor = getattr(app, 'browsing_mode', 'consumer') == 'vendor'
     items = []
-    try:
+
+    async def main_items():
         if vendor:
             result = await api.request('GET', 'operator/stations', params={'limit': 100, 'offset': 0})
             stations = result.get('items') or []
-            items += offline_items(stations)
-            items += power_items(stations)
-        else:
-            current = await api.request('GET', 'charging-sessions/current')
-            item = battery_item(current) if current else None
-            if item:
-                items.append(item)
-    except Exception:  # noqa: BLE001 - aviso é opcional; a tela segue sem ele
-        pass
-    if not vendor and not demo:
-        try:
-            item = overstay_item(await api.request('GET', 'overstays/current'))
-        except Exception:  # noqa: BLE001 - API sem permanência (404) ou rede: sem aviso
-            item = None
-        if item:
-            items.append(item)
+            return offline_items(stations) + power_items(stations)
+        current = await api.request('GET', 'charging-sessions/current')
+        item = battery_item(current) if current else None
+        return [item] if item else []
+
+    async def overstay():
+        if vendor or demo:
+            return []
+        item = overstay_item(await api.request('GET', 'overstays/current'))
+        return [item] if item else []
+
+    # As duas consultas em paralelo; cada uma falha sozinha (aviso é opcional; a tela segue sem ele).
+    found, stay = await asyncio.gather(main_items(), overstay(), return_exceptions=True)
+    for group in (found, stay):
+        if isinstance(group, list):
+            items += group
     return items or (sample_items() if demo else [])
 
 

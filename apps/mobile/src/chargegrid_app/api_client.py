@@ -1,13 +1,21 @@
 import asyncio
 import json
+from copy import deepcopy
 from uuid import uuid4
 
 import httpx
 
+from . import api_cache
 from .config import api_url, running_in_browser, validate_api_url
 from .owner_api import OwnerApiMixin
 from .session import Session
 from .web_transport import PyodideFetchTransport
+
+TIMEOUT = httpx.Timeout(12, connect=6)
+LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10, keepalive_expiry=30)
+# Falhas de conexão (conexão parada que o servidor já fechou, rede trocando de antena): um GET é
+# repetido uma vez na hora. Escritas e prazos esgotados nunca são repetidos aqui.
+RETRYABLE = (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError)
 
 
 class ApiError(Exception):
@@ -25,7 +33,11 @@ class ApiClient(OwnerApiMixin):
         if transport is None and running_in_browser():
             # Pyodide (flet build web) não abre sockets: usa o fetch do navegador.
             transport = PyodideFetchTransport()
-        self.http = httpx.AsyncClient(base_url=validate_api_url(base_url or api_url()) + '/', timeout=12, transport=transport, follow_redirects=False)
+        # Conexões reaproveitadas por 30 s (o padrão do httpx fecha após 5 s parado e cada toque
+        # seguinte pagava um novo aperto de mão TLS); conectar tem prazo menor que responder.
+        self.http = httpx.AsyncClient(base_url=validate_api_url(base_url or api_url()) + '/', timeout=TIMEOUT,
+                                      limits=LIMITS, transport=transport, follow_redirects=False)
+        self.cache = api_cache.ResponseCache()
         self.refresh_lock = asyncio.Lock()
         self.operation_keys = {}
         self.charging_operation_sessions = {}
@@ -84,7 +96,12 @@ class ApiClient(OwnerApiMixin):
 
     async def _send(self, method, path, body=None, headers=None, params=None):
         try:
-            response = await self.http.request(method, path.lstrip('/'), json=body, headers=headers, params=params)
+            try:
+                response = await self.http.request(method, path.lstrip('/'), json=body, headers=headers, params=params)
+            except RETRYABLE:
+                if method != 'GET':
+                    raise
+                response = await self.http.request(method, path.lstrip('/'), json=body, headers=headers, params=params)
         except httpx.TimeoutException as exc:
             raise ApiError("O servidor demorou a responder. Confira o estado antes de repetir.") from exc
         except httpx.RequestError as exc:
@@ -120,6 +137,103 @@ class ApiClient(OwnerApiMixin):
                 raise
 
     async def request(self, method, path, body=None, *, key=None, params=None, auth=True):
+        path = path.lstrip('/')
+        if method == 'GET' and auth and body is None and key is None:
+            rule = api_cache.policy(path)
+            if rule is not None:
+                return await self._cached_get(path, params, rule)
+        elif method != 'GET':
+            pattern = api_cache.invalidation(path)
+            self.cache.invalidate(pattern)
+            try:
+                return await self._request(method, path, body, key=key, params=params, auth=auth)
+            finally:
+                self.cache.invalidate(pattern)
+        return await self._request(method, path, body, key=key, params=params, auth=auth)
+
+    # ------------------------------------------------------------------ cache das respostas GET
+    async def _cached_get(self, path, params, rule):
+        cache_key = api_cache.key(path, params)
+        mode = api_cache.current_mode()
+        if mode is not None and self.session.access_token:
+            mode.seen.add(cache_key)
+            hit = self.cache.read(cache_key, rule, mode.stale_ok)
+            if hit is not None:
+                value, stale = hit
+                if stale:
+                    mode.served.append(api_cache.StaleRead(cache_key, path, dict(params or {}), deepcopy(value)))
+                return deepcopy(value)
+        return deepcopy(await asyncio.shield(self._shared_fetch(cache_key, path, params)))
+
+    def _shared_fetch(self, cache_key, path, params):
+        """Uma consulta por chave: quem pede o mesmo GET enquanto ele está em andamento espera a mesma.
+
+        A consulta roda numa tarefa própria: sair da tela não a cancela e a resposta fica no cache."""
+        task = self.cache.inflight.get(cache_key)
+        if task is not None:
+            return task
+        epoch = self.cache.epoch
+
+        async def fetch():
+            result = await self._request('GET', path, params=params)
+            self.cache.store(cache_key, deepcopy(result), epoch)
+            return result
+
+        task = asyncio.ensure_future(fetch())
+        self.cache.inflight[cache_key] = task
+
+        def finished(done):
+            if self.cache.inflight.get(cache_key) is done:
+                del self.cache.inflight[cache_key]
+            if not done.cancelled():
+                done.exception()  # erro já entregue a quem esperava; evita aviso de exceção não lida
+        task.add_done_callback(finished)
+        return task
+
+    def prefetch(self, path, params=None):
+        """Busca em segundo plano uma tela provável (só rotas guardadas; erros são ignorados)."""
+        path = path.lstrip('/')
+        rule = api_cache.policy(path)
+        if rule is None or not self.session.access_token:
+            return None
+        cache_key = api_cache.key(path, params)
+        if self.cache.fresh(cache_key, rule):
+            return None
+        return self._shared_fetch(cache_key, path, params)
+
+    def seed(self, path, value, params=None, at=None):
+        """Guarda uma resposta já conhecida (ex.: o posto da lista = ``GET stations/{id}``)."""
+        path = path.lstrip('/')
+        if api_cache.policy(path) is None or value is None:
+            return False
+        return self.cache.store(api_cache.key(path, params), deepcopy(value), self.cache.epoch, at)
+
+    def cached_at(self, path, params=None):
+        entry = self.cache.entries.get(api_cache.key(path.lstrip('/'), params))
+        return entry[0] if entry else None
+
+    async def revalidate(self, reads):
+        """Consulta de novo (rede) o que foi mostrado velho; devolve as chaves cuja resposta mudou."""
+        unique = {read.key: read for read in reads}
+
+        async def check(read):
+            try:
+                with api_cache.network_only():
+                    fresh = await asyncio.shield(self._shared_fetch(read.key, read.path, read.params))
+            except ApiError:
+                return None
+            return read.key if fresh != read.value else None
+        results = await asyncio.gather(*(check(read) for read in unique.values()))
+        return [item for item in results if item is not None]
+
+    async def warm_up(self):
+        """Abre a conexão TLS e acorda a função do servidor enquanto a pessoa ainda está na tela de login."""
+        try:
+            await self.http.get(self.http.base_url.join('/health'), timeout=8)
+        except (httpx.HTTPError, ValueError, RuntimeError):
+            pass
+
+    async def _request(self, method, path, body=None, *, key=None, params=None, auth=True):
         token = self.session.access_token
         if auth and self.session.needs_refresh:
             await self.refresh(token)
@@ -152,6 +266,8 @@ class ApiClient(OwnerApiMixin):
         self.session.update(await self.request('POST', 'auth/login', {'email': email, 'password': password}, auth=False))
 
     async def close(self):
+        for task in self.cache.clear():
+            task.cancel()
         self.session.clear()
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()

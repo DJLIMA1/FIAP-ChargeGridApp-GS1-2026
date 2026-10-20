@@ -179,9 +179,10 @@ def _recharge_card(label, when, address, name, subtitle, on_click, data=None):
 
 async def active_recharge(app):
     """``(reserva ativa, sessão em andamento)`` do motorista; ``None`` no que não houver (ou se a API falhar)."""
+    import asyncio
     try:
-        reservation = await app.api.request('GET', 'reservations/current')
-        session = await app.api.request('GET', 'charging-sessions/current')
+        reservation, session = await asyncio.gather(app.api.request('GET', 'reservations/current'),
+                                                    app.api.request('GET', 'charging-sessions/current'))
     except Exception:  # noqa: BLE001 - o cartão é opcional: a busca de estações nunca quebra por ele
         return None, None
     if not isinstance(reservation, dict) or reservation.get('status') not in UPCOMING:
