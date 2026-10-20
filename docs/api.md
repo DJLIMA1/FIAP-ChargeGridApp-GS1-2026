@@ -131,6 +131,15 @@ Somente leitura, para contas com `operator_enabled` (senão 403). Escopo: postos
 
 Ações de gestão continuam nos endpoints existentes (PATCH `/stations/{id}`, PATCH `/connectors/{id}`, `/coupons`, `/devices/*`). Índices de apoio: migração `a3f1c9d2e7b4`. Insights de IA: POST `/ai/owner-insights` (contrato `{summary, recommendations:[{title, detail, impact, kind}], generated_at, model}`); o dashboard trata 404/erro como estado vazio.
 
+## Previsão de ocupação (`/owner/forecast`, `/stations/{id}/best-times`)
+
+Detalhes do método, dados e métricas: [previsao-ocupacao.md](previsao-ocupacao.md). Somente leitura; `Cache-Control: no-store`; horários em ISO 8601 com `-03:00`.
+
+- `GET /owner/forecast?station_id&horizon_hours=1..36` (dono do posto; 30/min) → `{station_id, generated_at, timezone, as_of, horizon_hours, connectors, status:"ok"|"no_history", method:"gbm"|"baseline", method_reason, model:{version, trained_on, library, selected, offline_test:{period, baseline, gbm, daily, unseen_stations}}, coverage:{days_measured, days_synthetic, first_hour}, includes_synthetic, notes[], accuracy:{window_days, origins, status:"ok"|"insufficient_history", baseline:{mae_pp, wape, accuracy_percent}, gbm, daily:{baseline|gbm:{peak_days, peak_hit_percent, energy_day_wape, energy_day_accuracy_percent}}}, band, energy_basis, hours:[{start, occupancy_percent, baseline_percent, low_percent|null, high_percent|null, energy_kwh, expected_multiplier, full}], peaks:[{start, end, max_percent, label}], idle:[{start, end, min_percent, label}], suggestions:[{kind:"enable_demand"|"raise_demand_cap"|"schedule_peak"|"schedule_idle", title, detail, window, action:{type:"pricing_rules", patch, preview?:[{connector_id, public_code, from, to}]}}]}`. `patch` é aplicado pelo `PUT /stations/{id}/pricing` existente (PUT parcial). O modelo só entra quando vence a média no teste offline e no backtest de 14 dias do posto.
+- `GET /owner/occupancy-history?station_id&weeks=1..8` → `{days, hours, occupancy_percent:[[7×24]], energy_kwh:[[7×24]], samples:[[7×24]], max_occupancy_percent, from, to, coverage, includes_synthetic, notes}` (média por dia da semana e hora; `null` = sem dados).
+- `GET /stations/{station_id}/best-times?hours=3..24` (qualquer usuário autenticado, posto ativo; 60/min) → `{hours:[{start, expected_price_per_kwh, level, level_label}], best:{start, end, price_from, saving_vs_now_percent|null, reason, level_label}, now:{price_per_kwh}, stable, note, method, generated_for, timezone, includes_synthetic}`. Preço esperado = tarifa do horário × multiplicador previsto; sempre "Estimativa", travado ao reservar/iniciar. Sem números de ocupação do dono.
+- Agregados duráveis: `connector_hourly_stats` e `aggregate_watermarks` (migração `c5f0a7e3d912`); rollup idempotente dentro de `/internal/keepalive` (resposta `{status, rollup:{from, to, rows}|{status:"failed"}}`). `tools/maintenance.py` só apaga telemetria já agregada.
+
 ## Assistente de IA
 
 Rotas autenticadas (Bearer). A chave do OpenRouter fica somente no backend. As ferramentas da IA apenas **leem** dados do

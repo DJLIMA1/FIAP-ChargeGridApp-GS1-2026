@@ -16,6 +16,7 @@ from .calendar import iso
 
 LEVELS = ((0.4, "low", "Pouco movimento"), (0.8, "medium", "Movimento médio"), (2.0, "high", "Muito movimento"))
 MAX_WINDOW = 3
+DAYTIME = (6, 23)
 NOTE = "Estimativa. O preço é travado quando você reserva ou inicia a recarga."
 
 
@@ -57,13 +58,18 @@ def best_times(rules, connectors: list[dict], hours, now_price: Decimal | None) 
     priced = [row for row in rows if row["price"] is not None]
     if not priced:
         return {"hours": [], "best": None, "now": None, "note": NOTE}
-    best_index = min(range(len(priced)), key=lambda i: (priced[i]["price"], priced[i]["occ"], i))
+    stable = len({row["price"] for row in priced}) == 1
+    candidates = range(len(priced))
+    if stable:
+        # Preço igual o dia todo: sugere o horário com menos movimento, mas não de madrugada.
+        daytime = [i for i in candidates if DAYTIME[0] <= priced[i]["start"].hour < DAYTIME[1]]
+        candidates = daytime or candidates
+    best_index = min(candidates, key=lambda i: (priced[i]["price"], priced[i]["occ"], i))
     best = priced[best_index]
     end = best_index + 1
     while (end < len(priced) and end - best_index < MAX_WINDOW and priced[end]["price"] == best["price"]
            and priced[end]["level"] == best["level"]):
         end += 1
-    stable = len({row["price"] for row in priced}) == 1
     if best["interval"] is not None:
         reason = f"Tarifa menor no horário {pricing.window_label(best['interval'])}"
     elif best["multiplier"] < max(row["multiplier"] for row in priced):
