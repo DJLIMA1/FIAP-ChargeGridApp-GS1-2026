@@ -285,7 +285,7 @@ class DriverScreenRegressionTests(unittest.IsolatedAsyncioTestCase):
             screen = await driver.build(app)  # Used to fail the whole screen.
             form = fields(screen)
             self.assertIsNone(battery(screen))  # The battery is hidden now (services.vehicle_state).
-            self.assertEqual(form['Início do turno (HH:MM)'].value, '06:00')
+            self.assertEqual(form['Início do turno'].value, '06:00')
             self.assertIn('Sem conexão', app.notices[0])
 
 
