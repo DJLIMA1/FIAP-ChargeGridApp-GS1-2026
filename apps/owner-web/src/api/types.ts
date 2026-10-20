@@ -2,6 +2,7 @@
  * Formas das respostas da API ChargeGrid (/v1). Valores decimais chegam como
  * strings (ex.: "8420.00") para preservar precisão; `null` significa "sem dados".
  */
+import type { LiveOccupancy, SessionOverstay, SessionPayment, StationOverstay } from './operations'
 
 export type Decimal = string
 
@@ -105,6 +106,12 @@ export interface SessionItem {
   cost_estimate: Decimal | null
   source: string
   end_reason: string
+  /** Frente A (Stripe em modo teste): ausente em APIs antigas, `null` sem pagamento. */
+  payment?: SessionPayment | null
+  /** Frente D (permanência): ausentes enquanto a API não os envia. */
+  overstay?: SessionOverstay | null
+  overstay_fee?: Decimal | null
+  overstay_minutes?: Decimal | number | null
 }
 
 export type AlertSeverity = 'critical' | 'warning' | 'info'
@@ -141,6 +148,10 @@ export interface LiveSession {
   power_w: Decimal | null
   source: string
   last_measurement_at: string | null
+  /** Rebalanceamento ao vivo (frente B): potência confirmada pelo equipamento e o motivo. */
+  applied_power_kw?: Decimal | null
+  power_state?: string | null
+  power_reason?: string | null
 }
 
 export interface LiveItem {
@@ -165,6 +176,8 @@ export interface LiveItem {
   availability_status: AvailabilityStatus | string
   reserved_until: string | null
   session: LiveSession | null
+  /** Frente D: quem continua na vaga depois da recarga (ou `null`). */
+  occupancy?: LiveOccupancy | null
 }
 
 export interface Amenity {
@@ -201,6 +214,11 @@ export interface Station {
   active: boolean
   amenities: Amenity[]
   connectors: Connector[]
+  /** Frente A: exigir pagamento antes do START e QR de pagamento no painel físico. */
+  prepay_required?: boolean
+  kiosk_payments?: boolean
+  /** Frente D: termos vigentes da taxa de permanência. */
+  overstay?: StationOverstay | null
 }
 
 export interface Coupon {

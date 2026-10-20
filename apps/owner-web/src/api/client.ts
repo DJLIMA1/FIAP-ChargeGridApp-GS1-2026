@@ -153,7 +153,8 @@ export function createApiClient(config: ApiClientConfig) {
     config.onAuthLost?.()
   }
 
-  async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+  /** Resposta autenticada (com o refresh único em 401); erros HTTP viram `ApiError`. */
+  async function send(method: string, path: string, options: RequestOptions = {}): Promise<Response> {
     const authed = options.auth !== false
     if (authed) {
       const expiry = store.getExpiry()
@@ -174,6 +175,11 @@ export function createApiClient(config: ApiClientConfig) {
       }
     }
     if (!response.ok) throw await readError(response)
+    return response
+  }
+
+  async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+    const response = await send(method, path, options)
     if (response.status === 204) return undefined as T
     const text = await response.text()
     return (text ? JSON.parse(text) : undefined) as T
@@ -187,6 +193,12 @@ export function createApiClient(config: ApiClientConfig) {
     post: <T>(path: string, body?: unknown, options: Omit<RequestOptions, 'body'> = {}) =>
       request<T>('POST', path, { ...options, body }),
     patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, { body }),
+    put: <T>(path: string, body: unknown) => request<T>('PUT', path, { body }),
+    /** Arquivo (CSV/PDF) com a mesma autenticação; o nome é montado por quem chama. */
+    async blob(path: string, query?: Query, timeoutMs = 60_000): Promise<Blob> {
+      const response = await send('GET', path, { query, timeoutMs })
+      return response.blob()
+    },
     async login(email: string, password: string): Promise<TokenResponse> {
       const tokens = await request<TokenResponse>('POST', '/auth/login', { body: { email, password }, auth: false })
       if (!tokens?.access_token) throw new ApiError(401, 'auth_rejected', 'Credenciais ou código inválidos')

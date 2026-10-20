@@ -16,6 +16,7 @@ import type {
   Timeseries,
 } from './types'
 import type { PeriodQuery } from '../lib/period'
+import type { MarginReport, PowerSiteInput, PricingRules, StationEconomics, StationPower, StationPricing } from './operations'
 
 export interface SessionFilters extends PeriodQuery {
   status?: string
@@ -24,7 +25,7 @@ export interface SessionFilters extends PeriodQuery {
   offset?: number
 }
 
-export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities'>> & {
+export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities' | 'prepay_required' | 'kiosk_payments'>> & {
   latitude?: number
   longitude?: number
 }
@@ -37,6 +38,16 @@ export type ConnectorPatch = Partial<{
   max_duration_minutes: number
   active: boolean
 }>
+
+export interface MarginFilters extends PeriodQuery {
+  limit?: number
+  offset?: number
+}
+
+/** Filtros do relatório de resultado para a exportação (sem paginação). */
+export function marginExportQuery(q: PeriodQuery): PeriodQuery {
+  return { from: q.from, to: q.to, station_id: q.station_id || undefined }
+}
 
 export function endpoints(api: ApiClient) {
   return {
@@ -58,6 +69,21 @@ export function endpoints(api: ApiClient) {
     patchStation: (id: string, body: StationPatch) => api.patch<Station>(`/stations/${encodeURIComponent(id)}`, body),
     patchConnector: (id: string, body: ConnectorPatch) =>
       api.patch<Connector>(`/connectors/${encodeURIComponent(id)}`, body),
+    // C · Resultado: custo do kWh do posto (comissão só leitura) e margem do período.
+    economics: (id: string, signal?: AbortSignal) =>
+      api.get<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, undefined, signal),
+    putEconomics: (id: string, energyCostPerKwh: string | null) =>
+      api.put<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, { energy_cost_per_kwh: energyCostPerKwh }),
+    margin: (q: MarginFilters, signal?: AbortSignal) => api.get<MarginReport>('/owner/margin', { ...q }, signal),
+    exportMargin: (fmt: 'csv' | 'pdf', q: PeriodQuery) => api.blob(`/owner/export/margin.${fmt}`, { ...marginExportQuery(q) }),
+    // B · Energia do estabelecimento (rebalanceamento ao vivo).
+    power: (id: string, signal?: AbortSignal) => api.get<StationPower>(`/stations/${encodeURIComponent(id)}/power`, undefined, signal),
+    putPowerSite: (id: string, body: PowerSiteInput) => api.put<StationPower>(`/stations/${encodeURIComponent(id)}/power-site`, body),
+    putBuildingLoad: (id: string, kw: string) =>
+      api.put<StationPower>(`/stations/${encodeURIComponent(id)}/building-load`, { building_load_kw: kw }),
+    // D · Tarifa do posto (a taxa de permanência fica em rules.rotation; PUT com as regras inteiras).
+    pricing: (id: string, signal?: AbortSignal) => api.get<StationPricing>(`/stations/${encodeURIComponent(id)}/pricing`, undefined, signal),
+    putPricing: (id: string, rules: PricingRules) => api.put<StationPricing>(`/stations/${encodeURIComponent(id)}/pricing`, rules),
     coupons: (signal?: AbortSignal) => api.get<Page<Coupon>>('/coupons', { mine: true, limit: 100 }, signal),
     createCoupon: (body: CouponInput) => api.post<Coupon>('/coupons', body),
     patchCoupon: (id: string, body: Partial<Pick<Coupon, 'description' | 'discount_percent' | 'valid_until' | 'active'>>) =>
