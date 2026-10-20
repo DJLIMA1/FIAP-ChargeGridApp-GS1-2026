@@ -13,6 +13,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
+from chargegrid_core import overstay as overstay_rules
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
@@ -49,6 +50,9 @@ _SESSION_ACTIVE = {'starting', 'charging', 'stopping'}
 _TERMINAL = {'completed', 'failed', 'interrupted'}
 _REPORT_TZ = timezone(timedelta(hours=-3))
 _PUBLIC_POINT = ('id', 'public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes')
+# Potência ao vivo das colunas da sessão na API (nulas sem rebalanceamento; a demo não rebalanceia).
+_SESSION_POWER_FIELDS = ('requested_power_kw', 'target_power_kw', 'applied_power_kw', 'power_state', 'power_reason',
+                         'power_reason_short', 'power_reason_code', 'power_decision_id')
 
 
 _DEMO_ADDRESSES = (
@@ -543,7 +547,23 @@ class DemoApi(OwnerApiMixin):
                 'requested_power_kw': _decimal(power['requested_kw'], '0.001'), 'power_shared': power['shared'],
                 'demand': {key: status[key] for key in ('multiplier', 'level', 'level_label', 'increase_percent',
                                                         'reason', 'reason_label')},
+                # Como a API (``app.overstay.public_terms``): condições mostradas antes de aceitar a recarga.
+                'overstay': overstay_rules.public(self._overstay_terms(station)),
                 'connectors': connectors}
+
+    def _overstay_terms(self, station):
+        """Termos vigentes da taxa de permanência do posto (``None`` desligada), como ``station_terms``."""
+        return overstay_rules.terms_from_rotation(pricing.stored_rules(self._pricing.get(station['id']))['rotation'])
+
+    @staticmethod
+    def _overstay_view(session):
+        """Bloco ``overstay`` da sessão (``app.overstay.view``). A demo não simula o cabo conectado depois da
+        recarga: a permanência nunca abre (``status: none``), mas os termos aceitos aparecem."""
+        terms = overstay_rules.clean_terms(session.get('overstay_terms'))
+        return {'status': 'none', 'fee_applies': terms is not None, 'started_at': None, 'ended_at': None,
+                'end_reason': None, 'billable_seconds': 0, 'billable_minutes': 0, 'grace_remaining_seconds': 0,
+                'fee_due': '0.00', 'max_fee': terms['max_amount'] if terms else None, 'as_of': None,
+                'terms': overstay_rules.public(terms) if terms else None}
 
     def _demand(self, station):
         """Mesmo cálculo da API (chargegrid_core.pricing) sobre o estado simulado do posto."""
@@ -596,6 +616,12 @@ class DemoApi(OwnerApiMixin):
         if kind == 'session':
             device = self._device_for(point['id'])
             result['online'] = bool(device and device['online'])
+            for key in _SESSION_POWER_FIELDS:
+                result.setdefault(key, None)
+            # Como a API: colunas internas da permanência viram o bloco calculado ``overstay``.
+            result.pop('overstay_terms', None)
+            result['overstay'] = self._overstay_view(record)
+            result['settlement_ready'] = record['status'] in _TERMINAL
             # Pré-pagamento Stripe (teste) simulado desta recarga, ou None.
             from . import demo_payments
             result['payment'] = demo_payments.for_session(self, record['id'])
@@ -738,6 +764,8 @@ class DemoApi(OwnerApiMixin):
             return self._operation_row(reservation, 'reservation')
         if (method, path) == ('POST', 'charging-sessions'):
             return self._start(body)
+        if (method, path) == ('GET', 'overstays/current'):
+            return None  # como a API sem permanência aberta (a demo não mantém o cabo conectado)
         if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'receipt' and method == 'GET':
             return demo_receipt.receipt(self, parts[1])
         if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'events' and method == 'GET':
@@ -1029,6 +1057,7 @@ class DemoApi(OwnerApiMixin):
         payment = demo_payments.claim_for_start(self, point, body['payment_id']) if body.get('payment_id') else None
         if payment and payment.get('max_power_kw') is not None:
             driver_kw = Decimal(payment['max_power_kw'])  # potência do orçamento pago, como a API
+        overstay_terms = self._terms_for_start(point, body, payment)
         duration = _number(body.get('max_duration_minutes', 30), 'duração', 1, point['max_duration_minutes'], integer=True)
         maximum = None
         if body.get('max_cost') is not None:
@@ -1056,7 +1085,9 @@ class DemoApi(OwnerApiMixin):
                    'base_price_per_kwh': base, 'demand_multiplier': multiplier,
                    'discount_percent': discount, 'energy_wh': '0.000', 'soc_percent': start_soc,
                    'start_soc_percent': start_soc, 'battery_kwh': battery, 'soc_source': soc_source, 'source': 'simulated',
-                   'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None}
+                   'last_measurement_at': None, 'cost_estimate': '0.0000', 'end_reason': None,
+                   'requested_power_kw': _decimal(driver_kw, '0.001') if driver_kw is not None else None,
+                   'overstay_terms': overstay_terms}
         # Same as the API: effective point power (rating, port limit, station share) ∩ driver limit.
         effective = self._power(self._stations[point['station_id']])['connectors'][point['id']]['effective_kw']
         applied = power_rules.applied_limit(effective, driver_kw).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
@@ -1071,6 +1102,20 @@ class DemoApi(OwnerApiMixin):
         if reservation:
             reservation['status'] = 'consumed'
         return self._operation_row(session, 'session')
+
+    def _terms_for_start(self, point, body, payment):
+        """Termos da permanência aceitos nesta recarga (``app.overstay.terms_for_start``): os travados no
+        orçamento pago; sem pagamento, os vigentes quando o app envia a versão mostrada (outra versão -> 409)."""
+        if payment is not None:
+            return overstay_rules.clean_terms((payment.get('quote') or {}).get('overstay'))
+        current = self._overstay_terms(self._stations[point['station_id']])
+        version = body.get('overstay_terms_version')
+        if current is None or version is None:
+            return None
+        if version != current['version']:
+            _fail('As condições da taxa de permanência mudaram. Revise e confirme de novo.',
+                  'overstay_terms_changed', 409)
+        return current
 
     async def download(self, path, params=None):
         """Exportações do dashboard e do histórico geradas localmente (CSV/JSON fictícios; PDF só na conta real)."""

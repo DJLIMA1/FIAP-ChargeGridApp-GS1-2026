@@ -335,10 +335,16 @@ class DemoOwner:
                 'session': {
                     'id': session['id'], 'status': session['status'], 'started_at': session['started_at'],
                     'energy_wh': session['energy_wh'], 'cost_estimate': session['cost_estimate'],
-                    'soc_percent': session['soc_percent'],
+                    'soc_percent': session['soc_percent'], 'soc_source': session.get('soc_source'),
                     'power_w': str(int(Decimal(point['power_kw']) * 1000)) if session['status'] == 'charging' else None,
+                    # Potência ao vivo (aplicada, estado e motivo): nula sem rebalanceamento, como na API.
+                    'applied_power_kw': session.get('applied_power_kw'), 'power_state': session.get('power_state'),
+                    'power_reason': session.get('power_reason'),
                     'source': session['source'], 'last_measurement_at': session['last_measurement_at'],
                 } if session else None,
+                # Permanência aberta no ponto (``app.overstay.occupancy_by_connector``): a demo não mantém o
+                # cabo conectado depois da recarga, então nunca há ocupação.
+                'occupancy': None,
             })
         return {'items': items, 'generated_at': now.isoformat()}
 

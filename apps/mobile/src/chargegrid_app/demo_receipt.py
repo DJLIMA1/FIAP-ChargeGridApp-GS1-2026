@@ -7,8 +7,9 @@ o app mostra o recibo demo com o mesmo contrato e as mesmas regras do recibo rea
   por ``demo.py``), com o motivo da demanda e o cupom, como ``charging_sessions.price_terms``.
 * Energia e potência: do simulador local (curva constante na potência simulada do ponto, com
   rampa no primeiro minuto). Sempre rotulada SIMULADO.
-* Pagamento: só quando há um pré-pagamento simulado ligado à sessão (``services.prepaid`` grava
-  em ``api.chargegrid_prepaid``); ambiente ``mock``: nenhum dinheiro real.
+* Pagamento: o pagamento Stripe (teste) simulado da sessão (``demo_payments``, no formato da API) ou o
+  pré-pagamento simulado do saldo (``services.prepaid`` grava em ``api.chargegrid_prepaid``); ambiente
+  ``mock``: nenhum dinheiro real.
 """
 
 from datetime import timedelta
@@ -106,7 +107,41 @@ def _samples(api, session):
     return samples
 
 
+def _stripe_payment(api, session):
+    """Pagamento Stripe (teste) simulado da sessão no formato do recibo da API
+    (``payments.receipt.receipt_payment``); só depois de confirmado, como lá. Ambiente ``mock``."""
+    payment = next((item for item in (getattr(api, '_payments', None) or {}).values()
+                    if item.get('session_id') == session['id']), None)
+    if payment is None or not payment.get('authorized_at'):
+        return None
+    settlement = payment.get('settlement') or {}
+    settled = settlement.get('status') == 'done'
+
+    def money(key):
+        return str(economics.cents(settlement.get(key) or 0)) if settled else None
+    captured = economics.cents(settlement.get('captured') or 0) if settled else None
+    refunded = economics.cents(settlement.get('refunded') or 0) if settled else None
+    return {
+        'environment': 'mock', 'provider': payment.get('provider'), 'provider_reference': payment.get('provider_ref'),
+        'method': payment.get('method'), 'status': payment['status'],
+        'settlement_status': settlement.get('status') or 'none',
+        'authorized_amount': str(economics.cents(payment['amount'])),
+        'captured_amount': money('captured'), 'refunded_amount': money('refunded'),
+        'net_amount': str(captured - refunded) if settled else None, 'charged_amount': money('charged'),
+        'energy_amount': str(economics.cents(settlement.get('energy_amount') or 0)),
+        'overstay_amount': str(economics.cents(settlement.get('overstay_amount') or 0)),
+        'waived_amount': money('waived'), 'uncollected_amount': money('uncollected'),
+        'below_minimum': bool(settled and settlement.get('below_minimum')), 'provider_fee': None,
+        'refund_status': (('refunded' if refunded else 'released' if captured < economics.cents(payment['amount'])
+                           else 'none') if settled else 'none'),
+        'confirmed_at': payment.get('authorized_at'), 'settled_at': settlement.get('settled_at') if settled else None,
+    }
+
+
 def _payment(api, session):
+    stripe = _stripe_payment(api, session)
+    if stripe is not None:
+        return stripe
     rows = getattr(api, 'chargegrid_prepaid', None)
     row = next((item for item in rows if isinstance(item, dict) and item.get('session_id') == session['id']), None) \
         if isinstance(rows, list) else None

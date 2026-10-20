@@ -203,6 +203,8 @@ def overstay_lines(overstay, remaining=None):
     if state == 'capped':
         return (f'Taxa de permanência: {fee}','Teto atingido: não cobramos mais nada. Desconecte o carro.')
     if state == 'closed':
+        if overstay.get('fee_applies') is False:
+            return None  # sem termos aceitos (início pelo #F/app antigo): não houve tolerância nem taxa
         if _money_value(overstay.get('fee_due')) > 0:
             return (f'Taxa de permanência: {fee}','Carro desconectado. Valor final da permanência.')
         return ('Desconectado dentro da tolerância','Sem taxa de permanência.')
@@ -622,6 +624,10 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
                 await app.go('charging')
+            # Atalho para o recibo explicável (subpágina do histórico).
+            extra.insert(extra.index(offline),
+                         ft.Container(button('Ver recibo',app.link('history',receipt=session['id']),secondary=True),
+                                      data='receipt-shortcut'))
             if getattr(app,'charging_draft',None):
                 extra.insert(0,button('Retomar preparação da recarga',app.link('charging'),secondary=True))
             action = btn('Iniciar outra recarga',app.action(again))

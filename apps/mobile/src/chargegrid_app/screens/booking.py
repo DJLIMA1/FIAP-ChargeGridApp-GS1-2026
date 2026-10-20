@@ -618,6 +618,10 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             note = 'Pré-autorização na Stripe (teste): cobramos só a energia confirmada pelo equipamento.'
             if reserving:
                 note += ' Sem taxa de reserva no pagamento de teste.'
+            if overstay and overstay.get('max_amount') is not None:
+                # A API reserva também o teto da permanência (``overstay_reserve``) no valor autorizado.
+                note += (f" A pré-autorização inclui até {rules.money(overstay['max_amount'])} da taxa de "
+                         'permanência (teto), cobrada só se o carro ficar conectado após a tolerância.')
             total_lines.append(design.txt(note, 11, 'regular', theme.GRAY_TEXT))
         total_block = ft.Container(ft.Column(total_lines, spacing=0),
                                    margin=ft.Margin(left=0, top=25, right=0, bottom=0))

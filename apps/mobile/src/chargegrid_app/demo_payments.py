@@ -10,6 +10,7 @@ cartão de teste na página da Stripe (2 s de relógio da demo). Nenhum dado de 
 from decimal import ROUND_DOWN, Decimal
 
 from chargegrid_core import billing, pricing
+from chargegrid_core import overstay as overstay_rules
 from chargegrid_core import power as power_rules
 
 CHECKOUT_MINUTES = 31
@@ -68,7 +69,18 @@ def _quote(api, point, body):
         _fail(str(exc), 'invalid_quote', 422)
     return {'amount_cents': cap['energy_cap_cents'], 'price': price, 'base': base,
             'multiplier': status['multiplier'], 'power': power, 'minutes': cap['max_duration_minutes'],
-            'energy_kwh': cap['energy_kwh'], 'driver': driver}
+            'energy_kwh': cap['energy_kwh'], 'driver': driver, 'overstay': overstay_terms(api, station)}
+
+
+def overstay_terms(api, station):
+    """Termos da permanência no orçamento (``app.overstay.payment_terms``): o teto da taxa é reservado
+    junto com a energia (``reserve_cents``) e os termos ficam travados no pagamento."""
+    terms = api._overstay_terms(station)
+    if not terms:
+        return {'reserve_cents': 0, 'fee_per_minute': None, 'tolerance_minutes': None, 'max_billable_minutes': None}
+    return {'reserve_cents': overstay_rules.cents(terms['max_amount']),
+            'fee_per_minute': str(overstay_rules.fee_per_minute(terms)), 'tolerance_minutes': terms['grace_minutes'],
+            'max_billable_minutes': overstay_rules.max_billable_minutes(terms), **terms}
 
 
 def create(api, body):
@@ -85,11 +97,13 @@ def create(api, body):
             payment['status'] = 'canceled'
     quote = _quote(api, point, body)
     pid = api._id('payment')
-    amount = quote['amount_cents']
+    energy = quote['amount_cents']
+    reserve = int(quote['overstay']['reserve_cents'] or 0)
+    amount = energy + reserve  # como a API: teto da energia + reserva do teto da permanência
     payment = {
         'id': pid, 'status': 'awaiting_payment', 'environment': 'test', 'provider': 'stripe', 'origin': 'app',
         'method': None, 'currency': billing.CURRENCY, 'amount': str(billing.money(amount)),
-        'energy_cap': str(billing.money(amount)), 'fixed_fee': '0.00', 'overstay_reserve': '0.00',
+        'energy_cap': str(billing.money(energy)), 'fixed_fee': '0.00', 'overstay_reserve': str(billing.money(reserve)),
         'price_per_kwh': str(quote['price']), 'base_price_per_kwh': str(quote['base']),
         'demand_multiplier': str(quote['multiplier']), 'discount_percent': 0, 'coupon_code': None,
         'max_duration_minutes': quote['minutes'],
@@ -99,7 +113,8 @@ def create(api, body):
         'expires_at': api._iso(api._elapsed + CHECKOUT_MINUTES * 60), 'start_deadline': None,
         'authorized_at': None, 'created_at': api._iso(), 'provider_ref': None, 'settlement': None,
         'quote': {'mode': body.get('mode'), 'minutes': body.get('minutes'), 'max_cost': body.get('max_cost'),
-                  'energy_kwh': str(quote['energy_kwh']), 'power_kw': str(quote['power'])},
+                  'energy_kwh': str(quote['energy_kwh']), 'power_kw': str(quote['power']),
+                  'reservation_terms': False, 'overstay': quote['overstay']},
         'confirm_at': None,
     }
     _store(api)[pid] = payment
@@ -110,6 +125,13 @@ def _owned(api, payment_id):
     payment = _store(api).get(payment_id)
     if payment is None:
         _fail('Pagamento não encontrado', 'not_found', 404)
+    return payment
+
+
+def _claimable(api, payment_id):
+    payment = _store(api).get(payment_id)
+    if payment is None:
+        _fail('Pagamento não encontrado', 'payment_not_found', 404)  # código do START na API
     return payment
 
 
@@ -157,7 +179,7 @@ def _settle(payment, energy_cents):
 
 def claim_for_start(api, point, payment_id):
     """START com ``payment_id``: as mesmas recusas da API (``claim_for_start``)."""
-    payment = _owned(api, payment_id)
+    payment = _claimable(api, payment_id)
     _advance(api, payment)
     if payment['connector_id'] != point['id']:
         _fail('Este pagamento é de outro ponto', 'payment_mismatch', 409)

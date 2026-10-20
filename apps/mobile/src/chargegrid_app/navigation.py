@@ -106,6 +106,9 @@ def parent_route(route, data, mode='consumer'):
         if data.get('station_id') and not data.get('manage'):
             return 'stations', {'station_id': data['station_id']}
         return ('operator', {}) if data.get('manage') else ('profile', {})
+    if route == 'history' and data.get('receipt'):
+        # Recibo é subpágina do histórico: o voltar nativo retorna à lista, não sai do app.
+        return 'history', {key: value for key, value in data.items() if key != 'receipt'}
     if route == 'history' and data.get('station_id'):
         return 'operator', {'station_id': data['station_id']}
     if route == 'charging' and data.get('pending_start'):

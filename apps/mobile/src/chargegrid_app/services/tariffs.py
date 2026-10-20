@@ -83,9 +83,15 @@ def rotation_intervals(rule, minutes):
 
 
 def rotation_fee(rules, minutes):
-    """Valor adicional de rotatividade (R$) para ``minutes`` de ocupação."""
+    """Valor adicional de rotatividade (R$) para ``minutes`` de ocupação, limitado ao teto ``max_amount``
+    (como ``chargegrid_core.overstay.fee_due`` da API: ``min(teto, valor × intervalos)``)."""
     rule = (rules or {}).get('rotation')
-    return Decimal(str(rule['amount'])) * rotation_intervals(rule, minutes) if rule else Decimal('0')
+    if not rule:
+        return Decimal('0')
+    fee = Decimal(str(rule['amount'])) * rotation_intervals(rule, minutes)
+    if rule.get('max_amount') is not None:
+        fee = min(fee, Decimal(str(rule['max_amount'])))
+    return fee
 
 
 def rotation_summary(rule):

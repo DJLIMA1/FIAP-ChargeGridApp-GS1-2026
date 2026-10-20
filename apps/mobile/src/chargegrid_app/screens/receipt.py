@@ -30,8 +30,11 @@ PDF_DEMO_NOTE = 'PDF disponível só na conta real. Na conta demo o recibo usa d
 PAYMENT_STATUS = {
     'awaiting_payment': 'Aguardando pagamento', 'authorized': 'Autorizado', 'paid': 'Pago', 'in_use': 'Em uso',
     'captured': 'Capturado', 'settled': 'Acertado', 'refunded': 'Devolvido', 'canceled': 'Cancelado',
-    'cancelled': 'Cancelado', 'expired': 'Expirado', 'declined': 'Recusado',
+    'cancelled': 'Cancelado', 'expired': 'Expirado', 'declined': 'Recusado', 'completed': 'Concluído',
 }
+# Fase da permanência (``phase``: o recibo usa ``status`` para dizer que a seção está disponível).
+OVERSTAY_PHASES = {'grace': 'Em tolerância (carro conectado)', 'billing': 'Em cobrança (carro conectado)',
+                   'capped': 'Teto atingido (carro conectado)', 'closed': 'Encerrada', 'no_fee': 'Sem taxa aceita'}
 REFUND_STATUS = {'refunded': 'Valor devolvido', 'released': 'Sobra da pré-autorização liberada',
                  'pending': 'Acerto pendente', 'none': 'Sem devolução'}
 PAYMENT_METHODS = {'card': 'Cartão', 'pix': 'Pix', 'wallet': 'Saldo', 'balance': 'Saldo'}
@@ -248,7 +251,10 @@ def power_block(power):
         rows.append(ft.Row([
             txt(_hour(change.get('at')), 11.5, 'semibold', width=42),
             ft.Column([txt(change.get('reason_label') or 'Ajuste de potência', 11.5, 'regular'),
-                       txt(status, 10.5, 'regular', color)], spacing=2, expand=True),
+                       txt(status, 10.5, 'regular', color),
+                       *([txt(change['failure_label'], 10.5, 'regular', theme.GRAY_TEXT)]
+                         if change.get('status') == 'failed' and change.get('failure_label') else [])],
+                      spacing=2, expand=True),
             txt(value, 12, 'bold'),
         ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START))
     return _section('Potência', rows)
@@ -258,9 +264,18 @@ SECTION_STATES = ('available', 'pending', 'not_applicable', 'unavailable')
 
 
 def has_payment(payment):
-    """O recibo espalha os fatos do pagamento sobre ``status: available`` (o ``status`` do pagamento vence)."""
+    """Seção ``payment`` do recibo: ``status: available`` + fatos do pagamento (estado em ``payment_status``)."""
     return payment.get('status') not in ('not_applicable', 'unavailable', 'pending', None) or \
         payment.get('authorized_amount') is not None
+
+
+def payment_state(payment):
+    """Estado do pagamento: ``payment_status`` (a API grava ``status: available`` por cima do original)."""
+    state = payment.get('payment_status')
+    if state:
+        return state
+    state = payment.get('status')
+    return state if state not in SECTION_STATES else None
 
 
 def has_overstay(overstay):
@@ -278,10 +293,12 @@ def payment_block(payment):
     rows = [_row('Ambiente', labels.get(environment, environment or '—'))]
     if payment.get('method'):
         rows.append(_row('Forma', PAYMENT_METHODS.get(payment['method'], payment['method'])))
-    state = payment.get('status')
-    if state and state not in SECTION_STATES:
+    state = payment_state(payment)
+    if state:
         rows.append(_row('Situação', PAYMENT_STATUS.get(state, state)))
     rows.append(_row('Autorizado', _money(payment.get('authorized_amount'))))
+    if payment.get('charged_amount') is not None:
+        rows.append(_row('Cobrado', _money(payment['charged_amount'])))
     if payment.get('captured_amount') is not None:
         rows.append(_row('Capturado', _money(payment['captured_amount'])))
     if payment.get('refunded_amount') is not None:
@@ -307,6 +324,9 @@ def overstay_block(overstay):
         return _section('Permanência', [txt('Sem taxa de permanência nesta recarga.', 11.5, 'regular',
                                             theme.GRAY_TEXT)])
     rows = []
+    phase = overstay.get('phase')
+    if phase in OVERSTAY_PHASES:
+        rows.append(_row('Situação', OVERSTAY_PHASES[phase]))
     if overstay.get('grace_minutes') is not None:
         rows.append(_row('Tolerância após a recarga', f"{overstay['grace_minutes']} min"))
     if overstay.get('started_at'):
@@ -315,9 +335,19 @@ def overstay_block(overstay):
         rows.append(_row('Minutos cobrados', f"{overstay['billable_minutes']} min"))
     if overstay.get('rate') is not None:
         rows.append(_row('Tarifa', price_text(overstay['rate']) + '/min'))
+    if overstay.get('max_amount') is not None:
+        rows.append(_row('Teto por recarga', _money(overstay['max_amount'])))
     waived = bool(overstay.get('waived'))
-    rows.append(_row('Taxa de permanência', 'Dispensada' if waived else _money(overstay.get('amount')),
-                     strong=True))
+    if waived:
+        value = 'Dispensada'
+    elif overstay.get('amount') is None and phase is not None:
+        value = 'Sem taxa'  # sem termos aceitos antes do início: a API não cobra (``amount`` nulo)
+    else:
+        value = _money(overstay.get('amount'))
+    rows.append(_row('Taxa de permanência', value, strong=True))
+    if overstay.get('final') is False:
+        rows.append(_note('Valor parcial: o carro ainda está conectado e a taxa pode subir até o teto.',
+                          icon=ft.Icons.SCHEDULE, color=theme.WARNING))
     return _section('Permanência', rows)
 
 
