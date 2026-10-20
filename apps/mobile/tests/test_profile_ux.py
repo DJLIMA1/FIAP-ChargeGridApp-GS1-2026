@@ -143,7 +143,7 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         await ChargeGridApp.native_back(app,event)
         event.control.confirm_pop.assert_awaited_once_with(False)
         app.go.assert_awaited_once_with('charging',**{**data,'step':2})
-        self.assertEqual(parent_route('charging',{**data,'step':1}),('reservations',{}))
+        self.assertEqual(parent_route('charging',{**data,'step':1}),('reservations',{'detail':True}))
         self.assertFalse(form_route('charging',data))
 
     async def test_back_from_unconfirmed_start_leaves_wizard_without_editing_request(self):

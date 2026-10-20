@@ -617,7 +617,7 @@ async def build(app, run=None, soc=None, ajustes=False, **_):
             key = state.setdefault('reserve_keys', {}).setdefault(connector_id, app.api.new_key())
             await app.api.request('POST', 'reservations', {'connector_id': connector_id}, key=key)
             state['reserve_keys'].pop(connector_id, None)
-            await app.go('reservations')
+            await app.go('reservations', detail=True)
         return app.action(reserve_point)
 
     def result_controls():

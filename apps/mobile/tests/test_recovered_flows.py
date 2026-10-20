@@ -101,7 +101,7 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([label for _, label, _ in entries], ['Início', 'Estações', 'Histórico', 'Chat', 'Conta'])
         self.assertIn(('history', 'Histórico', {'manage': True}), entries)
         self.assertEqual(entries[0][0], 'home')
-        self.assertEqual(active_tab('charging', {}, 'consumer'), 'reservations')
+        self.assertEqual(active_tab('charging', {}, 'consumer'), 'stations')
         self.assertEqual(active_tab('coupons', {}, 'vendor'), 'profile')
         self.assertIsNone(parent_route('operator', {}, 'vendor'))
         self.assertEqual(parent_route('profile', {'mode': 'password'}, 'vendor'), ('profile', {}))

@@ -32,9 +32,17 @@ SCREENS = {module.__name__.split('.')[-1]: module.build for module in (
     auth, home, stations, reservations, charging, history, profile, operator, coupons, chat, driver,
     notifications, wallet, payout, booking, tariffs, station_admin, design_gallery)}
 SCREENS['home'] = home_entry
-TABS = [('home','Início'),('reservations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
+TABS = [('home','Início'),('stations','Recarga'),('history','Histórico'),('chat','Chat'),('profile','Conta')]
 # Routes that follow the wizard/back contract documented in ui/design.py.
 FLOW_ROUTES = ('booking', 'wallet', 'payout', 'tariffs', 'station_admin', 'notifications')
+
+
+def resolve_route(route, data):
+    """Rotas antigas: a lista "Minhas recargas" foi removida, então ``reservations`` sem ``detail`` (deep links,
+    notificações, atalhos antigos) abre a busca de estações, que é a tela da aba Recarga."""
+    if route == 'reservations' and not (data or {}).get('detail'):
+        return 'stations', {key: value for key, value in (data or {}).items() if key in ('demo_seed', 'nav')}
+    return route, data
 
 
 def nav_visible(route, data):
@@ -65,7 +73,7 @@ def active_tab(route, data, mode):
     if route == 'driver':
         return 'home'
     if route in ('stations', 'reservations', 'charging', 'booking'):
-        return 'reservations' if mode != 'vendor' else None
+        return 'stations' if mode != 'vendor' else None
     if route == 'wallet':
         return 'profile'
     if route in ('payout', 'tariffs', 'station_admin'):
@@ -117,7 +125,7 @@ def parent_route(route, data, mode='consumer'):
     if route == 'charging' and not data.get('session_id') and int(data.get('step') or 1) > 1:
         return 'charging', {**data, 'step': int(data['step']) - 1}
     if route == 'charging' and data.get('reservation_id'):
-        return 'reservations', {}
+        return 'reservations', {'detail': True}
     if route == 'charging' and (data.get('point_context') or {}).get('station_id'):
         return 'stations', {**(data.get('station_search') or {}),'station_id': data['point_context']['station_id']}
     if route == 'stations' and data.get('station_id'):

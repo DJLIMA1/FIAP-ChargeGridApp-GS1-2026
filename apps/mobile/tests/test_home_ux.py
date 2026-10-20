@@ -140,7 +140,7 @@ class HomeUxTests(unittest.IsolatedAsyncioTestCase):
                 screen = await home.build(app)
                 self.assertNotIn('Cheguei: informar código', text_values(screen, visible_only=True))
                 await click(screen, label)(None)
-                app.go.assert_awaited_once_with('reservations')
+                app.go.assert_awaited_once_with('reservations', detail=True)
 
     async def test_poll_updates_in_place_and_unchanged_snapshot_does_not_redraw(self):
         app = HomeApp()

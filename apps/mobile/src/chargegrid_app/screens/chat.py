@@ -130,7 +130,7 @@ def _local_answer(question, demo):
     heading, content = guidance.answer(question)
     actions = {
         'Iniciar uma recarga': [_action('Encontrar um ponto', 'stations')],
-        'Reservar para chegar depois': [_action('Escolher ponto para reservar', 'stations'), _action('Minha reserva', 'reservations')],
+        'Reservar para chegar depois': [_action('Escolher ponto para reservar', 'stations'), _action('Minha reserva', 'reservations', detail=True)],
         'Tempo e valor da recarga': [_action('Definir uma recarga', 'charging')],
         'Parar ou resolver uma falha': [_action('Abrir minha recarga', 'charging')],
         'Criar posto e vincular ponto': [_action('Abrir meus postos', 'operator')],
@@ -214,7 +214,7 @@ async def answer(app, question):
         elif reservation.get('status') == 'pending_device':
             lines.append('O prazo de chegada começa depois da confirmação do equipamento.')
         lines.append('Reserva simulada nesta conta.' if demo else 'No local, use o código #F do visor para iniciar.')
-        return {'content': '\n'.join(lines), 'actions': [_action('Abrir minha reserva', 'reservations')]}
+        return {'content': '\n'.join(lines), 'actions': [_action('Abrir minha reserva', 'reservations', detail=True)]}
     if any(word in normalized for word in ('minha recarga', 'recarga atual', 'em andamento', 'esta carregando', 'quanto carregou', 'bateria')) and not instructional:
         session = await app.api.request('GET', 'charging-sessions/current')
         if session is not None and (not isinstance(session, dict) or not session.get('id')):
@@ -243,6 +243,8 @@ def _ai_actions(suggested):
         data = {}
         if item.get('station_id') and route == 'stations':
             data['station_id'] = str(item['station_id'])
+        if route == 'reservations':
+            data['detail'] = True
         if item.get('session_id') and route == 'charging':
             data['session_id'] = str(item['session_id'])
         # Reservar abre o posto: a reserva segue o fluxo normal, com confirmação.

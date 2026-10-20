@@ -239,7 +239,7 @@ async def build(app, **_):
                     'charging', reservation_id=reservation['id'], point_context=reservation,
                     max_duration=min(30, connector.get('max_duration_minutes') or 30))
             label = 'Acompanhar liberação' if reservation['status'] == 'cancelling' else 'Acompanhar reserva'
-            return state_text, label, app.link('reservations')
+            return state_text, label, app.link('reservations', detail=True)
         return '', 'Recarregar agora', app.link('stations')
 
     state_text, action_label, state_action = describe_state(reservation, session)

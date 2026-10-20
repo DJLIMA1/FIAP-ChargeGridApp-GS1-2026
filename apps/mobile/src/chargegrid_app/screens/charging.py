@@ -640,7 +640,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             app,screen_title(session),
             when=when_text(session.get('started_at') or session.get('created_at')),
             address=session.get('station_address'),percent=percent,cost=cost,power=power,remaining=remaining,
-            action=action,on_back=app.link('reservations'),extra=extra,live=live,maps=False)
+            action=action,on_back=app.link('stations'),extra=extra,live=live,maps=False)
 
     reservation = await app.api.request('GET','reservations/current')
     if reservation and reservation.get('status') in ('cancelled','expired','consumed'):

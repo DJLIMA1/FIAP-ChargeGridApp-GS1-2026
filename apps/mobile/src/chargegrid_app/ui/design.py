@@ -483,7 +483,6 @@ def logo():
 _NAV_ICONS = {
     'home': ('nav_home', 'Início'),
     'stations': ('nav_zap', 'Recarga'),
-    'reservations': ('nav_zap', 'Recarga'),
     'operator': ('nav_station', 'Estações'),
     'history': ('nav_clock', 'Histórico'),
     'chat': ('nav_chat', 'Chat'),
