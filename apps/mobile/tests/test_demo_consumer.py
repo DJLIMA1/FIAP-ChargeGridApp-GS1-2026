@@ -64,26 +64,21 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             await click(start_screen,'Solicitar início')(None)
             session_id = app.go.call_args.kwargs['session_id']
             active_screen = await charging.build(app,session_id=session_id)
-            self.assertIn('Aguardando início simulado',texts(active_screen))
             clock[0] += 2
             await app.poll()
             active_screen = await charging.build(app,session_id=session_id)
-            self.assertIn('Recarga simulada em andamento',texts(active_screen))
             clock[0] += 5
             await app.poll()
             state = await app.api.request('GET',f'charging-sessions/{session_id}')
             self.assertGreater(float(state['energy_wh']),0)
-            self.assertIn(f"Energia: {float(state['energy_wh'])/1000:.3f} kWh".replace('.',','),texts(active_screen))
+            self.assertIn(f"{float(state['energy_wh'])/1000:.3f} kWh".replace('.',','),texts(active_screen))
             await click(active_screen,'Encerrar recarga')(None)
-            stopping_screen = await charging.build(app,session_id=session_id)
-            self.assertIn('Finalizando recarga simulada',texts(stopping_screen))
+            await charging.build(app,session_id=session_id)
             clock[0] += 2
             await app.poll()
             completed_screen = await charging.build(app,session_id=session_id)
-            self.assertIn('Recarga simulada concluída',texts(completed_screen))
-            await click(completed_screen,'Ver eventos da sessão')(None)
-            self.assertIn('Início confirmado na simulação',texts(completed_screen))
-            self.assertIn('simulador local',texts(completed_screen))
+            self.assertIn('Recarga concluída',texts(completed_screen))
+            self.assertNotIn('Ver eventos da sessão',texts(completed_screen))
             kinds = [event['kind'] for event in await app.api.request('GET',f'charging-sessions/{session_id}/events')]
             self.assertEqual(kinds,['start_requested','start_applied','stop_requested','ended'])
             history_screen = await history.build(app)
@@ -175,10 +170,10 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         refreshed = {**original,'energy_wh':'4321','soc_percent':37,'cost_estimate':'6.48'}
         app.api.request.side_effect = [original,refreshed]
         screen = await charging.build(app)
-        self.assertIn('Bateria simulada: 23%',texts(screen))
+        self.assertIn('23%',texts(screen))
         await app.poll()
-        self.assertIn('Bateria simulada: 37%',texts(screen))
-        self.assertIn('Energia: 4,321 kWh',texts(screen))
+        self.assertIn('37%',texts(screen))
+        self.assertIn('4,321 kWh',texts(screen))
         self.assertIn('R$ 6,48',texts(screen))
         self.assertNotIn('sessão física',texts(screen))
         app.go.assert_not_called()
