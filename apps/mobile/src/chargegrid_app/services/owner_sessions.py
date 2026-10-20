@@ -103,6 +103,30 @@ def overstay_summary(session):
     return None
 
 
+CHANNEL_LABELS = {'app': 'App', 'kiosk_qr': 'QR do painel', 'kiosk_totem': 'Totem', 'kiosk': 'Painel'}
+
+
+def is_simulated(payment):
+    """Pagamento simulado do totem (conta do dono em Modo apresentação): sem Stripe."""
+    payment = payment or {}
+    return payment.get('provider') == 'simulated' or payment.get('method') == 'simulated'
+
+
+def payment_source(payment):
+    """``'Totem · Simulado'``, ``'QR do painel · Stripe'`` ou ``'Stripe'`` (canal do app fica implícito).
+
+    ``payment.channel`` (``app`` | ``kiosk_qr`` | ``kiosk_totem``) vem de ``/owner/sessions``; sem o campo
+    (``/operator/charging-sessions`` ou API antiga): simulado só existe no totem; outra origem ``kiosk`` vira
+    "Painel" (QR ou totem, sem como distinguir)."""
+    payment = payment or {}
+    channel = payment.get('channel')
+    if not channel:
+        channel = ('kiosk_totem' if is_simulated(payment) else 'kiosk' if payment.get('origin') == 'kiosk'
+                   else 'app')
+    method = 'Simulado' if is_simulated(payment) else 'Stripe'
+    return method if channel == 'app' else f'{CHANNEL_LABELS.get(channel, channel)} · {method}'
+
+
 def payment_summary(payment):
     """``(rótulo, detalhe)`` do pagamento da sessão ou ``None`` sem pagamento.
 
@@ -110,7 +134,8 @@ def payment_summary(payment):
     if not isinstance(payment, dict):
         return None
     label = str(payment.get('status_label') or payment.get('status') or 'Pagamento')
-    if payment.get('environment', 'test') == 'test' and 'teste' not in label.lower():
+    if (payment.get('environment', 'test') == 'test' and 'teste' not in label.lower()
+            and not is_simulated(payment) and 'simulado' not in label.lower()):
         label += ' (teste)'
     settlement = payment.get('settlement') or {}
     detail = None

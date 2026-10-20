@@ -12,6 +12,7 @@ LABELS = {
     'fault': 'Falha',
     'occupied': 'Ocupado',
 }
+KIOSK_LABEL = 'Em uso no totem'
 
 
 def point_status(point):
@@ -23,6 +24,8 @@ def point_status(point):
                  'reserved' if point.get('physical_state') == 'reserved' else
                  'charging' if point.get('physical_state') == 'charging' else 'occupied')
     label = LABELS[state]
+    if point.get('kiosk_in_use') is True and state == 'occupied':
+        label = KIOSK_LABEL  # pedido do totem trava o ponto (409 kiosk_in_use no app e na reserva)
     if state == 'reconciling' and point.get('reserved_until'):
         label = 'Reservado'
     colors = {

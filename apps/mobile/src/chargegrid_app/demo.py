@@ -18,7 +18,7 @@ from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
 from . import demo_receipt, demo_site
-from .api_client import ApiError
+from .api_client import api_error
 from .owner_api import OwnerApiMixin
 from .services.discovery import discover
 from .session import Session
@@ -84,8 +84,8 @@ def demo_address_suggestions(query):
     return {'items': items[:6], 'available': True, 'attribution': 'Endereços de demonstração (sem consulta externa)'}
 
 
-def _fail(message, code='validation_error', status=422):
-    raise ApiError(message, status, code)
+def _fail(message, code='validation_error', status=422, reason=None):
+    raise api_error(message, status, code, reason)
 
 
 def _number(value, label, minimum, maximum, *, integer=False, positive=False):
@@ -179,13 +179,15 @@ class DemoApi(OwnerApiMixin):
         self._pricing = {}  # dados base da tarifa dinâmica por posto (como stations.pricing)
         self._idempotency = {}
         self._payments = {}  # pagamentos Stripe (teste) simulados: demo_payments
+        self._kiosk_holds = set()  # pontos travados por um pedido do totem (``hold_for_kiosk``)
         self._power_decisions = {}  # registro de decisões do rebalanceamento por posto: demo_site
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
         self._profile = {'id': _USER, 'name': 'João Pedro Sousa', 'account_type': 'vendor',
                          'operator_enabled': True, 'phone': '(11) 91234-5678', 'vehicle_description': 'Veículo simulado',
-                         'created_at': self._iso()}
+                         # Modo apresentação da conta (como a API): decide o pagamento do totem dos postos.
+                         'presentation_mode': False, 'created_at': self._iso()}
         for index, location in enumerate(DEMO_LOCATIONS):
             station = self._make_station(dict(location), active=True)
             if index not in _DEMO_OWNED:
@@ -261,7 +263,7 @@ class DemoApi(OwnerApiMixin):
         self.last_session_id = self.last_reservation_id = None
         for store in (self._stations, self._points, self._devices, self._reservations, self._sessions,
                       self._session_events, self._coupons, self._reservation_runtime, self._session_runtime, self._resets,
-                      self._claims, self._idempotency, self._payments):
+                      self._claims, self._idempotency, self._payments, self._kiosk_holds):
             store.clear()
 
     def clear_operation(self, path):
@@ -461,11 +463,20 @@ class DemoApi(OwnerApiMixin):
                    'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
                    'amenities': [], 'max_power_kw': None, 'power_limit_notify': False,
                    # Pagamento (Stripe, teste) e energia do estabelecimento: padrões da API (desligados).
-                   'prepay_required': False, 'kiosk_payments': False, 'rebalance_enabled': False,
+                   'prepay_required': False, 'kiosk_payments': False, 'kiosk_mode': False, 'rebalance_enabled': False,
                    'site_limit_kw': None, 'building_load_kw': None, 'building_load_source': None,
                    'building_load_updated_at': None}
         self._stations[sid] = station
         return station
+
+    def hold_for_kiosk(self, point_id, held=True):
+        """Só na demo: um pedido do totem trava (ou libera) o ponto, como ``kiosk_orders`` na API."""
+        self._get(self._points, point_id)
+        (self._kiosk_holds.add if held else self._kiosk_holds.discard)(point_id)
+
+    def _refuse_kiosk_hold(self, point):
+        if self._point_row(point).get('kiosk_in_use'):
+            _fail('Ponto em uso no totem', 'point_unavailable', 409, reason='kiosk_in_use')
 
     def _make_point(self, station_id, *, active=True, online=True, connector_type='Tipo 2', power_kw='7.200',
                     price_per_kwh='1.5000'):
@@ -542,12 +553,15 @@ class DemoApi(OwnerApiMixin):
             status = 'charging' if session['status'] == 'charging' else 'reconciling'
         elif reservation:
             status = 'reserved' if reservation['status'] == 'confirmed' else 'reconciling'
+        elif point['id'] in self._kiosk_holds:
+            status = 'occupied'  # pedido do totem travando o ponto ("Ponto em uso no totem")
         elif demo_site.open_overstay(self, point['id']):
             status = 'occupied'  # recarga terminou e o carro simulado continua conectado (permanência)
         else:
             status = 'available'
+        held = status == 'occupied' and point['id'] in self._kiosk_holds
         return {**point, 'online': online, 'physical_state': state, 'available': status == 'available',
-                'availability_status': status,
+                'availability_status': status, 'kiosk_in_use': held,
                 'reserved_until': reservation['expires_at'] if reservation and reservation['status'] == 'confirmed' else None}
 
     def _station_row(self, station):
@@ -661,6 +675,14 @@ class DemoApi(OwnerApiMixin):
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] in ('power', 'power-site', 'building-load',
                                                                        'demo-traffic'):
             return demo_site.route(self, method, parts, body)
+        if (method, len(parts)) == ('POST', 3) and parts[0] == 'stations' and parts[2] == 'demo-kiosk-hold':
+            # Só na demo (capturas/testes): um pedido do totem trava o primeiro ponto livre do posto.
+            station = self._owned(parts[1])
+            free = [p for p in self._points.values() if p['station_id'] == station['id'] and self._point_row(p)['available']]
+            if not free:
+                _fail('Nenhum ponto livre para o totem neste posto.', 'point_unavailable', 409)
+            self.hold_for_kiosk(free[0]['id'])
+            return self._station_row(station)
         if len(parts) == 3 and parts[0] == 'stations' and parts[2] == 'pricing' and method in ('GET', 'PUT'):
             station = self._owned(parts[1])
             if method == 'PUT':
@@ -673,8 +695,10 @@ class DemoApi(OwnerApiMixin):
             return self._pricing_payload(station)
         if path == 'me':
             if method == 'PATCH':
-                _fields(body, ('name', 'phone', 'vehicle_description'))
-                changes = {k: None if v is None and k != 'name' else _text(v, k, {'name': 100, 'phone': 30, 'vehicle_description': 200}[k], required=k == 'name')
+                _fields(body, ('name', 'phone', 'vehicle_description', 'presentation_mode'))
+                if 'presentation_mode' in body and not isinstance(body['presentation_mode'], bool):
+                    _fail('Campo não aceita null', 'null_not_allowed')
+                changes = {k: v if k == 'presentation_mode' else None if v is None and k != 'name' else _text(v, k, {'name': 100, 'phone': 30, 'vehicle_description': 200}[k], required=k == 'name')
                            for k, v in body.items()}
                 self._profile.update(changes)
             if method in ('GET', 'PATCH'):
@@ -830,7 +854,7 @@ class DemoApi(OwnerApiMixin):
     def _station_fields(self, body, creating=False):
         allowed = ('name', 'address', 'latitude', 'longitude') + (
             () if creating else ('active', 'amenities', 'max_power_kw', 'power_limit_notify', 'prepay_required',
-                                 'kiosk_payments'))
+                                 'kiosk_payments', 'kiosk_mode'))
         _fields(body, allowed)
         if creating and not set(allowed).issubset(body):
             _fail('Informe nome, endereço e coordenadas do posto.')
@@ -849,7 +873,7 @@ class DemoApi(OwnerApiMixin):
                 if not isinstance(value, bool):
                     _fail('Informe se o aviso de limite de potência está ligado.')
                 result[key] = value
-            elif key in ('prepay_required', 'kiosk_payments'):
+            elif key in ('prepay_required', 'kiosk_payments', 'kiosk_mode'):
                 if not isinstance(value, bool):
                     _fail('Campo não aceita null', 'null_not_allowed')
                 result[key] = value
@@ -1027,6 +1051,7 @@ class DemoApi(OwnerApiMixin):
         _fields(body, ('connector_id',))
         point = self._get(self._points, body.get('connector_id'))
         self._user_free()
+        self._refuse_kiosk_hold(point)
         if not self._point_row(point)['available']:
             _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
         rid = self._id('reservation')
@@ -1070,6 +1095,8 @@ class DemoApi(OwnerApiMixin):
                 _fail('Escolha um ponto na lista para usar este código de demonstração.', 'ambiguous_presence_code')
             point = available[0]
         self._user_free(reservation_id)
+        if not reservation:
+            self._refuse_kiosk_hold(point)
         if not reservation and not self._point_row(point)['available']:
             _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
         if reservation and (not point['active'] or not self._stations[point['station_id']]['active'] or not self._point_row(point)['online']):

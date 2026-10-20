@@ -41,8 +41,11 @@ def _label(payment):
     if payment['status'] == 'completed':
         settlement = payment['settlement'] or {}
         charged, returned = (billing.to_cents(settlement.get(key) or 0) for key in ('charged', 'returned'))
-        return billing.status_label('completed', charge_cents=charged, return_cents=returned)
-    return billing.status_label(payment['status'])
+        label = billing.status_label('completed', charge_cents=charged, return_cents=returned)
+    else:
+        label = billing.status_label(payment['status'])
+    # Como a API: o simulado do totem (dono em Modo apresentação) diz "(simulado)", nunca "(teste)".
+    return label.replace('(teste)', '(simulado)') if payment.get('provider') == 'simulated' else label
 
 
 def row(api, payment):
@@ -249,9 +252,12 @@ def route(api, method, parts, body):
     _fail('Operação de pagamento não disponível na demonstração.', 'demo_route_not_supported', 404)
 
 
-def visitor_payment(api, point, session):
+def visitor_payment(api, point, session, totem=False):
     """Pré-pagamento (teste) de um motorista fictício do movimento simulado (``demo_site``): teto de R$ 40,00
-    na energia + a reserva do teto da permanência, em uso na sessão; o acerto segue as regras da API."""
+    na energia + a reserva do teto da permanência, em uso na sessão; o acerto segue as regras da API.
+
+    ``totem``: pedido do totem de autoatendimento (``origin`` kiosk); simulado quando a conta demo está em
+    Modo apresentação (como ``kiosk_totem.method_for`` na API), senão Stripe (teste)."""
     terms = overstay_rules.clean_terms(session.get('overstay_terms'))
     energy = 4000
     reserve = overstay_rules.cents(terms['max_amount']) if terms else 0
@@ -269,6 +275,11 @@ def visitor_payment(api, point, session):
         'quote': {'mode': 'value', 'max_cost': '40.00', 'reservation_terms': False}, 'confirm_at': None,
         '_visitor': True,
     }
+    if totem:
+        simulated = api._profile.get('presentation_mode') is True
+        payment.update(origin='kiosk', _totem=True, provider='simulated' if simulated else 'stripe',
+                       method='simulated' if simulated else 'card',
+                       provider_ref=None if simulated else payment['provider_ref'])
     _store(api)[pid] = payment
     return _advance(api, payment)
 

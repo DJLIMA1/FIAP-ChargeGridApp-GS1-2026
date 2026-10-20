@@ -43,7 +43,8 @@ def money_lines(session):
     payment = owner_sessions.payment_summary(session.get('payment'))
     if payment:
         label, detail = payment
-        lines.append(txt(f'Pagamento: Stripe · {label}', 11, 'semibold'))
+        source = owner_sessions.payment_source(session.get('payment'))
+        lines.append(txt(f'Pagamento: {source} · {label}', 11, 'semibold'))
         if detail:
             lines.append(txt(detail, 10.5, 'regular', theme.GRAY_TEXT))
     overstay = owner_sessions.overstay_summary(session)

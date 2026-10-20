@@ -12,6 +12,10 @@ Páginas de ``station_admin`` (``page`` = 'live' | 'energy' | 'payments'), com o
   por ponto e as últimas decisões. API sem a rota (404): a página avisa e o menu do posto não a mostra.
 * **Pagamentos (Stripe · teste)**: ``prepay_required`` e ``kiosk_payments`` (``PATCH stations``); o interruptor
   só muda com a resposta do servidor. Sem os campos no posto, a entrada some do menu.
+* **Totem de autoatendimento** (mesma página): ``kiosk_mode`` (``PATCH stations``) e o status do totem. O método
+  segue o Modo apresentação da CONTA do dono (``presentation_mode`` de ``/me``): simulado (SIMULADO) ou Stripe
+  (teste); conta oficial sem Stripe no servidor → indisponível (``payments_unavailable``), como o sync do
+  equipamento (``connector.kiosk``).
 
 Conta demo: ``demo_site`` responde as mesmas rotas; "Simular carros no posto (demo)" coloca motoristas
 fictícios carregando e na vaga.
@@ -67,8 +71,13 @@ def has_energy(station):
     return isinstance((station or {}).get('rebalance_enabled'), bool)
 
 
+def has_kiosk(station):
+    """A API manda ``kiosk_mode`` no posto (totem 0.8.0)."""
+    return isinstance((station or {}).get('kiosk_mode'), bool)
+
+
 def has_payments(station):
-    return any(isinstance((station or {}).get(flag), bool) for flag, *_ in PAYMENT_FLAGS)
+    return has_kiosk(station) or any(isinstance((station or {}).get(flag), bool) for flag, *_ in PAYMENT_FLAGS)
 
 
 def energy_subtitle(station):
@@ -83,7 +92,112 @@ def payments_subtitle(station):
         parts.append(f"Antecipado {'exigido' if station['prepay_required'] else 'desligado'}")
     if isinstance(station.get('kiosk_payments'), bool):
         parts.append(f"QR do painel {'ligado' if station['kiosk_payments'] else 'desligado'}")
+    if has_kiosk(station):
+        parts.append(f"Totem {'ligado' if station['kiosk_mode'] else 'desligado'}")
     return ' · '.join(parts)
+
+
+# ---------------------------------------------------------------- Totem de autoatendimento
+KIOSK_TITLE = 'Totem de autoatendimento'
+KIOSK_DETAIL = ('O painel físico vende a recarga sem o app: por valor, tempo ou energia, com pagamento na tela. '
+                'Padrão desligado; desligado, o painel mostra as telas atuais.')
+KIOSK_FOLLOWS = ('O método de pagamento do totem segue o Modo apresentação da sua conta '
+                 '(Conta → Modo apresentação): ligado, simulado; desligado, Stripe (teste).')
+KIOSK_REASONS = {
+    'payments_unavailable': 'Indisponível: pagamentos Stripe não configurados no servidor (payments_unavailable). '
+                            'Ligue o Modo apresentação para usar o pagamento simulado.',
+    'point_disabled': 'Indisponível: posto desativado (point_disabled).',
+}
+
+
+def account_presentation(app):
+    """Modo apresentação da conta (``/me``); API antiga sem o campo: o do aparelho."""
+    from ..services import account_mode, vehicle_state
+    value = account_mode.account_value(getattr(app, 'profile', None))
+    return value if value is not None else vehicle_state.presentation_mode(app)
+
+
+def kiosk_status(station, presentation, payments_config=None):
+    """``{enabled, method, label, reason, text, tone}`` como o ``connector.kiosk`` do sync (decidido pela API).
+
+    ``payments_config``: ``GET payments/config`` (``None`` = ainda não consultado: supõe a Stripe ligada)."""
+    station = station or {}
+    if station.get('active') is False:
+        method, reason = None, 'point_disabled'
+    elif presentation:
+        method, reason = 'simulated', None
+    elif payments_config is None or payments_config.get('enabled') is True:
+        method, reason = 'stripe', None
+    else:
+        method, reason = None, 'payments_unavailable'
+    if method == 'simulated':
+        text, tone, label = 'Pagamento simulado: nenhuma cobrança, acerto local sem Stripe', 'AMBER', 'SIMULADO'
+    elif method == 'stripe':
+        text, tone, label = 'Stripe (teste): QR do pedido na tela do totem abre a Checkout', 'BLUE', 'TESTE'
+    else:
+        text, tone, label = KIOSK_REASONS[reason], 'RED', None
+    return {'enabled': method is not None, 'method': method, 'label': label, 'reason': reason, 'text': text,
+            'tone': tone}
+
+
+def kiosk_section(app, station, payments_config=None):
+    """Interruptor ``kiosk_mode`` + status (método efetivo e motivo de indisponível). ``None`` sem o campo."""
+    if not has_kiosk(station):
+        return None
+    sid = station['id']
+    state = {'on': bool(station.get('kiosk_mode')), 'busy': False}
+    switch = ft.Switch(value=state['on'], active_color=theme.RED, data='kiosk_mode')
+    note = design.txt(KIOSK_DETAIL, 11, 'regular', theme.GRAY_TEXT)
+    chip_box = ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    status_text = design.txt('', 12, 'semibold', data='kiosk-status')
+
+    def draw():
+        info = kiosk_status(station, account_presentation(app), payments_config)
+        head = 'Totem ligado' if state['on'] else 'Totem desligado'
+        chips = [_pill('LIGADO' if state['on'] else 'DESLIGADO', 'GREEN' if state['on'] else 'SLATE')]
+        if info['label']:
+            chips.append(_pill(info['label'], info['tone']))
+        elif info['reason']:
+            chips.append(_pill('INDISPONÍVEL', 'RED'))
+        chip_box.controls = chips
+        status_text.value = f"{head} · {info['text']}" if state['on'] else f"Ao ligar · {info['text']}"
+        status_text.color = theme.ERROR if info['reason'] else theme.TEXT_COLOR
+
+    async def changed(event):
+        value = bool(event.control.value)
+        if state['busy']:
+            switch.value = state['on']
+            app.page.update()
+            return
+        state['busy'] = True
+        note.value = 'Salvando…'
+        app.page.update()
+        try:
+            saved = await app.api.request('PATCH', f'stations/{sid}', {'kiosk_mode': value})
+        except ApiError as exc:
+            switch.value = state['on']  # sem atualização otimista: volta ao valor do servidor
+            app.notice(f'Totem não alterado: {exc}')
+        else:
+            state['on'] = bool((saved or {}).get('kiosk_mode', value))
+            station['kiosk_mode'] = state['on']
+            switch.value = state['on']
+            app.notice('Totem de autoatendimento ligado' if state['on'] else 'Totem de autoatendimento desligado')
+        finally:
+            state['busy'] = False
+            note.value = KIOSK_DETAIL
+            draw()
+            app.page.update()
+    switch.on_change = changed
+    draw()
+    return ft.Column([
+        design.txt(KIOSK_TITLE, 14.6, 'bold'),
+        design.card_box(ft.Column([
+            ft.Row([design.txt(KIOSK_TITLE, 13, 'semibold', expand=True), switch],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            note, chip_box, status_text,
+            design.txt(KIOSK_FOLLOWS, 10.5, 'regular', theme.GRAY_TEXT, data='kiosk-follows'),
+        ], spacing=8), padding=ft.Padding(left=16, right=16, top=16, bottom=16), data='kiosk'),
+    ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 
 # ---------------------------------------------------------------- Ao vivo
@@ -439,7 +553,7 @@ async def energy_page(app, station):
 
 
 # ---------------------------------------------------------------- Pagamentos (teste)
-def payments_page(app, station):
+def payments_page(app, station, payments_config=None):
     sid = station['id']
     flags = [entry for entry in PAYMENT_FLAGS if isinstance(station.get(entry[0]), bool)]
     current = {flag: bool(station.get(flag)) for flag, *_ in flags}
@@ -479,10 +593,12 @@ def payments_page(app, station):
     for entry in flags:
         rows.append(make(*entry))
     body = rows or [design.txt('Este servidor ainda não tem pagamentos por posto.', 12, 'regular', theme.GRAY_TEXT)]
+    kiosk = kiosk_section(app, station, payments_config)
     return design.page(
         _heading(app, 'Pagamentos', sid),
         ft.Row([_pill('TESTE', 'AMBER'),
                 design.txt('Stripe em modo teste: nenhum valor real é cobrado.', 11.5, 'regular', theme.GRAY_TEXT,
                            expand=True)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         design.card_box(ft.Column(body, spacing=18), padding=ft.Padding(left=16, right=16, top=16, bottom=16)),
+        *([kiosk] if kiosk else []),
         gap=16, gutter=3)
