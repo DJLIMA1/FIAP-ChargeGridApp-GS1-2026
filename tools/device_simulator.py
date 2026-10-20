@@ -29,7 +29,7 @@ def number(value, low, high):
 
 SOC_SOURCES = ("simulated", "phone")
 # Mesma versão do firmware do painel cujo protocolo a bancada reproduz (runtime.h).
-FIRMWARE_VERSION = "0.7.0"
+FIRMWARE_VERSION = "0.8.0"
 LEGACY_FIRMWARE_VERSION = "0.4.0"
 # Pagamento pelo QR do painel (connector.payment): estados que o painel mostra; outros são ignorados.
 PAYMENT_STATUSES = ("awaiting_payment", "authorized", "paid", "declined")
@@ -40,7 +40,7 @@ TOTEM_OPEN = ("held", "awaiting_payment", "paid")
 SESSION_ORIGINS = ("app", "kiosk_qr", "kiosk_totem")
 BENCH_POWER_W = 7200  # Potência nominal simulada da bancada.
 BENCH_MIN_POWER_W = 1400  # 6 A em 230 V: menor corrente de recarga AC.
-# Firmware 0.7.0 (SET_POWER desde a 0.5.0): ajuste de potência ao vivo. ``legacy=True`` simula o 0.4.0.
+# Firmware 0.7.0+ (SET_POWER desde a 0.5.0): ajuste de potência ao vivo. ``legacy=True`` simula o 0.4.0.
 CAPABILITIES = ["set_power_v1"]
 # Permanência após a recarga: com termos de taxa no START (``parameters.overstay``) o cabo
 # simulado continua conectado depois da parada, até ``unplug()`` (SIGUSR1 na linha de comando)

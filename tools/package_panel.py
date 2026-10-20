@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 
 # Deve ser igual a CHARGEGRID_FIRMWARE_VERSION em firmware/esp32/include/runtime.h.
-FIRMWARE_VERSION = "0.7.0"
+FIRMWARE_VERSION = "0.8.0"
 
 
 def main():
@@ -26,6 +26,9 @@ progress bar. The server validates this code when a user starts charging.
 It applies live power changes (SET_POWER, 0 W pauses), keeps the simulated cable
 connected after a stop when the driver accepted the overstay fee (unplug with
 "Desconectar"), and shows the Stripe test-mode payment QR on the Ready screen.
+When the seller turns on the station's self-service totem, the panel also runs the
+no-phone flow (choose, review, pay, charge, receipt); with the totem off or on an
+older API it keeps the 0.7.0 screens.
 The device key stays private. Seller-confirmed factory reset preserves Wi-Fi,
 replaces the device identity and shows a fresh private ownership QR.
 
