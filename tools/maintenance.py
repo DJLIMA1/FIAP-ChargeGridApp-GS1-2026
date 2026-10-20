@@ -1,4 +1,8 @@
-"""Count expired records; --apply deletes them in one database transaction."""
+"""Count expired records; --apply deletes them in one database transaction.
+
+Telemetry older than 7 days is removed only after the hourly aggregates
+(``connector_hourly_stats``) have closed those hours (``aggregate_watermarks``).
+"""
 
 import argparse
 import os
@@ -6,15 +10,39 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 
+WATERMARK = "connector_hourly_stats"
+ROLLUP_MARGIN = timedelta(hours=72)
+
+
+def telemetry_cutoff(cursor, cutoff):
+    """Telemetria só sai depois de entrar nos agregados horários duráveis.
+
+    Limite = o menor entre 7 dias e a marca d'água do rollup (``aggregate_watermarks``)
+    menos as 72 h que o rollup diário recalcula.
+    Sem a tabela (migração ainda não aplicada) vale o limite antigo; com a tabela e sem
+    marca (rollup nunca rodou), nenhuma telemetria é apagada.
+    """
+    cursor.execute("SELECT to_regclass('aggregate_watermarks') IS NOT NULL", None)
+    if not cursor.fetchone()[0]:
+        return cutoff
+    cursor.execute("SELECT rolled_until FROM aggregate_watermarks WHERE name = %s", (WATERMARK,))
+    row = cursor.fetchone()
+    if not row or row[0] is None:
+        return None
+    return min(cutoff, row[0] - ROLLUP_MARGIN)
+
+
 def maintain(connection, apply=False, now=None):
     now = now or datetime.now(timezone.utc)
-    # Replay/boot state and idempotency records deliberately have no retention here.
-    targets = [
-        ("telemetry_samples", "received_at", now - timedelta(days=7)),
-        ("request_limits", "expires_at", now),
-    ]
     counts = {}
     with connection.cursor() as cursor:
+        telemetry = telemetry_cutoff(cursor, now - timedelta(days=7))
+        # Replay/boot state and idempotency records deliberately have no retention here.
+        targets = [("request_limits", "expires_at", now)]
+        if telemetry is None:
+            counts["telemetry_samples"] = "retida (agregados ainda não fechados)"
+        else:
+            targets.insert(0, ("telemetry_samples", "received_at", telemetry))
         for table, column, cutoff in targets:
             cursor.execute(
                 f"SELECT count(*) FROM {table} WHERE {column} < %s", (cutoff,)

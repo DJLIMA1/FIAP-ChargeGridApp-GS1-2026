@@ -19,6 +19,7 @@
 import type { Coupon, CouponInput, Profile } from '../api/types'
 import { REFRESH_KEY } from '../auth/tokens'
 import * as data from './data'
+import * as forecastMock from './forecast'
 
 const PROFILE_KEY = 'chargegrid.mock.profile'
 const NAME_KEY = 'chargegrid.mock.name'
@@ -120,6 +121,10 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       return json(data.alerts(station))
     case '/owner/live':
       return json(data.live(station))
+    case '/owner/forecast':
+      return json(forecastMock.forecast(station ?? data.STATIONS[0].id))
+    case '/owner/occupancy-history':
+      return json(forecastMock.history(station ?? data.STATIONS[0].id, Number(p.get('weeks') ?? 4)))
     case '/operator/stations':
       return json({ items: data.STATIONS, total: data.STATIONS.length, limit: 100, offset: 0 })
     case '/coupons':
@@ -166,6 +171,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     }
     return json(structuredClone(target))
   }
+  if (/^\/stations\/[^/]+\/pricing$/.test(path) && method === 'PUT') return json({ rules: body })
   const connectorMatch = /^\/connectors\/([^/]+)$/.exec(path)
   if (connectorMatch && method === 'PATCH') {
     const owner = data.STATIONS.find((s) => s.connectors.some((c) => c.id === connectorMatch[1]))

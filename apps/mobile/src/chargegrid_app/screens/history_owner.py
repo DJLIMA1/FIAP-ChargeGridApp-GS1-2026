@@ -11,8 +11,18 @@ import flet.canvas as cv
 from chargegrid_core import analytics
 from chargegrid_core.formatting import brl
 
+from ..api_client import ApiError
 from ..ui import theme
+from ..ui.deferred import fill_when_ready
 from ..ui.design import card_box, page, txt
+from ..ui.forecast import (
+    AMBER,
+    accuracy_lines,
+    forecast_summary_card,
+    method_label,
+    occupancy_bars,
+    synthetic_note,
+)
 
 DOWN, UP = ft.Icons.KEYBOARD_ARROW_DOWN, ft.Icons.KEYBOARD_ARROW_UP
 WEEKDAYS_SHORT = ('Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom')
@@ -226,6 +236,7 @@ async def energy_page(app, *, days=7):
         ft.Container(height=36.5),
         line_chart(values, labels, color=BLUE, fill=BLUE_FILL, plot_height=183, dots=(0, 2, 4, 6)),
         ft.Container(height=32),
+        await _forecast_slot(app),
         _chat_button(app),
     ]
     back = ft.Container(ft.Icon(ft.Icons.KEYBOARD_ARROW_LEFT, size=34, color=theme.TEXT_COLOR), width=28, height=34,
@@ -234,3 +245,98 @@ async def energy_page(app, *, days=7):
     head = ft.Row([back, txt('Consumo de energia', 22.6, 'bold', expand=True)], spacing=3,
                   vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return page(head, *controls, gap=0)
+
+
+async def _owned_stations(app):
+    result = await app.api.request('GET', 'operator/stations', params={'limit': 100, 'offset': 0})
+    items = result.get('items') or []
+    mine = [item for item in items if item.get('owner_id') == app.profile.get('id')]
+    return mine or items
+
+
+async def _forecast_slot(app):
+    """Resumo da previsão na página de consumo (carrega depois; some se falhar)."""
+    slot = ft.Container(margin=ft.Margin(left=0, top=0, right=0, bottom=28), data='forecast-slot')
+
+    async def load():
+        try:
+            stations = await _owned_stations(app)
+            if not stations:
+                return ft.Container(visible=False)
+            data = await app.api.owner_forecast(stations[0]['id'])
+        except ApiError:
+            return ft.Container(visible=False)
+        return forecast_summary_card(data, app.link('history', manage=True, page='forecast',
+                                                    station=stations[0]['id']))
+    await fill_when_ready(app, slot, load, placeholder=ft.Container(height=0))
+    return slot
+
+
+def _suggestion_card(app, station_id, item):
+    async def confirm():
+        app.page.pop_dialog()
+        await app.api.request('PUT', f'stations/{station_id}/pricing', item['action']['patch'])
+        app.notice('Tarifa atualizada. A nova regra já vale para novas reservas e recargas.')
+        await app.go('history', manage=True, page='forecast', station=station_id)
+
+    def review(event):
+        preview = item['action'].get('preview') or []
+        lines = [ft.Text(item['detail'])] + [
+            ft.Text(f"{row['public_code']}: {brl(row['from'])} → {brl(row['to'])} por kWh no horário") for row in preview]
+        lines.append(ft.Text('Recargas e reservas em andamento mantêm o preço travado.', size=12))
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True, title=ft.Text(item['title']), content=ft.Column(lines, tight=True, spacing=8),
+            actions=[ft.TextButton('Cancelar', on_click=lambda e: app.page.pop_dialog()),
+                     ft.TextButton('Aplicar na tarifa', on_click=app.action(confirm))]))
+
+    return card_box(ft.Column([
+        txt(item['title'], 13.5, 'bold'),
+        txt(item['detail'], 11.5, 'regular', theme.GRAY_TEXT),
+        ft.Row([ft.TextButton('Revisar e aplicar', on_click=review),
+                ft.TextButton('Abrir tarifas', on_click=app.link('tariffs', station_id=station_id))], spacing=4),
+    ], spacing=6), padding=ft.Padding(left=15, right=12, top=13, bottom=6), radius=14, data='forecast-suggestion')
+
+
+async def forecast_page(app, *, station=None):
+    """Previsão de ocupação do posto, acerto medido e sugestões de tarifa."""
+    back = ft.Container(ft.Icon(ft.Icons.KEYBOARD_ARROW_LEFT, size=34, color=theme.TEXT_COLOR), width=28, height=34,
+                        on_click=app.link('history', manage=True, page='energy'), tooltip='Voltar',
+                        alignment=ft.Alignment(-1, 0), margin=ft.Margin(left=-9, top=0, right=0, bottom=0))
+    head = ft.Row([back, txt('Previsão de ocupação', 22.6, 'bold', expand=True)], spacing=3,
+                  vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    stations = await _owned_stations(app)
+    if not stations:
+        return page(head, txt('Vincule um ponto para acompanhar a ocupação.', 13, 'regular', theme.GRAY_TEXT), gap=16)
+    current = next((item for item in stations if item['id'] == station), stations[0])
+    data = await app.api.owner_forecast(current['id'])
+    selector = ft.PopupMenuButton(
+        content=card_box(ft.Row([txt(current['name'], 12.5, 'bold', expand=True),
+                                 ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, size=20, color=theme.TEXT_COLOR)]),
+                         padding=ft.Padding(left=18, right=14, top=0, bottom=0), radius=14, height=45,
+                         alignment=ft.Alignment(-1, 0)),
+        tooltip='Escolher estação',
+        items=[ft.PopupMenuItem(content=item['name'], on_click=app.link('history', manage=True, page='forecast',
+                                                                        station=item['id'])) for item in stations])
+    controls = [ft.Container(height=24), selector if len(stations) > 1 else txt(current['name'], 13, 'semibold'),
+                *synthetic_note(data)]
+    if data.get('status') != 'ok':
+        controls.append(txt(data.get('method_reason') or 'Ainda sem histórico.', 12.5, 'regular', theme.GRAY_TEXT))
+        return page(head, *controls, gap=14)
+    peaks = data.get('peaks') or []
+    controls += [
+        txt('Próximas 24 horas', 13, 'bold'),
+        *([txt(peak['label'], 15, 'bold', AMBER) for peak in peaks[:2]]
+          or [txt('Sem lotação prevista nas próximas 36 h', 15, 'bold', GREEN)]),
+        occupancy_bars(data.get('hours') or []),
+        txt('Laranja: 80% ou mais dos pontos ocupados.', 10.5, 'regular', theme.GRAY_TEXT),
+        card_box(ft.Column([
+            txt(f"Em uso: {method_label(data.get('method'))}", 12.5, 'bold'),
+            txt(data.get('method_reason') or '', 11.5, 'regular', theme.GRAY_TEXT),
+            *[txt(line, 11.5, 'regular', theme.GRAY_TEXT) for line in accuracy_lines(data)],
+        ], spacing=6), padding=ft.Padding(left=15, right=15, top=14, bottom=14), radius=14, data='forecast-accuracy'),
+    ]
+    suggestions = data.get('suggestions') or []
+    if suggestions:
+        controls.append(txt('Sugestões', 13, 'bold'))
+        controls += [_suggestion_card(app, current['id'], item) for item in suggestions]
+    return page(head, *controls, gap=14)

@@ -4,7 +4,8 @@ Ambos os clientes herdam deste mixin; ele só depende de ``request`` e
 ``download``, então a mesma tela funciona com a API real e com a demonstração.
 """
 
-OWNER_RESOURCES = ('overview', 'timeseries', 'heatmap', 'sessions', 'reservations', 'alerts', 'live')
+OWNER_RESOURCES = ('overview', 'timeseries', 'heatmap', 'sessions', 'reservations', 'alerts', 'live', 'forecast',
+                   'occupancy-history')
 EXPORT_DATASETS = ('sessions', 'reservations')
 EXPORT_FORMATS = ('csv', 'json')
 
@@ -40,6 +41,13 @@ class OwnerApiMixin:
 
     async def owner_live(self, params=None):
         return await self.owner_get('live', params)
+
+    async def owner_forecast(self, station_id, horizon_hours=36):
+        """Previsão de ocupação das próximas horas (``GET /v1/owner/forecast``)."""
+        return await self.owner_get('forecast', {'station_id': station_id, 'horizon_hours': horizon_hours})
+
+    async def owner_occupancy_history(self, station_id, weeks=4):
+        return await self.owner_get('occupancy-history', {'station_id': station_id, 'weeks': weeks})
 
     async def owner_export(self, dataset, fmt, params=None):
         """Bytes do arquivo exportado (CSV ou JSON) com os mesmos filtros da tabela."""

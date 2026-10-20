@@ -1,6 +1,6 @@
 import importlib.util
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -83,10 +83,6 @@ def test_seed_reuses_station_without_changing_existing_connectors():
 
 
 class Connection:
-    def __init__(self):
-        self.queries = []
-        self.rowcount = 2
-
     def cursor(self):
         return self
 
@@ -96,11 +92,27 @@ class Connection:
     def __exit__(self, *args):
         pass
 
+    def __init__(self, aggregates=False, rolled_until=None):
+        self.queries = []
+        self.rowcount = 2
+        self.aggregates = aggregates
+        self.rolled_until = rolled_until
+        self.last = None
+
     def execute(self, query, params):
         self.queries.append((query, params))
+        self.last = query
 
     def fetchone(self):
+        if "to_regclass" in self.last:
+            return (self.aggregates,)
+        if "aggregate_watermarks" in self.last:
+            return (self.rolled_until,) if self.rolled_until else None
         return (2,)
+
+
+def counted(connection):
+    return [(q, p) for q, p in connection.queries if q.startswith("SELECT count")]
 
 
 def test_maintenance_preview_and_apply_preserve_replay():
@@ -109,13 +121,34 @@ def test_maintenance_preview_and_apply_preserve_replay():
     connection = Connection()
     module.maintain(connection, now=now)
     assert all(q.startswith("SELECT") for q, _ in connection.queries)
-    assert (now - connection.queries[0][1][0]).days == 7
+    assert (now - counted(connection)[0][1][0]).days == 7
     connection = Connection()
     module.maintain(connection, True, now)
     assert len([q for q, _ in connection.queries if q.startswith("DELETE")]) == 2
     assert not any(
         "device_boots" in q or "idempotency" in q for q, _ in connection.queries
     )
+
+
+def test_maintenance_keeps_telemetry_not_yet_aggregated():
+    module = load("maintenance")
+    now = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    # Agregados existem, mas o rollup nunca rodou: nenhuma telemetria sai.
+    connection = Connection(aggregates=True)
+    counts = module.maintain(connection, True, now)
+    assert "retida" in counts["telemetry_samples"]
+    assert not any("telemetry_samples" in q for q, _ in connection.queries if q.startswith("DELETE"))
+    # Rollup atrasado (marca há 10 dias): apaga só o que já foi agregado, menos a folga de 72 h.
+    rolled = now - timedelta(days=10)
+    connection = Connection(aggregates=True, rolled_until=rolled)
+    module.maintain(connection, True, now)
+    deletes = [(q, p) for q, p in connection.queries if q.startswith("DELETE FROM telemetry_samples")]
+    assert deletes and deletes[0][1][0] == rolled - timedelta(hours=72)
+    # Rollup em dia: vale o limite normal de 7 dias.
+    connection = Connection(aggregates=True, rolled_until=now)
+    module.maintain(connection, True, now)
+    deletes = [(q, p) for q, p in connection.queries if q.startswith("DELETE FROM telemetry_samples")]
+    assert (now - deletes[0][1][0]).days == 7
 
 
 def test_auth_mapping_accepts_confirmed_exact_identity():
@@ -293,3 +326,15 @@ def test_destructive_import_test_requires_test_database_name():
     require_test_database_url("postgresql://localhost/chargegrid_import_test")
     with pytest.raises(ValueError):
         require_test_database_url("postgresql://localhost/chargegrid")
+
+
+def test_seed_forecast_history_plans_only_labeled_synthetic_rows():
+    module = load("seed_forecast_history")
+    station = "00000000-0000-0000-0000-0000000000aa"
+    connectors = [("00000000-0000-0000-0000-0000000000c1", 22.0), ("00000000-0000-0000-0000-0000000000c2", 22.0)]
+    now = datetime(2026, 10, 20, 15, 30, tzinfo=timezone.utc)
+    rows = module.plan(station, connectors, 14, "shopping", 1, now)
+    assert rows and {row["origin"] for row in rows} == {"synthetic"}
+    assert {row["connector_id"] for row in rows} <= {cid for cid, _ in connectors}
+    assert max(row["hour_start"] for row in rows) < now.replace(minute=0)
+    assert rows == module.plan(station, connectors, 14, "shopping", 1, now)  # determinístico
