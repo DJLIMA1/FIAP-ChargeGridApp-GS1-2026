@@ -29,7 +29,6 @@ from ..ui.point_summary import point_context
 PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-demo-simulado5204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
 AMBER_BG = '#4E3F24'
 AMBER = '#E8922B'
-WARNING_TEXT = 'A potência real pode variar conforme o veículo e o nível da bateria.'
 PAY_LABELS = {'balance': 'Saldo Disponível', 'pix': 'Pix', 'card': 'Cartão de Crédito / Débito'}
 PAY_ICONS = {'balance': ft.Icons.WALLET, 'pix': ft.Icons.MONEY, 'card': ft.Icons.CREDIT_CARD}
 LAST_STEP = 8
@@ -122,20 +121,9 @@ def _chip(text, selected, on_click):
         bgcolor=theme.BTN_PRIMARY if selected else '#262626', on_click=on_click, ink=bool(on_click))
 
 
-def _warning():
-    """Aviso da referência: ícone + texto centralizados (quebra após «conforme»), 100 pt de altura."""
-    return ft.Container(
-        ft.Row([ft.Icon(ft.Icons.INFO_OUTLINE, size=22, color=theme.RED),
-                design.txt(WARNING_TEXT, 11.5, 'regular', width=216)], spacing=10,
-               alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        bgcolor=theme.WARN_BG, border_radius=design.RADIUS_CARD, height=100, alignment=ft.Alignment(0, 0))
-
-
-def _footer(button, warning=True):
-    """Aviso + botão como na referência (16 pt entre eles, botão 41 pt acima da barra)."""
-    items = [ft.Container(_warning(), margin=ft.Margin(left=0, top=0, right=0, bottom=4))] \
-        if warning else []
-    return [*items, button]
+def _footer(button):
+    """Só o botão; o aviso de potência variável foi retirado do fluxo de reserva/recarga."""
+    return [button]
 
 
 def _bar(total, current, inset=0):
