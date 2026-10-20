@@ -8,7 +8,7 @@ from chargegrid_core import pricing
 from . import overstay
 from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
-from .modules.payments.funding import payment_row, payments_by_session
+from .modules.payments.funding import payment_channel, payment_row, payments_by_session, totem_payment_ids
 from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
@@ -192,6 +192,11 @@ def station_rows(db, stations, viewer=None):
         # Condições públicas da taxa de permanência, mostradas antes de aceitar a recarga.
         result["overstay"] = overstay.public_terms(station)
         station_energy = energy if _owner_view(station, viewer) else None
+        if station_energy is not None:
+            # Totem 0.8.0 (só o dono): método efetivo pelo Modo apresentação da conta e motivo.
+            from .modules.kiosk_totem.service import station_status  # evita import circular
+
+            result["kiosk_status"] = station_status(station, viewer)
         result["connectors"] = [
             _render_point(db, point, station, *state, power["connectors"], station_energy, holds) for point in points
         ]
@@ -239,8 +244,12 @@ def reservation_row(db, reservation):
     return result
 
 
-def session_rows(db, sessions):
-    """History pages: preload points, stations and devices instead of N+1 lookups."""
+def session_rows(db, sessions, *, channel=False):
+    """History pages: preload points, stations and devices instead of N+1 lookups.
+
+    ``channel``: seller views (``/operator/charging-sessions``, station history) also get
+    ``payment.channel`` (``app`` | ``kiosk_qr`` | ``kiosk_totem``), as in ``/owner/sessions``.
+    """
     sessions = list(sessions)
     connector_ids = {session.connector_id for session in sessions}
     devices = {}
@@ -258,6 +267,7 @@ def session_rows(db, sessions):
             )
         }
     payments = payments_by_session(db, [session.id for session in sessions])
+    totem = totem_payment_ids(db, payments.values()) if channel else set()
     results = []
     for session in sessions:
         result = row(session)
@@ -268,6 +278,8 @@ def session_rows(db, sessions):
         result["online"] = online(devices.get(connector.id))
         # Pré-pagamento (Stripe, teste) desta recarga, ou null.
         result["payment"] = payment_row(payments[session.id]) if session.id in payments else None
+        if channel and result["payment"] is not None:
+            result["payment"]["channel"] = payment_channel(payments[session.id], totem)
         # Permanência após a recarga: colunas internas viram o bloco calculado ``overstay``.
         for key in [name for name in result if name.startswith("overstay_")]:
             result.pop(key)

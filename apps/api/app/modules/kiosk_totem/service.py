@@ -129,16 +129,32 @@ def point(db, device):
     return connector, station
 
 
+def _decide(active, presentation):
+    if not active:
+        return None, "point_disabled"
+    if presentation:
+        return "simulated", None
+    if gateways.current() is not None:
+        return "stripe", None
+    return None, "payments_unavailable"
+
+
 def method_for(db, station, connector):
     """``(método, motivo)`` decididos pelo servidor a partir do modo da conta do dono."""
     if not station.active or not connector.active or station.owner_id is None:
         return None, "point_disabled"
     owner = db.get(Profile, station.owner_id)
-    if owner is not None and owner.presentation_mode:
-        return "simulated", None
-    if gateways.current() is not None:
-        return "stripe", None
-    return None, "payments_unavailable"
+    return _decide(True, owner is not None and bool(owner.presentation_mode))
+
+
+def station_status(station, owner):
+    """``kiosk_status`` do posto na visão do dono (``GET/PATCH /stations``): o método que o totem usa
+    (ou usaria, com ``kiosk_mode`` desligado) e o motivo de indisponível, pela mesma regra do
+    ``connector.kiosk`` do sync, para app e painel web não deduzirem. ``owner``: perfil do dono."""
+    method, reason = _decide(bool(station.active) and station.owner_id is not None,
+                             bool(getattr(owner, "presentation_mode", False)))
+    return {"method": method, "label": LABELS.get(method), "reason": reason,
+            "reason_label": REASON_LABELS.get(reason)}
 
 
 def require_method(db, station, connector):

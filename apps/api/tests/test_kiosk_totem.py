@@ -658,3 +658,112 @@ def test_session_origin_and_owner_channel(http, presentation, factory, seed):
     assert channels[totem_session] == "kiosk_totem" and channels[session_id] is None
     with factory() as db:
         assert db.query(Reservation).count() == 0
+
+
+# ---------------------------------------------------------------------------- telas do vendedor (integração)
+
+
+def _app_and_totem_sessions(http, bench, factory, seed):
+    """Uma recarga do app (sem pré-pagamento, com energia) e uma do totem (simulado), ambas encerradas."""
+    bench.sync()
+    assert _start_from_app(http, factory, seed).status_code == 202
+    app_session, _ = bench.apply_start()
+    bench.charge_and_stop_locally(app_session, energy_wh=1500)
+    bench.sync()
+    order = bench.order().json()
+    assert bench.pay(order["id"]).json()["payment"]["method"] == "simulated"
+    totem_session, _ = bench.apply_start()
+    bench.charge_and_stop_locally(totem_session, energy_wh=2500)
+    bench.sync()
+    return app_session, totem_session
+
+
+def test_seller_history_and_exports_carry_channel_and_method(http, presentation, factory, seed, monkeypatch):
+    import csv
+    import io
+
+    from app.reports import pdf
+
+    bench = Bench(http)
+    app_session, totem_session = _app_and_totem_sessions(http, bench, factory, seed)
+    owner, _ = client_for(factory, seed["owner"])
+    # App do vendedor: /operator/charging-sessions e o histórico do posto com payment.channel.
+    for path in ("/v1/operator/charging-sessions", f"/v1/stations/{seed['station']}/charging-sessions"):
+        items = {item["id"]: item for item in owner.get(path).json()["items"]}
+        assert items[totem_session]["payment"]["channel"] == "kiosk_totem", path
+        assert items[totem_session]["payment"]["provider"] == "simulated"
+        assert items[app_session]["payment"] is None
+    owner_sessions = {item["id"]: item for item in owner.get("/v1/owner/sessions").json()["items"]}
+    assert owner_sessions[totem_session]["payment"]["channel"] == "kiosk_totem"
+    # CSV/JSON de sessões: Canal e Pagamento no fim, formato anterior intacto.
+    exported = owner.get("/v1/owner/export/sessions.csv")
+    rows = list(csv.reader(io.StringIO(exported.text)))
+    header = rows[0]
+    assert len(header) == 18 and header[15] == "Taxa de permanência (R$)" and header[-2:] == ["Canal", "Pagamento"]
+    by_id = {row[0]: row for row in rows[1:]}
+    assert by_id[totem_session][-2:] == ["Totem", "Simulado"] and by_id[app_session][-2:] == ["App", ""]
+    envelope = owner.get("/v1/owner/export/sessions.json").json()
+    json_items = {item["id"]: item for item in envelope["items"]}
+    assert (json_items[totem_session]["payment_channel"], json_items[totem_session]["payment_method"]) == (
+        "Totem", "Simulado")
+    # Resultado do dono: CSV com as colunas no fim e PDF com a coluna Canal.
+    margin = list(csv.DictReader(io.StringIO(owner.get("/v1/owner/export/margin.csv").text)))
+    margin_rows = {row["ID da sessão"]: row for row in margin}
+    assert list(margin[0])[-3:] == ["Base da receita", "Canal", "Pagamento"]
+    assert (margin_rows[totem_session]["Canal"], margin_rows[totem_session]["Pagamento"]) == ("Totem", "Simulado")
+    assert (margin_rows[app_session]["Canal"], margin_rows[app_session]["Pagamento"]) == ("App", "")
+    screen = {item["session_id"]: item for item in owner.get("/v1/owner/margin").json()["items"]}
+    assert screen[totem_session]["payment_channel"] == "Totem"
+    monkeypatch.setattr(pdf, "COMPRESS", False)
+    document = owner.get("/v1/owner/export/margin.pdf")
+    assert document.status_code == 200 and b"Canal" in document.content
+    assert b"Totem \\267 Simulado" in document.content
+
+
+def test_owner_live_shows_point_held_by_totem(http, presentation, factory, seed):
+    bench = Bench(http)
+    bench.sync()
+    order = bench.order().json()
+    owner, _ = client_for(factory, seed["owner"])
+    item = owner.get("/v1/owner/live").json()["items"][0]
+    point = owner.get(f"/v1/stations/{seed['station']}").json()["connectors"][0]
+    assert item["availability_status"] == point["availability_status"] == "occupied"
+    assert item["kiosk_in_use"] is True and item["available"] is False and item["session"] is None
+    assert bench.cancel(order["id"]).json()["status"] == "canceled"
+    item = owner.get("/v1/owner/live").json()["items"][0]
+    assert item["kiosk_in_use"] is False and item["availability_status"] == "available"
+
+
+def test_owner_station_carries_effective_totem_status(factory, seed, base_url):
+    owner, _ = client_for(factory, seed["owner"])
+    try:
+        bench = Bench(owner)
+        url = f"/v1/stations/{seed['station']}"
+        status = owner.get(url).json()["kiosk_status"]
+        assert status["method"] is None and status["reason"] == "payments_unavailable" and status["label"] is None
+        assert "Stripe" in status["reason_label"]
+        saved = owner.patch(url, json={"kiosk_mode": True}).json()
+        assert saved["kiosk_status"] == status  # o PATCH devolve o mesmo bloco
+        kiosk = bench.sync()["connector"]["kiosk"]
+        assert (kiosk["method"], kiosk["label"], kiosk["reason"]) == (None, None, "payments_unavailable")
+        gateway.use(FakeStripe())
+        assert owner.get(url).json()["kiosk_status"] == {"method": "stripe", "label": "TESTE", "reason": None,
+                                                         "reason_label": None}
+        assert bench.sync()["connector"]["kiosk"]["method"] == "stripe"
+        with factory.begin() as db:
+            db.get(Profile, seed["owner"]).presentation_mode = True
+        assert owner.get(url).json()["kiosk_status"]["method"] == "simulated"
+        assert owner.get(url).json()["kiosk_status"]["label"] == "SIMULADO"
+        assert bench.sync()["connector"]["kiosk"]["method"] == "simulated"
+        listed = owner.get("/v1/operator/stations").json()
+        listed = listed["items"] if isinstance(listed, dict) else listed
+        assert any(item.get("kiosk_status", {}).get("method") == "simulated" for item in listed)
+        with factory.begin() as db:
+            db.get(Station, seed["station"]).active = False
+        assert owner.get(url).json()["kiosk_status"]["reason"] == "point_disabled"
+        driver, _ = client_for(factory, seed["a"])
+        with factory.begin() as db:
+            db.get(Station, seed["station"]).active = True
+        assert "kiosk_status" not in driver.get(url).json()  # só o dono
+    finally:
+        clear_overrides()

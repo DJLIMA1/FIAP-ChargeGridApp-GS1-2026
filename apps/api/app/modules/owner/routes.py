@@ -19,7 +19,7 @@ from ...errors import fail
 from ...models import now
 from ...security import current_user
 from ...service import operator, owned
-from ..payments.funding import attach_owner_payments
+from ..payments.funding import attach_owner_payments, channel_by_session, payments_by_session
 from . import service
 
 router = APIRouter(prefix="/owner", tags=["owner"])
@@ -162,6 +162,11 @@ def export(db, user, dataset, fmt, start, end, station_id, status, q):
     moment = now()
     items = [service.session_item(row, moment) if dataset == "sessions" else service.reservation_item(row)
              for row in rows]
+    if dataset == "sessions":
+        # Totem 0.8.0: Canal e Pagamento no fim de cada linha (formato anterior intacto).
+        channels = channel_by_session(db, payments_by_session(db, [row["id"] for row in rows]))
+        for row, item in zip(rows, items, strict=True):
+            item.update(analytics.payment_export_fields(channels.get(row["id"])))
     stamp = moment.astimezone(analytics.REPORT_TZ).strftime("%Y%m%d-%H%M")
     filename = f"chargegrid-{'sessoes' if dataset == 'sessions' else 'reservas'}-{stamp}.{fmt}"
     headers = {**NO_STORE, "Content-Disposition": f'attachment; filename="{filename}"'}

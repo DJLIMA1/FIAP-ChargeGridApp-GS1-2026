@@ -292,6 +292,12 @@ def _period(period) -> str:
     return f"{when(start, '%d/%m/%Y %H:%M')} a {when(end, '%d/%m/%Y %H:%M')}"
 
 
+def _channel(item) -> str:
+    """Canal e método (totem 0.8.0), ex.: "Totem · Simulado"; "—" em relatórios sem a informação."""
+    parts = [item.get("payment_channel"), item.get("payment_method")]
+    return " · ".join(part for part in parts if part) or "—"
+
+
 def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
     """``report``: ``economics.serialize(margin_report)`` — os mesmos números da tela."""
     kit = _Kit()
@@ -346,14 +352,14 @@ def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
                            "incluem todas; o detalhe completo está no CSV.", "small"))
     story.append(kit.grid(
         ["Fim", "Posto", "Ponto", "kWh", "Preço", "Demanda", "Cupom", "Receita", "Comissão", "Repasse", "Custo",
-         "Margem"],
+         "Margem", "Canal"],
         [[when(item["ended_at"], "%d/%m %H:%M"), item["station_name"], item["public_code"],
           _number(item["energy_kwh"], 3), per_kwh(item["price_per_kwh"]),
           _number(item["demand_multiplier"]) + "×", f"{item['discount_percent']}%" if item["discount_percent"] else "—",
           money(item["revenue_total"]), money(item["platform_fee"]), money(item["owner_net"]),
-          money(item["energy_cost"]), money(item["margin"])] for item in items[:MAX_DETAIL_ROWS]],
-        widths=[22 * kit.mm, None, 20 * kit.mm, 17 * kit.mm, 25 * kit.mm, 17 * kit.mm, 15 * kit.mm, 21 * kit.mm,
-                21 * kit.mm, 21 * kit.mm, 21 * kit.mm, 21 * kit.mm]))
+          money(item["energy_cost"]), money(item["margin"]), _channel(item)] for item in items[:MAX_DETAIL_ROWS]],
+        widths=[21 * kit.mm, None, 18 * kit.mm, 16 * kit.mm, 23 * kit.mm, 16 * kit.mm, 14 * kit.mm, 20 * kit.mm,
+                20 * kit.mm, 20 * kit.mm, 20 * kit.mm, 20 * kit.mm, 24 * kit.mm]))
     story += [kit.p("Método", "h2"), *[kit.p(text, "small") for text in report["methodology"]]]
     return kit.build(story, title, wide=True, generated_at=report.get("generated_at"))
 

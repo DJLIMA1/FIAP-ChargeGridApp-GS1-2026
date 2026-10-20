@@ -174,3 +174,11 @@ def test_clean_fee_percent():
     assert e.clean_fee_percent("12.5") == Decimal("12.50")
     with pytest.raises(ValueError):
         e.clean_fee_percent("120")
+
+
+def test_margin_csv_appends_channel_and_method_at_the_end():
+    rows = [{**e.session_economics(session()), "payment_channel": "Totem", "payment_method": "Simulado"},
+            e.session_economics(session(id="s2"))]
+    parsed = list(csv.reader(io.StringIO(e.margin_csv(rows))))
+    assert parsed[0][-3:] == ["Base da receita", "Canal", "Pagamento"]
+    assert parsed[1][-2:] == ["Totem", "Simulado"] and parsed[2][-2:] == ["", ""]

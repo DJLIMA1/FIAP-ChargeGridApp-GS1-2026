@@ -145,7 +145,7 @@ def station_history(
         .where(Connector.station_id == station_id)
         .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
     )
-    return page(db, query, limit, offset, many=lambda items: session_rows(db, items))
+    return page(db, query, limit, offset, many=lambda items: session_rows(db, items, channel=True))
 
 
 @router.get("/operator/summary")
@@ -182,4 +182,4 @@ def operator_history(
         .where(Station.owner_id == user.id)
         .order_by(ChargingSession.created_at.desc(), ChargingSession.id.desc())
     )
-    return page(db, query, limit, offset, many=lambda items: session_rows(db, items))
+    return page(db, query, limit, offset, many=lambda items: session_rows(db, items, channel=True))

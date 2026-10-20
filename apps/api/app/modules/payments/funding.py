@@ -281,13 +281,27 @@ def payment_channel(payment, totem_payment_ids=()):
     return "kiosk_totem" if payment.id in totem_payment_ids else "kiosk_qr"
 
 
+def totem_payment_ids(db, payments):
+    """Ids dos pagamentos (entre ``payments``) que vieram de um pedido do totem (uma consulta, só se houver
+    pagamento de origem ``kiosk``)."""
+    kiosk_ids = [payment.id for payment in payments if payment.origin == "kiosk"]
+    if not kiosk_ids:
+        return set()
+    return set(db.scalars(select(KioskOrder.payment_id).where(KioskOrder.payment_id.in_(kiosk_ids))))
+
+
+def channel_by_session(db, payments):
+    """``{session_id: {"channel", "provider", "method"}}`` de ``payments_by_session`` (exportações do dono)."""
+    totem = totem_payment_ids(db, payments.values())
+    return {session_id: {"channel": payment_channel(payment, totem), "provider": payment.provider,
+                         "method": payment.method} for session_id, payment in payments.items()}
+
+
 def attach_owner_payments(db, result):
     """``/owner/sessions``: acrescenta o pagamento de cada sessão (sem dados do motorista) e o canal."""
     payments = payments_by_session(db, [item.get("id") for item in result["items"]])
     by_text = {str(key): value for key, value in payments.items()}
-    kiosk_ids = [payment.id for payment in payments.values() if payment.origin == "kiosk"]
-    totem = set(db.scalars(select(KioskOrder.payment_id).where(KioskOrder.payment_id.in_(kiosk_ids)))) \
-        if kiosk_ids else set()
+    totem = totem_payment_ids(db, payments.values())
     for item in result["items"]:
         payment = by_text.get(str(item.get("id")))
         item["payment"] = payment_row(payment, owner=True) | {"channel": payment_channel(payment, totem)} \

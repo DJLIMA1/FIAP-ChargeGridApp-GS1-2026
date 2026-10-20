@@ -16,7 +16,7 @@ from chargegrid_core import analytics
 
 from ... import overstay
 from ...models import ChargingSession, Command, Connector, Device, Reservation, Station, Telemetry, now
-from ...service import RES_ACTIVE, SESSION_ACTIVE
+from ...service import RES_ACTIVE, SESSION_ACTIVE, kiosk_holds
 
 TZ = analytics.REPORT_TZ_NAME
 ONLINE_WINDOW = timedelta(seconds=45)
@@ -259,7 +259,10 @@ def reservation_item(row):
 
 
 def live(db, scope):
-    """Estado atual de cada ponto, com sessão ativa e a última potência recebida."""
+    """Estado atual de cada ponto, com sessão ativa e a última potência recebida.
+
+    Ponto travado por um pedido do totem: ``occupied`` com ``kiosk_in_use`` ("Em uso no totem").
+    """
     moment = now()
     points = db.execute(
         scope.stations(
@@ -293,11 +296,12 @@ def live(db, scope):
         ))
     else:
         retired = set()
+    holds = kiosk_holds(db, ids)
     items = []
     for point, station, device in points:
         session = sessions.get(point.id)
         reservation = reservations.get(point.id)
-        state = live_status(point, station, device, reservation, session, moment)
+        state = live_status(point, station, device, reservation, session, moment, holds.get(point.id))
         sample = samples.get(session.id) if session else None
         power = (sample.data or {}).get("power_w") if sample else None
         items.append({
@@ -338,8 +342,9 @@ def _online(device, moment):
     return bool(device and device.last_seen and device.last_seen > moment - ONLINE_WINDOW)
 
 
-def live_status(connector, station, device, reservation, session, moment):
-    """Mesmas regras de :func:`app.service.availability`, sem consultas extras."""
+def live_status(connector, station, device, reservation, session, moment, hold=None):
+    """Mesmas regras de :func:`app.service.availability`, sem consultas extras (``hold``: pedido do
+    totem que trava o ponto, de ``service.kiosk_holds``)."""
     reserved_until = (
         reservation.expires_at
         if reservation and reservation.status == "confirmed" and reservation.expires_at
@@ -358,6 +363,8 @@ def live_status(connector, station, device, reservation, session, moment):
     elif reservation:
         status = ("reserved" if reserved_until and device.physical_state == "reserved" and device.reconciled
                   else "reconciling")
+    elif hold is not None:
+        status = "occupied"
     elif not device.reconciled:
         status = "reconciling"
     elif device.connected or device.physical_state not in ("idle", "stopped"):
@@ -365,7 +372,8 @@ def live_status(connector, station, device, reservation, session, moment):
     else:
         status = "available"
     return {"available": status == "available", "availability_status": status,
-            "reserved_until": reserved_until.isoformat() if reserved_until else None}
+            "reserved_until": reserved_until.isoformat() if reserved_until else None,
+            "kiosk_in_use": hold is not None}
 
 
 def alerts(db, scope):

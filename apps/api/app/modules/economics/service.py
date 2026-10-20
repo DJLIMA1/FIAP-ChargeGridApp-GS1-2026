@@ -13,6 +13,7 @@ from chargegrid_core import analytics, economics
 from ...errors import fail
 from ...models import ChargingSession, Connector, Station, now
 from ..owner.service import EXPORT_LIMIT, _eligible, _owned_sessions
+from ..payments.funding import channel_by_session, payments_by_session
 from ..receipts.registry import extras_for
 
 FEE_READ_ONLY = "A comissão da plataforma é definida em contrato e não pode ser alterada no painel."
@@ -93,10 +94,13 @@ def margin_rows(db, scope, window) -> list[dict]:
     ids = [record["id"] for record in records]
     sessions = db.scalars(select(ChargingSession).where(ChargingSession.id.in_(ids))).all() if ids else []
     extras = extras_for(db, sessions)
+    # Totem 0.8.0: canal e método de cada recarga (colunas no fim do CSV e do PDF).
+    channels = channel_by_session(db, payments_by_session(db, ids))
     return [
         economics.session_economics(dict(record), station_energy_cost=record["station_energy_cost"],
                                     station_fee_percent=record["station_fee_percent"],
                                     extras=extras.get(record["id"]))
+        | analytics.payment_export_fields(channels.get(record["id"]))
         for record in records
     ]
 
