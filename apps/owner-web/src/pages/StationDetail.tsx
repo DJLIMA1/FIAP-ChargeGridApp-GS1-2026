@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { StationPatch } from '../api/endpoints'
 import type { Amenity, Connector, Station } from '../api/types'
@@ -7,6 +7,10 @@ import { useAuth } from '../auth/AuthContext'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
+import { EconomicsCard } from '../components/station/EconomicsCard'
+import { OverstayCard } from '../components/station/OverstayCard'
+import { PaymentsCard } from '../components/station/PaymentsCard'
+import { SitePowerCard } from '../components/station/SitePowerCard'
 import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
 import { useFilters } from '../lib/filters'
 import { formatPower, formatRelative, formatTariff } from '../lib/format'
@@ -350,6 +354,14 @@ export default function StationDetail() {
   useEffect(() => {
     if (data) setStation(data)
   }, [data])
+  // Atalhos como /estacoes/:id#economics (do Resultado) rolam até o cartão.
+  const { hash } = useLocation()
+  const loaded = Boolean(station)
+  useEffect(() => {
+    if (!loaded || !hash) return
+    const timer = setTimeout(() => document.getElementById(`${hash.slice(1)}-t`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+    return () => clearTimeout(timer)
+  }, [loaded, hash])
 
   const update = (next: Station) => {
     // A resposta do PATCH é a fonte da verdade (sem atualização otimista).
@@ -430,6 +442,10 @@ export default function StationDetail() {
             </EmptyState>
           )}
         </Card>
+        <SitePowerCard stationId={station.id} />
+        <EconomicsCard stationId={station.id} />
+        <OverstayCard station={station} />
+        <PaymentsCard station={station} onSaved={update} />
         <AmenitiesEditor station={station} onSaved={update} />
       </div>
     </>

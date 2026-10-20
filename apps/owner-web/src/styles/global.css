@@ -537,3 +537,16 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .autocomplete-title { font-weight: 600; font-size: 14px; color: var(--text); }
 .autocomplete-detail { font-size: 12.5px; color: var(--muted); }
 .autocomplete-note { padding: 7px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
+
+/* Operação do posto: resultado, energia do estabelecimento, pagamentos e permanência */
+.connector-fields.fields-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Atalhos #economics/#site-power: o título não fica sob a barra superior fixa. */
+.card-title { scroll-margin-top: 96px; }
+.point-power { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.point-occupancy { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 4px; font-size: 12.5px; }
+@media (max-width: 900px) {
+  .connector-fields.fields-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .connector-fields.fields-4 { grid-template-columns: minmax(0, 1fr); }
+}
