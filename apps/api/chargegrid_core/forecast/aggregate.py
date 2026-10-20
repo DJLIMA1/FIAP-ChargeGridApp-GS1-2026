@@ -8,6 +8,10 @@ Regras
 ------
 * **Ocupação** vem das sessões: ``[started_at, ended_at)`` (sessão ativa: até
   ``now``), recortada em horas. Sessões são o registro durável; nunca somem.
+  A **permanência** depois da recarga (carro ainda conectado, vaga ocupada) também
+  conta: ``[ended_at, overstay_ended_at)``; com a permanência ainda aberta, só até
+  ``overstay_last_connected_at`` (último sync que confirmou o cabo), nunca até ``now``.
+  A energia continua só a da recarga.
 * **Energia** vem das diferenças entre leituras de telemetria da mesma sessão
   (``energy_wh`` é cumulativo): ``ΔWh = Wh_atual − Wh_anterior``, nunca a soma dos
   cumulativos. Regressão (reboot/reset) não gera energia negativa: a leitura vira a
@@ -122,10 +126,30 @@ def session_energy(session: Mapping, samples: list[Mapping], now: datetime):
     return segments, "telemetry"
 
 
+def occupied_until(session: Mapping, now: datetime) -> datetime | None:
+    """Fim da ocupação da vaga: fim da recarga (ativa: ``now``) estendido pela permanência.
+
+    Permanência encerrada: ``overstay_ended_at``; aberta: ``overstay_last_connected_at``
+    (tempo confirmado pelo equipamento). ``None`` quando a sessão não começou.
+    """
+    began = parse_time(session.get("started_at"))
+    if began is None:
+        return None
+    finished = parse_time(session.get("ended_at")) or now
+    if parse_time(session.get("overstay_started_at")) is not None:
+        tail = parse_time(session.get("overstay_ended_at")) or parse_time(session.get("overstay_last_connected_at"))
+        if tail is not None:
+            finished = max(finished, tail)
+    return max(finished, began)
+
+
 def hourly_rows(sessions: Iterable[Mapping], samples: Iterable[Mapping], start: datetime, end: datetime,
                 now: datetime, *, origin: str | None = None) -> list[dict]:
     """Linhas ``{connector_id, hour_start, origin, busy_seconds, energy_wh, energy_basis,
     sessions_started, max_power_w}`` para as horas UTC em ``[start, end)``.
+
+    Sessões podem trazer ``overstay_started_at``/``overstay_ended_at``/``overstay_last_connected_at``
+    (opcionais): a permanência entra em ``busy_seconds`` (ver ``occupied_until``).
 
     ``start``/``end`` devem estar alinhados à hora; quem chama passa apenas horas fechadas.
     ``samples`` precisam de ``session_id``; sessões de ``id``.
@@ -156,13 +180,13 @@ def hourly_rows(sessions: Iterable[Mapping], samples: Iterable[Mapping], start: 
         if began is None:
             continue
         connector = str(session.get("connector_id"))
-        finished = parse_time(session.get("ended_at")) or now
+        occupied = occupied_until(session, now)
         simulated = (session.get("source") or "simulated") != "measured"
         if start <= floor_hour(began) < end:
             entry = cell(connector, floor_hour(began))
             entry["started"] += 1
             entry["simulated"] |= simulated
-        for hour, seconds in _pieces(began, max(finished, began), start, end):
+        for hour, seconds in _pieces(began, occupied, start, end):
             entry = cell(connector, hour)
             entry["busy"] += seconds
             entry["simulated"] |= simulated

@@ -61,6 +61,24 @@ def test_active_session_counts_only_until_now_and_inside_window():
     assert aggregate.hourly_rows([session(start=at(10), end=at(11))], [], at(17), at(19), at(20)) == []
 
 
+def test_overstay_counts_as_occupied_until_unplug_or_last_confirmed_sync():
+    # Recarga 17:30–18:00, carro conectado até 18:40: a vaga fica ocupada; a energia não muda.
+    closed = {**session(start=at(17, 30), end=at(18), energy="1000"),
+              "overstay_started_at": at(18), "overstay_ended_at": at(18, 40), "overstay_last_connected_at": at(18, 39)}
+    rows = aggregate.hourly_rows([closed], [], at(17), at(20), at(21))
+    assert [(r["hour_start"].hour, r["busy_seconds"]) for r in rows] == [(17, 1800), (18, 2400)]
+    assert sum(r["energy_wh"] for r in rows) == Decimal("1000.000")
+    assert rows[1]["energy_wh"] == 0
+    # Permanência ainda aberta: só o tempo confirmado pelo último sync, nunca até ``now``.
+    open_ = {**closed, "overstay_ended_at": None, "overstay_last_connected_at": at(18, 20)}
+    rows = aggregate.hourly_rows([open_], [], at(17), at(20), at(21))
+    assert [(r["hour_start"].hour, r["busy_seconds"]) for r in rows] == [(17, 1800), (18, 1200)]
+    # Sem permanência: comportamento antigo.
+    rows = aggregate.hourly_rows([session(start=at(17, 30), end=at(18))], [], at(17), at(20), at(21))
+    assert [(r["hour_start"].hour, r["busy_seconds"]) for r in rows] == [(17, 1800)]
+    assert aggregate.occupied_until(open_, at(21)) == at(18, 20)
+
+
 def test_measured_origin_only_when_every_session_is_measured():
     rows = aggregate.hourly_rows([session(start=at(17), end=at(17, 30), source="measured")], [],
                                  at(17), at(18), at(19))

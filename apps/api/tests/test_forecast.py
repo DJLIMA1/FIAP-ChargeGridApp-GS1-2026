@@ -109,6 +109,34 @@ def test_rollup_is_idempotent_keeps_synthetic_rows_and_moves_the_watermark(facto
         assert mark.rolled_until == rollup_module.closed_until(moment)
 
 
+def test_rollup_counts_overstay_as_occupied_until_unplug_or_last_confirmed_sync(factory, seed):
+    """A permanência ocupa a vaga: ``[ended_at, overstay_ended_at)``; aberta, até o último sync com cabo."""
+    hour = floor_hour(now()) - timedelta(hours=8)
+    with factory.begin() as db:
+        db.add(ChargingSession(user_id=seed["a"], connector_id=seed["point"], status="completed",
+                               started_at=hour + timedelta(minutes=30), ended_at=hour + timedelta(hours=1),
+                               max_duration_minutes=120, price_per_kwh=Decimal(2), energy_wh=Decimal(1000),
+                               source="simulated", overstay_started_at=hour + timedelta(hours=1),
+                               overstay_last_connected_at=hour + timedelta(hours=1, minutes=39),
+                               overstay_ended_at=hour + timedelta(hours=1, minutes=40),
+                               overstay_end_reason="disconnected"))
+    with factory.begin() as db:
+        # Janela que começa depois do fim da recarga: a sessão entra só pela permanência.
+        rows = rollup_module.compute_rows(db, hour + timedelta(hours=1), hour + timedelta(hours=3), now())
+        assert [(r["hour_start"], r["busy_seconds"], r["energy_wh"]) for r in rows] == [
+            (hour + timedelta(hours=1), 2400, Decimal("0.000"))]
+    with factory.begin() as db:
+        db.add(ChargingSession(user_id=seed["a"], connector_id=seed["point"], status="completed",
+                               started_at=hour + timedelta(hours=3), ended_at=hour + timedelta(hours=3, minutes=30),
+                               max_duration_minutes=120, price_per_kwh=Decimal(2), energy_wh=Decimal(500),
+                               source="simulated", overstay_started_at=hour + timedelta(hours=3, minutes=30),
+                               overstay_last_connected_at=hour + timedelta(hours=4, minutes=15)))
+    with factory.begin() as db:
+        rows = rollup_module.compute_rows(db, hour + timedelta(hours=4), hour + timedelta(hours=7), now())
+        # Aberta: conta só até o último sync confirmado (04:15), não até agora.
+        assert [(r["hour_start"], r["busy_seconds"]) for r in rows] == [(hour + timedelta(hours=4), 900)]
+
+
 def test_history_reads_live_hours_after_the_watermark(factory, seed):
     with factory.begin() as db:
         evening_sessions(db, seed, days=10)

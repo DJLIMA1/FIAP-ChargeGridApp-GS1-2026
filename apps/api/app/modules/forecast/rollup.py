@@ -10,7 +10,7 @@ A leitura (``service``) calcula na hora as horas posteriores à marca, sem grava
 import uuid
 from datetime import timedelta
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from chargegrid_core.forecast.aggregate import floor_hour, hourly_rows
@@ -30,14 +30,23 @@ def closed_until(moment):
 
 
 def compute_rows(db, start, end, current, connector_ids=None) -> list[dict]:
-    """Linhas de ``hourly_rows`` para ``[start, end)`` a partir de sessões e telemetria do banco."""
+    """Linhas de ``hourly_rows`` para ``[start, end)`` a partir de sessões e telemetria do banco.
+
+    A ocupação inclui a permanência: ``[ended_at, overstay_ended_at)`` ou, aberta, até
+    ``overstay_last_connected_at`` (``chargegrid_core.forecast.aggregate.occupied_until``).
+    """
     query = select(
         ChargingSession.id, ChargingSession.connector_id, ChargingSession.status, ChargingSession.started_at,
         ChargingSession.ended_at, ChargingSession.energy_wh, ChargingSession.source,
-        ChargingSession.last_measurement_at,
+        ChargingSession.last_measurement_at, ChargingSession.overstay_started_at,
+        ChargingSession.overstay_ended_at, ChargingSession.overstay_last_connected_at,
     ).where(
         ChargingSession.started_at.is_not(None), ChargingSession.started_at < end,
-        or_(ChargingSession.ended_at.is_(None), ChargingSession.ended_at >= start),
+        # A permanência (carro ainda conectado depois da recarga) ocupa a vaga até o unplug.
+        or_(ChargingSession.ended_at.is_(None), ChargingSession.ended_at >= start,
+            ChargingSession.overstay_ended_at >= start,
+            and_(ChargingSession.overstay_started_at.is_not(None), ChargingSession.overstay_ended_at.is_(None),
+                 ChargingSession.overstay_last_connected_at >= start)),
     )
     if connector_ids is not None:
         if not connector_ids:
