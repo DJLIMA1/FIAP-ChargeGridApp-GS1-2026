@@ -26,6 +26,7 @@ from .modules.ownership.routes import router as ownership_router
 from .modules.payments import service as payments_service
 from .modules.payments.kiosk import router as payments_pages
 from .modules.payments.routes import router as payments_router
+from .modules.power.routes import router as power_router
 from .modules.pricing.routes import router as pricing_router
 from .modules.receipts.routes import router as receipts_router
 from .modules.reservations.routes import router as reservations_router
@@ -60,6 +61,8 @@ for router in (
 ):
     app.include_router(router, prefix="/v1")
 app.include_router(payments_pages)
+# Rebalanceamento de potência ao vivo (painel do vendedor e motorista).
+app.include_router(power_router, prefix="/v1")
 
 
 @app.get("/health")

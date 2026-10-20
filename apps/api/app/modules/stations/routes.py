@@ -131,7 +131,8 @@ def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_use
     ):
         fail("point_busy", "Encerre reservas/recargas antes de desativar")
     if "max_power_kw" in data.model_fields_set:
-        # The cap is a next-start setting: running charges keep the power they started with.
+        # Without live rebalancing the cap is a next-start setting (running charges keep their
+        # power); with rebalance_enabled, the next device syncs redivide it (modules/power).
         retired = retired_ids(db, [point.id for point in points])
         ratings = [point.power_kw for point in points if point.active and point.id not in retired]
         try:

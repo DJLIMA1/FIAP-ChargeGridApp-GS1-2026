@@ -2,6 +2,7 @@
 
 import re
 from datetime import timedelta
+from decimal import Decimal
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -9,7 +10,7 @@ from test_http import clear_overrides, client_for, sync_payload
 from test_payments import SECRET, _post_event
 
 from app.config import settings
-from app.models import ChargingSession, Command, Payment, Profile, Station, now
+from app.models import ChargingSession, Command, Payment, PowerDecision, Profile, Station, now
 from app.modules.payments import gateway
 from app.modules.payments.fake import FakeStripe
 from app.presence_code import current_code
@@ -158,3 +159,20 @@ def test_kiosk_waits_while_point_is_busy_then_releases(http, factory, seed, stri
     page = http.get(f"{path}?t={token}")
     assert "Expirado · valor devolvido" in page.text
     assert stripe.intents[stripe.sessions[payment.provider_checkout_id]["payment_intent"]]["status"] == "canceled"
+
+
+def test_kiosk_start_from_webhook_gets_live_power(http, factory, seed, stripe):
+    """Integração pagamento × potência ao vivo: o START emitido pelo webhook passa pela decisão do posto."""
+    with factory.begin() as db:
+        station = db.get(Station, seed["station"])
+        station.rebalance_enabled, station.site_limit_kw = True, Decimal(30)
+    _, payment = _checkout(http, factory, seed)
+    intent = stripe.pay(payment.provider_checkout_id)
+    assert _post_event(http, stripe.event("payment_intent.amount_capturable_updated", intent)).status_code == 200
+    with factory() as db:
+        session = db.query(ChargingSession).one()
+        start_cmd = db.query(Command).filter(Command.type == "START").one()
+        decision = db.query(PowerDecision).one()
+        assert start_cmd.parameters["power_decision_id"] == decision.id
+        assert session.power_state == "raising" and session.power_decision_id == decision.id
+        assert db.get(Payment, payment.id).session_id == session.id

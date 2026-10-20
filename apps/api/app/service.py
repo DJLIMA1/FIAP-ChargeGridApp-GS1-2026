@@ -100,7 +100,9 @@ def active_session(db, connector_id):
     )
 
 
-def issue(db, connector, device, kind, reservation=None, session=None, parameters=None):
+def issue(db, connector, device, kind, reservation=None, session=None, parameters=None, *, reconcile=True):
+    # ``reconcile=False``: power adjustments (SET_POWER) do not change the point's lifecycle,
+    # so they must not flip it to "reconciling" while the device confirms.
     for cmd in db.scalars(
         select(Command).where(Command.device_id == device.id, Command.status.in_(("pending", "received")))
     ):
@@ -116,7 +118,8 @@ def issue(db, connector, device, kind, reservation=None, session=None, parameter
         expires_at=now() + timedelta(seconds=30),
     )
     db.add(cmd)
-    device.reconciled = False
+    if reconcile:
+        device.reconciled = False
     db.flush()
     if session and kind in ("START", "STOP"):
         record_session_event(db, session, f"{kind.lower()}_requested", "api", f"command:{cmd.id}")

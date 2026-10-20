@@ -62,3 +62,34 @@ Campos aditivos no bloco `connector` da resposta do sync; firmware anterior igno
 - `payment`: `null` ou o pagamento do painel mais recente ainda não usado (`awaiting_payment`, `declined`, `authorized`, `paid`; até 35 min). O painel pode mostrar “Aguardando pagamento (teste)” e “Pagamento confirmado — iniciando”.
 - Depois da confirmação o fluxo é o de sempre: a API emite `START` (com `max_cost` = teto pago; o painel para sozinho em `cost_limit`), o painel aplica e confirma com ACK. Nada liga sem pagamento confirmado pelo servidor; o QR em si não autoriza nada.
 
+## Potência ao vivo — SET_POWER (firmware 0.5.0, API b7d2f4a91c36)
+
+Aditivo. A API precisa ir para o ar **antes** do firmware: `SyncInput` recusa campos desconhecidos (`extra="forbid"`), então um firmware 0.5.0 numa API antiga receberia 422. Firmware antigo nunca recebe `SET_POWER` nem START com potência 0: a API só envia para quem declara a capacidade. Sem declaração, o ponto é tratado como carga fixa (a potência com que começou). Atenção: comando desconhecido **não** é ignorado pelo firmware 0.4.0, ele responde `failed unknown_command`; por isso a negociação.
+
+**Corpo do sync (novos campos, opcionais):**
+```json
+{"capabilities": ["set_power_v1"], "applied_power_w": 6000,
+ "charger": {"model": "simulated_bench", "variant": null, "transport": "simulated",
+             "min_power_w": 1400, "max_power_w": 7200, "step_w": 100, "phases": 1}}
+```
+- `capabilities`: enviado em todo sync; sync sem o campo apaga a capacidade (firmware rebaixado deixa de receber SET_POWER).
+- `applied_power_w`: limite instalado agora (W), 0 fora de recarga ou pausado. É a verdade do equipamento: resolve ACK perdido.
+- `charger`: o equipamento declara o que controla. O piso (`min_power_w`) e o máximo entram na divisão (HCA trifásico: 4.200 W). `transport` é `simulated` enquanto não houver hardware real.
+
+**START (`parameters`):** `power_limit_w` (inteiro, pode ser **0** = começa pausado até os outros pontos confirmarem a redução) e `power_decision_id`. `max_power_kw` continua para o firmware antigo, nunca abaixo do piso. O firmware novo usa `power_limit_w` quando presente.
+
+**Comando novo:**
+```json
+{"id":"UUID","type":"SET_POWER","version":7,"expires_at":"ISO8601","session_id":"UUID","reservation_id":null,
+ "parameters":{"power_limit_w":6000,"previous_power_w":7200,"direction":"reduce","attempt":1,
+               "decision_id":123,"reason":"site","reason_short":"Loja 24/30 kW · 3 carros"}}
+```
+- Aplicar só com `state == charging` e `session_id` igual; senão ACK `failed` `no_active_session`. `0` pausa: estado continua `charging`, energia para de subir, a duração continua contando. Pausa não é fim de recarga.
+- ACK: `{"command_id":"UUID","status":"applied","applied_power_w":6000}`. A API aceita se `applied_power_w ≤ pedido + 1 W` (o equipamento pode arredondar para baixo, ex.: HCA em 0,1 kW) e grava o valor informado. Acima do pedido → comando `failed` `applied_power_mismatch`. Reentrega do mesmo `id`: confirmar de novo com o valor aplicado.
+- Energia: integrar a potência antiga até o instante da troca e a nova daí em diante. Proteger as contas de tempo restante contra potência 0 (sem divisão por zero).
+- Prazo de 15 s. A API nunca emite SET_POWER com START/STOP/RELEASE/RESERVE/FACTORY_RESET pendente no mesmo ponto, e no máximo um SET_POWER em voo; STOP sempre substitui um SET_POWER pendente. SET_POWER não marca o ponto como `reconciling`.
+- Redução sem confirmação (ACK `failed` ou prazo vencido): a API reenvia uma vez (`attempt: 2`); na segunda falha manda `STOP` com `reason: "power_limit_unconfirmed"`. Enquanto a redução não é confirmada, nenhum outro ponto aumenta. Ponto offline mantém a capacidade reservada até reconciliar; o watchdog local de 45 s continua valendo.
+
+**`authorized.session` (resposta) acrescenta:** `applied_power_kw`, `target_power_kw`, `power_state` (`applied`, `reducing`, `raising`, `waiting`, `paused`, `fixed` ou `null` sem rebalanceamento) e `power_reason_short` (até 40 caracteres, só Latin-1, cabe nas fontes do painel; ex.: `"Loja 24/30 kW · 3 carros"`). O painel mostra `applied_power_kw` depois do ACK, nunca o alvo.
+
+**Limite de taxa:** 120 syncs/min por dispositivo (antes 40/min, que derrubava cerca de 1/3 dos syncs de 1 s com 429).

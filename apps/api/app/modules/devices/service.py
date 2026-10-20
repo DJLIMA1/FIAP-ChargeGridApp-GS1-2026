@@ -33,6 +33,7 @@ from ...service import (
 from ...session_events import record as record_session_event
 from ..payments.funding import device_fields as payment_device_fields
 from ..payments.funding import prepare_recent_settlements
+from ..power import service as live_power
 
 
 def sync(db, authenticated_device, data):
@@ -106,6 +107,9 @@ def sync(db, authenticated_device, data):
     device.firmware_version = data.firmware_version
     device.physical_state = data.physical_state
     device.connected = data.connected
+    # Capacidade declarada a cada sync: firmware rebaixado deixa de receber SET_POWER.
+    device.capabilities = list(data.capabilities)
+    device.charger = data.charger.model_dump() if data.charger else None
     if reboot and session:
         session.status = "stopping"
         issue(db, connector, device, "STOP", session=session, parameters={"reason": "device_reboot"})
@@ -179,6 +183,9 @@ def sync(db, authenticated_device, data):
             device.reconciled = False
             completed_reset_id = str(cmd.id)
             continue
+        if cmd.type == "SET_POWER":
+            live_power.acknowledge(db, session, cmd, ack, data)
+            continue
         compatible = False
         if (
             cmd.type == "RESERVE"
@@ -203,6 +210,7 @@ def sync(db, authenticated_device, data):
         ):
             session.status = "charging"
             session.started_at = now()
+            live_power.on_start_applied(db, session, cmd, data)
             compatible = True
         elif (
             cmd.type == "STOP"
@@ -231,6 +239,7 @@ def sync(db, authenticated_device, data):
         reported.soc_percent = _current_soc(reported, soc_percent, energy_wh)
         reported.source = data.source
         reported.last_measurement_at = now()
+        live_power.observe(reported, device, data)
         reported.cost_estimate = (
             energy_wh
             / Decimal(1000)
@@ -307,6 +316,7 @@ def sync(db, authenticated_device, data):
                 data=data.model_dump(mode="json"),
             )
         )
+    live_power.after_sync(db, connector, device, active_session(db, connector.id))
     db.flush()
     result = response(db, connector, device)
     if completed_reset_id:
@@ -484,6 +494,7 @@ def response(db, connector, device):
                     )
                 }
                 | _battery(session)
+                | live_power.sync_fields(session)
                 if session
                 else None
             ),

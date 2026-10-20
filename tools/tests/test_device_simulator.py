@@ -228,3 +228,75 @@ def test_start_power_limit_caps_simulated_power():
     data["authorized"]["session"]["max_power_kw"] = "60.0"
     above.response(data)
     assert above.payload()["power_w"] == 7200
+
+
+def _start_then(device, now, command):
+    device.response(response())
+    now[0] = 1
+    later = response(kind=command["type"], version=2, identifier=command["id"])
+    later["commands"][0]["parameters"] = command.get("parameters", {})
+    return device.response(later)
+
+
+def test_payload_declares_live_power_capability_and_applied_power():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    device.response(response())
+    body = device.payload()
+    assert body["capabilities"] == ["set_power_v1"]
+    assert body["applied_power_w"] == 7200
+    assert body["charger"]["model"] == "simulated_bench" and body["charger"]["transport"] == "simulated"
+    legacy = Device(clock=lambda: now[0], legacy=True)
+    assert "capabilities" not in legacy.payload() and legacy.payload()["firmware_version"] == "0.4.0"
+
+
+def test_set_power_applies_acks_and_integrates_energy_at_new_power():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    _start_then(device, now, {"type": "SET_POWER", "id": "p1", "parameters": {"power_limit_w": 3600}})
+    assert device.acks == [{"command_id": "p1", "status": "applied", "error": None, "applied_power_w": 3600}]
+    energy = device.energy
+    now[0] = 41
+    device.tick()
+    assert round(device.energy - energy, 3) == 40.0  # 40 s a 3,6 kW
+    # Reentrega do mesmo comando: confirma de novo com o valor aplicado.
+    again = response(kind="SET_POWER", version=2, identifier="p1")
+    device.response(again)
+    assert device.acks[0]["applied_power_w"] == 3600
+
+
+def test_zero_power_pauses_without_energy_or_errors():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    _start_then(device, now, {"type": "SET_POWER", "id": "p0", "parameters": {"power_limit_w": 0}})
+    energy = device.energy
+    now[0] = 40
+    device.tick()
+    assert device.state == "charging" and device.energy == energy
+    assert device.payload()["applied_power_w"] == 0
+
+
+def test_start_with_power_limit_w_zero_begins_paused():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    start = response()
+    start["commands"][0]["parameters"] = {"power_limit_w": 0, "max_power_kw": 6.0}
+    device.response(start)
+    assert device.state == "charging" and device.power_w == 0
+
+
+def test_legacy_firmware_rejects_set_power_as_unknown():
+    now = [0]
+    device = Device(clock=lambda: now[0], legacy=True)
+    _start_then(device, now, {"type": "SET_POWER", "id": "p1", "parameters": {"power_limit_w": 3600}})
+    assert device.acks == [{"command_id": "p1", "status": "failed", "error": "unknown_command"}]
+    assert device.power_w == 7200
+
+
+def test_set_power_without_session_fails():
+    now = [0]
+    device = Device(clock=lambda: now[0])
+    command = response(kind="SET_POWER")
+    command["commands"][0]["parameters"] = {"power_limit_w": 3000}
+    device.response(command)
+    assert device.acks[0]["status"] == "failed" and device.acks[0]["error"] == "no_active_session"
