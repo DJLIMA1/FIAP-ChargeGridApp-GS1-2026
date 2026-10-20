@@ -1,8 +1,12 @@
 """Apoio puro (sem Flet) da tela Modo Motorista: formulário ↔ perfil e leitura do plano."""
+from datetime import timedelta
+
 from chargegrid_core.driver import (
     PRESETS,
+    DriverPreferences,
     default_profile,
     parse_hhmm,
+    resolve_earnings,
     vehicle_from_dict,
 )
 from chargegrid_core.formatting import brl, duration, km, kwh
@@ -13,6 +17,15 @@ MEALS = (('almoco', 'Almoço', '12:30', 60, '45'), ('jantar', 'Jantar', '20:00',
          ('lanche', 'Lanche', '16:30', 20, '30'))
 FLEX_CHOICES = (('15', '±15 min'), ('30', '±30 min'), ('45', '±45 min'), ('60', '±1 h'), ('flex', 'Horário flexível'))
 MODES = (('full_shift', 'Turno completo'), ('auto', 'Do agora até o fim do turno'))
+# Refeições mostradas em Ajustes (o lanche salvo por versões antigas é mantido, só não aparece).
+VISIBLE_MEALS = ('almoco', 'jantar')
+AUTO_SHIFT_HOURS = 10
+TIME_OPTIONS = tuple(f'{hour:02d}:{minute:02d}' for hour in range(24) for minute in (0, 30))
+WEATHER_STATUS_TEXT = {
+    'sem_localizacao': 'Informe onde você está para ver o clima',
+    'indisponivel': 'Clima indisponível agora · usando horários típicos',
+    'desativado': 'Clima desligado · usando horários típicos',
+}
 KIND_LABELS = {'rodando': 'Rodando', 'recarga': 'Recarga', 'refeicao_recarga': 'Refeição + recarga',
                'refeicao': 'Refeição', 'pausa': 'Pausa'}
 AMENITY_TEXT = {'restaurante': 'Restaurante', 'cafe': 'Café', 'banheiro': 'Banheiro', 'shopping': 'Shopping',
@@ -184,3 +197,90 @@ def stop_is_now(plan, stop):
     """A primeira parada começa no primeiro slot de um plano a partir de agora: dá para reservar."""
     slots = plan.get('slots') or []
     return plan.get('mode') == 'auto' and bool(slots) and stop.get('start_at') == slots[0].get('at')
+
+
+# --- tela enxuta: valores que o app já considera ------------------------------------------------
+
+def time_options(value=None):
+    """Horários de 30 em 30 min; um horário salvo fora da grade (ex.: 06:15) continua na lista."""
+    options = list(TIME_OPTIONS)
+    if value and value not in options:
+        options.append(value)
+        options.sort()
+    return [(option, option) for option in options]
+
+
+def sources(preferences):
+    """Origem de ganho/turno do perfil (perfis antigos sem ``sources``: inferida pelo core)."""
+    try:
+        return DriverPreferences.from_dict(preferences).to_dict()['sources']
+    except (ValueError, TypeError):
+        return {'earnings_per_hour': 'estimativa', 'shift': 'auto'}
+
+
+def effective_preferences(preferences, now):
+    """Turno que o motorista nunca informou ("auto") e que não cobre agora: planeja de agora até
+    +10 h (só no pedido; o perfil salvo não muda)."""
+    if sources(preferences).get('shift') != 'auto' or in_shift(preferences, now):
+        return dict(preferences)
+    start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 30)
+    end = start + timedelta(hours=AUTO_SHIFT_HOURS)
+    return {**preferences, 'shift_start': f'{start:%H:%M}', 'shift_end': f'{end:%H:%M}'}
+
+
+def merge_meals(saved, edited):
+    """Refeições salvas + o que mudou em Ajustes (ligada e horário). Duração, flexibilidade e
+    refeições que não aparecem na tela (lanche) ficam como estavam."""
+    defaults = {kind: (start, length, flex) for kind, _, start, length, flex in MEALS}
+    by_kind = {meal.get('kind'): dict(meal) for meal in saved or () if isinstance(meal, dict)}
+    for kind, (enabled, start) in edited.items():
+        meal = by_kind.get(kind)
+        if meal is None:
+            if not enabled:
+                continue
+            default_start, length, flex = defaults[kind]
+            meal = build_meal(kind, True, start or default_start, length, flex)
+        label = dict((k, name) for k, name, *_ in MEALS)[kind]
+        meal.update(enabled=bool(enabled), start=clock(start or meal.get('start'), f'o horário do {label.lower()}'))
+        by_kind[kind] = meal
+    order = [kind for kind, *_ in MEALS]
+    return sorted(by_kind.values(), key=lambda meal: order.index(meal['kind']) if meal.get('kind') in order else 9)
+
+
+def earnings_info(preferences):
+    """``{per_hour, source, estimated, label}`` do core ("R$ 38/h estimado" ou "R$ 45/h (seu ganho)")."""
+    try:
+        return resolve_earnings(DriverPreferences.from_dict(preferences))
+    except (ValueError, TypeError):
+        return {'per_hour': None, 'source': 'estimativa', 'estimated': True, 'label': 'Ganho por hora estimado'}
+
+
+def _clock_text(value):
+    """'16:45' -> '16h45', '20:00' -> '20h'."""
+    hours, _, minutes = str(value or '').partition(':')
+    return f'{int(hours)}h' + ('' if minutes in ('', '00') else minutes) if hours.isdigit() else str(value or '')
+
+
+def shift_line(preferences, mode, context=None):
+    """'No turno até 22:00 · demanda alta, pico 16h45–20h' (demanda só quando o contexto chegou)."""
+    start, end = preferences.get('shift_start') or '10:00', preferences.get('shift_end') or '22:00'
+    text = f'No turno até {end}' if mode == 'auto' else f'Próximo turno {start}–{end}'
+    demand = (context or {}).get('demand') or {}
+    if demand.get('level'):
+        text += f" · demanda {demand['level']}"
+        peaks = demand.get('peaks') or []
+        if peaks:
+            text += f", pico {_clock_text(peaks[0]['start'])}–{_clock_text(peaks[0]['end'])}"
+    return text
+
+
+def weather_line(weather):
+    """Uma linha de clima: o resumo da API (Open-Meteo ou simulado) ou o motivo de não haver clima."""
+    weather = weather or {}
+    if weather.get('label'):
+        return weather['label']
+    return WEATHER_STATUS_TEXT.get(weather.get('status'), 'Clima ainda não consultado · usando horários típicos')
+
+
+def weather_live(weather):
+    return (weather or {}).get('status') in ('ok', 'simulado')

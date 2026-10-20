@@ -9,6 +9,8 @@ description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
     "flet==1.0.0",
+    # GPS do Modo motorista (extensão oficial; a versão acompanha o flet).
+    "flet-geolocator==1.0.0",
     "pillow>=11,<13",
     "httpx>=0.28,<1",
     "chargegrid-scanner==0.1.0",
@@ -23,7 +25,15 @@ product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
 build_number = 36
-permissions = ["camera"]
+# "location": GPS do Modo motorista, pedido só quando o motorista toca "Usar minha localização".
+permissions = ["camera", "location"]
+
+# O app só lê a posição com a tela aberta: sem localização em segundo plano (o "location" do Flet a inclui).
+[tool.flet.android.permission]
+"android.permission.ACCESS_BACKGROUND_LOCATION" = false
+
+[tool.flet.ios.info]
+NSLocationWhenInUseUsageDescription = "O ChargeGrid usa sua localização para achar postos e o clima perto de você no Modo motorista."
 
 [tool.flet.dev_packages]
 chargegrid-scanner = "packages/chargegrid_scanner"

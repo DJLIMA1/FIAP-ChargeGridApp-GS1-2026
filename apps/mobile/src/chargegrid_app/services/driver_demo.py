@@ -1,16 +1,20 @@
 """Rotas ``/driver/*`` do modo demo: mesmo motor (chargegrid_core) e mesmo contrato da API.
 
-Nada sai do aparelho: os postos são os da demonstração e o clima não é consultado.
+Nada sai do aparelho: os postos são os da demonstração e o clima é **simulado** (fixo: nublado, 23°,
+chuva das 18h às 20h — ``chargegrid_core.driver.simulated_weather``), sempre rotulado "simulado".
 """
 from copy import deepcopy
 from datetime import timedelta, timezone
 
 from chargegrid_core.driver import (
+    build_context,
     build_next_stop,
     build_plan,
     default_profile,
     merge_profile,
     presets,
+    rain_note,
+    simulated_weather,
     validate_profile,
 )
 
@@ -97,8 +101,33 @@ def _profile_response(api, profile):
             'presets': presets()}
 
 
-def driver_route(api, method, path, body):
+SIGNALS_INFO = [{'source': 'simulado', 'status': 'simulado',
+                 'detail': 'Demonstração offline: clima simulado (não é previsão real).'}]
+
+
+def _coordinates(source):
+    if (source.get('lat') is None) != (source.get('lng') is None):
+        _fail('Informe latitude e longitude juntas.', 'coordinates_required')
+    if source.get('lat') is None:
+        return None, None
+    return _number(source['lat'], 'a latitude', -90, 90), _number(source['lng'], 'a longitude', -180, 180)
+
+
+def _local_now(api):
+    return api._now().astimezone(LOCAL_TZ).replace(tzinfo=None)
+
+
+def driver_route(api, method, path, body, params=None):
     ensure_network(api)
+    if (method, path) == ('GET', 'driver/context'):
+        _coordinates(dict(params or {}))
+        now = _local_now(api)
+        weather = simulated_weather(now)
+        result = build_context(api._driver_profile or _validated(default_profile()), now, (weather,))
+        result['demand']['signals'] = deepcopy(SIGNALS_INFO)
+        note = rain_note(weather, now)
+        result['alerts'] = [note] if note else []
+        return result
     if (method, path) == ('GET', 'driver/profile'):
         return _profile_response(api, api._driver_profile or _validated(default_profile()))
     if (method, path) == ('PUT', 'driver/profile'):
@@ -109,28 +138,29 @@ def driver_route(api, method, path, body):
     if method == 'POST' and path in ('driver/plan', 'driver/next-stop'):
         _check(body, PLAN_FIELDS + (('mode',) if path == 'driver/plan' else ()))
         soc = _number(body.get('soc_percent'), 'a bateria atual (%)', 0, 100)
-        if (body.get('lat') is None) != (body.get('lng') is None):
-            _fail('Informe latitude e longitude juntas.', 'coordinates_required')
-        lat = lng = None
-        if body.get('lat') is not None:
-            lat, lng = _number(body['lat'], 'a latitude', -90, 90), _number(body['lng'], 'a longitude', -180, 180)
+        lat, lng = _coordinates(body)
         mode = body.get('mode') or 'auto'
         if mode not in ('auto', 'full_shift'):
             _fail('Escolha um modo de planejamento válido.')
         profile = _validated(merge_profile(api._driver_profile, body))
         stations = [api._station_row(station) for station in api._stations.values() if station['active']]
-        now = api._now().astimezone(LOCAL_TZ).replace(tzinfo=None)
+        now = _local_now(api)
         payload = {'soc_percent': soc, 'lat': lat, 'lng': lng, 'mode': mode, 'context': dict(body.get('context') or {})}
+        live = body.get('live_signals') is not False
+        signals = (simulated_weather(now),) if live else ()
+        note = rain_note(signals[0], now) if live else None
         try:
             if path == 'driver/plan':
-                result = build_plan(payload, profile, stations, now)
+                result = build_plan(payload, profile, stations, now, signals, [note] if note else None)
                 result['generated_at'] = now.isoformat()
             else:
-                result = build_next_stop(payload, profile, stations, now)
+                result = build_next_stop(payload, profile, stations, now, signals)
+                result['alerts'] = ([note] if note else []) + result['alerts']
         except (ValueError, TypeError) as error:
             _fail(str(error) or 'Não foi possível planejar.', 'invalid_driver_plan')
-        result['demand']['signals'] = [{'source': 'open-meteo', 'status': 'demo',
-                                        'detail': 'Demonstração offline: clima não consultado.'}]
+        result['demand']['signals'] = deepcopy(SIGNALS_INFO) if live else [{'source': 'simulado', 'status': 'desativado'}]
+        if result['demand'].get('weather') is None:
+            result['demand']['weather'] = {'status': 'desativado', 'source': 'simulado', 'label': None}
         return result
     _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.',
           'demo_route_not_supported', 404)

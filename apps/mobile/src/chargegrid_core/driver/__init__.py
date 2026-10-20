@@ -14,8 +14,10 @@ from .demand import (
     base_multiplier,
     peak_windows,
 )
+from .earnings import EarningsSource, Trip, TripHistory, resolve_earnings
 from .models import (
     AMENITY_KINDS,
+    SOURCE_CHOICES,
     Amenity,
     ChargerOption,
     DriverPreferences,
@@ -26,6 +28,7 @@ from .models import (
 )
 from .planner import Plan, next_stop, plan_shift
 from .service import (
+    build_context,
     build_next_stop,
     build_plan,
     default_profile,
@@ -41,11 +44,14 @@ from .vehicles import (
     normalize_connector,
     vehicle_from_dict,
 )
+from .weather import condition_text, rain_note, simulated_weather, weather_summary
 
 __all__ = [
     'AMENITY_KINDS', 'Amenity', 'BonusWindow', 'ChargeCurve', 'ChargerOption', 'CombinedDemand', 'DemandSignal',
-    'DriverPreferences', 'HeuristicDemand', 'ManualContext', 'Meal', 'PRESETS', 'Plan', 'VehicleProfile',
-    'WeatherSignal', 'base_multiplier', 'build_next_stop', 'build_plan', 'default_profile', 'hhmm',
+    'DriverPreferences', 'EarningsSource', 'HeuristicDemand', 'ManualContext', 'Meal', 'PRESETS', 'Plan',
+    'SOURCE_CHOICES', 'Trip', 'TripHistory', 'VehicleProfile', 'WeatherSignal', 'base_multiplier',
+    'build_context', 'build_next_stop', 'build_plan', 'condition_text', 'default_profile', 'hhmm',
     'merge_profile', 'next_stop', 'normalize_connector', 'options_from_stations', 'parse_hhmm',
-    'peak_windows', 'plan_shift', 'presets', 'shift_window', 'validate_profile', 'vehicle_from_dict',
+    'peak_windows', 'plan_shift', 'presets', 'rain_note', 'resolve_earnings', 'shift_window',
+    'simulated_weather', 'validate_profile', 'vehicle_from_dict', 'weather_summary',
 ]

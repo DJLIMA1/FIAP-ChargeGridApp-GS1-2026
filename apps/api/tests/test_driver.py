@@ -143,6 +143,51 @@ def test_plan_signal_from_open_meteo_and_silent_fallback(factory, seed, monkeypa
     assert off['demand']['source'] == 'heuristica+informado'
 
 
+def test_context_shows_weather_demand_and_earnings_source_without_planning(factory, seed, monkeypatch):
+    client, _ = client_for(factory, seed['a'])
+    hours = [f'2026-10-13T{h:02d}:00' for h in range(24)]
+    payload = {'hourly': {'time': hours, 'precipitation': [2.0 if h == 18 else 0.0 for h in range(24)],
+                          'temperature_2m': [25.0] * 24, 'weather_code': [61 if h == 18 else 3 for h in range(24)]},
+               'current': {'time': '2026-10-13T13:45', 'temperature_2m': 24.4, 'precipitation': 0.0,
+                           'weather_code': 2}}
+    monkeypatch.setattr(weather, '_request', lambda lat, lng: payload)
+    monkeypatch.setattr(routes, 'weather_signal', weather.weather_signal)
+    response = client.get('/v1/driver/context', params=SAO_PAULO)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body['estimate'] is True and body['in_shift'] is True and body['window']['end'] == '22:00'
+    assert body['weather']['status'] == 'ok'
+    assert body['weather']['label'] == '24° · parcialmente nublado · chuva às 18h'
+    assert body['demand']['source'] == 'heuristica+open-meteo' and body['demand']['peaks']
+    assert body['earnings'] == {'per_hour': 38.0, 'source': 'estimativa', 'estimated': True,
+                                'label': 'R$ 38/h estimado'}
+    assert any(alert['code'] == 'rain' for alert in body['alerts'])
+    plan = client.post('/v1/driver/plan', json={'soc_percent': 50, **SAO_PAULO}).json()
+    assert plan['demand']['weather']['label'].startswith('24°')
+    assert plan['earnings']['estimated'] is True
+    assert any('estimado pelo ChargeGrid' in text for text in plan['assumptions'])
+    # Sem localização: sem clima, e a resposta diz o motivo.
+    blind = client.get('/v1/driver/context').json()
+    assert blind['weather']['status'] == 'sem_localizacao' and blind['weather']['label'] is None
+    assert client.get('/v1/driver/context', params={'lat': -23.5}).status_code == 422
+    assert client.get('/v1/driver/context', params={'lat': 200, 'lng': 0}).status_code == 422
+
+
+def test_profile_sources_mark_typed_values_and_legacy_profiles_are_inferred(factory, seed):
+    client, _ = client_for(factory, seed['a'])
+    typed = client.put('/v1/driver/profile', json={'preferences': {
+        'earnings_per_hour': 38, 'sources': {'earnings_per_hour': 'informado', 'shift': 'auto'}}})
+    assert typed.status_code == 200, typed.text
+    assert typed.json()['preferences']['sources'] == {'earnings_per_hour': 'informado', 'shift': 'auto'}
+    assert client.get('/v1/driver/context').json()['earnings']['label'] == 'R$ 38/h (seu ganho)'
+    # App antigo (sem ``sources``) que digitou outro ganho e outro turno: vira "informado".
+    legacy = client.put('/v1/driver/profile', json={'preferences': {
+        'earnings_per_hour': 52, 'shift_start': '06:00', 'shift_end': '14:00'}}).json()
+    assert legacy['preferences']['sources'] == {'earnings_per_hour': 'informado', 'shift': 'informado'}
+    for invalid in ({'sources': {'earnings_per_hour': 'chute'}}, {'sources': {'outro': 'auto'}}):
+        assert client.put('/v1/driver/profile', json={'preferences': invalid}).status_code == 422, invalid
+
+
 def test_next_stop_and_input_validation(factory, seed):
     with factory.begin() as db:
         add_station(db, seed['owner'], 'Rapido', -23.552, -46.634)
@@ -170,3 +215,4 @@ def test_driver_routes_require_authentication(factory, seed):
     anonymous = TestClient(app)
     assert anonymous.get('/v1/driver/profile').status_code == 401
     assert anonymous.post('/v1/driver/plan', json={'soc_percent': 50}).status_code == 401
+    assert anonymous.get('/v1/driver/context').status_code == 401

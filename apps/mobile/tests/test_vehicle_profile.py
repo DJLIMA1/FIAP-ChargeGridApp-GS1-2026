@@ -192,14 +192,13 @@ class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
         swap = next(item for item in descendants(screen) if getattr(item, 'tooltip', None) == 'Trocar o carro')
         await swap.on_click(None)
         self.assertTrue(picker_box.visible)
-        self.assertEqual(fields(screen)['O que planejar'].value, 'full_shift')
-        self.assertIn('Turno completo 10:00–22:00', visible)
-        self.assertIn('Turno completo', visible)  # row title follows the inferred mode
+        # 6h and a shift the driver never set: plan from now for 10 h instead of waiting for 10:00.
+        self.assertTrue(any(text.startswith('No turno até 16:00') for text in visible))
         # No battery question: the planner uses the hidden SoC (services.vehicle_state).
         self.assertIsNone(battery(screen))
         await click(screen, 'Planejar meu turno')(None)
         plan = self.app.driver_state['plan']
-        self.assertEqual((plan['mode'], plan['window']['start']), ('full_shift', '10:00'))
+        self.assertEqual((plan['mode'], plan['window']['start'], plan['window']['end']), ('auto', '06:00', '16:00'))
 
     async def test_demo_shows_default_car_and_plan_saves_the_chosen_one(self):
         screen = await driver.build(self.app)
@@ -228,6 +227,23 @@ class PlannerInferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['context'], {})  # weather comes from the API, not a checkbox
         self.assertIn('lat', body)  # demo region resolved without asking
         rain = next(c for c in descendants(screen) if isinstance(c, ft.Checkbox))
+        self.assertFalse(rain.visible)  # the (simulated) forecast is live: no manual rain switch
+        rain.value = True
+        await click(screen, 'Planejar meu turno')(None)
+        body = [body for path, body in bodies if path == 'driver/plan'][-1]
+        self.assertEqual(body['context'], {})
+        # Without weather (old API / offline context) the switch shows up and is sent.
+        self.app.driver_state = {}
+        original_request = self.api.request
+
+        async def no_context(method, path, body=None, **kwargs):
+            if path == 'driver/context':
+                raise ApiError('Not found', 404)
+            return await original_request(method, path, body, **kwargs)
+        self.api.request = no_context
+        screen = await driver.build(self.app)
+        rain = next(c for c in descendants(screen) if isinstance(c, ft.Checkbox))
+        self.assertTrue(rain.visible)
         rain.value = True
         await click(screen, 'Planejar meu turno')(None)
         body = [body for path, body in bodies if path == 'driver/plan'][-1]
