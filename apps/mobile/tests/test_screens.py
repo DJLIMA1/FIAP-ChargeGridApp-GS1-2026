@@ -355,7 +355,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
         session={'id':'s','status':'charging','soc_percent':50,'source':'simulated','last_measurement_at':None,'energy_wh':10,'cost_estimate':'0.01','max_duration_minutes':30,'online':True,'end_reason':None}
         app=FakeApp([session])
         await charging.build(app)
-        self.assertEqual(app.poll[1],5)
+        self.assertEqual(app.poll[1],1)
 
     async def test_empty_reservation_screen_does_not_poll(self):
         app=FakeApp([None,None])

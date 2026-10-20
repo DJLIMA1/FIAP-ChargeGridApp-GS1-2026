@@ -63,7 +63,7 @@ sequenceDiagram
     API->>DB: Finaliza sessão e histórico
 ```
 
-`START` só pode ser emitido pela API. O ESP32 aceita parada local pelo touch ou `CG_STOP`, mas não início local. Em recarga, a sincronização ocorre a cada 5 segundos; fora dela, a cada 10 segundos. Falta de comunicação por 45 segundos aciona a parada local. O dispositivo nunca retoma uma sessão automaticamente após reiniciar. Uma reserva ainda válida pode ser restaurada sem prorrogar o prazo original.
+`START` só pode ser emitido pela API. O ESP32 aceita parada local pelo touch ou `CG_STOP`, mas não início local. Com sessão, reserva ou comando pendente, a sincronização ocorre a cada 1 segundo; ocioso, a cada 5 segundos. A tela do app em recarga consulta a API a cada 1 segundo. Falta de comunicação por 45 segundos aciona a parada local. O dispositivo nunca retoma uma sessão automaticamente após reiniciar. Uma reserva ainda válida pode ser restaurada sem prorrogar o prazo original.
 
 ## Circuito da bancada e limites físicos
 

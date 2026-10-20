@@ -139,3 +139,13 @@ Tela: durante a recarga, o cartão "BATERIA DO VEÍCULO" (Barlow Condensed 72 px
 
 `tools/device_simulator.py` segue as mesmas regras (subida simulada, repasse do celular, `battery_full` local e via STOP) e é coberto por `tools/tests/test_device_simulator.py`.
 
+
+## Latência entre totem e app (19/10/2026)
+
+O totem calcula energia e valor localmente a cada 0,5 s. O app só vê o que o totem já enviou à API. Com sync de 5 s em recarga e consulta do app a cada 5 s, o celular podia ficar até ~10 s atrás da tela (ex.: totem em R$ 2,20 e app em R$ 2,19). Mudanças:
+
+- API: `sync_interval_seconds` = 1 s com sessão, reserva ou comando pendente; 5 s ocioso (antes 5/10 s). O START/STOP pedido pelo app chega ao totem em até ~1 s quando há reserva e em até 5 s sem ela.
+- Firmware: `syncDevice()` reaproveita o `WiFiClientSecure`/`HTTPClient` com keep-alive; o handshake TLS (1–2 s no ESP32) só se repete após uma falha (`code <= 0`).
+- App: a tela "Recarga em andamento" consulta a sessão a cada 1 s (antes 5 s); o detalhe da reserva, a cada 2 s. No modo apresentação, o nível do celular só é reenviado quando muda.
+
+Diferença esperada agora: até ~2 s (1 s do totem + 1 s do app + rede). Custo: um totem em recarga faz ~3.600 requisições por hora, e o app outras ~3.600; ocioso, o totem faz 720 por hora. Ver a estimativa de volume em `docs/planejamento-mvp.md` antes de escalar para muitos pontos.

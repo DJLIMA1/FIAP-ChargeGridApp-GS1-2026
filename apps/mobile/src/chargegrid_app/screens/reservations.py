@@ -80,13 +80,15 @@ def _stage(percent, live=None, k=1.0):
     stage = ft.Container(d.centered(ft.Container(ft.Stack([arcs, car], width=362 * k, height=200 * k),
                                                  width=362 * k, height=200 * k)),
                          margin=ft.Margin(0, 0, 0, -3.5))
-    shown = d.txt(percent, 25, 'semibold', text_align=ft.TextAlign.CENTER)
+    # Miolo e texto seguem o tema (antes: fundo #232323 fixo com texto preto no tema claro).
+    shown = d.txt(percent, 25, 'semibold', theme.TEXT_COLOR, text_align=ft.TextAlign.CENTER)
     if live is not None:
         live['percent'] = shown
     gauge = ft.Container(
         ft.Container(shown, width=80, height=80,
-                     border_radius=40, bgcolor='#232323', alignment=ft.Alignment(0, 0)),
-        width=86, height=86, border_radius=43, border=ft.Border.all(3, red), alignment=ft.Alignment(0, 0))
+                     border_radius=40, bgcolor=theme.CARD, alignment=ft.Alignment(0, 0)),
+        width=86, height=86, border_radius=43, border=ft.Border.all(3, red), bgcolor=theme.CARD,
+        alignment=ft.Alignment(0, 0))
     return [stage, ft.Row([gauge], alignment=ft.MainAxisAlignment.CENTER)]
 
 
@@ -119,14 +121,17 @@ def _maps_row(app, address):
                 d.txt('Abrir rota no Google Maps', 12.7, 'semibold', expand=True),
                 ft.Icon(ft.Icons.OPEN_IN_NEW, size=20, color=theme.GRAY_TEXT)], spacing=12,
                vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        bgcolor='#272727', border_radius=d.RADIUS_BTN, height=43, padding=ft.Padding(left=17, right=13, top=0, bottom=0),
+        bgcolor=theme.BTN_SECONDARY, border_radius=d.RADIUS_BTN, height=43, padding=ft.Padding(left=17, right=13, top=0, bottom=0),
         margin=ft.Margin(6, 0, 6, 0), on_click=open_maps, ink=True,
         data='maps')
 
 
 def recharge_detail(app, title, *, when, address, percent, cost, power, remaining, action, on_back,
-                    status=None, extra=(), secondary=(), live=None):
-    """Layout de "Recarga Agendada" / "Recarga em andamento" (estacao_16.1 / 16.2)."""
+                    status=None, extra=(), secondary=(), live=None, maps=True):
+    """Layout de "Recarga Agendada" / "Recarga em andamento" (estacao_16.1 / 16.2).
+
+    ``maps=False`` (recarga já em andamento: o motorista está no posto) tira "Abrir rota no Google Maps".
+    """
     head = ft.Column([d.page_title(title, on_back, size=17.6),
                       ft.Container(d.txt(when, 14.3, 'regular'), padding=ft.Padding(6, 0, 0, 0)),
                       ft.Container(d.txt(street_line(address), 14.3, 'regular'), padding=ft.Padding(7, 0, 0, 5))],
@@ -141,7 +146,7 @@ def recharge_detail(app, title, *, when, address, percent, cost, power, remainin
     rows = ft.Column([_value_row('Custo estimado', cost, live, 'cost'), _value_row('Potência atual', power, live, 'power')],
                      spacing=16.5)
     body = [head, *_stage(percent, live, d.scene_scale(app)), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
-            track, _maps_row(app, address),
+            track, *([_maps_row(app, address)] if maps else []),
             ft.Container(action, margin=ft.Margin(6, 0, 6, 0)),
             *[ft.Container(item, margin=ft.Margin(6, 0, 6, 0)) for item in secondary],
             *notes, *extra]
@@ -262,7 +267,7 @@ async def _detail(app, demo):
         current = await app.api.request('GET', 'reservations/current')
         if current != reservation:
             await app.go('reservations', detail=True)
-    app.set_poll(update, 5)
+    app.set_poll(update, 2)
 
     async def cancel():
         await app.api.request('POST', f"reservations/{reservation['id']}/cancel")

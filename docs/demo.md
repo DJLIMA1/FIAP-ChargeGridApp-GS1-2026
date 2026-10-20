@@ -49,7 +49,7 @@ Postos, pontos, cupons, perfil, reservas e recargas dessa conta são simulados e
 
 Os dados são reiniciados ao sair, reconectar ou entrar novamente. Perfil e tema da demo não alteram preferências persistidas de uma conta real. Os avisos de demonstração aparecem nos fluxos; não há pagamento, telemetria física ou comando enviado ao ESP32.
 
-Para iniciar, siga uma etapa por vez: **Confirmar ponto → Definir limites → Revisar recarga**. O botão **Solicitar início** aparece somente na revisão. É possível voltar para editar sem perder os campos. Por valor define um teto de custo estimado e mantém um tempo máximo de segurança; não gera pagamento.
+Para iniciar, siga uma etapa por vez: **Confirmar ponto → Definir limites → Revisar recarga**. Quando a recarga vem do assistente de reserva/recarga (que já definiu cobrança, valor/tempo/autonomia e potência), a etapa **Definir limites** não aparece: o código #F leva direto à revisão. Ela só volta se a tarifa, a potência ou o limite do ponto mudarem. O botão **Solicitar início** aparece somente na revisão. É possível voltar para editar sem perder os campos. Por valor define um teto de custo estimado e mantém um tempo máximo de segurança; não gera pagamento.
 
 Na etapa Definir limites, “Ajustar tempo máximo” mostra a duração de segurança e expande o campo alinhado ao cartão. “Cupom de desconto” é opcional e mantém o código ao recolher o cartão; a validade e o desconto só são confirmados pela API ao solicitar o início.
 

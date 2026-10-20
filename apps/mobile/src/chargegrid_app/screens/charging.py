@@ -94,6 +94,11 @@ async def push_phone_soc(app, session):
     if level is None:
         return session
     try:
+        if float(session.get('soc_percent')) == float(level):
+            return session  # nada novo: poupa um POST por segundo na atualização de 1 s
+    except (TypeError,ValueError):
+        pass
+    try:
         result = await app.api.request('POST',f"charging-sessions/{session['id']}/soc",{'soc_percent':level})
     except ApiError:
         return session  # a próxima leitura tenta de novo; o equipamento segue com o último valor
@@ -267,9 +272,10 @@ def _estimate(draft):
         return 'A estimativa depende da tarifa, potência e limites do ponto. Nenhuma cobrança real.'
 
 
-def _header(app, step):
+def _header(app, step, planned=False):
+    # planned: limites vieram do assistente; só há duas etapas (código e revisão).
     return ft.Column([
-        d.progress_bar(3, step),
+        d.progress_bar(2, 1 if step == 1 else 2) if planned else d.progress_bar(3, step),
         d.page_title(('Confirmar ponto','Definir limites','Revisar recarga')[step-1], getattr(app,'back',None), size=18),
     ],spacing=10)
 
@@ -345,7 +351,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         extra = [state,journey,point_summary(session)]
         extra.extend(event_disclosure(app, session['id']))
         if session['status'] in ACTIVE:
-            app.set_poll(update,5)
+            # 1 s: o app acompanha o totem (que sincroniza a cada 1 s durante a recarga).
+            app.set_poll(update,1)
         else:
             # Fim da recarga: o carro fica com o SoC final e a sobra paga antes volta como crédito (uma vez).
             vehicle_state.record_session_end(app,session)
@@ -364,9 +371,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         elif session['status'] == 'stopping':
             action = btn('Encerrando recarga...',None,'secondary')
         extra.append(ft.Text(
-            'Atualiza a cada 5 s. A evolução é simulada nesta conta; nenhum equipamento real recebe comandos.'
+            'Atualiza a cada segundo. A evolução é simulada nesta conta; nenhum equipamento real recebe comandos.'
             if demo and session['status'] in ACTIVE else
-            'Atualiza a cada 5 s. Fechar o app ou sair da conta mantém a sessão física e seus limites.'
+            'Atualiza a cada segundo. Fechar o app ou sair da conta mantém a sessão física e seus limites.'
             if session['status'] in ACTIVE else 'Sessão encerrada. Os dados também estão disponíveis no histórico.',
             size=12,color=theme.GRAY_TEXT))
         percent,cost,power,remaining = _metrics(session)
@@ -374,7 +381,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             app,screen_title(session),
             when=when_text(session.get('started_at') or session.get('created_at')),
             address=session.get('station_address'),percent=percent,cost=cost,power=power,remaining=remaining,
-            action=action,on_back=app.link('reservations'),extra=extra,live=live)
+            action=action,on_back=app.link('reservations'),extra=extra,live=live,maps=False)
 
     reservation = await app.api.request('GET','reservations/current')
     if reservation and reservation.get('status') in ('cancelled','expired','consumed'):
@@ -439,6 +446,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         intention = planning_intent
         if not intention and connector.get('id') == saved_intent.get('connector_id'):
             intention = saved_intent.get('intent')
+        # Vindo do assistente (booking), cobrança, valor e potência já foram escolhidos:
+        # a etapa "Definir limites" não é mostrada de novo (só código #F → revisar).
+        draft['planned'] = bool(intention)
         if intention and intention.get('max_power_kw'):
             draft['max_power_kw'] = str(intention['max_power_kw'])
         if intention and intention.get('mode') == 'autonomy':
@@ -460,6 +470,15 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         step = min(max(1,int(step if step is not None else draft['step'])),draft['furthest'],3)
     except (TypeError,ValueError):
         step = 1
+    planned = bool(draft.get('planned'))
+    if planned:
+        try:
+            _limits(draft)
+        except ApiError:
+            # Limites do assistente inválidos (ex.: condições do ponto mudaram): volta a pedir.
+            planned = draft['planned'] = False
+    if planned and step == 2:
+        step = 1  # "Voltar" da revisão volta direto ao código
     if uncertain:
         step = 3
     else:
@@ -486,7 +505,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         saved()
         await app.go('charging',**_route(draft,next_step))
 
-    controls = [_header(app,step)]
+    controls = [_header(app,step,planned)]
     if step == 1:
         presence = field('Código temporário do posto',draft['presence_digits'])
         presence.prefix,presence.max_length = '#F',5
@@ -508,6 +527,10 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 presence.error_text = str(exc)
                 app.page.update()
                 raise
+            if planned:
+                draft['furthest'] = 3
+                await navigate(3)
+                return
             draft['furthest'] = 2
             await navigate(2)
         controls += [point_summary(context,'Ponto reservado' if reservation_id else 'Ponto selecionado'),
@@ -618,6 +641,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                                   size=13,color=theme.ERROR,visible=uncertain)
         edit_code = button('Editar código',app.action(lambda:navigate(1)),secondary=True)
         edit_limits = button('Voltar aos limites',app.action(lambda:navigate(2)),secondary=True)
+        edit_limits.visible = not planned
         submit = button('Solicitar início',None)
 
         async def show_result(result):
@@ -686,6 +710,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     draft['point_context'] = context_from_station(station, current_point)
                     if changed_terms:
                         draft['furthest'] = 2
+                        draft['planned'] = False  # tarifa/potência mudou: o motorista revê os limites
                         await navigate(2)
                         app.notice('As condições do ponto mudaram. Confira a nova tarifa, potência e limite antes de revisar novamente.')
                         return

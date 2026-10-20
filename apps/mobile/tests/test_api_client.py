@@ -30,6 +30,13 @@ class ApiClientTests(unittest.IsolatedAsyncioTestCase):
         await self.client.request('GET','me')
         self.assertEqual(requests[-1].headers['authorization'],'Bearer access-1')
 
+    async def test_session_events_list_does_not_break_result_tracking(self):
+        # "Ver eventos da sessão": GET charging-sessions/{id}/events devolve uma lista.
+        events = [{'type':'started','observed_at':'2026-10-19T12:00:00Z','source':'device'}]
+        self.client = ApiClient('https://api.example.test/v1',httpx.MockTransport(lambda request: httpx.Response(200,json=events)))
+        self.client.session.update(tokens())
+        self.assertEqual(await self.client.request('GET','charging-sessions/s1/events'),events)
+
     async def test_unconfirmed_login_preserves_actionable_error_code(self):
         def handler(request):
             return httpx.Response(401,json={'error':{'code':'email_not_confirmed','message':'Confirme seu e-mail'}})

@@ -443,7 +443,9 @@ def response(db, connector, device):
     ).all()
     return {
         "server_time": response_time.isoformat(),
-        "sync_interval_seconds": 5 if session else 10,
+        # Sessão, reserva ou comando pendente: 1 s para app e totem mostrarem os mesmos
+        # números e o START/STOP chegar logo; ocioso: 5 s.
+        "sync_interval_seconds": 1 if session or reservation or commands else 5,
         "control_version": connector.control_version,
         "connector": {
             "id": str(connector.id),

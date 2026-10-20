@@ -300,6 +300,18 @@ class DemoChargingTests(StorageCase):
         self.assertEqual(self.app.charging_draft['mode'], 'autonomy')
         self.assertEqual(self.app.charging_draft['autonomy_km'], '80')
         self.assertTrue(draft_screen)
+        # O assistente já definiu a cobrança: do código #F vai direto à revisão, sem repetir os limites.
+        await tap(draft_screen, 'Continuar')()
+        self.assertEqual(self.app.go.await_args.kwargs['step'], 3)
+        review = await charging.build(self.app, **{**kwargs, 'step': 3})
+        texts = [str(c.value) for c in descendants(review) if isinstance(c, ft.Text)]
+        self.assertIn('Revisar recarga', texts)
+        limits_button = next(c for c in descendants(review) if isinstance(c, ft.Container)
+                             and isinstance(c.content, ft.Text) and c.content.value == 'Voltar aos limites')
+        self.assertFalse(limits_button.visible)
+        self.assertNotIn('Por tempo', texts)
+        back = await charging.build(self.app, **{**kwargs, 'step': 2})
+        self.assertIn('Confirmar ponto', [str(c.value) for c in descendants(back) if isinstance(c, ft.Text)])
 
 
 class ProfileToggleTests(StorageCase):

@@ -62,7 +62,8 @@ class ApiClient(OwnerApiMixin):
                 self.charging_operation_sessions[signature] = result['id']
             # A criação da sessão comprova que a reserva associada foi consumida.
             self.clear_operation('reservations')
-        elif method == 'GET' and path.startswith('charging-sessions/') and result:
+        elif method == 'GET' and path.startswith('charging-sessions/') and isinstance(result, dict) and result:
+            # Só objetos de sessão; ``charging-sessions/{id}/events`` devolve uma lista.
             if path == 'charging-sessions/current' and self.last_session_id != result['id']:
                 # Recover the identity after an ambiguous POST timeout. A null
                 # current result alone must never retire a possibly in-flight key.

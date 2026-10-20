@@ -51,13 +51,20 @@ void syncDevice() {
   if (endReason.length()) body["end_reason"] = endReason; else body["end_reason"] = nullptr;
   body["acks"] = acknowledgements.as<JsonArray>();
   String payload; serializeJson(body, payload);
-  WiFiClientSecure tls;
-  tls.setCACert(deviceRootCa());
-  HTTPClient http;
-  http.setTimeout(3000);
-  http.setConnectTimeout(3000);
-  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-  if (!http.begin(tls, String(deviceApiBaseUrl()) + "/v1/devices/sync")) return;
+  // Conexão TLS mantida entre syncs (keep-alive): sem novo handshake a cada envio,
+  // o sync de 1 s em recarga custa ~100-300 ms em vez de 1-2 s.
+  static WiFiClientSecure tls;
+  static HTTPClient http;
+  static bool clientReady = false;
+  if (!clientReady) {
+    tls.setCACert(deviceRootCa());
+    http.setReuse(true);
+    http.setTimeout(3000);
+    http.setConnectTimeout(3000);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    clientReady = true;
+  }
+  if (!http.begin(tls, String(deviceApiBaseUrl()) + "/v1/devices/sync")) { tls.stop(); return; }
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String("Device ") + deviceAuthorizationKey());
   int code = http.POST(payload);
@@ -77,6 +84,7 @@ void syncDevice() {
     }
   }
   http.end();
+  if (code <= 0) tls.stop(); // conexão quebrada: o próximo sync refaz o handshake
   if (confirmedReset.length()) finishPanelFactoryReset(confirmedReset);
   else if (code == 401 && pendingPanelFactoryCommand().length()) probePanelFactoryIdentity(payload);
 }
