@@ -16,8 +16,9 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import date
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 MOBILE = ROOT / "apps" / "mobile"
@@ -37,25 +38,25 @@ def parse(version):
 
 
 def current(text):
-    version = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
-    build = int(re.search(r"^build_number = (\d+)", text, re.M).group(1))
+    version = re.search(r'^version = "([^"]+)"', text, re.MULTILINE).group(1)
+    build = int(re.search(r"^build_number = (\d+)", text, re.MULTILINE).group(1))
     return version, build
 
 
 def bumped(text, version, build):
-    text = re.sub(r'^version = "[^"]+"', f'version = "{version}"', text, count=1, flags=re.M)
-    return re.sub(r"^build_number = \d+", f"build_number = {build}", text, count=1, flags=re.M)
+    text = re.sub(r'^version = "[^"]+"', f'version = "{version}"', text, count=1, flags=re.MULTILINE)
+    return re.sub(r"^build_number = \d+", f"build_number = {build}", text, count=1, flags=re.MULTILINE)
 
 
 def setup_note(version, build, sha, notes):
     line = (f"O APK {version} (build {build}) está em `builds/chargegrid-{version}.apk` (SHA-256 `{sha}`). "
-            f"Publicado em {date.today():%d/%m/%Y} na release `app-v{version}` do GitHub; os apps instalados "
+            f"Publicado em {datetime.now(ZoneInfo("America/Sao_Paulo")):%d/%m/%Y} na release `app-v{version}` do GitHub; os apps instalados "
             f"oferecem a atualização ao abrir.")
     return line + (f" {notes.strip()}" if notes.strip() else "") + "\n\n"
 
 
 def with_note(doc, note):
-    anchor = re.search(r"^O APK \d+\.\d+\.\d+ \(build", doc, re.M)
+    anchor = re.search(r"^O APK \d+\.\d+\.\d+ \(build", doc, re.MULTILINE)
     return doc[:anchor.start()] + note + doc[anchor.start():] if anchor else doc.rstrip() + "\n\n" + note
 
 
