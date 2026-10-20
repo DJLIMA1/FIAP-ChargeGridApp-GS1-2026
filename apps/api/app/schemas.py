@@ -38,6 +38,9 @@ class StationPatch(Input):
     # Teto de potência compartilhado pelos conectores (null remove); validado em chargegrid_core.power.
     max_power_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
     power_limit_notify: bool | None = None
+    # Pagamento (Stripe, modo teste): exigir antes do START e QR de pagamento no painel.
+    prepay_required: bool | None = None
+    kiosk_payments: bool | None = None
 
 
 class ConnectorInput(Input):
@@ -82,6 +85,8 @@ class StartInput(Input):
     soc_source: Literal["simulated", "phone"] | None = None
     # Limite geral do motorista (carro/escolha no app); a API aplica min(efetivo do conector, este).
     max_power_kw: Decimal | None = Field(default=None, gt=0, le=1000)
+    # Pré-pagamento confirmado (Stripe, modo teste): a recarga usa o teto e os termos dele.
+    payment_id: UUID | None = None
 
 
 class SocInput(Input):

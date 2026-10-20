@@ -6,6 +6,8 @@ flowchart LR
     Esp[ESP32 ou simulador] -->|HTTPS sync| Api
     Api -->|JWT/JWKS| Auth[Supabase Auth]
     Api -->|SQL| Db[(PostgreSQL Supabase)]
+    Api -->|HTTPS, chave só no servidor| Stripe[Stripe modo teste]
+    Stripe -->|webhook assinado| Api
 ```
 
 O aplicativo autentica a pessoa no Supabase Auth e envia o access token para a API em `Authorization: Bearer`. A API valida assinatura, emissor, público e expiração do JWT com as chaves públicas do projeto. Ela aceita chaves ES256 e RS256 porque essa é a lista explícita de algoritmos configurada na validação; não aceita algoritmos enviados pelo token.
@@ -31,3 +33,8 @@ O projeto atual desativa a confirmação de e-mail porque o SMTP padrão do Supa
 ## Implantação
 
 A API é implantada na Vercel com a raiz do projeto configurada como `apps/api`. O arquivo `apps/api/vercel.json` encaminha as requisições para `app/main.py`. Defina as variáveis de ambiente no projeto da Vercel; não envie `.env` ao repositório. O banco usa a conexão de pooler do Supabase em modo transação, sem pool local grande e com prepared statements desabilitados. Para migrar, use uma conexão administrativa separada fora da função serverless.
+
+## Pagamento (Stripe em modo teste)
+
+O app e o QR do painel abrem a Checkout hospedada da Stripe no navegador; nenhum dado de cartão passa pelo app ou pela API. A chave secreta existe só no ambiente da Vercel. A confirmação vem do webhook assinado ou de uma consulta da API à Stripe, nunca do retorno do navegador. Sem worker de fundo, a captura parcial/devolução acontece no próximo acesso ao pagamento (app, página do painel, webhook ou cron diário), sempre com chave de idempotência. Detalhes em [api.md](api.md#pagamento-pré-pago-stripe-em-modo-teste).
+

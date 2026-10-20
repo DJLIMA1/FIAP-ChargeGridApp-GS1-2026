@@ -7,6 +7,7 @@ from chargegrid_core import pricing
 
 from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
+from .modules.payments.funding import payment_row, payments_by_session
 from .service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
@@ -248,6 +249,7 @@ def session_rows(db, sessions):
                 select(Device).where(Device.connector_id.in_(connector_ids), Device.revoked.is_(False))
             )
         }
+    payments = payments_by_session(db, [session.id for session in sessions])
     results = []
     for session in sessions:
         result = row(session)
@@ -256,6 +258,8 @@ def session_rows(db, sessions):
         connector = db.get(Connector, session.connector_id)
         result.update(point_context(db, connector))
         result["online"] = online(devices.get(connector.id))
+        # Pré-pagamento (Stripe, teste) desta recarga, ou null.
+        result["payment"] = payment_row(payments[session.id]) if session.id in payments else None
         results.append(result)
     del loaded
     return results

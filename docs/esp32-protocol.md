@@ -49,3 +49,16 @@ Os três são números/strings JSON simples (não strings decimais), para leitur
 - Sessão `phone`: o SoC vem do app (`POST /v1/charging-sessions/{id}/soc`); o valor do dispositivo é ignorado.
 
 **Bateria cheia:** quando o SoC atual chega a 100 com a sessão em `charging` (derivado da energia, informado pelo dispositivo ou enviado pelo app), a API passa a sessão para `stopping` e emite um `STOP` normal com `parameters: {"reason": "battery_full"}`. O firmware aplica como qualquer STOP (desenergiza, ACK `applied`, estado `stopped`/`idle`) e pode enviar `end_reason: "battery_full"`; a sessão termina `completed` com `end_reason: "battery_full"` mesmo que o firmware informe outro motivo ou nenhum. O STOP é emitido uma única vez (sessão já em `stopping` não gera outro). Na tela, o painel pode mostrar "Bateria cheia" ao receber esse STOP.
+
+## Pagamento no painel (QR) — 0.7.0
+
+Campos aditivos no bloco `connector` da resposta do sync; firmware anterior ignora e continua funcionando. Pagamento sempre em **modo teste** (Stripe).
+
+```json
+{"connector": {"kiosk_url": "https://<api>/pay/k/CG-7KQ2?c=12345",
+               "payment": {"status": "awaiting_payment", "status_label": "Aguardando pagamento", "amount": "20.00", "environment": "test"}}}
+```
+- `kiosk_url`: string ou `null`. Presente só quando o vendedor ligou “pagamento pelo QR do painel”, a Stripe está configurada, o ponto está ativo e sem sessão/reserva. Contém o código #F atual (sem `#F`), então muda com ele. O painel mostra um QR desse texto na tela “Pronto” com a legenda “Sem o app? Pague aqui · TESTE”. Quem escaneia escolhe R$ 10/20/40 e paga na Checkout da Stripe pelo próprio celular.
+- `payment`: `null` ou o pagamento do painel mais recente ainda não usado (`awaiting_payment`, `declined`, `authorized`, `paid`; até 35 min). O painel pode mostrar “Aguardando pagamento (teste)” e “Pagamento confirmado — iniciando”.
+- Depois da confirmação o fluxo é o de sempre: a API emite `START` (com `max_cost` = teto pago; o painel para sozinho em `cost_limit`), o painel aplica e confirma com ACK. Nada liga sem pagamento confirmado pelo servidor; o QR em si não autoriza nada.
+

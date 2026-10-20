@@ -25,10 +25,12 @@ from ...service import (
 )
 from ..devices.service import battery_parameters
 from ..economics.service import snapshot_session
+from ..payments.funding import attach_payment, claim_for_start, funded_input, payment_price_terms
+from ..payments.funding import locked_terms as payment_terms
 from ..pricing.service import locked_terms
 
 # Optional start keys added after the first release: omitted from the idempotency hash when absent.
-_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw")
+_BATTERY_KEYS = ("soc_percent", "battery_kwh", "soc_source", "max_power_kw", "payment_id")
 
 
 def _point_for_code(db, user, data):
@@ -61,6 +63,28 @@ def _point_for_code(db, user, data):
     if len(available) == 1:
         return available[0]
     fail("ambiguous_presence_code", "Há mais de um ponto com este código. Escolha o ponto na lista antes de iniciar.", 422)
+
+
+def find_coupon(db, connector, code):
+    """Cupom digitado válido para este ponto (``None`` sem cupom); 422 quando inválido."""
+    if not code:
+        return None
+    typed = code.strip().upper()
+    # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
+    coupon = db.scalar(
+        select(Coupon)
+        .where(func.upper(Coupon.code) == typed, Coupon.active.is_(True), Coupon.valid_until > now())
+        .order_by((Coupon.code == code.strip()).desc(), Coupon.id)
+        .limit(1)
+    )
+    station = db.get(Station, connector.station_id)
+    if (
+        not coupon
+        or coupon.operator_id != station.owner_id
+        or (coupon.station_id and coupon.station_id != station.id)
+    ):
+        fail("invalid_coupon", "Cupom inválido", 422)
+    return coupon
 
 
 def _start_body(data):
@@ -130,28 +154,21 @@ def start(db, user, data, key):
             fail("point_unavailable", "Ponto sem confirmação recente")
     elif not free(db, connector):
         fail("point_unavailable", "Ponto indisponível")
+    payment = claim_for_start(db, user, connector, data.payment_id)
+    if payment:
+        data = funded_input(data, payment)
     if data.max_duration_minutes > connector.max_duration_minutes:
         fail("duration_limit", "Duração acima do limite do ponto", 422)
-    discount, coupon = 0, None
-    if data.coupon_code:
-        typed = data.coupon_code.strip().upper()
-        # Case-insensitive: legacy rows may keep mixed case; an exact match wins.
-        coupon = db.scalar(
-            select(Coupon)
-            .where(func.upper(Coupon.code) == typed, Coupon.active.is_(True), Coupon.valid_until > now())
-            .order_by((Coupon.code == data.coupon_code.strip()).desc(), Coupon.id)
-            .limit(1)
-        )
-        station = db.get(Station, connector.station_id)
-        if (
-            not coupon
-            or coupon.operator_id != station.owner_id
-            or (coupon.station_id and coupon.station_id != station.id)
-        ):
-            fail("invalid_coupon", "Cupom inválido", 422)
-        discount = coupon.discount_percent
-    # Tarifa: base do horário × demanda, travadas ao reservar (termos da reserva) ou agora.
-    base, multiplier, terms = locked_terms(db, connector, reservation)
+    if payment:
+        # Pré-pago: valem os termos travados no orçamento pago (preço, desconto e a explicação do
+        # recibo, com o cupom), não os do momento; o cupom já foi conferido ao orçar.
+        base, multiplier, discount = payment_terms(payment)
+        terms, coupon = payment_price_terms(payment, connector), None
+    else:
+        coupon = find_coupon(db, connector, data.coupon_code)
+        discount = coupon.discount_percent if coupon else 0
+        # Tarifa: base do horário × demanda, travadas ao reservar (termos da reserva) ou agora.
+        base, multiplier, terms = locked_terms(db, connector, reservation)
     if reservation:
         reservation.status = "consumed"
     session = ChargingSession(
@@ -182,6 +199,8 @@ def start(db, user, data, key):
         **battery_parameters(session),
     }
     issue(db, connector, device, "START", session=session, parameters=limits)
+    if payment:
+        attach_payment(payment, session)
     remember(db, user, "start", key, body_hash, session)
     return session
 
