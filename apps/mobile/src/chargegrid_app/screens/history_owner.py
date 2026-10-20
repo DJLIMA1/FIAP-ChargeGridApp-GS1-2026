@@ -8,13 +8,13 @@ from decimal import Decimal
 import flet as ft
 import flet.canvas as cv
 
-from chargegrid_core import analytics
+from chargegrid_core import analytics, economics
 from chargegrid_core.formatting import brl
 
 from ..api_client import ApiError
 from ..ui import theme
 from ..ui.deferred import fill_when_ready
-from ..ui.design import card_box, page, txt
+from ..ui.design import card_box, labeled, number_field, page, primary_button, txt
 from ..ui.forecast import (
     AMBER,
     accuracy_lines,
@@ -23,6 +23,7 @@ from ..ui.forecast import (
     occupancy_bars,
     synthetic_note,
 )
+from .history_export import export_card
 
 DOWN, UP = ft.Icons.KEYBOARD_ARROW_DOWN, ft.Icons.KEYBOARD_ARROW_UP
 WEEKDAYS_SHORT = ('Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom')
@@ -151,6 +152,7 @@ def _stat(caption, value, *, align=ft.CrossAxisAlignment.START, size=22.6):
 async def dashboard(app, *, chart=True):
     days = 7
     overview = await app.api.request('GET', 'owner/overview', params=_window(days))
+    result = await result_section(app, days)
     _, labels, values = await _series(app, days)
     kpis, stations = overview['kpis'], overview['stations']
     expanded = bool(chart)
@@ -179,6 +181,7 @@ async def dashboard(app, *, chart=True):
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
         ], spacing=0), padding=ft.Padding(left=16.5, right=16.5, top=18.5, bottom=18), radius=16, height=130),
         ft.Container(height=35.5),
+        *result,
         _row_card(header, app.link('history', manage=True, chart=not expanded)),
     ]
     if expanded:
@@ -340,3 +343,182 @@ async def forecast_page(app, *, station=None):
         controls.append(txt('Sugestões', 13, 'bold'))
         controls += [_suggestion_card(app, current['id'], item) for item in suggestions]
     return page(head, *controls, gap=14)
+
+
+# ------------------------------------------------- resultado do período (margem)
+RESULT_TITLE = 'Resultado do período'
+NOT_PROFIT = 'Receita bruta não é lucro.'
+ECONOMICS_PERIODS = PERIODS
+
+
+async def _margin(app, params):
+    owner_margin = getattr(app.api, 'owner_margin', None)
+    if owner_margin is not None:
+        return await owner_margin(params)
+    return await app.api.request('GET', 'owner/margin', params=params)
+
+
+def _brl(value):
+    return brl(Decimal(str(value))) if value not in (None, '') else '—'
+
+
+def _fee_label(report):
+    fees = {item.get('platform_fee_percent') for item in report.get('stations') or [] if item.get('platform_fee_percent')}
+    if len(fees) != 1:
+        return 'Comissão da plataforma'
+    percent = Decimal(next(iter(fees))).normalize()
+    return f"Comissão da plataforma ({f'{percent:f}'.replace('.', ',')}%)"
+
+
+def _cascade_row(label, value, *, strong=False, color=None):
+    return ft.Row([txt(label, 11.7, 'semibold' if strong else 'regular', None if strong else theme.GRAY_TEXT,
+                       expand=True),
+                   txt(value, 13 if strong else 12.2, 'bold', color)],
+                  alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+
+def cascade(report, *, detailed=False):
+    """Receita bruta → comissão → (tarifa do pagamento) → repasse → custo da energia → margem."""
+    totals = report.get('totals') or {}
+    rows = [_cascade_row('Receita bruta', _brl(totals.get('revenue_total'))),
+            _cascade_row(_fee_label(report), '− ' + _brl(totals.get('platform_fee')))]
+    if totals.get('provider_fee') is not None:
+        rows.append(_cascade_row('Tarifa do pagamento', '− ' + _brl(totals['provider_fee'])))
+    rows.append(_cascade_row('Repasse ao dono', _brl(totals.get('owner_net')), strong=True))
+    energy_cost = totals.get('energy_cost')
+    coverage = totals.get('coverage') or {}
+    missing = int(coverage.get('missing_energy_cost') or 0)
+    if energy_cost is None:
+        cost = 'não informado'
+    else:
+        cost = '− ' + _brl(energy_cost) + ('*' if missing else '')
+    rows.append(_cascade_row('Custo da energia', cost))
+    margin = totals.get('margin')
+    color = None
+    if margin is not None:
+        color = GREEN if Decimal(str(margin)) >= 0 else theme.RED
+    rows.append(_cascade_row('Margem estimada', _brl(margin) if margin is not None else '—', strong=True, color=color))
+    if detailed:
+        coupons = report.get('coupons') or {}
+        dynamic = report.get('dynamic_pricing') or {}
+        if coupons.get('sessions'):
+            rows.append(_cascade_row(f"Cupons ({coupons['sessions']} recargas)", '− ' + _brl(coupons.get('discount'))))
+        if dynamic.get('sessions_with_increase'):
+            rows.append(_cascade_row(f"Preço dinâmico ({dynamic['sessions_with_increase']} recargas)",
+                                     '+ ' + _brl(dynamic.get('demand_effect'))))
+    if missing:
+        rows.append(txt(f"* {missing} de {coverage.get('sessions')} recargas sem custo do kWh: margem total não "
+                        'calculada. Informe o custo do kWh do posto.', 10, 'regular', theme.WARNING))
+    rows.append(txt(NOT_PROFIT + ' Margem = repasse − custo estimado da energia (sem custos fixos).', 10,
+                    'regular', theme.GRAY_TEXT))
+    return rows
+
+
+def result_card(app, report, *, days=7, on_click=None):
+    totals = report.get('totals') or {}
+    sessions = int(totals.get('sessions') or 0)
+    head = [txt(RESULT_TITLE, 11.6, 'bold', expand=True)]
+    if on_click:
+        head.append(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT))
+    caption = f"Últimos {days} dias · {sessions} {'recarga' if sessions == 1 else 'recargas'}"
+    return card_box(ft.Column([ft.Row(head, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                               txt(caption, 9.7, 'regular', theme.GRAY_TEXT), ft.Container(height=4),
+                               *cascade(report, detailed=on_click is None)], spacing=8),
+                    padding=ft.Padding(left=16.5, right=16.5, top=16, bottom=16), radius=16, on_click=on_click,
+                    data='owner-result')
+
+
+async def result_section(app, days=7):
+    """Cartão "Resultado do período" no dashboard (lista vazia se a API não tiver ``/owner/margin``)."""
+    try:
+        report = await _margin(app, {**_window(days), 'limit': 1})
+        card = result_card(app, report, days=days, on_click=app.link('history', manage=True, page='economics'))
+    except Exception:  # API antiga, sem rede ou dados incompletos: o dashboard segue sem o cartão
+        return []
+    return [card, ft.Container(height=35.5)]
+
+
+def cost_text(value):
+    """``'0.8500'`` -> ``'0,85'`` (campo do custo do kWh)."""
+    if value in (None, ''):
+        return ''
+    number = Decimal(str(value)).normalize()
+    if number == number.quantize(Decimal('0.01')):
+        number = number.quantize(Decimal('0.01'))
+    return f'{number:f}'.replace('.', ',')
+
+
+async def _save_economics(app, station_id, value):
+    update = getattr(app.api, 'update_station_economics', None)
+    if update is not None:
+        return await update(station_id, value)
+    return await app.api.request('PUT', f'stations/{station_id}/economics', {'energy_cost_per_kwh': value})
+
+
+def station_cost_editor(app, station, days):
+    field = number_field(cost_text(station.get('energy_cost_per_kwh')), prefix='R$', suffix='/kWh', hint='0,85')
+    field.data = f"energy-cost-{station.get('station_id')}"
+
+    async def save():
+        raw = (field.value or '').strip()
+        try:
+            value = economics.clean_energy_cost(raw or None)
+        except ValueError as error:
+            app.notice(str(error))
+            return
+        await _save_economics(app, station['station_id'], None if value is None else str(value))
+        app.notice('Custo do kWh salvo. Vale para as próximas recargas.')
+        await app.go('history', manage=True, page='economics', days=days)
+
+    fee = station.get('platform_fee_percent')
+    fee_text = (f"{cost_text(fee).replace(',00', '')}%" if fee else 'padrão do contrato')
+    return card_box(ft.Column([
+        txt(station.get('station_name') or 'Posto', 13.5, 'semibold'),
+        labeled('Custo do kWh pago à distribuidora', field),
+        txt(f'Comissão da plataforma: {fee_text} · definida em contrato (só leitura).', 10.5, 'regular',
+            theme.GRAY_TEXT),
+        primary_button('Salvar custo', app.action(save), height=42, size=13),
+    ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        padding=ft.Padding(left=16, right=16, top=16, bottom=16), radius=16)
+
+
+async def economics_page(app, *, days=7):
+    """Subpágina ``history?manage=1&page=economics``: resultado, custo do kWh por posto e exportação."""
+    days = days if days in (7, 14, 30) else 7
+    params = _window(days)
+    report = await _margin(app, {**params, 'limit': 1})
+    label = next(text for value, text in ECONOMICS_PERIODS if value == days)
+    selector = ft.PopupMenuButton(
+        content=card_box(ft.Row([txt(label, 12.5, 'bold'), ft.Icon(ft.Icons.CALENDAR_TODAY_OUTLINED, size=19,
+                                                                  color=theme.TEXT_COLOR)],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                         padding=ft.Padding(left=18, right=18, top=0, bottom=0), radius=14, height=45,
+                         alignment=ft.Alignment(-1, 0)),
+        tooltip='Escolher período',
+        items=[ft.PopupMenuItem(content=text, on_click=app.link('history', manage=True, page='economics', days=value))
+               for value, text in ECONOMICS_PERIODS])
+    warnings = [txt('• ' + text, 10.5, 'regular', theme.WARNING) for text in report.get('warnings') or []]
+    stations = [station_cost_editor(app, station, days) for station in report.get('stations') or []]
+
+    async def fetch(fmt, query):
+        return await app.api.owner_export('margin', fmt, query)
+    stamp = datetime.now(analytics.REPORT_TZ).strftime('%Y%m%d-%H%M')
+    exporter = export_card(app, fetch, lambda fmt: f'chargegrid-resultado-{stamp}.{fmt}', params=params,
+                           title='Exportar resultado (PDF/CSV)', data='margin-export',
+                           subtitle=f'{label}: cascata, efeitos do preço dinâmico e cupons, por posto e por recarga.')
+    methodology = [txt(text, 10, 'regular', theme.GRAY_TEXT) for text in report.get('methodology') or []]
+    back = ft.Container(ft.Icon(ft.Icons.KEYBOARD_ARROW_LEFT, size=34, color=theme.TEXT_COLOR), width=28, height=34,
+                        on_click=app.link('history', manage=True), tooltip='Voltar', alignment=ft.Alignment(-1, 0),
+                        margin=ft.Margin(left=-9, top=0, right=0, bottom=0))
+    head = ft.Row([back, txt(RESULT_TITLE, 22.6, 'bold', expand=True)], spacing=3,
+                  vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    controls = [ft.Container(height=24), selector, ft.Container(height=24), result_card(app, report, days=days)]
+    if warnings:
+        controls += [ft.Container(height=14), ft.Column(warnings, spacing=4)]
+    controls += [ft.Container(height=30), txt('Custo da energia', 15, 'bold'), ft.Container(height=12)]
+    controls += [ft.Column(stations, spacing=14)] if stations else [
+        txt('Cadastre um posto para informar o custo do kWh.', 11, 'regular', theme.GRAY_TEXT)]
+    controls += [ft.Container(height=30), exporter, ft.Container(height=22), ft.Column(methodology, spacing=6),
+                 ft.Container(height=16)]
+    return page(head, *controls, gap=0)

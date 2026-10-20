@@ -6,8 +6,10 @@ Ambos os clientes herdam deste mixin; ele só depende de ``request`` e
 
 OWNER_RESOURCES = ('overview', 'timeseries', 'heatmap', 'sessions', 'reservations', 'alerts', 'live', 'forecast',
                    'occupancy-history')
-EXPORT_DATASETS = ('sessions', 'reservations')
-EXPORT_FORMATS = ('csv', 'json')
+EXPORT_DATASETS = ('sessions', 'reservations', 'margin')
+EXPORT_FORMATS = ('csv', 'json', 'pdf')
+# Formatos de cada exportação (o resultado/margem sai em CSV ou PDF, como no painel).
+DATASET_FORMATS = {'sessions': ('csv', 'json'), 'reservations': ('csv', 'json'), 'margin': ('csv', 'pdf')}
 
 
 def clean_params(params):
@@ -50,10 +52,25 @@ class OwnerApiMixin:
         return await self.owner_get('occupancy-history', {'station_id': station_id, 'weeks': weeks})
 
     async def owner_export(self, dataset, fmt, params=None):
-        """Bytes do arquivo exportado (CSV ou JSON) com os mesmos filtros da tabela."""
-        if dataset not in EXPORT_DATASETS or fmt not in EXPORT_FORMATS:
+        """Bytes do arquivo exportado com os mesmos filtros da tabela.
+
+        ``sessions``/``reservations``: CSV ou JSON; ``margin`` (resultado do período): CSV ou PDF."""
+        if fmt not in DATASET_FORMATS.get(dataset, ()):
             raise ValueError('Exportação indisponível')
         return await self.download(f'owner/export/{dataset}.{fmt}', params=clean_params(params))
+
+    async def owner_margin(self, params=None):
+        """Resultado do período (``GET /v1/owner/margin``): receita, comissão, repasse, custo e margem."""
+        return await self.request('GET', 'owner/margin', params=clean_params(params))
+
+    async def station_economics(self, station_id):
+        """Custo do kWh e comissão (só leitura) do posto (``GET /v1/stations/{id}/economics``)."""
+        return await self.request('GET', f'stations/{station_id}/economics')
+
+    async def update_station_economics(self, station_id, energy_cost_per_kwh):
+        """Grava o custo do kWh (``None`` = não informado). A comissão nunca é enviada."""
+        return await self.request('PUT', f'stations/{station_id}/economics',
+                                  {'energy_cost_per_kwh': energy_cost_per_kwh})
 
     async def owner_insights(self, params=None):
         """Recomendações de IA (``POST /v1/ai/owner-insights``)."""

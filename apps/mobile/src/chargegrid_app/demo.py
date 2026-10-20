@@ -16,6 +16,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
 
+from . import demo_receipt
 from .api_client import ApiError
 from .owner_api import OwnerApiMixin
 from .services.discovery import discover
@@ -275,7 +276,7 @@ class DemoApi(OwnerApiMixin):
             self.last_session_id = result['id']
             self.charging_operation_sessions[signature] = result['id']
             self.clear_operation('reservations')
-        elif method == 'GET' and path.startswith('charging-sessions/') and isinstance(result, dict):
+        elif method == 'GET' and path.startswith('charging-sessions/') and isinstance(result, dict) and 'id' in result:
             self.last_session_id = result['id']
             if result['status'] in _TERMINAL:
                 for request, session_id in tuple(self.charging_operation_sessions.items()):
@@ -729,6 +730,8 @@ class DemoApi(OwnerApiMixin):
             return self._operation_row(reservation, 'reservation')
         if (method, path) == ('POST', 'charging-sessions'):
             return self._start(body)
+        if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'receipt' and method == 'GET':
+            return demo_receipt.receipt(self, parts[1])
         if parts[0] == 'charging-sessions' and len(parts) == 3 and parts[2] == 'events' and method == 'GET':
             self._get(self._sessions, parts[1])
             return self._session_events.get(parts[1], [])
@@ -757,7 +760,8 @@ class DemoApi(OwnerApiMixin):
                            and (parts[0] != 'stations' or self._points[s['connector_id']]['station_id'] == parts[1])]
             records.sort(key=lambda s: (s['created_at'], s['id']), reverse=True)
             return self._page([self._operation_row(s, 'session') for s in records], params)
-        if parts[0] == 'owner' or path == 'ai/owner-insights':
+        if parts[0] == 'owner' or path == 'ai/owner-insights' or (len(parts) == 3 and parts[0] == 'stations'
+                                                                  and parts[2] == 'economics'):
             from .demo_owner import owner_for
             return owner_for(self).route(method, path, params, body)
         if parts[0] == 'driver':
@@ -969,6 +973,7 @@ class DemoApi(OwnerApiMixin):
         reservation = {'id': rid, 'user_id': _USER, 'connector_id': point['id'], 'status': 'pending_device',
                        'created_at': self._iso(), 'confirmation_deadline': self._iso(self._elapsed + 30), 'expires_at': None,
                        'demand_multiplier': self._demand(self._stations[point['station_id']])['multiplier']}
+        demo_receipt.lock_reservation(self, reservation, point)
         self._reservations[rid] = reservation
         self._reservation_runtime[rid] = {'confirm_at': self._elapsed + 1, 'expires_at': self._elapsed + 1 + 15 * 60}  # 15 min, como a API
         return self._operation_row(reservation, 'reservation')
@@ -1040,6 +1045,7 @@ class DemoApi(OwnerApiMixin):
         effective = self._power(self._stations[point['station_id']])['connectors'][point['id']]['effective_kw']
         applied = power_rules.applied_limit(effective, driver_kw).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
         session['power_limit_kw'] = _decimal(applied, '0.001') if applied > 0 else None
+        demo_receipt.lock_session(self, session, point, reservation, body.get('coupon_code'))
         self._sessions[sid] = session
         self._event(sid, 'start_requested')
         self._session_runtime[sid] = {'start_at': self._elapsed + 1,
@@ -1049,6 +1055,9 @@ class DemoApi(OwnerApiMixin):
         return self._operation_row(session, 'session')
 
     async def download(self, path, params=None):
-        """Exportações do dashboard geradas localmente (CSV/JSON fictícios)."""
+        """Exportações do dashboard e do histórico geradas localmente (CSV/JSON fictícios; PDF só na conta real)."""
+        if path.strip('/').removeprefix('v1/').startswith(('me/', 'charging-sessions/')):
+            self._advance()
+            return demo_receipt.download(self, path, params)
         from .demo_owner import owner_for
         return owner_for(self).download(path, params)
