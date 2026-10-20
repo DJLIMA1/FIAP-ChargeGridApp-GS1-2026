@@ -7,16 +7,14 @@ import flet as ft
 
 from ..api_client import ApiError
 from ..services.discovery import discover
-from ..services.driver import amenity_label
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..ui import design as D
 from ..ui import theme
 from ..ui.availability import point_status, station_map_record
-from ..ui.components import badge, button, card, money, pill
+from ..ui.components import badge, button, card, money
 from ..ui.deferred import fill_when_ready, skeleton
-from ..ui.forecast import best_time_card
 from ..ui.point_summary import point_context
 
 CONNECTOR_LABELS = {'type2':'Tipo 2','ccs2':'CCS2','chademo':'CHAdeMO','bench':'Bancada'}
@@ -352,10 +350,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         active_box.visible = bool(active_box.controls)
         return True
     if station_id:
-        # "Melhor horário" sai junto com o posto (em paralelo), não depois dele.
-        prefetch = getattr(app.api,'prefetch',None)
-        if prefetch is not None:
-            prefetch(f'stations/{station_id}/best-times',{'hours':12})
         stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
         total = 1
     else:
@@ -380,8 +374,6 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     if station_id:
         first = stations[0]
         station_heading = ft.Column([D.txt(first['name'],21.5,'bold'),D.txt(_street(first['address']),11.5,'regular',theme.GRAY_TEXT)],spacing=5)
-        amenities = [amenity for amenity in first.get('amenities') or [] if isinstance(amenity,dict)]
-        amenity_row = [ft.Row([pill(amenity_label(amenity)) for amenity in amenities],wrap=True,spacing=6,run_spacing=6)] if amenities else []
         group_rows = [ft.Container(ft.Row([D.icon_tile(None,size=42),
                                            ft.Column([D.txt(group_title,14,'semibold'),D.txt(group_sub,11,'regular',theme.GRAY_TEXT)],
                                                      spacing=3,expand=True,alignment=ft.MainAxisAlignment.CENTER)],
@@ -394,31 +386,18 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                                         spacing=12,vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                  bgcolor=theme.CARD,border_radius=D.RADIUS_BTN,height=43,
                                  padding=ft.Padding(left=17,right=14,top=0,bottom=0),url=_map_url(first),ink=True)
-        # "Melhor horário para carregar" (previsão + tarifa por horário); some se a API falhar.
-        best_slot = ft.Container(data='best-time-slot')
-
-        async def load_best_time():
-            try:
-                payload = await app.api.request('GET',f'stations/{station_id}/best-times',params={'hours':12})
-            except ApiError:
-                return ft.Container(visible=False)
-            return best_time_card(payload) or ft.Container(visible=False)
-        await fill_when_ready(app,best_slot,load_best_time,placeholder=ft.Container(height=0))
         controls = [ft.Container(D.txt('Detalhes da estação',19,'bold'),margin=ft.Margin(left=0,top=2,right=0,bottom=0)),
                     ft.Container(station_heading,padding=ft.Padding(left=0,right=0,top=22,bottom=16)),
                     D.section_label('Conectores'),ft.Column(group_rows,spacing=16.5),
-                    ft.Container(height=6.5),route_row,best_slot,
-                    # Dois caminhos, cada um com o seu assistente (conector, cobrança, potência e pagamento):
-                    # reservar segura o ponto por 15 min até a chegada; carregar agora começa no ponto (código #F).
+                    ft.Container(height=6.5),route_row,
+                    # Layout da referência (estacao_3). O segundo botão, "Carregar agora", foi pedido pelo usuário
+                    # (dois fluxos: reservar segura o ponto por 15 min; carregar agora começa no ponto).
                     ft.Row([D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1,kind='reserve',
                                                                           **_booking_presets(intention)),
                                              height=55,size=15,expand=True),
                             D.secondary_button('Carregar agora',app.link('booking',station_id=station_id,step=1,kind='now',
                                                                          **_booking_presets(intention)),
-                                               height=55,size=15,expand=True)],spacing=10),
-                    D.txt('Reservar guarda o ponto por 15 minutos até você chegar. Carregar agora é para quem já está no posto.',
-                          11,'regular',theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
-                    *amenity_row]
+                                               height=55,size=15,expand=True)],spacing=10)]
         # The reference puts the map right under the title.
         map_slot_index = 2
     else:
@@ -692,7 +671,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             listing.controls = station_cards(fresh)
             if station_id and fresh:
                 station_heading.controls[0].value = fresh[0]['name']
-                station_heading.controls[1].value = fresh[0]['address']
+                station_heading.controls[1].value = _street(fresh[0]['address'])
         if station_id:
             empty_state.visible = not fresh
         else:

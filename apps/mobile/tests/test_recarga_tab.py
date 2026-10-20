@@ -186,7 +186,6 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('charging-sessions/current', paths)
         app, state = app_with(session=SESSION)
         state['stations/st'] = STATION
-        state['stations/st/best-times'] = {}
         await build_stations(app, station_id='st')
         paths = [call.args[1] for call in app.api.request.await_args_list]
         self.assertNotIn('charging-sessions/current', paths)
