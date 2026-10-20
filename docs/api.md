@@ -85,12 +85,17 @@ Migração `a7c2e9d4b6f1` (`apps/api/sql/migracao_a7c2e9d4b6f1.sql`). A tarifaç
 
 ## Telas do posto no app (vendedor)
 
-**Estações → posto** reúne tudo em quatro entradas, sem repetição:
+**Estações → posto** reúne tudo em uma lista de entradas, sem repetição:
 
 - **Dados da estação:** nome, endereço com sugestões e status.
 - **Conectores:** pontos de recarga do posto. Cada um tem a edição de tipo, potência, tempo por recarga e equipamento (credencial e restauração). Também ficam aqui "Revisar e ativar ponto" e "Vincular outra tela a este posto".
 - **Potência por conector.**
 - **Tarifa:** tarifa atual, base e motivo; tarifa base por conector, tarifação por horário, tarifa por demanda e taxa de rotatividade.
+- **Ao vivo:** `GET /owner/live?station_id` a cada 3 s: status, energia, potência agora e a aplicada com o motivo, quem ocupa a vaga depois da recarga (`occupancy`: fase, tolerância restante, taxa acumulada) e os alertas do posto (`/owner/alerts`).
+- **Energia do estabelecimento** (só quando o posto traz `rebalance_enabled`): `GET /stations/{id}/power` a cada 1,5 s, limite contratado e rebalanceamento (`PUT power-site`), consumo da loja SIMULADO com debounce de 350 ms (`PUT building-load`), alvo/aplicada/estado/motivo por ponto, soma contra o disponível e as últimas decisões.
+- **Pagamentos · teste** (só com `prepay_required`/`kiosk_payments` no posto): os dois interruptores, gravados por `PATCH /stations/{id}` sem atualização otimista.
+
+O histórico do vendedor mostra, por sessão, o pagamento (rótulo, capturado e devolvido/liberado) e a permanência (minutos na vaga e taxa). No motorista, posto com `prepay_required` oferece só a Stripe (teste) na etapa de pagamento. Na conta demo, "Simular carros no posto (demo)" coloca motoristas fictícios carregando e na vaga, com o mesmo núcleo `chargegrid_core.balancing`/`overstay`.
 
 Saíram "Configurações adicionais" e a antiga tela "Pontos e equipamentos". O preço por kWh existe só em **Tarifa**. Latitude e longitude não aparecem mais: o cadastro (onboarding e novo posto) e a edição do endereço gravam as coordenadas da sugestão escolhida ou da busca pela API própria. Em conta real, um endereço sem resultado é recusado com "Não encontramos este endereço…". Na demo, usa-se o centro de São Paulo.
 
