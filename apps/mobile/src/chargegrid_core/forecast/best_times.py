@@ -75,7 +75,7 @@ def best_times(rules, connectors: list[dict], hours, now_price: Decimal | None) 
     elif best["multiplier"] < max(row["multiplier"] for row in priced):
         reason = "Sem acréscimo de demanda previsto"
     else:
-        reason = "Preço estável; menos movimento previsto" if stable else "Menos movimento previsto"
+        reason = "Preço igual nas próximas horas" if stable else "Menos movimento previsto"
     reference = now_price if now_price is not None else priced[0]["price"]
     saving = None
     if reference and best["price"] < reference:

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import flet as ft
+
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import history, history_owner, stations

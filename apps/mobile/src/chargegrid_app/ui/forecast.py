@@ -26,6 +26,13 @@ def _hour(value) -> str:
         return ''
 
 
+def _moment(value):
+    try:
+        return datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def window_text(start, end) -> str:
     first, last = _hour(start), _hour(end)
     return f'{first}–{"24h" if last == "0h" else last}'
@@ -46,8 +53,9 @@ def synthetic_note(payload):
                           expand=True)], spacing=6)]
 
 
-def price_bars(hours, best_start):
+def price_bars(hours, best_start, best_end=None):
     """Uma barra por hora: altura pelo preço esperado; a melhor janela em verde."""
+    window = (_moment(best_start), _moment(best_end) if best_end else None)
     prices = []
     for item in hours:
         try:
@@ -57,7 +65,9 @@ def price_bars(hours, best_start):
     top, low = max(prices, default=0) or 1, min(prices, default=0)
     bars = []
     for item, price in zip(hours, prices, strict=True):
-        best = item.get('start') == best_start
+        moment = _moment(item.get('start'))
+        best = (moment is not None and window[0] is not None and
+                (moment == window[0] if window[1] is None else window[0] <= moment < window[1]))
         height = 14 + 22 * ((price - low) / (top - low) if top > low else 0.5)
         bars.append(ft.Column([ft.Container(width=14, height=height, border_radius=4,
                                             bgcolor=GREEN if best else BAR_EMPTY),
@@ -78,14 +88,14 @@ def best_time_card(payload):
     detail = best.get('reason') or ''
     if saving:
         detail = f'{saving}% mais barato que agora · {detail}'
-    elif payload.get('stable'):
-        detail = f"{detail} ({best.get('level_label', '').lower()})"
+    elif payload.get('stable') and best.get('level_label'):
+        detail = f"{detail} · {best['level_label'].lower()}"
     content = [
         ft.Row([ft.Icon(ft.Icons.SCHEDULE, size=18, color=GREEN),
                 D.txt('Melhor horário para carregar', 13.5, 'semibold', expand=True)], spacing=8),
         D.txt(headline, 16, 'bold'),
         D.txt(detail, 11.5, 'regular', theme.GRAY_TEXT),
-        price_bars(payload.get('hours') or [], best.get('start')),
+        price_bars(payload.get('hours') or [], best.get('start'), best.get('end')),
         D.txt(payload.get('note') or 'Estimativa.', 10.5, 'regular', theme.GRAY_TEXT),
         *synthetic_note(payload),
     ]

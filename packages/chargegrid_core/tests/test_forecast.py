@@ -249,6 +249,7 @@ def test_best_times_prefers_cheaper_scheduled_hour_then_lower_occupancy():
     flat = best_times({}, CONNECTORS, [(datetime(2026, 10, 21, h), 0.5 if h != 15 else 0.1) for h in range(10, 14)]
                       + [(datetime(2026, 10, 21, 15), 0.1)], None)
     assert flat["stable"] and flat["best"]["start"].startswith("2026-10-21T15:00")
+    assert flat["best"]["reason"] == "Preço igual nas próximas horas"
     assert "Estimativa" in flat["note"]
 
 
