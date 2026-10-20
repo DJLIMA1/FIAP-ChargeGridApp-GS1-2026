@@ -3,6 +3,7 @@
 No START command exists. Device keys are read from a local file and never printed.
 """
 import argparse
+import getpass
 import json
 import re
 import select
@@ -40,7 +41,9 @@ def save_frame(port, header, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True)
-    parser.add_argument("--action", choices=["status", "stop", "key", "boot", "screen", "live", "factory"], default="status")
+    parser.add_argument("--action", choices=["status", "stop", "key", "boot", "screen", "live", "factory", "wifi"], default="status")
+    parser.add_argument("--ssid")
+    parser.add_argument("--password", help="Wi-Fi password; prompted (hidden) when omitted")
     parser.add_argument("--key-file", type=Path)
     parser.add_argument("--factory-artifact", type=Path)
     parser.add_argument("--output", type=Path, default=Path("tmp/panel-validation/panel-physical.ppm"))
@@ -48,6 +51,14 @@ def main():
     args = parser.parse_args()
     key = None
     claim = None
+    if args.action == "wifi":
+        if not args.ssid or len(args.ssid.encode()) > 32:
+            parser.error("--ssid is required (max 32 bytes)")
+        if args.password is None:
+            args.password = getpass.getpass("Senha do Wi-Fi: ")
+        if len(args.password.encode()) > 64:
+            parser.error("Wi-Fi password must be at most 64 bytes")
+        args.seconds = max(args.seconds, 40)
     if args.action == "factory":
         if not args.factory_artifact:
             parser.error("--factory-artifact is required for factory provisioning")
@@ -103,12 +114,25 @@ def main():
                             raise SystemExit("Factory provisioning requires a blank, idle panel")
                         port.write(b"CG_KEY\n")
                         factory_step = 1
+                    elif args.action == "wifi":
+                        port.write(b"CG_WIFI\n")
                     elif key:
                         port.write(b"CG_KEY\n")
                     elif args.action in commands:
                         port.write(commands[args.action])
                     if args.action == "live":
                         print("LIVE: stdin commands status / stop / screen / quit; keep this port open during E2E.", flush=True)
+                if args.action == "wifi":
+                    if line == "[setup] SSID:":
+                        port.write((args.ssid + "\n").encode())
+                    elif "Password (input hidden)" in line:
+                        port.write((args.password + "\n").encode())
+                    elif "Wi-Fi connected:" in line:
+                        return
+                    elif ("connection failed" in line or "Invalid" in line or "blocked" in line
+                          or "NVS write failed" in line or "timed out" in line):
+                        raise SystemExit(line)
+                    continue
                 if args.action == "factory" and factory_step == 1 and "Device key (input hidden)" in line:
                     port.write((key + "\n").encode())
                     factory_step = 2
@@ -130,9 +154,12 @@ def main():
                     return
                 if command in commands:
                     port.write(commands[command])
-            if time.monotonic() - last_status >= 4:
+            # During CG_WIFI the next lines are read as SSID/password; no status polling.
+            if time.monotonic() - last_status >= 4 and not (args.action == "wifi" and ready):
                 port.write(b"CG_STATUS\n")
                 last_status = time.monotonic()
+        if args.action == "wifi":
+            raise SystemExit("Wi-Fi setup did not finish in time; check the SSID/password and retry")
 
 
 if __name__ == "__main__":

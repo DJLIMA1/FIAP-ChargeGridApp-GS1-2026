@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Configura o Wi-Fi do painel ChargeGrid conectado por USB.
+#   tools/cg-wifi "Nome da rede" senha
+#   tools/cg-wifi "Nome da rede"          # pede a senha sem mostrar
+# Porta detectada sozinha; force com CG_PORT=/dev/cu.xxx.
+set -euo pipefail
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  echo "uso: tools/cg-wifi \"NOME DA REDE\" [SENHA]" >&2
+  exit 2
+fi
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+python="$root/.venv/bin/python"
+[ -x "$python" ] || python="python3"
+
+port="${CG_PORT:-}"
+if [ -z "$port" ]; then
+  port="$(ls /dev/cu.wchusbserial* /dev/cu.usbserial* /dev/cu.usbmodem* /dev/cu.SLAB_USBtoUART* 2>/dev/null | head -n1 || true)"
+fi
+if [ -z "$port" ]; then
+  echo "Nenhum ESP encontrado na USB. Confira o cabo (de dados) e tente de novo." >&2
+  exit 1
+fi
+
+echo "Painel em $port; enviando a rede \"$1\"..."
+args=(--port "$port" --action wifi --ssid "$1")
+[ $# -eq 2 ] && args+=(--password "$2")
+exec "$python" "$root/tools/panel_serial.py" "${args[@]}"
