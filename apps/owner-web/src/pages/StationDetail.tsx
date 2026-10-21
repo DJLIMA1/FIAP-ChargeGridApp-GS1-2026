@@ -13,6 +13,7 @@ import { KioskField } from '../components/station/KioskField'
 import { OverstayCard } from '../components/station/OverstayCard'
 import { PowerCard } from '../components/station/PowerCard'
 import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
+import { nextFreeChargerAddress } from '../lib/charger'
 import { useFilters } from '../lib/filters'
 import { formatPower, formatRelative, formatTariff } from '../lib/format'
 import { AMENITY_KINDS, AMENITY_LABELS, availabilityMeta } from '../lib/labels'
@@ -141,7 +142,7 @@ export function StationForm({ station, onSaved }: { station: Station; onSaved(ne
 }
 
 /* ------------------------------------------------------------------ conector */
-function ConnectorEditor({ connector, onSaved }: { connector: Connector; onSaved(next: Connector): void }) {
+function ConnectorEditor({ connector, onSaved, suggestedAddress = null }: { connector: Connector; onSaved(next: Connector): void; suggestedAddress?: number | null }) {
   const { ep } = useAuth()
   const toast = useToast()
   const initial = useMemo(
@@ -232,7 +233,7 @@ function ConnectorEditor({ connector, onSaved }: { connector: Connector; onSaved
           </div>
         </Field>
       </div>
-      <ChargerField connector={connector} onSaved={onSaved} />
+      <ChargerField connector={connector} onSaved={onSaved} suggested={suggestedAddress} />
       {error ? (
         <div style={{ marginTop: 12 }}>
           <ErrorBanner error={error} title="Conector não atualizado" />
@@ -415,6 +416,8 @@ export default function StationDetail() {
 
   const points = station.connectors
   const online = points.filter((c) => c.online).length
+  // Só para um ponto legado sem endereço: o próximo livre do posto (como a API faz na criação).
+  const freeAddress = nextFreeChargerAddress(points.map((c) => c.charger_address))
   return (
     <>
       <PageHead
@@ -434,11 +437,11 @@ export default function StationDetail() {
       />
       <div className="stack">
         <StationForm station={station} onSaved={update} />
-        <Card title="Conectores e tarifas" sub="Tarifa base, potência e limite de duração por conector" id="connectors">
+        <Card title="Conectores e tarifas" sub="Tarifa base, potência, limite de duração e o carregador GoodWe (endereço) de cada conector" id="connectors">
           {points.length ? (
             <div className="stack" style={{ gap: 12 }}>
               {points.map((connector) => (
-                <ConnectorEditor key={connector.id} connector={connector} onSaved={updateConnector} />
+                <ConnectorEditor key={connector.id} connector={connector} onSaved={updateConnector} suggestedAddress={freeAddress} />
               ))}
             </div>
           ) : (
