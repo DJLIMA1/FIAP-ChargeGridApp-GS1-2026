@@ -304,6 +304,31 @@ void testPollingAndLoss() {
   puts("PASS: leitura ~1 s, perda em 5 s (também pausada), alarme/reboot do carregador, desliga carregador órfão, recuo a 5 s ocioso");
 }
 
+void testBlockingClock() {
+  struct ClockedClient : FakeChargerClient {
+    unsigned long& time;
+    uint32_t readDelay = 1000;
+    explicit ClockedClient(unsigned long& value) : FakeChargerClient(&value), time(value) {}
+    uint32_t nowMs(uint32_t) const override { return time; }
+    bool readHolding(const charger::LinkConfig& config, uint16_t address, uint16_t count,
+                     uint16_t* out, uint8_t* exception) override {
+      time = uint32_t(time + readDelay);
+      return FakeChargerClient::readHolding(config, address, count, out, exception);
+    }
+  } client(now);
+  now = 0xfffffc00UL;
+  client.device.boot(now, 70, 0);
+  charger::Link link; link.setClient(&client); link.configure(link1());
+  assert(link.start(2000, now, nullptr) == charger::Error::None);
+  const uint32_t completed = now; // START atravessou wrap e demorou várias leituras.
+  client.offline = true; client.readDelay = 0;
+  now = uint32_t(completed + 4000); link.poll(now);
+  assert(!link.faulted(now, true)); // Conta da última resposta, não do início do START.
+  now = uint32_t(completed + 5000); link.poll(now);
+  assert(link.faulted(now, true));
+  puts("PASS: última resposta usa relógio após I/O bloqueante e atravessa wrap de millis");
+}
+
 }  // namespace
 
 int main() {
@@ -311,6 +336,7 @@ int main() {
   testCommands();
   testAckOnlyAfterReadback();
   testPollingAndLoss();
+  testBlockingClock();
   puts("PASS: tela ⇄ carregador HCA G2 (charger_link, cliente Modbus falso sobre a lógica real do simulado)");
   return 0;
 }

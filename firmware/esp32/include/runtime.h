@@ -5,6 +5,7 @@
 #include "sensors.h"
 #include "kiosk_flow.h"
 #include "charger_link.h"
+#include "sync_schedule.h"
 // Versão única do firmware (sync, CG_STATUS e pacote).
 #define CHARGEGRID_FIRMWARE_VERSION "0.8.0"
 extern Preferences store;
@@ -18,6 +19,11 @@ extern String panelClaimToken;
 extern bool panelOwned, connectorOwnershipKnown, connectorActive;
 extern uint32_t version, sequence;
 extern unsigned long lastContact, lastTick, started, nextSync, lastSaved, maxDurationMs;
+inline syncschedule::Requests syncRequests;
+inline void requestImmediateSync() {
+  syncRequests.request();
+  if (syncRequests.mayAdvance(millis())) nextSync = millis();
+}
 extern float maxCost, price, discount;
 // Potência simulada da sessão: min(7,2 kW nominal, max_power_kw do START). Sem o campo: nominal.
 extern float chargePowerW;
@@ -51,6 +57,8 @@ void persist();
 bool sessionSocKnown();
 float currentSessionSoc(float energyWh);
 void tick();
+void tickAllSessions();
+void serviceChargerLinks();
 bool apply(JsonDocument& response);
 void syncDevice();
 // Parada física local: segura e independente da UI/rede. Nunca inicia carga.

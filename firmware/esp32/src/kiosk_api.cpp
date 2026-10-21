@@ -26,7 +26,7 @@ int deviceRequest(const char* method, const char* path, const char* body, String
       : http.sendRequest(method, hasBody ? (uint8_t*)body : nullptr, hasBody ? strlen(body) : 0);
   if (code > 0) out = http.getString();
   deviceHttpEnd(code);
-  tick(); // Inclui o tempo de bloqueio de rede no watchdog.
+  tickAllSessions(); // Inclui o bloqueio de rede no vigia de todas as sessões da central.
   return code;
 }
 

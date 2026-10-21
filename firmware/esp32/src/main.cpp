@@ -332,7 +332,7 @@ void handleSerialMaintenance() {
     panelDeviceKey = line; line = "";
     panelIdentityConfigured = true;
     panelIntegrationEnabled = panelNetworkConfigured;
-    hasSynced = false; lastSyncHttpStatus = 0; nextSync = millis();
+    hasSynced = false; lastSyncHttpStatus = 0; requestImmediateSync();
     Serial.println("[setup] Device key saved; synchronization scheduled");
     return;
   }
@@ -518,24 +518,22 @@ void loop() {
     finalizeStoredFactoryReset();
   }
 #endif
-  tick();
-  // O sync com a API tem prioridade: com ele vencido, a leitura Modbus (até ~0,8 s por
-  // carregador offline) espera a próxima volta — o vigia de 45 s nunca depende do Modbus.
-  const bool syncDue =
+  syncschedule::networkTurn(tickAllSessions, [] {
+    serviceChargerLinks();
+    panelTick();
 #ifdef CHARGEGRID_PANEL_ENABLED
-      panelIntegrationEnabled &&
+    handleSerialMaintenance();
 #endif
-      WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000 && (long)(millis() - nextSync) >= 0;
-  if (!syncDue) {
-    chargerLinkService(); // Carregador do ponto da tela (link online/offline vai no sync); API antiga: retorna na hora.
-    extra::service(millis()); // Carregadores adicionais desta tela (multi_charger_v1).
-  }
-  panelTick();
+  }, [] {
+    // Reavaliar depois do polling: uma transição do carregador pede envio agora.
+    const bool syncDue =
 #ifdef CHARGEGRID_PANEL_ENABLED
-  handleSerialMaintenance();
+        panelIntegrationEnabled &&
 #endif
-  // Hora confiável é necessária para certificados e expiração.
-  if (syncDue) syncDevice();
+        WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000 &&
+        syncschedule::due(millis(), nextSync);
+    if (syncDue) syncDevice();
+  });
 #ifdef CHARGEGRID_KIOSK
   // Um pedido do totem por vez, na mesma tarefa e conexão TLS do sync (nunca em recarga).
   if (panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000) kioskApiService();

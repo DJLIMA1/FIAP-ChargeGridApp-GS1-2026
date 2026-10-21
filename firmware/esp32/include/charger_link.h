@@ -44,6 +44,8 @@ class ModbusClient {
   // Próxima transação é de um comando (START): pode resolver o nome agora (sem esperar o recuo
   // da resolução) e refazer a conexão. Sem efeito no cliente de teste.
   virtual void prepareUrgent() {}
+  // Hora ao concluir uma operação bloqueante. No host, fallback preserva clientes simples.
+  virtual uint32_t nowMs(uint32_t fallback) const { return fallback; }
 };
 
 enum class Error : uint8_t { None, NoLink, Offline, Rejected, ReadbackMismatch };

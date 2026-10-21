@@ -186,14 +186,14 @@ void applyBootSafety() {
 void requestLocalSafeStop() {
   if (state == "charging") {
     stop("requested");
-    nextSync = millis();
+    requestImmediateSync();
   }
 }
 bool requestLocalDisconnect() {
   if (state == "charging" || !reading.connected) return false;
   reading.connected = false;
   overstayEnabled = false;
-  nextSync = millis(); // A API encerra a permanência no próximo sync.
+  requestImmediateSync(); // A API encerra a permanência no próximo sync.
   return true;
 }
 JsonObject ack(const String& id, const char* status, const char* error = nullptr) {
@@ -238,7 +238,7 @@ void tick() {
     else if (fullWh >= 0 && (fullCapped || reading.energyWh >= fullWh - 0.01f)) {
       reading.socPercent = 100;
       stop("battery_full");
-      nextSync = millis(); // A API encerra com battery_full no próximo sync.
+      requestImmediateSync(); // A API encerra com battery_full no próximo sync.
     }
     else if (maxCost >= 0 && (reading.energyWh / 1000 * effectivePrice >= maxCost || costCapped)) stop("cost_limit");
   } else if (state == "reserved" && reservationDeadline && time(nullptr) >= reservationDeadline) {
@@ -332,17 +332,30 @@ static void readChargerLink(JsonObjectConst connector) {
 }
 void chargerLinkService() {
   if (!chargerLink.active()) return;
-  const unsigned long now = millis();
-  chargerLink.poll(now); // Também fora de recarga: o link online/offline vai no sync (disponibilidade).
+  const bool wasOnline = chargerLink.online();
+  chargerLink.poll(millis());
+  if (wasOnline != chargerLink.online()) requestImmediateSync();
+  const unsigned long now = millis(); // O transporte pode ter bloqueado desde o início da leitura.
   // Sessão no carregador: sumiu por 5 s, alarme ou parou sozinho → parada segura local.
   if (state == "charging" && sessionOnCharger && chargerLink.faulted(now, true)) {
     tick(); // Integra a energia até a perda.
     if (state == "charging") {
       // Mesma parada segura local; o motivo vai no próximo sync (imediato).
       stop("device_fault");
-      nextSync = millis();
+      requestImmediateSync();
     }
   }
+}
+
+void tickAllSessions() {
+  tick();
+  for (extra::Slot& slot : extra::slots)
+    if (slot.used) extra::tick(slot, millis());
+}
+
+void serviceChargerLinks() {
+  chargerLinkService();
+  extra::service(millis());
 }
 static bool extensionField(const char* field) {
   if (!field) return false;

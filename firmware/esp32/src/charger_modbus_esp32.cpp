@@ -61,6 +61,7 @@ class EspChargerClient : public charger::ModbusClient {
     resolved_ = false;
     urgent_ = true;
   }
+  uint32_t nowMs(uint32_t) const override { return millis(); }
   String fixedIp;
   String lastProblem = "-";
   IPAddress ip;
@@ -127,7 +128,7 @@ class EspChargerClient : public charger::ModbusClient {
     if (exception) *exception = 0;
     if (!ensure(link)) return false;
     while (tcp_.available()) tcp_.read();  // resposta atrasada de uma transação anterior
-    if (tcp_.write(request, size) != size) { tcp_.stop(); lastProblem = "falha_envio"; return false; }
+    if (tcp_.write(request, size) != size) return transportFailure("falha_envio");
     uint8_t response[mbtcp::kMaxAdu];
     size_t length = 0;
     const unsigned long started = millis();
@@ -147,6 +148,7 @@ class EspChargerClient : public charger::ModbusClient {
       uint8_t code = 0;
       const mbtcp::Status status = mbtcp::parseResponse(request, response, frame, out, &code);
       if (status == mbtcp::Status::Ok) {
+        lastProblem = "-";
         lastGood = ip;
         haveLastGood_ = true;
         return true;
@@ -160,8 +162,16 @@ class EspChargerClient : public charger::ModbusClient {
       }
       break;  // quadro inválido ou de outra transação: refaz a conexão
     }
+    return transportFailure("sem_resposta");
+  }
+
+  bool transportFailure(const char* problem) {
     tcp_.stop();
-    lastProblem = "sem_resposta";
+    // O IP antigo pode ainda aceitar TCP sem responder Modbus. Só fechar o socket
+    // mantém resolved_ para sempre e impede redescoberta após DHCP/reboot.
+    // Preserve o último IP bom como reserva e o recuo das consultas mDNS.
+    resolved_ = false;
+    lastProblem = problem;
     return false;
   }
 

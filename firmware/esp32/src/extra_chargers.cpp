@@ -172,12 +172,16 @@ void tick(Slot& slot, unsigned long now) {
 void service(unsigned long now) {
   for (Slot& slot : slots) {
     if (!slot.used) continue;
+    now = millis(); // Cada slot pode esperar operações bloqueantes dos anteriores.
     tick(slot, now);
     if (!slot.link.active()) continue;
+    const bool wasOnline = slot.link.online();
     slot.link.poll(now);
+    if (wasOnline != slot.link.online()) { slot.syncNow = true; requestImmediateSync(); }
+    now = millis();
     if (slot.state == "charging" && slot.link.faulted(now, true)) {
       tick(slot, now);
-      if (slot.state == "charging") { stop(slot, "device_fault"); slot.syncNow = true; nextSync = millis(); }
+      if (slot.state == "charging") { stop(slot, "device_fault"); slot.syncNow = true; requestImmediateSync(); }
     }
   }
 }
@@ -279,7 +283,7 @@ bool apply(Slot& slot, JsonDocument& response, unsigned long now) {
           slot.price = number(session["price_per_kwh"], 0);
           slot.discount = number(session["discount_percent"], 0);
           slot.limitW = limit; slot.energyWh = 0; slot.endReason = "";
-          slot.started = slot.lastTick = slot.lastSaved = now;
+          slot.started = slot.lastTick = slot.lastSaved = millis(); // Só após confirmar START.
           slot.state = "charging"; slot.connected = true;
         }
       }
@@ -343,7 +347,7 @@ bool syncable(const Slot& slot, unsigned long now) {
 
 bool busy() {
   for (const Slot& slot : slots)
-    if (slot.used && (slot.state == "charging" || slot.state == "reserved" || slot.acks.size() || slot.syncNow))
+    if (syncable(slot, millis()) && (slot.state == "charging" || slot.state == "reserved" || slot.acks.size() || slot.syncNow))
       return true;
   return false;
 }

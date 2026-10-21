@@ -66,3 +66,9 @@ Estação = a tela; cada ponto é um carregador GoodWe: a API manda `connector.c
 
 - `src/charger_link.cpp` (C++ puro, testado em `tools/tests/charger_link_test.cpp` e no controlador real em `firmware_behavior.cpp`) e `src/charger_modbus_esp32.cpp` (WiFiClient, uma conexão por carregador, timeouts de 400/400 ms, mDNS `cg-hca-<n>.local` com o último IP bom como reserva, Wi-Fi sem economia de energia). Mapa e Modbus TCP em `firmware/shared/hca_g2` (`lib_extra_dirs`).
 - Serial: `CG_CHARGER` (estado do link e leitura na hora) e `CG_CHARGER_IP <ip>|clear` (IP fixo na NVS quando o mDNS não funciona).
+
+### Reconexão da central
+
+A central dá um giro nos carregadores mesmo com sync vencido e entre requisições HTTP do lote. As transições online/offline pedem envio imediato, uma vez por mudança; falhas HTTP mantêm o backoff e os ACKs pendentes. Os prazos periódicos começam ao concluir o lote, e o vigia de 45 s usa a hora atual após operações bloqueantes. START continua estrito; STOP pendente conserva o carregador/endereço até confirmação por releitura.
+
+Os intervalos continuam 1 s online e até 5 s ocioso/offline. Depois de o carregador voltar ao Wi-Fi e servir Modbus, a recuperação depende da próxima tentativa, da resolução mDNS e da API; a atualização no app ainda soma o intervalo de consulta do cliente. Falhas de transporte descartam a resolução em cache para redescobrir IP, preservando o último IP bom e o IP fixo configurado. O handshake TLS tem limite explícito de 3 s (API compartilhada e prova de identidade), com CA e validação TLS preservadas. DNS, transmissão do SDK e tempos da rede impedem prometer atualização instantânea ou um prazo máximo único; estes intervalos não incluem o boot/associação Wi-Fi do carregador.

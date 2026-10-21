@@ -61,10 +61,10 @@ bool Link::configure(const LinkConfig& config) {
 bool Link::read(uint16_t address, uint16_t count, uint16_t* out, Error& error) {
   uint8_t exception = 0;
   if (client_->readHolding(config_, address, count, out, &exception)) {
-    online_ = true; failures_ = 0; lastOkMs_ = now_;
+    online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_);
     return true;
   }
-  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = now_; error = Error::Rejected; }
+  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_); error = Error::Rejected; }
   else { online_ = false; ++failures_; error = Error::Offline; }
   return false;
 }
@@ -72,12 +72,12 @@ bool Link::read(uint16_t address, uint16_t count, uint16_t* out, Error& error) {
 bool Link::write(uint16_t address, uint16_t value, Error& error) {
   uint8_t exception = 0;
   if (client_->writeSingle(config_, address, value, &exception)) {
-    online_ = true; failures_ = 0; lastOkMs_ = now_;
+    online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_);
     if (address == hca::kMaxChargingPower) limit29_ = value;
     if (address == hca::kStartStop) run60_ = value;
     return true;
   }
-  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = now_; error = Error::Rejected; }
+  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_); error = Error::Rejected; }
   else { online_ = false; ++failures_; error = Error::Offline; }
   return false;
 }

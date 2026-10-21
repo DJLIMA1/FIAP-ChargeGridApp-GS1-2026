@@ -499,6 +499,26 @@ static JsonDocument linkedResponse(const char* type, const char* id, uint32_t co
   return doc;
 }
 static void runChargerLinkScenarios();
+static void runLinkTransitionScenarios() {
+  FakeChargerClient client(&testMillis);
+  chargerLink.setClient(&client);
+  auto screen = linkedResponse(nullptr, nullptr, 0, nullptr);
+  state = "idle"; sessionId = ""; apply(screen);
+  nextSync = testMillis + 5000;
+  chargerLinkService();
+  assert(chargerLink.online() && nextSync == testMillis && !client.device.relayClosed());
+  auto revision = syncRequests.revision();
+  nextSync = testMillis + 5000; chargerLinkService();
+  assert(syncRequests.revision() == revision && nextSync == testMillis + 5000);
+  client.offline = true; testMillis += 1000; chargerLinkService();
+  assert(!chargerLink.online() && nextSync == testMillis);
+  revision = syncRequests.revision();
+  chargerLinkService(); assert(syncRequests.revision() == revision);
+  client.offline = false; testMillis += 1000; chargerLinkService();
+  assert(chargerLink.online() && nextSync == testMillis && !client.device.relayClosed());
+  chargerLink.configure(charger::LinkConfig{}); chargerLink.setClient(nullptr);
+  puts("PASS: transições offline/online pedem sync imediato uma vez, sem reboot ou START automático");
+}
 // Carregadores ADICIONAIS da tela (multi_charger_v1): a resposta do sync da tela lista
 // "chargers"; cada um tem sessão própria (sync endereçado), sempre por Modbus, com START estrito.
 static JsonDocument extraResponse(uint8_t address, const char* type, const char* id, uint32_t commandVersion,
@@ -532,7 +552,9 @@ static void runExtraChargerScenarios() {
   JsonDocument body; extra::fillBody(slot, body);
   assert(body["charger_address"] == 2 && body["charger"]["address"] == 2 && body["charger"]["link"] == "offline");
   assert(body["capabilities"][1] == "multi_charger_v1" && body["physical_state"] == "idle" && body["session_id"].isNull());
+  nextSync = testMillis + 5000;
   testMillis += 1000; extra::service(testMillis);
+  assert(nextSync == testMillis && extra::slots[0].syncNow && extra::slots[1].syncNow);
   body.clear(); extra::fillBody(slot, body);
   assert(body["charger"]["link"] == "online" && body["charger"]["model"] == "goodwe_hca_g2");
   // START no carregador 2: ACK só após releitura; o ponto da tela continua livre.
@@ -642,6 +664,36 @@ static void runExtraChargerScenarios() {
   puts("PASS: carregadores adicionais da tela (lista do sync, corpo endereçado, START estrito por Modbus, energia "
        "pelo 10015, SET_POWER, charger_offline, perda → device_fault, STOP pendente retém endpoint/slot e bloqueia "
        "START até releitura confirmar, reconexão e reuso, vigia de 45 s, reboot → device_reboot)");
+}
+
+static void runBlockingSlotClockScenarios() {
+  struct SlowClient : FakeChargerClient {
+    explicit SlowClient() : FakeChargerClient(&testMillis, 2) { offline = true; }
+    bool readHolding(const charger::LinkConfig& config, uint16_t address, uint16_t count,
+                     uint16_t* out, uint8_t* exception) override {
+      testMillis += 1500;
+      return FakeChargerClient::readHolding(config, address, count, out, exception);
+    }
+  } slow;
+  FakeChargerClient active(&testMillis, 3);
+  extra::setClient(0, &slow); extra::setClient(1, &active);
+  for (int i = 0; i < 2; ++i) {
+    auto& slot = extra::slots[i]; slot.used = true; slot.address = i + 2;
+    charger::LinkConfig config;
+    assert(charger::makeConfig("goodwe_hca_g2", "modbus_tcp", slot.address, nullptr, 502, config));
+    slot.link.configure(config);
+  }
+  auto& charging = extra::slots[1];
+  assert(charging.link.start(2000, testMillis, nullptr) == charger::Error::None);
+  charging.state = "charging"; charging.sessionId = "clock-session";
+  charging.started = charging.lastTick = testMillis;
+  charging.lastContact = testMillis - 44000;
+  extra::service(testMillis);
+  assert(charging.state == "stopped" && charging.endReason == "communication_lost");
+  assert(!active.device.relayClosed()); // O slot anterior bloqueou: vigia usa a hora nova.
+  for (auto& slot : extra::slots) slot = extra::Slot();
+  extra::setClient(0, nullptr); extra::setClient(1, nullptr);
+  puts("PASS: bloqueio de outro slot não atrasa o vigia de 45 s nem a parada física");
 }
 
 static void runChargerLinkScenarios() {
@@ -1533,8 +1585,10 @@ int main(int argc, char** argv) {
   apply(factoryReset);
   assert(acknowledgements[0]["status"] == "failed");
   assert(acknowledgements[0]["new_device_key_hash"].isNull());
+  runLinkTransitionScenarios();
   runChargerLinkScenarios();
   runExtraChargerScenarios();
+  runBlockingSlotClockScenarios();
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
   puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");

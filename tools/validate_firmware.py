@@ -43,6 +43,14 @@ def main():
              "-DLV_FONT_MONTSERRAT_14=1", "-DLV_FONT_MONTSERRAT_28=1", "-DLV_USE_QRCODE=1", "-DLV_MEM_SIZE=65536U",
              "-I" + str(lvgl), "-I" + str(firmware / "include")]
     run_hca_tests(root, output)
+    api_test = output / "firmware_api_test"
+    subprocess.run(["clang++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-fsanitize=address,undefined",
+                    "-I" + str(root / "tools/tests/http_stubs"),
+                    "-I" + str(root / "tools/tests/firmware_stubs"),
+                    "-I" + str(firmware / "include"), "-I" + str(root / "firmware/shared/hca_g2/src"),
+                    "-I" + str(libraries / "ArduinoJson/src"),
+                    str(root / "tools/tests/firmware_api_test.cpp"), "-o", str(api_test)], check=True)
+    subprocess.run([str(api_test)], check=True)
     sources = sorted((lvgl / "src").rglob("*.c"))
     sources += sorted((firmware / "src").glob("panel_font*.c"))
     sources += [firmware / "src/chargegrid_logo.c"]
@@ -130,6 +138,12 @@ def run_hca_tests(root, output):
         subprocess.run([*strict, str(root / "tools/tests" / (name + ".cpp")), *extra, *hca["sources"],
                         "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
+    transport = output / "charger_transport_test"
+    subprocess.run([*strict, "-I" + str(root / "tools/tests/transport_stubs"),
+                    str(root / "tools/tests/charger_transport_test.cpp"),
+                    str(root / "firmware/esp32/src/charger_link.cpp"), *hca["sources"],
+                    "-o", str(transport)], check=True)
+    subprocess.run([str(transport)], check=True)
     server = output / "hca_sim_host"
     subprocess.run(["clang++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", *hca["includes"],
                     str(root / "firmware/goodwe-hca-sim/host/hca_sim_host.cpp"), *hca["sources"],
