@@ -16,7 +16,7 @@ export const SESSION_STATUS_ORDER = ['completed', 'charging', 'starting', 'stopp
 export const AVAILABILITY: Record<string, { label: string; tone: Tone }> = {
   available: { label: 'Disponível', tone: 'green' },
   charging: { label: 'Carregando', tone: 'blue' },
-  occupied: { label: 'Conector em uso', tone: 'blue' },
+  occupied: { label: 'Em uso', tone: 'blue' },
   reserved: { label: 'Reservado', tone: 'amber' },
   reconciling: { label: 'Sincronizando', tone: 'amber' },
   offline: { label: 'Offline', tone: 'red' },

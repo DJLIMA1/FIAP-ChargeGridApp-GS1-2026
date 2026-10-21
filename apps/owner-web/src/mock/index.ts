@@ -20,6 +20,7 @@
  */
 import type { Coupon, CouponInput, Profile } from '../api/types'
 import { REFRESH_KEY } from '../auth/tokens'
+import { requestedKw } from '../lib/power'
 import * as data from './data'
 import * as forecastMock from './forecast'
 import * as ops from './operations'
@@ -141,6 +142,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     case '/owner/occupancy-history':
       return json(forecastMock.history(station ?? data.STATIONS[0].id, Number(p.get('weeks') ?? 4)))
     case '/operator/stations':
+      data.STATIONS.forEach((s) => ops.decorateChargers(s))
       return json({ items: data.STATIONS, total: data.STATIONS.length, limit: 100, offset: 0 })
     case '/coupons':
       if (method === 'POST') {
@@ -200,15 +202,30 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       }
       Object.assign(target, patch)
     }
-    return json(structuredClone(target))
+    return json(structuredClone(ops.decorateChargers(target)))
+  }
+  const chargersMatch = /^\/connectors\/([^/]+)\/chargers$/.exec(path)
+  if (chargersMatch && method === 'POST') {
+    try {
+      return json(structuredClone(ops.addCharger(chargersMatch[1])), 201)
+    } catch (error) {
+      if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)
+      throw error
+    }
   }
   const connectorMatch = /^\/connectors\/([^/]+)$/.exec(path)
   if (connectorMatch && method === 'PATCH') {
     const owner = data.STATIONS.find((s) => s.connectors.some((c) => c.id === connectorMatch[1]))
     const connector = owner?.connectors.find((c) => c.id === connectorMatch[1])
-    if (!connector) return fail(404, 'not_found', 'Ponto não encontrado')
-    if (['charging', 'reserved'].includes(connector.availability_status ?? '')) {
+    if (!owner || !connector) return fail(404, 'not_found', 'Ponto não encontrado')
+    // Como a API: só o limite pode mudar com recarga/reserva em andamento.
+    const limitOnly = Object.keys((body ?? {}) as object).every((key) => key === 'power_limit_kw')
+    if (!limitOnly && ['charging', 'reserved'].includes(connector.availability_status ?? '')) {
       return fail(409, 'point_busy', 'Encerre reservas/recargas antes de alterar o ponto')
+    }
+    const input = (body ?? {}) as Record<string, unknown>
+    if ('power_limit_kw' in input && input.power_limit_kw !== null && Number(input.power_limit_kw) > Number(input.power_kw ?? connector.power_kw)) {
+      return fail(422, 'invalid_power_limit', 'O limite não pode passar da potência nominal do carregador')
     }
     const { charger_address: chargerAddress, ...rest } = (body ?? {}) as Record<string, unknown>
     if (body && typeof body === 'object' && 'charger_address' in body) {
@@ -220,6 +237,8 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       }
     }
     Object.assign(connector, rest)
+    if ('power_kw' in rest || 'power_limit_kw' in rest) connector.effective_power_kw = requestedKw(connector).toFixed(3)
+    ops.decorateChargers(owner)
     return json(structuredClone(connector))
   }
   const couponMatch = /^\/coupons\/([^/]+)$/.exec(path)

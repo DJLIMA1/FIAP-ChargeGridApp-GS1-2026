@@ -9,10 +9,11 @@
  * - Pagamento automático (Stripe · teste; simulado no totem em Modo apresentação): `payment` nas sessões;
  * - Totem 0.8.0: `kiosk_mode` (Villa Lobos ligado), CG-003 travado por um pedido do totem
  *   (`kiosk_in_use`) e `payment.channel` (app / QR do painel / totem, simulado ou Stripe) nas sessões;
- * - Cada conector É um carregador GoodWe HCA G2: endereços 1..N por posto na ordem de criação (o
- *   próximo livre para um conector novo), todos "aguardando carregador (simulação da tela)" porque
- *   o mock não tem carregador real; PATCH `charger_address` com a validação (1–247, nunca vazio) e
- *   a unicidade por posto da API (422/409);
+ * - Estação = a tela; cada ponto É um carregador GoodWe HCA G2 (simulado): endereços 1..N por
+ *   posto na ordem de criação, uma tela online por posto (no primeiro ponto) comandando todos,
+ *   carregadores online para a demonstração, CG-007 offline (estação online × carregador offline)
+ *   e CG-010 aguardando a tela; PATCH `charger_address` (1–247, nunca vazio, único no posto: 422/409)
+ *   e `POST /connectors/{id}/chargers` (Adicionar carregador; 409 screen_required/charger_address_full);
  * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
  *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
  *   sessões.
@@ -31,7 +32,7 @@ import type {
   StationPower,
   StationPricing,
 } from '../api/operations'
-import type { ChargerLink, Connector, SessionItem, Station } from '../api/types'
+import type { ChargerLink, ChargerLinkState, Connector, SessionItem, Station } from '../api/types'
 import { defaultSiteLimitKw, profileLabel, requestedKw, sizeKey, profileKey } from '../lib/power'
 import {
   CHARGER_ADDRESS_EMPTY,
@@ -48,6 +49,24 @@ import { formatCurrency } from '../lib/format'
 import * as data from './data'
 
 const S = data.STATIONS
+
+/* Estado dos carregadores (declarado antes de decorar os postos, logo abaixo). */
+const SECOND = 1000
+const MOCK_HOUR = 3_600_000
+/** Firmware das telas do mock (multi-carregador). */
+export const SCREEN_FIRMWARE = '1.6.0'
+/**
+ * Estado de cada carregador no mock (por id do ponto). Padrão `online` para a demonstração;
+ * CG-007 sem resposta (tela online: estação online × carregador offline) e CG-010 ainda não
+ * confirmado pela tela (`pending`). Carregador adicionado pelo dono nasce `pending`.
+ */
+const LINK_STATE = new Map<string, ChargerLinkState>()
+const LINK_SEED: Record<string, ChargerLinkState> = { 'CG-007': 'offline', 'CG-010': 'pending' }
+/**
+ * Potência que o carregador está entregando (kW) pela mesma divisão do cartão Potência; ligada
+ * depois que a potência do posto é declarada (abaixo). Antes disso: a efetiva do ponto.
+ */
+let deliveredKw: (connector: Connector) => number | undefined = () => undefined
 
 function hash(text: string): number {
   let h = 2166136261
@@ -205,32 +224,100 @@ function decorateStation(station: Station) {
       Object.assign(connector, { available: false, availability_status: 'occupied', kiosk_in_use: true })
     }
   }
-  ensureChargerAddresses(station)
+  decorateChargers(station)
   station.overstay = stationOverstay(station.id)
 }
 S.forEach(decorateStation)
 
-/* ------------------------------------------- carregador GoodWe ligado à tela */
+/* ------------------------------------------- estação (tela) × carregadores */
+
+export function linkStateOf(connector: Connector): ChargerLinkState {
+  return LINK_STATE.get(connector.id) ?? LINK_SEED[connector.public_code] ?? 'online'
+}
+
+export function setLinkState(connectorId: string, state: ChargerLinkState): void {
+  LINK_STATE.set(connectorId, state)
+}
+
+function screenDeviceId(station: Station): string {
+  return `d0${String(S.indexOf(station) + 1).padStart(3, '0')}-6b1e-4c7a-9d2f-00000000a11e`
+}
+
+/** A tela do posto fica no primeiro ponto (o do QR); os outros são carregadores adicionais dela. */
+function screenPoint(station: Station): Connector | undefined {
+  return station.connectors.find((c) => !c.retired)
+}
 
 /**
- * `charger_link` do dono (`chargegrid_core.chargers.link.owner_block`). O mock não tem carregador
- * real: a tela online confirma o endereço e reporta a simulação dela (`esp32_bench`, `offline`); tela
- * offline também é `offline`. Nos dois casos: "aguardando carregador (simulação da tela)".
+ * `charger_link` do dono (`chargegrid_core.chargers.link.owner_block`): online com última leitura
+ * agora e a potência lida (a efetiva enquanto carrega, 0 parado); offline com a última leitura de
+ * 3 h atrás; pending sem leitura (a tela ainda não confirmou o endereço).
  */
-export function chargerLink(connector: Connector): ChargerLink | null {
+export function chargerLink(connector: Connector, now: number = Date.now()): ChargerLink | null {
   const address = connector.charger_address
   if (address === null || address === undefined) return null
-  const link = 'offline'
+  const link = linkStateOf(connector)
+  const charging = connector.availability_status === 'charging'
+  const delivered = charging ? (deliveredKw(connector) ?? Number(connector.effective_power_kw ?? connector.power_kw)) : 0
+  const measured = link === 'online' ? Math.round(delivered * 1000) : null
   return {
     model: CHARGER_MODEL, transport: CHARGER_TRANSPORT, address, host: chargerHost(address), label: CHARGER_LABEL, simulated: true,
-    // Como o painel sem carregador respondendo: declara a simulação interna dele com o endereço.
-    link, reported: connector.online ? { model: 'esp32_bench', transport: 'simulated', address, link } : null,
+    link,
+    last_online_at: link === 'online' ? new Date(now - 3 * SECOND).toISOString() : link === 'offline' ? new Date(now - 3 * MOCK_HOUR).toISOString() : null,
+    measured_power_w: measured,
+    reported:
+      link === 'pending'
+        ? null
+        : link === 'online'
+          ? { model: CHARGER_MODEL, transport: CHARGER_TRANSPORT, address, link }
+          : { model: 'esp32_bench', transport: 'simulated', address, link },
   }
 }
 
 /**
- * Todo conector tem endereço: quem ainda não tem (seed ou conector novo) recebe o menor livre do
- * posto, na ordem de criação (1, 2, 3…), como a API na criação do posto / do conector.
+ * Tela, carregadores e disponibilidade como a API: `screen_online`, `screens`, e em cada ponto
+ * `online` (= carregador respondendo), `screen_online`, `unavailable_reason`, `charger_link` e
+ * `screen`. Idempotente (o horário da última leitura acompanha o relógio a cada GET).
+ */
+export function decorateChargers(station: Station, now: number = Date.now()): Station {
+  ensureChargerAddresses(station)
+  const home = screenPoint(station)
+  if (!home) {
+    station.screen_online = null
+    station.screens = []
+    return station
+  }
+  const deviceId = screenDeviceId(station)
+  const lastSeen = new Date(now - 3 * SECOND).toISOString()
+  const screenOnline = true
+  const members = station.connectors.filter((c) => !c.retired)
+  station.screen_online = screenOnline
+  station.screens = [
+    {
+      device_id: deviceId, connector_id: home.id, public_code: home.public_code, online: screenOnline, last_seen: lastSeen,
+      firmware_version: SCREEN_FIRMWARE, multi_charger: true, charger_ids: members.map((c) => c.id),
+    },
+  ]
+  for (const connector of members) {
+    connector.charger_link = chargerLink(connector, now)
+    const link = connector.charger_link?.link
+    connector.screen_online = screenOnline
+    connector.online = screenOnline && link === 'online'
+    connector.unavailable_reason = !screenOnline ? 'screen_offline' : link === 'online' ? null : 'charger_offline'
+    if (connector.unavailable_reason && connector.active && !['offline', 'disabled'].includes(connector.availability_status ?? '')) {
+      Object.assign(connector, { available: false, availability_status: 'offline' })
+    }
+    connector.screen = {
+      device_id: deviceId, connector_id: home.id, public_code: home.public_code, online: screenOnline, last_seen: lastSeen,
+      firmware_version: SCREEN_FIRMWARE, role: connector.id === home.id ? 'screen' : 'charger', multi_charger: true,
+    }
+  }
+  return station
+}
+
+/**
+ * Todo ponto tem endereço: quem ainda não tem (seed ou ponto novo) recebe o menor livre do
+ * posto, na ordem de criação (1, 2, 3…), como a API na criação do posto / do ponto.
  */
 export function ensureChargerAddresses(station: Station): Station {
   for (const connector of station.connectors) {
@@ -257,8 +344,47 @@ export function setChargerAddress(connectorId: string, value: unknown): Connecto
     throw new MockFailure(409, 'charger_address_taken', `O carregador ${value} já está ligado ao ponto ${other.public_code} deste posto. Escolha outro endereço.`)
   }
   connector.charger_address = value
-  connector.charger_link = chargerLink(connector)
+  // Endereço novo: a tela ainda não confirmou o carregador nele.
+  setLinkState(connector.id, 'pending')
+  decorateChargers(station)
   return connector
+}
+
+/** Mensagens das recusas do POST "Adicionar carregador" (iguais à API). */
+export const SCREEN_REQUIRED_MESSAGE = 'Este ponto não tem tela vinculada'
+export const ADDRESS_FULL_MESSAGE = 'Posto sem endereço de carregador livre (1 a 247)'
+
+function nextPublicCode(): string {
+  const used = S.flatMap((s) => s.connectors.map((c) => Number(/(\d+)$/.exec(c.public_code)?.[1] ?? 0)))
+  return `CG-${String(Math.max(0, ...used) + 1).padStart(3, '0')}`
+}
+
+/**
+ * `POST /connectors/{id}/chargers`: próximo carregador da tela do ponto (a do próprio ponto ou a
+ * tela de quem ele é carregador adicional): próximo endereço livre, mesmo tipo/potência/preço/
+ * duração do ponto da tela, inativo, aguardando a tela. 409 `screen_required`/`charger_address_full`.
+ */
+export function addCharger(connectorId: string): Connector {
+  const station = S.find((s) => s.connectors.some((c) => c.id === connectorId))
+  const connector = station?.connectors.find((c) => c.id === connectorId)
+  if (!station || !connector) throw new MockFailure(404, 'not_found', 'Ponto não encontrado')
+  if (!connector.screen) throw new MockFailure(409, 'screen_required', SCREEN_REQUIRED_MESSAGE)
+  const home = station.connectors.find((c) => c.id === connector.screen!.connector_id) ?? connector
+  const address = nextFreeChargerAddress(station.connectors.map((c) => c.charger_address))
+  if (address === null) throw new MockFailure(409, 'charger_address_full', ADDRESS_FULL_MESSAGE)
+  const serial = station.connectors.length + S.reduce((sum, s) => sum + s.connectors.length, 0)
+  const fresh: Connector = {
+    id: `c1${Date.now().toString(16).slice(-4)}-6b1e-4c7a-9d2f-${serial.toString(16).padStart(12, '0')}`,
+    station_id: station.id, public_code: nextPublicCode(), connector_type: home.connector_type, power_kw: home.power_kw,
+    price_per_kwh: home.price_per_kwh, max_duration_minutes: home.max_duration_minutes, active: false, control_version: 1,
+    available: false, availability_status: 'disabled', reserved_until: null, kiosk_in_use: false, online: false,
+    physical_state: 'idle', retired: false, power_limit_kw: null, effective_power_kw: requestedKw(home).toFixed(3),
+    charger_address: address,
+  }
+  station.connectors.push(fresh)
+  setLinkState(fresh.id, 'pending')
+  decorateChargers(station)
+  return fresh
 }
 
 export function pricing(stationId: string): StationPricing {
@@ -570,6 +696,13 @@ export function simulatedLoad(stationId: string, power: PowerSite, at = Date.now
 }
 
 const FLOOR = 1.4
+
+deliveredKw = (connector) => {
+  const station = S.find((s) => s.id === connector.station_id)
+  const site = station ? POWER[station.id] : undefined
+  if (!station || !site) return undefined
+  return allocate(station, site, simulatedLoad(station.id, site)).allocations.find((a) => a.connector.id === connector.id)?.target
+}
 let decisionSeq = 1
 const kwText = (value: number) => (Math.round(value * 10) / 10).toFixed(1).replace(/\.0$/, '').replace('.', ',')
 

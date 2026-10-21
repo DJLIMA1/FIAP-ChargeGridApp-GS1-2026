@@ -77,46 +77,102 @@ describe('totem em Dados da estação', () => {
   })
 })
 
-describe('carregador GoodWe no conector (como Conectores → conector no app)', () => {
-  // O mock decora os postos (charger_address/charger_link) ao carregar as operações.
+describe('estação (tela) × carregadores no detalhe do posto', () => {
+  // O mock decora os postos (tela, charger_link, screen) ao carregar as operações.
   beforeAll(async () => {
     await import('../src/mock/operations')
   })
-  const point = (code: string) => structuredClone(data.STATIONS[0].connectors.find((c) => c.public_code === code)!)
+  const st = (index = 0) => structuredClone(data.STATIONS[index])
+  const point = (code: string, index = 0) => st(index).connectors.find((c) => c.public_code === code)!
+  const noop = () => undefined
 
-  it('campo de endereço (1..N do posto), Salvar e o status numa linha dentro do cartão do conector', async () => {
-    const { ChargerField } = await import('../src/components/station/ChargerField')
-    const html = renderToStaticMarkup(createElement(ChargerField, { connector: point('CG-002'), onSaved: () => undefined }))
-    expect(html).toContain('Carregador GoodWe (endereço)')
+  it('cartão do carregador: status do carregador, endereço/tipo/potência/limite, tarifa/duração e a tela', async () => {
+    const { ChargerCard } = await import('../src/components/station/ChargerCard')
+    const html = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-002'), onSaved: noop }))
+    expect(html).toContain('CG-002')
+    expect(html).toMatch(/class="badge green ">Online</)
+    expect(html).toContain('Carregador 2 · GoodWe HCA G2 (simulado) · Tipo 2 · 22 kW')
+    const order = ['Endereço', 'Tipo de conector', 'Potência nominal', 'Limite', 'Carregador 2 · online', 'Tarifa', 'Duração máxima', 'Tela online', 'Carregador adicional da tela CG-001', 'Salvar carregador']
+    const positions = order.map((text) => html.indexOf(text))
+    positions.forEach((pos, i) => expect(pos, order[i]).toBeGreaterThan(i ? positions[i - 1] : -1))
     expect(html).toMatch(/data-testid="charger-address"[^>]*value="2"/)
-    expect(html).toContain('Salvar')
-    expect(html).toContain('Carregador GoodWe · endereço 2 · aguardando carregador (simulação da tela)')
-    const online = { ...point('CG-001'), charger_link: { ...point('CG-001').charger_link!, link: 'online' } }
-    expect(renderToStaticMarkup(createElement(ChargerField, { connector: online, onSaved: () => undefined }))).toContain('Carregador GoodWe · endereço 1 · online')
-    const page = read('pages/StationDetail.tsx')
-    expect(page).toContain('<ChargerField connector={connector} onSaved={onSaved} suggested={suggestedAddress} />')
-    expect(page).toContain('nextFreeChargerAddress(points.map((c) => c.charger_address))')
+    expect(html).toContain('última leitura agora · lendo 0 kW')
+    expect(html).not.toContain('charger-cgaddr') // online: sem a dica do CG_ADDR
+    // Sem textos antigos/redundantes.
+    expect(html).not.toMatch(/simulação da tela|Dispositivo online|Dispositivo offline|Conector|Modbus TCP na rede/)
+    const screen = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-001'), onSaved: noop }))
+    expect(screen).toContain('Este ponto é a tela')
+    expect(screen).toContain('Carregando')
+    expect(screen).toMatch(/lendo \d+(,\d)? kW/)
   })
 
-  it('sem o carregador opcional: nada de Remover/"carregador externo"; vazio valida no campo sem request', async () => {
-    const { ChargerField } = await import('../src/components/station/ChargerField')
-    for (const code of ['CG-001', 'CG-002', 'CG-003']) {
-      const html = renderToStaticMarkup(createElement(ChargerField, { connector: point(code), onSaved: () => undefined }))
-      expect(html).not.toContain('Remover')
-      expect(html).not.toMatch(/carregador externo/i)
-    }
+  it('carregador offline: selo Offline (sem repetir a disponibilidade), última leitura e CG_ADDR', async () => {
+    const { ChargerCard } = await import('../src/components/station/ChargerCard')
+    const html = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-007', 1), onSaved: noop }))
+    expect(html.match(/>Offline</g)).toHaveLength(1)
+    expect(html).toContain('Carregador 4 · offline')
+    expect(html).toContain('última leitura há 3 h')
+    expect(html).toContain('No ESP do carregador: CG_ADDR = 4')
+    expect(html).toContain('Tela online') // a tela (estação) continua online
+    const pending = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-010', 2), onSaved: noop }))
+    expect(pending).toContain('Aguardando a tela')
+    expect(pending).toMatch(/Carregador 3 · aguardando a tela<\/span><span data-testid="charger-cgaddr"> · No ESP do carregador: CG_ADDR = 3/)
+    expect(pending).toContain('CG_ADDR = 3')
+    expect(pending).toContain('Inativo')
+    expect(pending).not.toContain('Desativado') // o interruptor já diz Inativo
+  })
+
+  it('campo de endereço: legado sem endereço sugere o próximo livre; API antiga (sem o campo) some', async () => {
+    const { ChargerField, ChargerLinkLine } = await import('../src/components/station/ChargerField')
+    const legacyNull = { ...point('CG-003'), charger_address: null, charger_link: null }
+    const html = renderToStaticMarkup(createElement(ChargerField, { connector: legacyNull, onSaved: noop, suggested: 4 }))
+    expect(html).toMatch(/data-testid="charger-address"[^>]*value="4"/)
+    expect(html).toContain('sem endereço')
+    const legacy = { ...point('CG-003'), charger_address: undefined, charger_link: undefined, screen: undefined }
+    expect(renderToStaticMarkup(createElement(ChargerField, { connector: legacy, onSaved: noop }))).toBe('')
+    expect(renderToStaticMarkup(createElement(ChargerLinkLine, { connector: legacy }))).toBe('')
+    const { ScreenLink } = await import('../src/components/station/ChargerCard')
+    expect(renderToStaticMarkup(createElement(ScreenLink, { connector: legacy }))).toBe('')
+    expect(renderToStaticMarkup(createElement(ScreenLink, { connector: { ...legacy, screen: null } }))).toContain('Sem tela vinculada')
     const source = read('components/station/ChargerField.tsx')
     expect(source).not.toContain('charger_address: null')
     expect(source).toMatch(/if \(parsed\.error\) return setError\(parsed\.error\)[\s\S]*patchConnector/)
   })
 
-  it('dado legado sem endereço: o próximo livre do posto no campo; API antiga (sem o campo): nada aparece', async () => {
-    const { ChargerField } = await import('../src/components/station/ChargerField')
-    const legacyNull = { ...point('CG-003'), charger_address: null, charger_link: null }
-    const html = renderToStaticMarkup(createElement(ChargerField, { connector: legacyNull, onSaved: () => undefined, suggested: 4 }))
-    expect(html).toMatch(/data-testid="charger-address"[^>]*value="4"/)
-    expect(html).toContain('sem endereço')
-    const legacy = { ...point('CG-003'), charger_address: undefined, charger_link: undefined }
-    expect(renderToStaticMarkup(createElement(ChargerField, { connector: legacy, onSaved: () => undefined }))).toBe('')
+  it('Dados da estação mostram a tela (status, ponto, carregadores, contato, firmware)', async () => {
+    const { StationForm } = await import('../src/pages/StationDetail')
+    const html = renderToStaticMarkup(createElement(StationForm, { station: st(1), onSaved: noop }))
+    expect(html).toContain('Tela online')
+    expect(html).toMatch(/Tela no ponto CG-004 · comanda 4 carregadores · contato agora · firmware 1\.6\.0/)
+    expect(html.indexOf('Tela online')).toBeLessThan(html.indexOf('Nome da estação'))
+    const { ScreenStatus } = await import('../src/components/station/ScreenStatus')
+    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: { ...st(), screens: undefined } }))).toBe('')
+    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: { ...st(), screens: [], screen_online: null } }))).toContain('Sem tela')
+    const offline = st()
+    offline.screens = offline.screens!.map((s) => ({ ...s, online: false }))
+    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: offline }))).toContain('Tela offline')
+  })
+
+  it('Carregadores: "Adicionar carregador", estação online × carregador offline e a estação offline', async () => {
+    const { ChargersCard, StationHealth } = await import('../src/pages/StationDetail')
+    const marginal = renderToStaticMarkup(createElement(ChargersCard, { station: st(1), onSaved: noop, onAdded: noop }))
+    expect(marginal).toContain('>Carregadores</h2>')
+    expect(marginal).toMatch(/data-testid="add-charger"[^>]*>.*Adicionar carregador/)
+    expect(marginal).toContain('Estação online · carregador CG-007 offline')
+    expect(marginal).toContain('Só esse ponto fica indisponível')
+    expect(marginal.match(/data-testid="charger-card"/g)).toHaveLength(4)
+    expect(marginal).not.toMatch(/Conectores|conector\(es\)/)
+    // Villa Lobos: todos online, sem aviso.
+    expect(renderToStaticMarkup(createElement(StationHealth, { station: st(0) }))).toBe('')
+    const down = { ...st(0), screen_online: false }
+    expect(renderToStaticMarkup(createElement(StationHealth, { station: down }))).toContain('Estação offline')
+    const empty = renderToStaticMarkup(createElement(ChargersCard, { station: { ...st(0), connectors: [] }, onSaved: noop, onAdded: noop }))
+    expect(empty).toContain('Nenhum carregador')
+    expect(empty).not.toContain('add-charger')
+    const page = read('pages/StationDetail.tsx')
+    expect(page).toContain('ep.addCharger(target.id)')
+    expect(page).toContain('addChargerErrorText(err)')
+    expect(page).toContain('cgAddrHint(added.charger_address)')
+    expect(page).toContain('nextFreeChargerAddress(points.map((c) => c.charger_address))')
   })
 })

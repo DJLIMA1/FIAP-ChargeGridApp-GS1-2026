@@ -57,7 +57,7 @@ describe('totem de autoatendimento: status do posto', () => {
 
   it('ponto travado por pedido do totem aparece como "Em uso no totem"', () => {
     expect(availabilityMeta({ availability_status: 'occupied', kiosk_in_use: true })).toEqual({ label: 'Em uso no totem', tone: 'amber' })
-    expect(availabilityMeta({ availability_status: 'occupied', kiosk_in_use: false })?.label).toBe('Conector em uso')
+    expect(availabilityMeta({ availability_status: 'occupied', kiosk_in_use: false })?.label).toBe('Em uso')
     expect(availabilityMeta({ availability_status: 'nope' })).toBeNull()
   })
 })
