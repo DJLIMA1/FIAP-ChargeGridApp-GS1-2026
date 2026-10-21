@@ -9,6 +9,8 @@
  * - Pagamento automático (Stripe · teste; simulado no totem em Modo apresentação): `payment` nas sessões;
  * - Totem 0.8.0: `kiosk_mode` (Villa Lobos ligado), CG-003 travado por um pedido do totem
  *   (`kiosk_in_use`) e `payment.channel` (app / QR do painel / totem, simulado ou Stripe) nas sessões;
+ * - Carregador GoodWe HCA G2 (simulado) ligado à tela: CG-002 no endereço 1, online; PATCH
+ *   `charger_address` com a validação (1–247) e a unicidade por posto da API (409);
  * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
  *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
  *   sessões.
@@ -27,8 +29,9 @@ import type {
   StationPower,
   StationPricing,
 } from '../api/operations'
-import type { SessionItem, Station } from '../api/types'
+import type { ChargerLink, Connector, SessionItem, Station } from '../api/types'
 import { defaultSiteLimitKw, profileLabel, requestedKw, sizeKey, profileKey } from '../lib/power'
+import { CHARGER_LABEL, CHARGER_MODEL, CHARGER_TRANSPORT, chargerHost } from '../lib/charger'
 import { formatCurrency } from '../lib/format'
 import * as data from './data'
 
@@ -183,6 +186,9 @@ function decorateStation(station: Station) {
   for (const connector of station.connectors) {
     connector.kiosk_in_use ??= false
     connector.power_limit_kw ??= null
+    // Carregador GoodWe simulado: CG-002 (Villa Lobos) ligado no endereço 1 e online.
+    if (connector.charger_address === undefined) connector.charger_address = connector.public_code === 'CG-002' ? 1 : null
+    connector.charger_link = chargerLink(connector)
     // Sem teto no posto: a efetiva é o pedido (nominal ou o limite do vendedor), como `power.allocate`.
     connector.effective_power_kw ??= requestedKw(connector).toFixed(3)
     // Pedido do totem aberto: o ponto aparece ocupado ("Em uso no totem"), como `availability()` da API.
@@ -193,6 +199,36 @@ function decorateStation(station: Station) {
   station.overstay = stationOverstay(station.id)
 }
 S.forEach(decorateStation)
+
+/* ------------------------------------------- carregador GoodWe ligado à tela */
+
+/** `charger_link` do dono (`chargegrid_core.chargers.link.owner_block`): tela online confirma o endereço. */
+export function chargerLink(connector: Connector): ChargerLink | null {
+  const address = connector.charger_address
+  if (address === null || address === undefined) return null
+  const link = connector.online ? 'online' : 'offline'
+  return {
+    model: CHARGER_MODEL, transport: CHARGER_TRANSPORT, address, host: chargerHost(address), label: CHARGER_LABEL, simulated: true,
+    link, reported: connector.online ? { model: CHARGER_MODEL, transport: CHARGER_TRANSPORT, address, link } : null,
+  }
+}
+
+/** PATCH `charger_address` como a API: inteiro 1–247 ou `null`, único por posto (409 `charger_address_taken`). */
+export function setChargerAddress(connectorId: string, value: unknown): Connector {
+  const station = S.find((s) => s.connectors.some((c) => c.id === connectorId))
+  const connector = station?.connectors.find((c) => c.id === connectorId)
+  if (!station || !connector) throw new MockFailure(404, 'not_found', 'Ponto não encontrado')
+  if (value !== null && (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 247)) {
+    throw new MockFailure(422, 'invalid_charger_address', 'Endereço do carregador deve ser um número inteiro de 1 a 247')
+  }
+  const other = value === null ? undefined : station.connectors.find((c) => c.id !== connectorId && c.charger_address === value)
+  if (other) {
+    throw new MockFailure(409, 'charger_address_taken', `O carregador ${value} já está ligado ao ponto ${other.public_code} deste posto. Escolha outro endereço.`)
+  }
+  connector.charger_address = value as number | null
+  connector.charger_link = chargerLink(connector)
+  return connector
+}
 
 export function pricing(stationId: string): StationPricing {
   const station = S.find((s) => s.id === stationId)!

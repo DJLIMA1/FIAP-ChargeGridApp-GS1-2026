@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
+import { ChargerField } from '../components/station/ChargerField'
 import { EconomicsCard } from '../components/station/EconomicsCard'
 import { KioskField } from '../components/station/KioskField'
 import { OverstayCard } from '../components/station/OverstayCard'
@@ -150,7 +151,8 @@ function ConnectorEditor({ connector, onSaved }: { connector: Connector; onSaved
       duration: String(connector.max_duration_minutes),
       active: connector.active,
     }),
-    [connector],
+    // Só os campos do formulário: salvar o carregador (na hora) não descarta o que está sendo digitado.
+    [connector.price_per_kwh, connector.power_kw, connector.max_duration_minutes, connector.active],
   )
   const [draft, setDraft] = useState(initial)
   const [saving, setSaving] = useState(false)
@@ -230,6 +232,7 @@ function ConnectorEditor({ connector, onSaved }: { connector: Connector; onSaved
           </div>
         </Field>
       </div>
+      <ChargerField connector={connector} onSaved={onSaved} />
       {error ? (
         <div style={{ marginTop: 12 }}>
           <ErrorBanner error={error} title="Conector não atualizado" />

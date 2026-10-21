@@ -42,6 +42,8 @@ export type ConnectorPatch = Partial<{
   price_per_kwh: string
   max_duration_minutes: number
   active: boolean
+  /** Carregador GoodWe (endereço 1–247); `null` remove. */
+  charger_address: number | null
 }>
 
 export interface MarginFilters extends PeriodQuery {
