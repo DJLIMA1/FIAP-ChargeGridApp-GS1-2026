@@ -163,6 +163,21 @@ void testAckOnlyAfterReadback() {
     client.dropWrites = 1;
     assert(link.stop(now) == charger::Error::ReadbackMismatch && link.pendingStop());
     assert(client.device.relayClosed());
+    // Outra escrita recebe eco sem aplicar: o poll não pode apagar a pendência.
+    client.dropWrites = 2;
+    client.log.clear();
+    now += charger::kPollMs;
+    link.poll(now);
+    assert(client.writes() == "W 10060=1 lost" && link.pendingStop() && client.device.relayClosed());
+    // STOP realmente aplicado, mas a última leitura do readback cai: ainda não confirmado.
+    client.dropWrites = 0;
+    client.failReadAt = hca::kStartStop; client.failReads = 1;
+    client.log.clear();
+    now += charger::kPollMs;
+    link.poll(now);
+    assert(client.writes() == "W 10060=1" && link.pendingStop() && !client.device.relayClosed());
+    assert(client.log.back() == "R 10060x1" && link.lastError() == charger::Error::Offline);
+    // Só a releitura completa libera a parada; sem retomada do carregador.
     client.log.clear();
     now += charger::kPollMs;
     link.poll(now);
@@ -176,7 +191,7 @@ void testAckOnlyAfterReadback() {
     assert(link.start(2000, now, &applied) == charger::Error::Rejected && link.online());
     assert(!client.device.relayClosed());
   }
-  puts("PASS: ACK applied só depois da releitura (offline após 2 tentativas, 2ª tentativa ok, escrita perdida no START e no SET_POWER, STOP perdido → pendente, unit id errado sem repetir)");
+  puts("PASS: ACK applied só depois da releitura (offline após 2 tentativas, 2ª tentativa ok, escrita perdida no START e no SET_POWER, STOP perdido e readback interrompido → pendente até confirmar, unit id errado sem repetir)");
 }
 
 void testPollingAndLoss() {

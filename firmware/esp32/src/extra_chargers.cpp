@@ -102,10 +102,13 @@ void configure(JsonArrayConst chargers, unsigned long now) {
     Slot* slot = claim(static_cast<uint8_t>(address), now);
     if (!slot) continue;
     listed[slot - slots] = true;
-    if (slot->state != "charging") slot->link.configure(config);
+    // A sessão pode já ter sido conciliada pela API enquanto o STOP físico ainda falha.
+    // Preserve o endpoint antigo até confirmar a parada nele.
+    if (slot->state != "charging" && !slot->link.pendingStop()) slot->link.configure(config);
   }
   for (uint8_t i = 0; i < kMaxSlots; ++i)
-    if (slots[i].used && !listed[i] && slots[i].state != "charging" && !slots[i].sessionId.length()) {
+    if (slots[i].used && !listed[i] && slots[i].state != "charging" && !slots[i].sessionId.length() &&
+        !slots[i].link.pendingStop()) {
       release(slots[i]);
       persistIndex();
     }
@@ -226,7 +229,8 @@ bool apply(Slot& slot, JsonDocument& response, unsigned long now) {
   JsonObjectConst connector = response["connector"].as<JsonObjectConst>();
   if (connector["active"].is<bool>()) slot.active = connector["active"].as<bool>();
   charger::LinkConfig config;
-  if (slot.state != "charging" && linkConfig(connector["charger_link"].as<JsonObjectConst>(), config) &&
+  if (slot.state != "charging" && !slot.link.pendingStop() &&
+      linkConfig(connector["charger_link"].as<JsonObjectConst>(), config) &&
       config.address == slot.address)
     slot.link.configure(config);
   JsonObjectConst authorization = response["authorized"].as<JsonObjectConst>();
@@ -261,7 +265,7 @@ bool apply(Slot& slot, JsonDocument& response, unsigned long now) {
     if (type == "START") {
       if (!slot.active) error = "point_inactive";
       else if (session.isNull() || session["id"].as<String>() != command["session_id"].as<String>()) error = "unauthorized_session";
-      else if (slot.sessionId.length()) error = "previous_session_requires_reconciliation";
+      else if (slot.sessionId.length() || slot.link.pendingStop()) error = "previous_session_requires_reconciliation";
       else if (!slot.link.active()) error = charger::errorCode(charger::Error::NoLink);
       else {
         const float limit = startPower(command["parameters"].as<JsonObjectConst>(), session);
