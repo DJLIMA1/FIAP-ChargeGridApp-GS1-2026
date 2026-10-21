@@ -562,73 +562,79 @@ async def connector_form(app, station_id, connector=None, device_id=None):
 
 
 CHARGER_FIELD = 'Carregador GoodWe (endereço)'
-CHARGER_NONE = 'Nenhum carregador externo. A tela usa o relé interno.'
+CHARGER_HINT = f'{charger_link.MIN_ADDRESS} a {charger_link.MAX_ADDRESS}'
+_ADDRESS_ERRORS = ('invalid_charger_address', 'charger_address_taken')
 
 
 def charger_status(connector):
-    """``Carregador 1 · GoodWe HCA G2 (simulado) · online`` ou vazio (ponto sem carregador externo)."""
+    """``Carregador GoodWe · endereço 1 · online`` ou ``… · aguardando carregador (simulação da tela)``.
+
+    Todo ponto é um carregador GoodWe HCA G2; vazio só em payload sem endereço (API antiga/motorista)."""
     block = connector.get('charger_link')
     if not block and connector.get('charger_address') is not None:
         block = charger_link.owner_block(connector['charger_address'], None, bool(connector.get('online')))
     return charger_link.status_text(block)
 
 
+def charger_address_input(value):
+    """Endereço digitado → int 1–247 (mensagens do core; vazio não é aceito)."""
+    text = (value or '').strip()
+    if not text:
+        return charger_link.validate_address(None)
+    try:
+        number = int(text)
+    except ValueError:
+        raise ValueError('Endereço do carregador deve ser um número inteiro de 1 a 247') from None
+    return charger_link.validate_address(number)
+
+
 def charger_controls(app, connector, note):
-    """Carregador GoodWe HCA G2 ligado ao ponto: endereço (1 sugerido), salvar/remover e status do link.
+    """Carregador GoodWe HCA G2 do ponto: endereço Modbus (sempre preenchido), salvar e status do link.
 
     Salva só ``charger_address`` (``PATCH connectors``), independente do formulário do ponto."""
     current = connector.get('charger_address')
-    box = setup_field(CHARGER_FIELD, str(current if current is not None else charger_link.SUGGESTED_ADDRESS),
-                      f'{charger_link.SUGGESTED_ADDRESS} (sugerido)', keyboard=ft.KeyboardType.NUMBER, gap=14,
-                      height=FIELD_HEIGHT)
+    box = setup_field(CHARGER_FIELD, '' if current is None else str(current), CHARGER_HINT,
+                      keyboard=ft.KeyboardType.NUMBER, gap=14, height=FIELD_HEIGHT)
     field = box.controls[1]
-    status = design.txt(charger_status(connector) or CHARGER_NONE, 13, 'regular', expand=True)
+    status = design.txt(charger_status(connector), 13, 'regular', expand=True)
     status.data = 'charger-status'
 
-    def paint():
-        linked = connector.get('charger_address') is not None
-        status.value = charger_status(connector) or CHARGER_NONE
-        save_row.controls[1].controls[0].value = 'Salvar endereço' if linked else 'Ligar carregador'
-        remove_row.visible = remove_button.visible = linked
+    def refuse(message):
+        field.error_text = message
+        app.page.update()
+        raise ApiError(message)
 
-    async def persist(address):
-        saved = await app.api.request('PATCH', f"connectors/{connector['id']}", {'charger_address': address})
+    async def save():
+        try:
+            address = charger_address_input(field.value)
+        except ValueError as exc:
+            refuse(str(exc))
+        try:
+            saved = await app.api.request('PATCH', f"connectors/{connector['id']}", {'charger_address': address})
+        except ApiError as exc:
+            if exc.code in _ADDRESS_ERRORS:
+                field.error_text = str(exc)
+                app.page.update()
+            raise
         saved = saved if isinstance(saved, dict) else {}
         connector['charger_address'] = saved.get('charger_address', address)
         connector['charger_link'] = saved.get('charger_link')
         if 'online' in saved:
             connector['online'] = saved['online']
+        field.value = str(connector['charger_address'])
         field.error_text = None
-        paint()
+        status.value = charger_status(connector)
         app.page.update()
+        app.notice(f'Endereço {connector["charger_address"]} salvo para o carregador deste ponto.')
 
-    async def save():
-        try:
-            address = charger_link.validate_address(int((field.value or '').strip()))
-        except ValueError:
-            field.error_text = 'Informe um endereço de 1 a 247.'
-            app.page.update()
-            raise ApiError('Informe um endereço de 1 a 247.') from None
-        await persist(address)
-        app.notice(f'Carregador {address} ligado a este ponto.')
-
-    async def remove():
-        await persist(None)
-        field.value = str(charger_link.SUGGESTED_ADDRESS)
-        app.page.update()
-        app.notice('Carregador removido. A tela volta ao relé interno.')
-
-    save_button = _mini_button('Salvar', app.action(save), 'primary')
-    remove_button = _mini_button('Remover', app.action(remove))
-    save_row = _action_row(ft.Icons.CABLE, 'Ligar carregador',
-                           'A tela fala com o carregador por Modbus TCP na rede Wi-Fi local.', save_button)
-    remove_row = _action_row(ft.Icons.LINK_OFF, 'Remover carregador', 'A tela volta ao relé interno.', remove_button)
-    paint()
-    return [design.section_label('Carregador externo'),
-            note('Endereço do carregador GoodWe HCA G2 que esta tela comanda (o carregador 1 responde em '
-                 'cg-hca-1.local).'),
+    save_row = _action_row(ft.Icons.CABLE, 'Salvar endereço',
+                           'Sem resposta do carregador, a tela carrega com a simulação interna.',
+                           _mini_button('Salvar', app.action(save), 'primary'))
+    return [design.section_label('Carregador GoodWe'),
+            note('Cada ponto é um carregador GoodWe HCA G2. O endereço Modbus é único no posto e a tela o '
+                 'procura na rede Wi-Fi local.'),
             box, ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED, size=18, color=theme.GRAY_TEXT), status], spacing=8),
-            save_row, remove_row]
+            save_row]
 
 
 def show_key(app, result):
