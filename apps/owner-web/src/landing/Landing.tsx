@@ -40,7 +40,7 @@ const STEPS = [
 
 const COMPONENTS: { icon: IconName; title: string; stack: string; text: string }[] = [
   { icon: 'phone', title: 'Aplicativo', stack: 'Flet · Python', text: 'Busca (também em linguagem natural), reserva, recarga, histórico e assistente com IA.' },
-  { icon: 'chart', title: 'Painel do vendedor', stack: 'React · TypeScript', text: 'KPIs, gráficos, status ao vivo dos pontos, sessões, cupons, previsão e Insights IA.' },
+  { icon: 'chart', title: 'Painel do vendedor', stack: 'React · TypeScript', text: 'KPIs, gráficos, potência e totem de cada posto, sessões, cupons, previsão e Insights IA.' },
   { icon: 'zap', title: 'API', stack: 'FastAPI · PostgreSQL', text: 'Única camada com acesso ao banco: autenticação, permissões, regras de recarga e comandos.' },
   { icon: 'power', title: 'Totem físico', stack: 'ESP32-S3 · LVGL', text: 'Interface touch, sincronização HTTPS, confirmação de comandos e parada local.' },
   { icon: 'sparkles', title: 'Inteligência artificial', stack: 'OpenRouter', text: 'Chat e insights com ferramentas somente leitura; sem chave, regras determinísticas assumem.' },

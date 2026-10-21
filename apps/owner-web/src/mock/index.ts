@@ -136,8 +136,6 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       return new Response(new Blob([ops.marginPdf(p) as BlobPart], { type: 'application/pdf' }), { status: 200, headers: { 'Content-Type': 'application/pdf' } })
     case '/owner/alerts':
       return json(data.alerts(station))
-    case '/owner/live':
-      return json(ops.decorateLive(data.live(station)))
     case '/owner/forecast':
       return json(forecastMock.forecast(station ?? data.STATIONS[0].id))
     case '/owner/occupancy-history':
@@ -175,7 +173,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     })
     return json({ items, available: true, attribution: 'Dados © colaboradores do OpenStreetMap' })
   }
-  const opsMatch = /^\/stations\/([^/]+)\/(economics|power|power-site|building-load|pricing)$/.exec(path)
+  const opsMatch = /^\/stations\/([^/]+)\/(economics|power|power-site|pricing)$/.exec(path)
   if (opsMatch) {
     const [, stationId, resource] = opsMatch
     if (!data.STATIONS.some((s) => s.id === stationId)) return fail(404, 'not_found', 'Posto não encontrado')
@@ -184,7 +182,6 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       if (resource === 'economics') return json(method === 'PUT' ? ops.putEconomics(stationId, input) : ops.economics(stationId))
       if (resource === 'power' && method === 'GET') return json(ops.power(stationId))
       if (resource === 'power-site' && method === 'PUT') return json(ops.putPowerSite(stationId, input))
-      if (resource === 'building-load' && method === 'PUT') return json(ops.putBuildingLoad(stationId, input))
       if (resource === 'pricing') return json(method === 'PUT' ? ops.putPricing(stationId, input) : ops.pricing(stationId))
     } catch (error) {
       if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)

@@ -258,18 +258,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .chart-tooltip .v { font-weight: 600; font-size: 14px; }
 .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
-/* ------------------------------------------------------------------- live */
-.live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.point { background: var(--card-2); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; border: 1px solid transparent; }
-.point.charging { border-color: rgba(107, 155, 255, 0.35); }
-.point.alert { border-color: rgba(255, 133, 138, 0.3); }
-.point-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.point-code { font-family: var(--font-num); font-weight: 600; font-size: 22px; line-height: 1; }
-.point-station { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-.point-meta { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
-.point-meta b { color: var(--text); font-weight: 600; }
-.point-progress { height: 4px; border-radius: 2px; background: #333; overflow: hidden; }
-.point-progress i { display: block; height: 100%; background: var(--blue); }
+/* ------------------------------------------------------- indicador ao vivo */
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(61, 190, 122, 0.6); animation: pulse 2s infinite; margin-right: 6px; vertical-align: 1px; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(61, 190, 122, 0.55); } 70% { box-shadow: 0 0 0 8px rgba(61, 190, 122, 0); } 100% { box-shadow: 0 0 0 0 rgba(61, 190, 122, 0); } }
 
@@ -513,7 +502,6 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .kpi-tile { display: none; }
   .card { padding: 16px; border-radius: 14px; }
   .table-wrap { margin: 0 -16px; padding: 0 16px; }
-  .live-grid { grid-template-columns: minmax(0, 1fr); }
   .chart-stats .value { font-size: 26px; }
   .toolbar .search { max-width: none; min-width: 100%; }
   .connector-head .switch { width: 100%; padding-left: 52px; }
@@ -538,12 +526,20 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .autocomplete-detail { font-size: 12.5px; color: var(--muted); }
 .autocomplete-note { padding: 7px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
 
-/* Operação do posto: resultado, energia do estabelecimento, pagamentos e permanência */
+/* Operação do posto: potência, resultado e permanência */
+.power-hero { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 14px; background: var(--card-2); }
+.power-hero .label { color: var(--muted); font-size: 13.5px; }
+.power-hero .value { font-family: var(--font-num); font-weight: 600; font-size: 38px; line-height: 1.05; }
+.power-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.power-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--card-2); min-width: 0; }
+.power-stat .label { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.power-stat .value { font-family: var(--font-num); font-weight: 600; font-size: 26px; line-height: 1.1; }
+@media (max-width: 760px) {
+  .power-stats { grid-template-columns: minmax(0, 1fr); }
+}
 .connector-fields.fields-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-/* Atalhos #economics/#site-power: o título não fica sob a barra superior fixa. */
+/* Atalhos #economics/#power: o título não fica sob a barra superior fixa. */
 .card-title { scroll-margin-top: 96px; }
-.point-power { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
-.point-occupancy { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 4px; font-size: 12.5px; }
 @media (max-width: 900px) {
   .connector-fields.fields-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

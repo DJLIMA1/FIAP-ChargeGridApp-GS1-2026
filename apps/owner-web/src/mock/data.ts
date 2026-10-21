@@ -3,7 +3,7 @@
  * reproduzem a referência visual (receita R$ 8.420, 2.184 kWh, 184 recargas,
  * ticket R$ 45,76). Nunca é incluído no build de produção.
  */
-import type { AlertItem, Coupon, Heatmap, LiveItem, Overview, SessionItem, Station, Timeseries } from '../api/types'
+import type { AlertItem, Coupon, Heatmap, Overview, SessionItem, Station, Timeseries } from '../api/types'
 import { localDate, localMidnight } from '../lib/period'
 
 const DAY = 86_400_000
@@ -199,35 +199,6 @@ export function heatmap(from: number, to: number, stationId?: string | null): He
     .sort((a, b) => b.sessions - a.sessions || a.hour - b.hour)
     .slice(0, 3)
   return { timezone: 'America/Sao_Paulo', basis: 'started_at', days: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], hours: [...Array(24).keys()], cells, max, peak_hours }
-}
-
-let liveTick = 0
-export function live(stationId?: string | null): { items: LiveItem[]; generated_at: string } {
-  liveTick += 1
-  const now = Date.now()
-  const items = pointsFor(stationId).map((p, index): LiveItem => {
-    const station = STATIONS[p.station]
-    const c = p.connector
-    const charging = p.status === 'charging'
-    const minutes = 18 + index * 7 + liveTick * 0.5
-    const powerW = Number(c.power_kw) * 1000 * (0.82 + ((index * 13) % 10) / 100)
-    return {
-      connector_id: c.id, station_id: station.id, station_name: station.name, station_active: station.active, public_code: c.public_code,
-      connector_type: c.connector_type, power_kw: c.power_kw, price_per_kwh: c.price_per_kwh, max_duration_minutes: c.max_duration_minutes,
-      active: c.active, retired: false, has_device: p.code !== 'CG-010', device_id: p.code !== 'CG-010' ? id('d0', index + 1) : null,
-      online: p.online, last_seen: p.online ? iso(now - 8000) : p.code === 'CG-010' ? null : iso(now - 3 * HOUR - 12 * 60000),
-      firmware_version: '0.5.1', physical_state: c.physical_state ?? 'idle', available: p.status === 'available',
-      availability_status: c.active ? p.status : 'disabled', reserved_until: p.status === 'reserved' ? iso(now + 11 * 60000) : null,
-      session: charging
-        ? {
-            id: id('e0', index + 1), status: 'charging', started_at: iso(now - minutes * 60000),
-            energy_wh: ((powerW * minutes) / 60).toFixed(3), cost_estimate: (((powerW * minutes) / 60000) * Number(c.price_per_kwh)).toFixed(4),
-            soc_percent: String(Math.min(96, 34 + index * 6 + liveTick)), power_w: powerW.toFixed(0), source: 'measured', last_measurement_at: iso(now - 5000),
-          }
-        : null,
-    }
-  })
-  return { items, generated_at: iso(now) }
 }
 
 export function alerts(stationId?: string | null): { items: AlertItem[]; generated_at: string } {

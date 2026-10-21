@@ -165,6 +165,16 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
   )
 }
 
+/** Como `Field`, mas sem `<label>`: para botões (um clique no texto não aciona o primeiro botão). */
+export function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="field" role="group" aria-label={label}>
+      <span>{label}</span>
+      {children}
+    </div>
+  )
+}
+
 export function PageHead({ title, sub, actions, back }: { title: string; sub?: ReactNode; actions?: ReactNode; back?: ReactNode }) {
   return (
     <div>

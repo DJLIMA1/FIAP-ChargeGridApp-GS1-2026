@@ -5,10 +5,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApiClient } from '../src/api/client'
 import { endpoints } from '../src/api/endpoints'
-import type { LiveOccupancy, SessionPayment, StationOverstay } from '../src/api/operations'
-import type { LiveSession, SessionItem } from '../src/api/types'
+import type { SessionPayment, StationOverstay } from '../src/api/operations'
+import type { SessionItem } from '../src/api/types'
 import { createTokenStore, type KeyValueStorage } from '../src/auth/tokens'
-import { occupancyText, overstayCell, paymentBadge } from '../src/lib/overstay'
+import { overstayCell, paymentBadge } from '../src/lib/overstay'
 import * as data from '../src/mock/data'
 import * as forecastMock from '../src/mock/forecast'
 import * as ops from '../src/mock/operations'
@@ -40,7 +40,7 @@ describe('permanência: overstay público do posto (chargegrid_core.overstay.pub
   })
 })
 
-describe('permanência: /owner/sessions e /owner/live', () => {
+describe('permanência: /owner/sessions', () => {
   it('sessões trazem overstay_fee/overstay_minutes, sem bloco overstay (mock igual)', () => {
     const pool = data.SESSION_POOL.slice(0, 200).map(ops.decorateSession)
     for (const item of pool) {
@@ -50,35 +50,6 @@ describe('permanência: /owner/sessions e /owner/live', () => {
     }
     const withFee = pool.find((item) => Number(item.overstay_fee) > 0) as SessionItem
     expect(overstayCell(withFee).text).toMatch(/^R\$ .+ · \d+ min$/)
-  })
-
-  it('occupancy tem as chaves de occupancy_by_connector (grace 0 e max_fee null sem taxa)', () => {
-    const live = ops.decorateLive(data.live(null))
-    const occupied = live.items.map((item) => item.occupancy).filter(Boolean) as LiveOccupancy[]
-    expect(occupied.length).toBeGreaterThan(0)
-    for (const occupancy of occupied) {
-      expect(Object.keys(occupancy).sort()).toEqual([
-        'as_of', 'billable_minutes', 'driver_label', 'fee_applies', 'fee_due', 'grace_remaining_seconds', 'max_fee', 'session_id', 'started_at', 'status',
-      ])
-      expect(typeof occupancy.grace_remaining_seconds).toBe('number')
-      if (!occupancy.fee_applies) expect(occupancy).toMatchObject({ status: 'no_fee', max_fee: null, grace_remaining_seconds: 0 })
-    }
-    const noFee: LiveOccupancy = {
-      session_id: 's', status: 'no_fee', started_at: null, grace_remaining_seconds: 0, billable_minutes: 0, fee_due: '0.00', max_fee: null, fee_applies: false, driver_label: 'Ana', as_of: null,
-    }
-    expect(occupancyText(noFee)).toBe('Recarga concluída, sem taxa de permanência')
-  })
-
-  it('power_reason é texto e applied_power_kw string decimal na sessão do ao vivo', () => {
-    const live = ops.decorateLive(data.live(null))
-    const sessions = live.items.map((item) => item.session).filter(Boolean) as LiveSession[]
-    const adjusted = sessions.filter((s) => s.power_reason)
-    expect(adjusted.length).toBeGreaterThan(0)
-    for (const s of adjusted) {
-      expect(typeof s.power_reason).toBe('string')
-      expect(s.applied_power_kw).toMatch(/^\d+(\.\d+)?$/)
-      expect(['applied', 'reducing', 'raising', 'waiting', 'paused', 'fixed']).toContain(s.power_state)
-    }
   })
 })
 
@@ -106,18 +77,18 @@ describe('pagamento da sessão (payment_row owner=True)', () => {
   })
 })
 
-describe('energia e resultado: corpos e rotas', () => {
-  it('power-site, building-load e economics usam as chaves dos schemas da API', async () => {
+describe('potência e resultado: corpos e rotas', () => {
+  it('power-site e economics usam as chaves dos schemas da API', async () => {
     const { ep, calls } = client()
     await ep.putPowerSite('st-1', { site_limit_kw: '75.5' })
-    await ep.putPowerSite('st-1', { rebalance_enabled: false })
-    await ep.putBuildingLoad('st-1', '12.0')
+    await ep.putPowerSite('st-1', { rebalance_enabled: false, building_profile: 'farmacia', building_size: 'pequeno' })
+    await ep.putPowerSite('st-1', { site_limit_kw: null })
     await ep.putEconomics('st-1', null)
     await ep.power('st-1')
     expect(calls).toEqual([
       { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { site_limit_kw: '75.5' } },
-      { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { rebalance_enabled: false } },
-      { url: '/v1/stations/st-1/building-load', method: 'PUT', body: { building_load_kw: '12.0' } },
+      { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { rebalance_enabled: false, building_profile: 'farmacia', building_size: 'pequeno' } },
+      { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { site_limit_kw: null } },
       { url: '/v1/stations/st-1/economics', method: 'PUT', body: { energy_cost_per_kwh: null } },
       { url: '/v1/stations/st-1/power', method: 'GET', body: undefined },
     ])

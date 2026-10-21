@@ -2,7 +2,7 @@
  * Formas das respostas da API ChargeGrid (/v1). Valores decimais chegam como
  * strings (ex.: "8420.00") para preservar precisão; `null` significa "sem dados".
  */
-import type { LiveOccupancy, SessionPayment, StationOverstay } from './operations'
+import type { SessionPayment, StationOverstay } from './operations'
 
 export type Decimal = string
 
@@ -142,54 +142,6 @@ export type AvailabilityStatus =
   | 'fault'
   | 'occupied'
 
-export interface LiveSession {
-  id: string
-  status: string
-  started_at: string | null
-  energy_wh: Decimal
-  cost_estimate: Decimal
-  soc_percent: Decimal | null
-  power_w: Decimal | null
-  soc_source?: string | null
-  source: string
-  last_measurement_at: string | null
-  /**
-   * Rebalanceamento ao vivo (frente B): potência confirmada pelo equipamento ("6.000"),
-   * estado e o motivo em texto (string, não objeto: `ChargingSession.power_reason`).
-   */
-  applied_power_kw?: Decimal | null
-  power_state?: 'applied' | 'reducing' | 'raising' | 'waiting' | 'paused' | 'fixed' | string | null
-  power_reason?: string | null
-}
-
-export interface LiveItem {
-  connector_id: string
-  station_id: string
-  station_name: string
-  station_active: boolean
-  public_code: string
-  connector_type: string
-  power_kw: Decimal
-  price_per_kwh: Decimal
-  max_duration_minutes: number
-  active: boolean
-  retired: boolean
-  has_device: boolean
-  device_id: string | null
-  online: boolean
-  last_seen: string | null
-  firmware_version: string | null
-  physical_state: string
-  available: boolean
-  availability_status: AvailabilityStatus | string
-  reserved_until: string | null
-  /** Totem 0.8.0 (aditivo): ponto travado por um pedido do totem (`occupied` + "Em uso no totem"). */
-  kiosk_in_use?: boolean
-  session: LiveSession | null
-  /** Frente D: quem continua na vaga depois da recarga (ou `null`). */
-  occupancy?: LiveOccupancy | null
-}
-
 export interface Amenity {
   kind: 'restaurante' | 'cafe' | 'banheiro' | 'shopping' | 'conveniencia'
   name: string
@@ -214,6 +166,9 @@ export interface Connector {
   online?: boolean
   physical_state?: string
   retired?: boolean
+  /** Limite do vendedor para o conector (`null` = nominal) e a potência efetiva no posto (`power.allocate`). */
+  power_limit_kw?: Decimal | null
+  effective_power_kw?: Decimal | null
 }
 
 export interface StationKioskStatus {
@@ -233,9 +188,6 @@ export interface Station {
   active: boolean
   amenities: Amenity[]
   connectors: Connector[]
-  /** Frente A: exigir pagamento antes do START e QR de pagamento no painel físico. */
-  prepay_required?: boolean
-  kiosk_payments?: boolean
   /** Totem 0.8.0: totem de autoatendimento no painel físico (padrão desligado). */
   kiosk_mode?: boolean
   /** Totem 0.8.0 (só o dono): método efetivo decidido pela API, mesma regra do `connector.kiosk` do sync. */
