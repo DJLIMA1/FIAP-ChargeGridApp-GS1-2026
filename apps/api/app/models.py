@@ -3,10 +3,12 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    DDL,
     BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Identity,
     Index,
@@ -15,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -112,9 +115,11 @@ class Connector(Base):
     control_version: Mapped[int] = mapped_column(Integer, default=0)
     # Limite do vendedor para este conector; ``power_kw`` continua sendo a nominal.
     power_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
-    # Carregador externo (GoodWe HCA G2 via Modbus TCP) ligado à tela deste ponto: unit id /
-    # mDNS cg-hca-<endereço>.local. Nulo = a tela usa o relé/simulação interna.
-    charger_address: Mapped[int | None] = mapped_column(Integer)
+    # Todo conector É um carregador GoodWe HCA G2 (Modbus TCP, unit id / mDNS
+    # cg-hca-<endereço>.local) ligado à tela do ponto. Nunca vazio: sem valor no INSERT, o
+    # gatilho do banco põe o próximo endereço livre do posto (1, 2, 3…); o dono pode trocar.
+    # Carregador sem resposta: a tela carrega com a simulação interna dela.
+    charger_address: Mapped[int] = mapped_column(Integer, nullable=False, server_default=FetchedValue())
     __table_args__ = (
         CheckConstraint("power_kw > 0 AND price_per_kwh >= 0 AND max_duration_minutes > 0"),
         CheckConstraint(
@@ -126,6 +131,33 @@ class Connector(Base):
         # Dois pontos do mesmo posto nunca falam com o mesmo carregador.
         UniqueConstraint("station_id", "charger_address", name="uq_connector_station_charger_address"),
     )
+
+
+# Mesmo gatilho da migração c5e9a2d7f4b1 (o schema dos testes nasce de create_all): qualquer
+# INSERT sem charger_address (ORM, SQL da fábrica em tools/provision_point.py) recebe o menor
+# endereço livre do posto.
+CONNECTOR_CHARGER_ADDRESS_TRIGGER = (
+    """
+CREATE OR REPLACE FUNCTION connector_next_charger_address() RETURNS trigger AS $$
+BEGIN
+    IF NEW.charger_address IS NULL THEN
+        SELECT n INTO NEW.charger_address FROM generate_series(1, 247) AS n
+        WHERE NOT EXISTS (
+            SELECT 1 FROM connectors c WHERE c.station_id = NEW.station_id AND c.charger_address = n
+        )
+        ORDER BY n LIMIT 1;
+    END IF;
+    RETURN NEW;
+END
+$$ LANGUAGE plpgsql
+""",
+    """
+CREATE TRIGGER connector_next_charger_address BEFORE INSERT ON connectors
+FOR EACH ROW EXECUTE FUNCTION connector_next_charger_address()
+""",
+)
+for _statement in CONNECTOR_CHARGER_ADDRESS_TRIGGER:
+    event.listen(Connector.__table__, "after_create", DDL(_statement).execute_if(dialect="postgresql"))
 
 
 class Device(Base):

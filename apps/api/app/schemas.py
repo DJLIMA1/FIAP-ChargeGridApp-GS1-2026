@@ -62,7 +62,8 @@ class ConnectorPatch(Input):
     active: bool | None = None
     # Limite do vendedor para este conector (null remove); nunca acima de power_kw.
     power_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
-    # Carregador externo GoodWe HCA G2 ligado à tela deste ponto (null remove); único por posto.
+    # Endereço do carregador GoodWe HCA G2 deste ponto (1–247, único por posto). Nunca vazio:
+    # null é recusado (invalid_charger_address) — todo conector é um carregador.
     charger_address: int | None = Field(default=None, ge=1, le=247, strict=True)
 
 

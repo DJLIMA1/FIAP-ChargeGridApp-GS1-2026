@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
+from chargegrid_core.chargers import link as charger_link
+
 from ...database import db_session
 from ...errors import fail
 from ...models import Connector, DeviceClaim, Profile, Station, now
@@ -56,6 +58,17 @@ def claim_point(db, user_id, data):
         target = db.get(Station, data.station_id, populate_existing=True)
         if target is None or target.owner_id != user.id:
             fail("not_found", "Posto não encontrado", 404)
+        # Cada conector é um carregador GoodWe: ao entrar no posto, o ponto recebe o próximo
+        # endereço livre dele (o 1 do posto de fábrica colidiria com o primeiro ponto).
+        used = db.scalars(
+            select(Connector.charger_address)
+            .where(Connector.station_id == target.id, Connector.id != point.id)
+            .with_for_update()
+        ).all()
+        try:
+            point.charger_address = charger_link.next_free_address(used)
+        except ValueError as exc:
+            fail("charger_address_full", str(exc), 409)
         point.station_id = target.id
     else:
         station.owner_id = user.id
