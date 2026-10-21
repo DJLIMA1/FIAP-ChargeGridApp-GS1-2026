@@ -13,6 +13,12 @@ Regra de segurança: reduções saem sempre; aumentos só cabem na folga calcula
 envelopes (aplicado confirmado ou ajuste pendente) dos outros pontos. Redução sem
 confirmação é reenviada uma vez; na segunda falha o ponto recebe STOP. Ponto offline
 mantém a capacidade reservada: falta de rede nunca prova parada.
+
+Entradas do posto (``site_inputs``): o limite contratado é o informado pelo dono ou, sem ele,
+o padrão do tipo/porte do estabelecimento (``site_load.default_site_limit_kw``: 75 kW do
+Grupo B ou pico × 1,3). Sem medidor real, o consumo da loja é SIMULADO pela curva do tipo/porte
+(``site_load.simulate``, janelas de 5 min, reproduzível por posto); um valor enviado pelo
+simulador/demo (``PUT building-load``) vale por ``MANUAL_LOAD_TTL`` e depois volta à curva.
 """
 
 from datetime import timedelta
@@ -20,7 +26,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select, text
 
-from chargegrid_core import balancing
+from chargegrid_core import balancing, site_load
 from chargegrid_core import power as power_rules
 
 from ...errors import fail
@@ -38,6 +44,7 @@ ZERO = Decimal(0)
 KW = Decimal("0.001")
 TENTH = Decimal("0.1")
 POWER_EVENTS = ("power_requested", "power_applied", "power_failed")
+MANUAL_LOAD_TTL = timedelta(minutes=30)
 
 
 def kw_to_w(value) -> int:
@@ -146,7 +153,35 @@ def _state(db, station):
     ]
 
 
-def _decide(station, points):
+def manual_until(station):
+    """Fim da validade do consumo enviado pelo simulador/demo (``PUT building-load``), ou ``None``."""
+    if station.building_load_kw is None or station.building_load_source != "simulated" \
+            or station.building_load_updated_at is None:
+        return None
+    return station.building_load_updated_at + MANUAL_LOAD_TTL
+
+
+def site_inputs(station, moment=None):
+    """Entradas da decisão do posto: limite efetivo e consumo da loja (SIMULADO).
+
+    ``{site_limit_kw, site_limit_default, building_load_kw, building_load_mode ('profile' | 'manual'),
+    building_load_at, manual_until}``."""
+    moment = moment or now()
+    limit, is_default = site_load.effective_site_limit(station.site_limit_kw, station.building_profile,
+                                                       station.building_size)
+    until = manual_until(station)
+    if until is not None and until > moment:
+        load, mode, at = Decimal(station.building_load_kw), "manual", station.building_load_updated_at
+    else:
+        load = site_load.simulate(str(station.id), moment, station.building_profile, station.building_size,
+                                  site_limit_kw=limit)
+        mode, at, until = "profile", site_load.window_start(moment), None
+    return {"site_limit_kw": limit, "site_limit_default": is_default, "building_load_kw": load,
+            "building_load_mode": mode, "building_load_at": at, "manual_until": until}
+
+
+def _decide(station, points, inputs=None):
+    inputs = inputs or site_inputs(station)
     participants = []
     for point in points:
         if point.session.status not in ALLOCATED:
@@ -167,8 +202,8 @@ def _decide(station, points):
         ))
     return balancing.decide(
         participants,
-        site_limit_kw=station.site_limit_kw,
-        building_load_kw=station.building_load_kw,
+        site_limit_kw=inputs["site_limit_kw"],
+        building_load_kw=inputs["building_load_kw"],
         station_cap_kw=station.max_power_kw,
     )
 
@@ -457,13 +492,22 @@ def set_site(db, station, data):
         if data.rebalance_enabled is None:
             fail("null_not_allowed", "Campo não aceita null", 422)
         station.rebalance_enabled = data.rebalance_enabled
+    if "building_profile" in fields:
+        station.building_profile = data.building_profile
+    if "building_size" in fields:
+        station.building_size = data.building_size
     db.flush()
     _refresh_decision(db, station)
 
 
 def set_building_load(db, station, value):
-    station.building_load_kw = _quantize_kw(value)
-    station.building_load_source = "simulated"
+    """Consumo enviado pelo simulador/demo (vale ``MANUAL_LOAD_TTL``); ``None`` volta à simulação automática."""
+    if value is None:
+        station.building_load_kw = None
+        station.building_load_source = None
+    else:
+        station.building_load_kw = _quantize_kw(value)
+        station.building_load_source = "simulated"
     station.building_load_updated_at = now()
     db.flush()
     _refresh_decision(db, station)
@@ -472,7 +516,8 @@ def set_building_load(db, station, value):
 def station_view(db, station):
     """Painel do vendedor: entradas, divisão atual, estado por ponto e últimas decisões."""
     points = _state(db, station)
-    decision = _decide(station, points)
+    inputs = site_inputs(station)
+    decision = _decide(station, points, inputs)
     envelopes = {point.key: point.envelope() for point in points}
     by_connector = {point.connector.id: point for point in points}
     connectors = db.scalars(
@@ -512,14 +557,27 @@ def station_view(db, station):
         .order_by(PowerDecision.created_at.desc(), PowerDecision.id.desc()).limit(20)
     ).all()
     total = sum(envelopes.values(), ZERO)
+    profile = site_load.profile_key(station.building_profile)
+    size = site_load.size_key(station.building_size)
     return {
         "station_id": str(station.id),
         "rebalance_enabled": station.rebalance_enabled,
-        "site_limit_kw": _text(station.site_limit_kw),
-        "building_load_kw": _text(station.building_load_kw),
-        "building_load_source": station.building_load_source,
-        "building_load_simulated": station.building_load_source == "simulated",
-        "building_load_updated_at": station.building_load_updated_at,
+        # Limite efetivo (o do dono ou o padrão do tipo/porte) e o informado pelo dono (null = padrão).
+        "site_limit_kw": _text(inputs["site_limit_kw"]),
+        "site_limit_default": inputs["site_limit_default"],
+        "site_limit_configured_kw": _text(station.site_limit_kw),
+        "site_limit_default_kw": _text(site_load.default_site_limit_kw(profile, size)),
+        # Consumo da loja agora: sempre SIMULADO (sem medidor); curva do tipo/porte ou valor do simulador.
+        "building_load_kw": _text(inputs["building_load_kw"]),
+        "building_load_source": "simulated",
+        "building_load_simulated": True,
+        "building_load_mode": inputs["building_load_mode"],
+        "building_load_updated_at": inputs["building_load_at"],
+        "building_load_manual_until": inputs["manual_until"],
+        "building_profile": profile,
+        "building_size": size,
+        "building_profile_label": site_load.profile_label(profile, size),
+        "building_peak_kw": _text(site_load.peak_kw(profile, size)),
         "station_cap_kw": _text(station.max_power_kw),
         "available_kw": _text(decision["available_kw"]),
         "allocated_kw": _text(decision["allocated_kw"]),

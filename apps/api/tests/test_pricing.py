@@ -16,6 +16,9 @@ from app.security import digest
 def busy(factory, seed):
     """Posto com 2 pontos online: CG-02 em recarga por outro usuário e muitas recargas na última hora."""
     with factory.begin() as db:
+        # Rebalanceamento ligado por padrão: CG-02 (60 kW, equipamento sem ajuste ao vivo) + a loja simulada
+        # passariam do limite padrão de 75 kW; um limite contratado maior deixa espaço para o CG-01.
+        db.get(Station, seed["station"]).site_limit_kw = Decimal(150)
         second = Connector(station_id=seed["station"], public_code="CG-02", connector_type="CCS2",
                            power_kw=Decimal(60), price_per_kwh=Decimal("2.0000"), max_duration_minutes=60)
         db.add(second)

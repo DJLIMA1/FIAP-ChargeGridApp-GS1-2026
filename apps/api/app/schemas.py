@@ -190,13 +190,17 @@ class RefreshInput(Input):
 
 
 class PowerSiteInput(Input):
-    """Limite contratado da instalação e liga/desliga do rebalanceamento ao vivo."""
+    """Limite contratado (null = padrão do tipo/porte), rebalanceamento e tipo/porte do estabelecimento."""
 
     site_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
     rebalance_enabled: bool | None = None
+    # Curva do consumo SIMULADO da loja (chargegrid_core.site_load); null volta ao padrão.
+    building_profile: Literal["conveniencia", "farmacia", "padaria", "supermercado", "restaurante",
+                              "shopping"] | None = None
+    building_size: Literal["pequeno", "medio", "grande"] | None = None
 
 
 class BuildingLoadInput(Input):
-    """Consumo do estabelecimento (simulado pelo vendedor)."""
+    """Consumo da loja enviado pelo simulador/demo (vale 30 min); null volta à simulação automática."""
 
-    building_load_kw: Decimal = Field(ge=0, le=10000, allow_inf_nan=False)
+    building_load_kw: Decimal | None = Field(ge=0, le=10000, allow_inf_nan=False)
