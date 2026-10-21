@@ -2,6 +2,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "kiosk_api.h"
+#include "extra_chargers.h"
 
 // Conexão TLS mantida entre syncs (keep-alive): sem novo handshake a cada envio,
 // o sync de 1 s em recarga custa ~100-300 ms em vez de 1-2 s. Compartilhada com as rotas
@@ -58,6 +59,38 @@ bool probePanelFactoryIdentity(const String& payload) {
   return false;
 }
 
+// Sync ENDEREÇADO de cada carregador adicional desta tela (mesma chave e conexão TLS do sync da
+// tela, "charger_address" no corpo). 409/422 (API sem suporte ou carregador desligado da tela):
+// o slot pausa 10 min. Falha de rede: o vigia de 45 s de cada sessão continua valendo.
+static void syncExtraChargers() {
+  const unsigned long now = millis();
+  for (extra::Slot& slot : extra::slots) {
+    if (!extra::syncable(slot, now)) continue;
+    JsonDocument body;
+    body["boot_id"] = bootId; body["sequence"] = ++sequence;
+    extra::fillBody(slot, body);
+    String payload; serializeJson(body, payload);
+    HTTPClient* client = deviceHttpBegin("/v1/devices/sync");
+    if (!client) return;
+    client->addHeader("Content-Type", "application/json");
+    client->addHeader("Authorization", String("Device ") + deviceAuthorizationKey());
+    const int code = client->POST(payload);
+    if (code == 200) {
+      JsonDocument response;
+      if (!deserializeJson(response, client->getString()) && response["authorized"].is<JsonObject>() &&
+          response["commands"].is<JsonArray>()) {
+        slot.unsupported = false;
+        slot.syncNow = extra::apply(slot, response, millis());
+      }
+    } else if (code == 409 || code == 422) {
+      extra::markUnsupported(slot, millis());
+      Serial.printf("[sync] carregador %u: sync enderecado recusado (%d)\n", slot.address, code);
+    }
+    deviceHttpEnd(code);
+    if (code <= 0) return;  // rede caiu: tenta no próximo ciclo
+  }
+}
+
 void syncDevice() {
   static unsigned long backoffMs = 5000;
   nextSync = millis() + backoffMs;
@@ -103,6 +136,14 @@ void syncDevice() {
     }
   }
   deviceHttpEnd(code);
+  if (code == 200 && hasSynced && !confirmedReset.length()) {
+    syncExtraChargers();
+    // Carregador adicional em recarga/reserva ou com ACK a enviar: ciclo de 1 s (ou já).
+    bool now = false;
+    for (const extra::Slot& slot : extra::slots) now = now || (slot.used && slot.syncNow);
+    if (now) nextSync = millis();
+    else if (extra::busy() && (long)(nextSync - millis()) > 1000) nextSync = millis() + 1000;
+  }
   if (confirmedReset.length()) finishPanelFactoryReset(confirmedReset);
   else if (code == 401 && pendingPanelFactoryCommand().length()) probePanelFactoryIdentity(payload);
 }

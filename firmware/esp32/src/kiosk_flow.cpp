@@ -512,7 +512,9 @@ void Flow::onPaid(uint32_t nowMs) {
 }
 
 void Flow::enterReceipt(uint32_t nowMs) {
-  offlineStop_ = offlineStop_ || same(facts_.endReason, "communication_lost") || !facts_.online;
+  // Parada sem a API (vigia de 45 s) ou tela reiniciada com a sessão aberta.
+  offlineStop_ = offlineStop_ || same(facts_.endReason, "communication_lost") ||
+                 same(facts_.endReason, "device_reboot") || !facts_.online;
   go(State::Receipt, nowMs);
 }
 

@@ -120,16 +120,13 @@ Error Link::apply(uint16_t value) {
   return Error::None;
 }
 
-Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
-  if (!active()) return lastError_ = Error::NoLink;
-  now_ = nowMs;
+Error Link::startOnce(uint16_t value) {
   Error error = Error::None;
-  const uint16_t value = hca::registerForPowerW(limitW);
   if (!modeWritten_) {
     // Modo rápido (sem FV/bateria), escrito uma vez por link; grava flash no HCA.
     uint16_t mode = 0;
-    if (!read(hca::kChargeMode, 1, &mode, error)) return lastError_ = error;
-    if (mode != hca::kFastMode && !write(hca::kChargeMode, hca::kFastMode, error)) return lastError_ = error;
+    if (!read(hca::kChargeMode, 1, &mode, error)) return error;
+    if (mode != hca::kFastMode && !write(hca::kChargeMode, hca::kFastMode, error)) return error;
     modeWritten_ = true;
   }
   error = apply(value);
@@ -138,6 +135,20 @@ Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
     Error ignored = Error::None;
     expectRunning_ = false;
     if (!write(hca::kStartStop, hca::kStopValue, ignored)) pendingStop_ = true;
+  }
+  return error;
+}
+
+Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
+  if (!active()) return lastError_ = Error::NoLink;
+  now_ = nowMs;
+  const uint16_t value = hca::registerForPowerW(limitW);
+  // Sem resposta (link caído, mDNS lento após reboot, conexão velha): refaz e tenta de novo.
+  // Recusa (exceção Modbus) ou releitura diferente não se resolvem repetindo: devolve já.
+  Error error = Error::Offline;
+  for (uint8_t attempt = 0; attempt < kStartAttempts && error == Error::Offline; ++attempt) {
+    if (attempt || !online_) client_->prepareUrgent();
+    error = startOnce(value);
   }
   if (error == Error::None && appliedW) *appliedW = hca::powerWForRegister(value);
   return lastError_ = error;

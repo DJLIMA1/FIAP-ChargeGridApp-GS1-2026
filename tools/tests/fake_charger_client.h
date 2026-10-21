@@ -15,6 +15,8 @@ struct FakeChargerClient : charger::ModbusClient {
   const unsigned long* clock = nullptr;
   bool offline = false;
   int dropWrites = 0;   // próximas N escritas respondem ok, mas não são aplicadas
+  int failNext = 0;     // próximas N transações sem resposta (carregador "piscando"/conexão velha)
+  int urgent = 0;       // pedidos de resolução imediata (prepareUrgent) do START
   std::vector<std::string> log;
   int resets = 0;
   uint16_t transaction = 0;
@@ -31,6 +33,7 @@ struct FakeChargerClient : charger::ModbusClient {
     if (exception) *exception = 0;
     log.push_back("R " + std::to_string(address) + "x" + std::to_string(count));
     if (offline) return false;
+    if (failNext > 0) { --failNext; return false; }
     uint8_t request[mbtcp::kMaxAdu], response[mbtcp::kMaxAdu];
     const size_t size = mbtcp::buildReadHolding(++transaction, link.address, address, count, request);
     const size_t length = exchange(request, size, response);
@@ -41,7 +44,11 @@ struct FakeChargerClient : charger::ModbusClient {
   }
   bool writeSingle(const charger::LinkConfig& link, uint16_t address, uint16_t value, uint8_t* exception) override {
     if (exception) *exception = 0;
-    if (offline) { log.push_back("W " + std::to_string(address) + "=" + std::to_string(value) + " offline"); return false; }
+    if (offline || failNext > 0) {
+      if (!offline) --failNext;
+      log.push_back("W " + std::to_string(address) + "=" + std::to_string(value) + " offline");
+      return false;
+    }
     if (dropWrites > 0) {
       --dropWrites;
       log.push_back("W " + std::to_string(address) + "=" + std::to_string(value) + " lost");
@@ -57,6 +64,12 @@ struct FakeChargerClient : charger::ModbusClient {
     return status == mbtcp::Status::Ok;
   }
   void reset() override { ++resets; }
+  void prepareUrgent() override { ++urgent; }
+  int count(const std::string& entry) const {
+    int found = 0;
+    for (const auto& item : log) found += item == entry;
+    return found;
+  }
   // Só as escritas, na ordem (ex.: "W 10032=0|W 10029=20|W 10060=2").
   std::string writes() const {
     std::string joined;
