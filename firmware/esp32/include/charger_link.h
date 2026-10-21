@@ -4,8 +4,10 @@
 // leitura e a detecção de perda são testadas no host (tools/tests/charger_link_test.cpp).
 // O transporte de verdade (WiFiClient + mDNS) fica em src/charger_modbus_esp32.cpp.
 //
-// Só existe quando a API manda connector.charger_link; sem ele, a tela usa o relé/simulação
-// interna de sempre e nada aqui é chamado.
+// Todo conector é um carregador: a API manda connector.charger_link (endereço) e a tela lê o
+// carregador sempre (~1 s online; 5 s offline). No START, online → recarga por Modbus; offline →
+// simulação interna da tela (o controlador decide; ver sessionOnCharger). API antiga, sem
+// charger_link: nada aqui é chamado.
 #include <stddef.h>
 #include <stdint.h>
 #include "hca_g2_map.h"
@@ -69,6 +71,7 @@ class Link {
   bool faulted(uint32_t nowMs, bool session) const;
 
   bool online() const { return online_; }
+  bool polled() const { return polled_; }  // false = ainda sem leitura desde configure()
   bool expectRunning() const { return expectRunning_; }
   long measuredPowerW() const { return hca::powerWForRegister(power_); }  // 10015 (SIMULADO no simulador)
   uint16_t status() const { return status_; }

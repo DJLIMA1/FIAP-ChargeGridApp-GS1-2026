@@ -60,9 +60,9 @@ Versão única `0.8.0` (`include/runtime.h`, sync e `CG_STATUS`, que agora tamb�
 
 Validação de host: `python tools/validate_firmware.py --decode-qr` compila `tools/tests/kiosk_flow_test.cpp` (fluxo nos dois modos, com sanitizers) e `tools/tests/firmware_behavior.cpp` (capturas `kiosk-*.ppm`, QR do pedido e do recibo decodificados, cobertura de glifos, memória por tela).
 
-## Carregador externo GoodWe HCA G2 (opcional)
+## Carregador GoodWe HCA G2 do conector
 
-Com `connector.charger_link` no sync, a tela vira mestre Modbus TCP de um carregador HCA G2 simulado num ESP32 DevKit (`firmware/goodwe-hca-sim`, guia em `docs/carregador-hca-simulado.md`, contrato na seção "Carregador externo" de `docs/esp32-protocol.md`). START/STOP/SET_POWER viram escritas nos registradores e o ACK `applied` só sai depois da releitura; a potência e a energia vêm do 10015 lido a cada ~1 s; carregador sumido por 5 s na recarga → parada segura `device_fault`. Sem o bloco, nada muda (frames do painel idênticos no `--compare-panel`).
+Todo conector é um carregador GoodWe: a API manda `connector.charger_link` (endereço = `CG_ADDR` do carregador) e a tela é mestre Modbus TCP do carregador HCA G2 simulado num ESP32 DevKit (`firmware/goodwe-hca-sim`, guia em `docs/carregador-hca-simulado.md`, contrato na seção "Carregador GoodWe do conector" de `docs/esp32-protocol.md`). No START: carregador online → START/STOP/SET_POWER viram escritas nos registradores, o ACK `applied` só sai depois da releitura, a potência e a energia vêm do 10015 lido a cada ~1 s e carregador sumido por 5 s → parada segura `device_fault`; offline → a simulação interna de sempre até o fim da sessão (sync com `charger.link: "offline"`). Sem carregador online os frames do painel são idênticos (`--compare-panel`).
 
 - `src/charger_link.cpp` (C++ puro, testado em `tools/tests/charger_link_test.cpp` e no controlador real em `firmware_behavior.cpp`) e `src/charger_modbus_esp32.cpp` (WiFiClient, uma conexão, timeouts de 400/300 ms, mDNS `cg-hca-<n>.local` em cache). Mapa e Modbus TCP em `firmware/shared/hca_g2` (`lib_extra_dirs`).
 - Serial: `CG_CHARGER` (estado do link e leitura na hora) e `CG_CHARGER_IP <ip>|clear` (IP fixo na NVS quando o mDNS não funciona).

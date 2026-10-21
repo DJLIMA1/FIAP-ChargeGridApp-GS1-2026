@@ -102,9 +102,13 @@ void kioskApiService();
 // Pedido salvo na NVS no boot (retomada pelo sync).
 void kioskResume(const char* orderId, uint32_t seed);
 
-// ---- Carregador externo GoodWe HCA G2 (aditivo; sem connector.charger_link = igual a antes) ----
-// Link Modbus TCP com o carregador (firmware/goodwe-hca-sim). Configurado pelo sync.
+// ---- Carregador GoodWe HCA G2 do conector (todo conector é um carregador; aditivo) ----
+// Link Modbus TCP com o carregador (firmware/goodwe-hca-sim). Configurado pelo sync
+// (connector.charger_link); sem ele (API antiga) = igual a antes, só a simulação interna.
 extern charger::Link chargerLink;
+// Modo da sessão decidido no START: true = Modbus (carregador online); false = simulação
+// interna da tela. Não troca no meio da sessão.
+extern bool sessionOnCharger;
 // Limite que o carregador instala para um pedido em W (0,1 kW para baixo, 1,4..7,0 kW; 0 = pausa).
 float chargerLinkLimitW(float requestedW);
 // Leitura periódica (~1 s) e parada segura se o carregador sumir durante a recarga (laço principal).
