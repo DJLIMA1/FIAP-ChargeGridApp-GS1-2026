@@ -4,7 +4,8 @@ Ambos os clientes herdam deste mixin; ele só depende de ``request`` e
 ``download``, então a mesma tela funciona com a API real e com a demonstração.
 """
 
-OWNER_RESOURCES = ('overview', 'timeseries', 'heatmap', 'sessions', 'reservations', 'alerts', 'live', 'forecast',
+# ``GET /owner/live`` continua na API (painel web); o app não tem mais a tela "Ao vivo".
+OWNER_RESOURCES = ('overview', 'timeseries', 'heatmap', 'sessions', 'reservations', 'alerts', 'forecast',
                    'occupancy-history')
 EXPORT_DATASETS = ('sessions', 'reservations', 'margin')
 EXPORT_FORMATS = ('csv', 'json', 'pdf')
@@ -40,9 +41,6 @@ class OwnerApiMixin:
 
     async def owner_alerts(self, params=None):
         return await self.owner_get('alerts', params)
-
-    async def owner_live(self, params=None):
-        return await self.owner_get('live', params)
 
     async def owner_forecast(self, station_id, horizon_hours=36):
         """Previsão de ocupação das próximas horas (``GET /v1/owner/forecast``)."""

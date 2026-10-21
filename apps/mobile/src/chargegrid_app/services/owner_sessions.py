@@ -1,9 +1,7 @@
-"""Textos do vendedor para quem ocupa a vaga depois da recarga e para o pagamento/permanência das sessões.
+"""Textos do vendedor para o pagamento e a permanência das sessões.
 
 Mesmas regras do painel web (``apps/owner-web/src/lib/overstay.ts``):
 
-* ``occupancy`` de ``GET /owner/live`` (``app.overstay.occupancy_by_connector``): fase, tolerância
-  restante e taxa acumulada;
 * bloco ``overstay`` das sessões (``/operator/charging-sessions``) ou as colunas ``overstay_minutes`` /
   ``overstay_fee`` de ``/owner/sessions``;
 * ``payment`` das sessões: rótulo da API (sempre "teste") e o acerto (capturado e devolvido/liberado).
@@ -32,43 +30,6 @@ def _amount(value):
         return Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
         return Decimal(0)
-
-
-def countdown(seconds):
-    """``04:37`` (minutos:segundos); com horas, ``1:02:05``; ``—`` sem valor."""
-    if seconds is None:
-        return '—'
-    try:
-        total = max(0, int(seconds))
-    except (TypeError, ValueError):
-        return '—'
-    hours, rest = divmod(total, 3600)
-    minutes, secs = divmod(rest, 60)
-    return f'{hours}:{minutes:02d}:{secs:02d}' if hours else f'{minutes:02d}:{secs:02d}'
-
-
-def occupancy_label(occupancy):
-    """(rótulo, tom) da fase de quem ocupa a vaga."""
-    status = (occupancy or {}).get('status')
-    return OVERSTAY_STATUS.get(status, (str(status or 'Na vaga'), 'SLATE'))
-
-
-def occupancy_text(occupancy):
-    """Linha principal: ``Tolerância: restam 04:37`` / ``Taxa acumulada R$ 6,00 de R$ 30,00``."""
-    if not isinstance(occupancy, dict):
-        return None
-    fee = money(occupancy.get('fee_due') or 0)
-    status = occupancy.get('status')
-    if status == 'grace':
-        return f"Tolerância: restam {countdown(occupancy.get('grace_remaining_seconds'))}"
-    if status == 'billing':
-        maximum = f" de {money(occupancy['max_fee'])}" if occupancy.get('max_fee') else ''
-        return f'Taxa acumulada {fee}{maximum}'
-    if status == 'capped':
-        return f'Taxa no máximo: {fee}'
-    if status == 'no_fee':
-        return 'Recarga concluída, sem taxa de permanência'
-    return occupancy_label(occupancy)[0]
 
 
 def overstay_summary(session):

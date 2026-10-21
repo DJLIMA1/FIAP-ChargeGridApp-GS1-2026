@@ -100,6 +100,11 @@ def text_button(text, on_click, *, primary=True, height=48):
                         height=height, alignment=ft.Alignment(0, 0), on_click=on_click, ink=True)
 
 
+ADD_STATION = 'Adicionar nova estação'
+ADD_STATION_HINT = 'Pelo QR de uma tela sem dono'
+ADD_STATION_DEMO = 'Com um equipamento simulado'
+
+
 async def station_list(app, offset, is_demo):
     params = {'limit': 100, 'offset': offset}
     result = await app.api.request('GET', 'operator/stations', params=params)
@@ -111,6 +116,10 @@ async def station_list(app, offset, is_demo):
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
     body = [ft.Container(height=8)]
     if rows:
+        # Nova estação = o fluxo de vínculo que já cria o posto: QR da tela sem dono (ou equipamento
+        # simulado na demo) -> Localização (nome e endereço) -> Ponto e tarifa -> Revisão -> esta lista.
+        rows.append(menu_row(ADD_STATION, ADD_STATION_DEMO if is_demo else ADD_STATION_HINT, ft.Icons.ADD,
+                             app.link('operator', claim=True), tile=44))
         body.append(ft.Column(rows, spacing=22))
     else:
         body.append(design.card_box(ft.Column([
@@ -129,8 +138,6 @@ async def station_list(app, offset, is_demo):
         body.append(text_button('Postos anteriores', app.link('operator', offset=max(0, offset - 100)), primary=False))
     body += [ft.Container(height=16), chatbot_button(app, 38), ft.Container(height=560),  # opções extras: abaixo da 1ª tela
              design.section_label('Mais opções'),
-             *([menu_row(add_label, 'Novo equipamento ou outro ponto em um posto', ft.Icons.QR_CODE_SCANNER,
-                         app.link('operator', claim=True))] if rows else []),
              menu_row('Gerenciar cupons', 'Criar e acompanhar descontos', ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
                       app.link('coupons', manage=True))]
     if ai_supported(app):

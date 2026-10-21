@@ -1,4 +1,6 @@
-"""Vendor stations: landing list, station detail, data, power limits (station + connectors) and battery limit."""
+"""Vendor stations: landing list (with "Adicionar nova estação"), station detail, data and battery limit.
+
+The Potência screen is covered in test_station_ops.py."""
 import unittest
 from types import SimpleNamespace
 
@@ -37,18 +39,57 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         station_settings.reset_demo()
 
-    async def test_list_opens_station_detail_and_keeps_operator_actions(self):
+    async def test_list_opens_station_detail_and_offers_a_new_station(self):
         app = await demo_app()
         screen = await operator.build(app)
         copy = texts(screen)
         self.assertIn('Suas Estações', copy)
         self.assertIn('Fale com o ChatBot', copy)
         self.assertIn('Gerenciar cupons', copy)
-        self.assertIn('Adicionar equipamento simulado', copy)
+        self.assertIn('Adicionar nova estação', copy)
+        self.assertIn(operator.ADD_STATION_DEMO, copy)
+        self.assertNotIn('Adicionar equipamento simulado', copy)  # sem a linha repetida em "Mais opções"
         await press(screen, 'Marginal Pinheiros')(None)
         self.assertEqual(app.go.await_args.args[0], 'station_admin')
-        await press(screen, 'Adicionar equipamento simulado')(None)
+        await press(screen, 'Adicionar nova estação')(None)
         app.go.assert_awaited_with('operator', claim=True)
+        await app.api.close()
+
+    async def test_real_account_new_station_row_points_to_the_qr(self):
+        app = HandlerApp()
+        app.api.request.side_effect = [{'account_type': 'vendor', 'operator_enabled': True},
+                                       {'items': [{'id': 's', 'name': 'Posto Central', 'connectors': []}], 'total': 1}]
+        screen = await operator.build(app)
+        self.assertIn(operator.ADD_STATION_HINT, texts(screen))
+        await press(screen, 'Adicionar nova estação')(None)
+        app.go.assert_awaited_with('operator', claim=True)
+
+    async def test_new_station_flow_reuses_the_claim_onboarding_and_returns_to_the_list(self):
+        from chargegrid_app.screens import onboarding
+        from test_seller_flow_fixes import fields
+        app = await demo_app()
+        before = len((await app.api.request('GET', 'operator/stations'))['items'])
+        await press(await operator.build(app), 'Adicionar nova estação')(None)
+        self.assertEqual(app.go.await_args.kwargs, {'claim': True})
+        first = await operator.build(app, claim=True)  # primeiro passo: o vínculo que já existe (Vincular Tela)
+        self.assertIn('Vincular Tela', texts(first))
+        self.assertIn('Será um novo local simulado', texts(first))
+        await press(first, 'Adicionar equipamento simulado')(None)
+        target = app.go.await_args.kwargs
+        self.assertEqual((target['onboarding'], target['step']), (True, 1))
+        location = await onboarding.build(app, target['station_id'], target['point_id'], step=1)
+        fields(location)['Nome da estação'].value = 'Posto Nova Estação'
+        fields(location)['Endereço'].value = 'Rua Fictícia, 42, São Paulo - SP'
+        await press(location, 'Salvar e continuar')(None)
+        self.assertEqual(app.go.await_args.kwargs['step'], 2)
+        point = await onboarding.build(app, target['station_id'], target['point_id'], step=2)
+        await press(point, 'Salvar e revisar')(None)
+        review = await onboarding.build(app, target['station_id'], target['point_id'], step=3)
+        await press(review, 'Publicar ponto')(None)
+        app.go.assert_awaited_with('operator')  # volta à lista
+        listing = await operator.build(app)
+        self.assertIn('Posto Nova Estação', texts(listing))
+        self.assertEqual(len((await app.api.request('GET', 'operator/stations'))['items']), before + 1)
         await app.api.close()
 
     async def test_detail_menu_routes(self):
@@ -58,7 +99,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Estação CG-001', texts(screen))
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
                                 ('Conectores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
-                                ('Potência por conector', ('station_admin', {'station_id': sid, 'page': 'power'})),
+                                ('Limite 75 kW (padrão)', ('station_admin', {'station_id': sid, 'page': 'power'})),
                                 ('Tarifa base, por horário', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
             self.assertEqual((app.go.await_args.args[0], app.go.await_args.kwargs), expected)
@@ -84,74 +125,6 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await app.api.request('GET', f'stations/{sid}'))['name'], 'Marginal Pinheiros')
         await press(screen, 'Inativa')(None)
         self.assertFalse((await app.api.request('GET', f'stations/{sid}'))['active'])
-        await app.api.close()
-
-    async def _power_screen(self):
-        app = await demo_app()
-        station = (await app.api.request('GET', 'operator/stations'))['items'][0]
-        screen = await station_admin.build(app, station_id=station['id'], page='power')
-        sliders = [c for c in descendants(screen) if isinstance(c, ft.Slider)]
-        return app, station, screen, sliders
-
-    async def test_power_page_shows_rating_energy_and_saves_limits(self):
-        app, station, screen, sliders = await self._power_screen()
-        copy = texts(screen)
-        self.assertIn('Limite do posto', copy)
-        self.assertIn('Potência máxima do carregador: 60 kW', copy)
-        self.assertIn('Energia entregue: 2,4 kWh', copy)
-        self.assertIn('Alocado: 104 de 104 kW', copy)
-        self.assertEqual([s.data for s in sliders], ['station_power'] + ['power'] * len(station['connectors']))
-        # Lowering the station cap below the sum shows the proportional share immediately.
-        sliders[0].value = 80.0
-        await sliders[0].on_change(SimpleNamespace(control=sliders[0]))
-        copy = texts(screen)
-        self.assertIn('Efetivo: 46,1 kW (limitado pelo posto)', copy)
-        self.assertIn('Alocado: 79,9 de 80 kW', copy)
-        sliders[1].value = 40.0
-        await sliders[1].on_change(SimpleNamespace(control=sliders[1]))
-        self.assertIn('Efetivo: 38 kW (limitado pelo posto)', texts(screen))
-        await press(screen, 'Salvar limites')(None)
-        saved = await app.api.request('GET', f'stations/{station["id"]}')
-        self.assertEqual(float(saved['max_power_kw']), 80.0)
-        self.assertEqual(float(saved['connectors'][0]['power_limit_kw']), 40.0)
-        self.assertEqual(float(saved['connectors'][0]['power_kw']), 60.0)  # rating untouched
-        self.assertEqual(app.notices[-1], 'Limites de potência salvos.')
-        detail = await station_admin.build(app, station_id=station['id'])
-        self.assertIn('Limite do posto: 80 kW · CCS2: 40 kW · Tipo 2: 22 kW', texts(detail))
-        # Restore defaults clears every limit after saving.
-        screen = await station_admin.build(app, station_id=station['id'], page='power')
-        await press(screen, 'Restaurar padrão')(None)
-        await press(screen, 'Salvar limites')(None)
-        saved = await app.api.request('GET', f'stations/{station["id"]}')
-        self.assertIsNone(saved['max_power_kw'])
-        self.assertTrue(all(p['power_limit_kw'] is None for p in saved['connectors']))
-        await app.api.close()
-
-    async def test_power_page_notify_toggle_and_partial_failure(self):
-        app, station, screen, sliders = await self._power_screen()
-        switch = next(c for c in descendants(screen) if isinstance(c, ft.Switch) and c.data == 'power_notify')
-        switch.value = True
-        await switch.on_change(SimpleNamespace(control=switch))
-        sliders[2].value = 11.0
-        await sliders[2].on_change(SimpleNamespace(control=sliders[2]))
-        original = app.api.request
-
-        async def flaky(method, path, body=None, **kwargs):
-            if method == 'PATCH' and path.startswith('connectors/'):
-                from chargegrid_app.api_client import ApiError
-                raise ApiError('Sem conexão.', 503, 'network')
-            return await original(method, path, body, **kwargs)
-        app.api.request = flaky
-        await press(screen, 'Salvar limites')(None)
-        message = app.notices[-1]
-        self.assertIn('Salvo: limite do posto.', message)
-        self.assertIn('Não salvo: Tipo 2 - Conector 02: Sem conexão.', message)
-        app.api.request = original
-        self.assertTrue((await app.api.request('GET', f'stations/{station["id"]}'))['power_limit_notify'])
-        # Retrying sends only what is still pending.
-        await press(screen, 'Salvar limites')(None)
-        saved = await app.api.request('GET', f'stations/{station["id"]}')
-        self.assertEqual(float(saved['connectors'][1]['power_limit_kw']), 11.0)
         await app.api.close()
 
     def test_battery_rule_validation(self):

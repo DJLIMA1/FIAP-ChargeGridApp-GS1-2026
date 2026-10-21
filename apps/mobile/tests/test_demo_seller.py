@@ -71,10 +71,11 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         ]
         screen = await operator.build(app)
         self.assertIn('Posto Central',texts(screen))
-        self.assertIn('Adicionar equipamento simulado',texts(screen))
+        self.assertIn('Adicionar nova estação',texts(screen))
+        self.assertIn('Com um equipamento simulado',texts(screen))
         self.assertNotIn('Ligue a tela',texts(screen))
         add = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
-                   and 'Adicionar equipamento simulado' in texts(c) and not isinstance(c.content,ft.Column))
+                   and 'Adicionar nova estação' in texts(c) and not isinstance(c.content,ft.Column))
         await add.on_click(None)
         app.go.assert_awaited_with('operator',claim=True)
 

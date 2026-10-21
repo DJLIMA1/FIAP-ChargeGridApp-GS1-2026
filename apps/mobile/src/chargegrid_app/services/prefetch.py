@@ -119,8 +119,7 @@ def after_render(app, route, data):
         fetch(app, [OWNER_HISTORY, *owner_dashboard()])
     elif route == 'station_admin' and data.get('station_id') and not data.get('page'):
         sid = data['station_id']
-        fetch(app, [(f'stations/{sid}/power', None), ('owner/live', {'station_id': sid}),
-                    ('owner/alerts', {'station_id': sid})])
+        fetch(app, [(f'stations/{sid}/power', None)])  # tela Potência
 
 
 async def _warm_list_map(app, result):

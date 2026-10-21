@@ -1,24 +1,23 @@
-"""Lacunas do vendedor fechadas no app: Ao vivo, Energia do estabelecimento, Pagamentos (teste),
-pagamento/permanência nas sessões e o posto que exige pagamento antecipado no fluxo do motorista.
+"""Gerenciamento do posto pelo vendedor: tela Potência (limite contratado, rebalanceamento ligado por
+padrão, consumo SIMULADO da loja e cada conector), páginas removidas (Ao vivo, Energia do
+estabelecimento, Pagamentos), pagamento/permanência nas sessões e o posto que exige pagamento antecipado.
 
-Mesmos dados do painel web (``apps/owner-web``): ``/owner/live`` (potência aplicada, motivo e ``occupancy``),
-``/stations/{id}/power`` (+ ``power-site`` e ``building-load``), ``prepay_required``/``kiosk_payments`` e os
-blocos ``payment``/``overstay`` das sessões. A conta demo responde as mesmas rotas (``demo_site``).
+Mesmos dados da API: ``/stations/{id}/power`` (+ ``power-site`` e ``building-load``) e os blocos
+``payment``/``overstay`` das sessões. A conta demo responde as mesmas rotas (``demo_site``).
 """
 
-import asyncio
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import flet as ft
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, DemoApi
-from chargegrid_app.screens import booking, history, station_admin, station_ops
+from chargegrid_app.screens import booking, history, station_admin, station_power
 from chargegrid_app.services import owner_sessions
 from chargegrid_app.services import site_power as sp
+from chargegrid_core import site_load
 from test_behavior import HandlerApp, descendants
 
 
@@ -60,33 +59,18 @@ async def owned(app):
 ROTATION_ON = {'rotation': {'enabled': True, 'start_after_min': 2, 'interval_min': 1, 'amount': '1.00',
                             'max_amount': '30.00'}}
 
+def segment(screen, holder, label, within=None):
+    """``on_click`` da opção ``label`` de um controle segmentado (``holder`` = ``data`` do contêiner)."""
+    box = within if holder is None else by_data(screen, holder)
+    return next(item.on_click for item in descendants(box)
+                if isinstance(item, ft.Container) and item.on_click and texts(item) == label)
+
 
 # ---------------------------------------------------------------- regras puras
-class SitePowerRulesTests(unittest.IsolatedAsyncioTestCase):
-    def test_kw_usage_and_availability_text(self):
+class SitePowerRulesTests(unittest.TestCase):
+    def test_kw_and_site_limit_validation(self):
         self.assertEqual((sp.kw('6.000'), sp.kw('28.5'), sp.kw(None), sp.kw('', 'sem limite')),
                          ('6 kW', '28,5 kW', '—', 'sem limite'))
-        view = {'site_limit_kw': '30.0', 'building_load_kw': '12.0', 'available_kw': '18.0',
-                'envelope_kw': '9.000', 'exceeded_kw': '0', 'station_cap_kw': None}
-        info = sp.usage(view)
-        self.assertEqual((info['used'], info['available'], info['fraction'], info['over']),
-                         (Decimal('9.000'), Decimal('18.0'), 0.5, False))
-        self.assertEqual(sp.availability_text(view), '30 kW contratados − 12 kW da loja = 18 kW para recarga')
-        self.assertEqual(sp.availability_text({'site_limit_kw': None, 'station_cap_kw': '80'}),
-                         'Sem limite contratado: vale o teto do posto (80 kW).')
-        self.assertEqual(sp.load_max(view), 30)
-        self.assertEqual(sp.load_max({'site_limit_kw': None, 'building_load_kw': None}), 100)
-        self.assertEqual(sp.load_max({'site_limit_kw': '4', 'building_load_kw': None}), 10)
-
-    def test_over_text_depends_on_rebalancing(self):
-        view = {'available_kw': '18', 'envelope_kw': '60', 'exceeded_kw': '42', 'rebalance_enabled': True}
-        self.assertIn('Excesso transitório de 42 kW', sp.over_text(view, sp.usage(view)))
-        view['rebalance_enabled'] = False
-        self.assertIn('ligue o rebalanceamento', sp.over_text(view, sp.usage(view)))
-        view.update(envelope_kw='10', exceeded_kw='0')
-        self.assertIsNone(sp.over_text(view, sp.usage(view)))
-
-    def test_site_limit_validation_matches_web(self):
         self.assertEqual(sp.parse_site_limit(''), (None, None))
         self.assertEqual(sp.parse_site_limit('75,5'), ('75.5', None))
         self.assertEqual(sp.parse_site_limit('30'), ('30.0', None))
@@ -96,52 +80,48 @@ class SitePowerRulesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sp.limit_input('75.50'), '75,5')
         self.assertEqual(sp.limit_input(None), '')
 
-    def test_state_labels_and_decision_detail(self):
-        self.assertEqual(sp.state_label(None), ('Livre', 'SLATE'))
-        self.assertEqual(sp.state_label({'power_state': None}), ('Em recarga', 'BLUE'))
-        self.assertEqual(sp.state_label({'power_state': 'paused'}), ('Pausada', 'RED'))
-        self.assertEqual(sp.point_detail({'power_kw': '22', 'adjustable': False, 'online': False}),
-                         '22 kW nominal · carga fixa · offline')
-        self.assertEqual(sp.decision_detail({'trigger': 'building_load_changed', 'available_kw': '18',
-                                             'exceeded_kw': '3'}),
-                         'Consumo da loja · 18 kW disponíveis · excesso 3 kW')
+    def test_menu_subtitle_uses_the_default_limit_like_the_api(self):
+        station = {'rebalance_enabled': True, 'site_limit_kw': None, 'building_profile': None}
+        self.assertEqual(sp.menu_subtitle(station), 'Limite 75 kW (padrão) · rebalanceamento ligado')
+        station.update(building_profile='supermercado', building_size='grande')
+        self.assertEqual(sp.menu_subtitle(station), 'Limite 210 kW (padrão) · rebalanceamento ligado')
+        station.update(site_limit_kw='120.000', rebalance_enabled=False)
+        self.assertEqual(sp.menu_subtitle(station), 'Limite 120 kW · rebalanceamento desligado')
+        self.assertTrue(sp.has_rebalance({'rebalance_enabled': False}))
+        self.assertFalse(sp.has_rebalance({}))
 
-    async def test_debouncer_sends_only_the_last_value_and_flushes(self):
-        sent = []
+    def test_summary_card_values(self):
+        view = {'available_kw': '55.0', 'site_limit_kw': '75.0', 'site_limit_default': True,
+                'building_load_kw': '20.0', 'building_load_mode': 'profile', 'envelope_kw': '22.000', 'cars': 1,
+                'exceeded_kw': '0', 'building_profile_label': 'Padaria · porte médio'}
+        info = sp.summary(view)
+        self.assertEqual((info['available'], info['limit'], info['load'], info['cars']),
+                         ('55 kW', '75 kW', '20 kW', '22 kW'))
+        self.assertEqual((info['limit_detail'], info['load_detail'], info['cars_detail'], info['over']),
+                         ('Padrão para o tipo de estabelecimento', 'Padaria', '1 carro carregando', None))
+        view.update(building_load_mode='manual', exceeded_kw='3', site_limit_default=False, cars=2)
+        info = sp.summary(view)
+        self.assertEqual((info['load_detail'], info['limit_detail'], info['cars_detail']),
+                         ('Valor do simulador (30 min)', 'Informado por você', '2 carros carregando'))
+        self.assertIn('Excesso transitório de 3 kW', info['over'])
 
-        async def send(value):
-            sent.append(value)
-        debounce = sp.Debouncer(send, wait=0.02)
-        for value in (1, 2, 3):
-            debounce(value)
-        self.assertTrue(debounce.pending)
-        await asyncio.sleep(0.06)
-        self.assertEqual(sent, [3])
-        self.assertFalse(debounce.pending)
-        debounce(7)
-        await debounce.flush()
-        self.assertEqual(sent, [3, 7])
-        debounce(9)
-        debounce.cancel()
-        await asyncio.sleep(0.04)
-        self.assertEqual(sent, [3, 7])
+    def test_connector_configured_versus_effective(self):
+        station = {'max_power_kw': None, 'connectors': [
+            {'id': 'a', 'power_kw': '60', 'power_limit_kw': None, 'active': True},
+            {'id': 'b', 'power_kw': '22', 'power_limit_kw': '11', 'active': True},
+            {'id': 'c', 'power_kw': '22', 'active': False}]}
+        view = {'available_kw': '50', 'points': [{'connector_id': 'a', 'session': {'applied_kw': '47.000'}}]}
+        a, b, c = station['connectors']
+        self.assertEqual(sp.connector_line(a, station, view), '60 kW configurados · 47 kW efetivos')
+        self.assertEqual(sp.connector_line(b, station, view), '11 kW configurados · até 11 kW efetivos')
+        self.assertEqual(sp.connector_line(a, station, {'available_kw': '30'}), '60 kW configurados · até 30 kW efetivos')
+        self.assertEqual(sp.connector_line(c, station, view), 'Inativo: fica fora da divisão do posto')
+        self.assertEqual(sp.cap_subtitle({'max_power_kw': None}), 'Sem teto · aviso desligado')
+        self.assertEqual(sp.cap_subtitle({'max_power_kw': '80', 'power_limit_notify': True}), '80 kW · aviso ligado')
+        self.assertEqual(sp.point_name({'connector_type': 'CCS2'}, 1), 'CCS2 · Conector 01')
 
 
 class OwnerSessionTextTests(unittest.TestCase):
-    def test_occupancy_phases(self):
-        self.assertEqual(owner_sessions.countdown(277), '04:37')
-        self.assertEqual(owner_sessions.countdown(3725), '1:02:05')
-        self.assertEqual(owner_sessions.occupancy_text({'status': 'grace', 'grace_remaining_seconds': 277}),
-                         'Tolerância: restam 04:37')
-        self.assertEqual(owner_sessions.occupancy_text({'status': 'billing', 'fee_due': '6.00', 'max_fee': '30.00'}),
-                         'Taxa acumulada R$ 6,00 de R$ 30,00')
-        self.assertEqual(owner_sessions.occupancy_text({'status': 'capped', 'fee_due': '30.00'}),
-                         'Taxa no máximo: R$ 30,00')
-        self.assertEqual(owner_sessions.occupancy_text({'status': 'no_fee'}),
-                         'Recarga concluída, sem taxa de permanência')
-        self.assertEqual(owner_sessions.occupancy_label({'status': 'grace'}), ('Em tolerância', 'AMBER'))
-        self.assertIsNone(owner_sessions.occupancy_text(None))
-
     def test_overstay_and_payment_cells(self):
         self.assertIsNone(owner_sessions.overstay_summary({'overstay': {'status': 'none'}}))
         self.assertIsNone(owner_sessions.overstay_summary({}))  # API antiga: sem o bloco
@@ -179,18 +159,16 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
         self.station = (await self.api.request('GET', 'operator/stations'))['items'][0]
         self.sid = self.station['id']
 
-    async def test_station_exposes_api_columns_and_flags_patch(self):
-        for key, value in (('prepay_required', False), ('kiosk_payments', False), ('rebalance_enabled', False),
-                           ('site_limit_kw', None), ('building_load_kw', None)):
+    async def test_station_defaults_match_the_api(self):
+        for key, value in (('prepay_required', False), ('kiosk_payments', False), ('kiosk_mode', False),
+                           ('rebalance_enabled', True), ('site_limit_kw', None), ('building_load_kw', None),
+                           ('building_profile', None)):
             self.assertIs(self.station[key], value)
-        saved = await self.api.request('PATCH', f'stations/{self.sid}', {'prepay_required': True,
-                                                                          'kiosk_payments': True})
-        self.assertTrue(saved['prepay_required'] and saved['kiosk_payments'])
+        # A API ainda aceita os campos (painel web); o app não tem mais interruptor para eles.
+        saved = await self.api.request('PATCH', f'stations/{self.sid}', {'prepay_required': True})
+        self.assertTrue(saved['prepay_required'])
         with self.assertRaises(ApiError):
             await self.api.request('PATCH', f'stations/{self.sid}', {'prepay_required': None})
-
-    async def test_prepay_required_refuses_start_without_payment(self):
-        await self.api.request('PATCH', f'stations/{self.sid}', {'prepay_required': True})
         point = self.station['connectors'][0]
         with self.assertRaises(ApiError) as caught:
             await self.api.request('POST', 'charging-sessions', {'presence_code': DEMO_PRESENCE_CODE,
@@ -198,20 +176,36 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
                                    key=self.api.new_key())
         self.assertEqual((caught.exception.status, caught.exception.code), (402, 'payment_required'))
 
-    async def test_power_view_site_settings_and_validation(self):
+    async def test_power_view_default_limit_and_simulated_store_load(self):
         view = await self.api.request('GET', f'stations/{self.sid}/power')
-        self.assertEqual((view['cars'], view['available_kw'], view['rebalance_enabled']), (0, None, False))
-        self.assertEqual([p['public_code'] for p in view['points']], sorted(p['public_code'] for p in view['points']))
+        self.assertEqual((view['cars'], view['rebalance_enabled'], view['site_limit_kw'], view['site_limit_default']),
+                         (0, True, '75.0', True))
+        self.assertEqual((view['building_load_mode'], view['building_load_simulated'], view['building_profile']),
+                         ('profile', True, 'conveniencia'))
+        expected = site_load.simulate(self.sid, self.api._now(), site_limit_kw=Decimal(75))
+        self.assertEqual(view['building_load_kw'], str(expected))
+        self.assertEqual(Decimal(view['available_kw']), Decimal(75) - expected)
+        # Tipo/porte: outra curva e outro limite padrão.
         view = await self.api.request('PUT', f'stations/{self.sid}/power-site',
-                                      {'site_limit_kw': '30.04', 'rebalance_enabled': True})
-        self.assertEqual((view['site_limit_kw'], view['rebalance_enabled'], view['available_kw']), ('30.0', True, '30.0'))
+                                      {'building_profile': 'supermercado', 'building_size': 'medio'})
+        self.assertEqual((view['site_limit_kw'], view['building_profile_label']),
+                         ('130.0', 'Supermercado · porte médio'))
+        # Valor do simulador vale 30 min; null volta à curva.
         view = await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': '12.5'})
-        self.assertEqual((view['building_load_kw'], view['building_load_simulated'], view['available_kw']),
-                         ('12.5', True, '17.5'))
-        self.assertEqual(view['decisions'][0]['trigger'], 'building_load_changed')
+        self.assertEqual((view['building_load_kw'], view['building_load_mode'], view['available_kw']),
+                         ('12.5', 'manual', '117.5'))
+        self.clock[0] = 31 * 60
+        self.assertEqual((await self.api.request('GET', f'stations/{self.sid}/power'))['building_load_mode'], 'profile')
+        await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': '20'})
+        view = await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': None})
+        self.assertEqual(view['building_load_mode'], 'profile')
+        view = await self.api.request('PUT', f'stations/{self.sid}/power-site', {'site_limit_kw': '30.04'})
+        self.assertEqual((view['site_limit_kw'], view['site_limit_default']), ('30.0', False))
+        self.assertLessEqual(Decimal(view['building_load_kw']), Decimal('25.5'))  # até 85 % do limite
         for body, code in (({'site_limit_kw': 0}, 'invalid_power_limit'), ({'site_limit_kw': 10001},
                                                                            'invalid_power_limit'),
-                           ({'rebalance_enabled': None}, 'null_not_allowed')):
+                           ({'rebalance_enabled': None}, 'null_not_allowed'),
+                           ({'building_profile': 'fabrica'}, 'validation_error')):
             with self.assertRaises(ApiError) as caught:
                 await self.api.request('PUT', f'stations/{self.sid}/power-site', body)
             self.assertEqual(caught.exception.code, code)
@@ -222,30 +216,29 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
             await self.api.request('GET', f"stations/{other['id']}/power")
         self.assertEqual(caught.exception.status, 404)
 
-    async def test_rebalancing_applies_target_and_counts_energy_at_the_new_power(self):
+    async def test_rebalancing_is_on_by_default_and_counts_energy_at_the_new_power(self):
+        await self.api.request('PUT', f'stations/{self.sid}/power-site', {'site_limit_kw': '30'})
+        await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': '12'})
         ccs = next(p for p in self.station['connectors'] if p['connector_type'] == 'CCS2')
         session = await self.api.request('POST', 'charging-sessions', {
             'presence_code': DEMO_PRESENCE_CODE, 'public_code': ccs['public_code'], 'max_duration_minutes': 60},
             key=self.api.new_key())
-        self.assertIsNone(session['applied_power_kw'])  # rebalanceamento desligado: campos nulos, como na API
-        self.clock[0] = 1 + 60  # 1 min a 60 kW = 1 kWh
-        await self.api.request('PUT', f'stations/{self.sid}/power-site',
-                               {'site_limit_kw': '30', 'rebalance_enabled': True})
-        view = await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': '12'})
+        self.clock[0] = 1 + 60  # 1 min a 18 kW = 0,3 kWh
+        view = await self.api.request('GET', f'stations/{self.sid}/power')
         point = next(p for p in view['points'] if p['connector_id'] == ccs['id'])
         self.assertEqual((point['session']['target_kw'], point['session']['applied_kw'],
                           point['session']['power_state']), ('18.0', '18.000', 'applied'))
         self.assertEqual(point['session']['reason'],
                          '18 kW porque a loja usa 12 de 30 kW e só o seu carro está carregando.')
         self.assertEqual((view['envelope_kw'], view['exceeded_kw']), ('18.000', '0'))
-        self.clock[0] = 1 + 60 + 120  # +2 min a 18 kW = 0,6 kWh
         current = await self.api.request('GET', f"charging-sessions/{session['id']}")
-        self.assertEqual(Decimal(current['energy_wh']), Decimal('1600.000'))
-        self.assertEqual((current['applied_power_kw'], current['power_state']), ('18.000', 'applied'))
-        self.assertIn('loja usa 12 de 30 kW', current['power_reason'])
-        live = await self.api.owner_live({'station_id': self.sid})
-        item = next(i for i in live['items'] if i['connector_id'] == ccs['id'])
-        self.assertEqual(item['session']['applied_power_kw'], '18.000')
+        self.assertEqual(Decimal(current['energy_wh']), Decimal('300.000'))
+        await self.api.request('PUT', f'stations/{self.sid}/building-load', {'building_load_kw': '20'})
+        self.clock[0] = 1 + 60 + 120  # +2 min a 10 kW = 0,333 kWh
+        current = await self.api.request('GET', f"charging-sessions/{session['id']}")
+        self.assertEqual((current['applied_power_kw'], current['power_state']), ('10.000', 'applied'))
+        self.assertEqual(Decimal(current['energy_wh']).quantize(Decimal(1)), Decimal(633))
+        self.assertIn('loja usa 20 de 30 kW', current['power_reason'])
         # Loja quase no limite: sem o mínimo para mais um carro, o início é recusado (409 site_power_full).
         await self.api.request('POST', f"charging-sessions/{session['id']}/stop", key=self.api.new_key())
         self.clock[0] += 5
@@ -257,12 +250,14 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
                                    key=self.api.new_key())
         self.assertEqual(caught.exception.code, 'site_power_full')
 
-    async def test_demo_traffic_occupancy_and_paid_history(self):
+    async def test_demo_traffic_shares_the_default_limit_occupancy_and_paid_history(self):
         await self.api.request('PUT', f'stations/{self.sid}/pricing', ROTATION_ON)
         view = await self.api.request('POST', f'stations/{self.sid}/demo-traffic', {})
-        self.assertEqual((view['site_limit_kw'], view['building_load_kw'], view['rebalance_enabled'], view['cars']),
-                         ('30.0', '12.0', True, 1))
-        live = await self.api.owner_live({'station_id': self.sid})
+        self.assertEqual((view['site_limit_kw'], view['rebalance_enabled'], view['cars'], view['building_load_mode']),
+                         ('75.0', True, 1, 'profile'))
+        load = Decimal(view['building_load_kw'])
+        self.assertLessEqual(load + Decimal(view['envelope_kw']), Decimal(75))
+        live = await self.api.request('GET', 'owner/live', params={'station_id': self.sid})
         parked = [i for i in live['items'] if i['occupancy']]
         self.assertEqual(len(parked), 1)
         occupancy = parked[0]['occupancy']
@@ -270,7 +265,7 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((occupancy['status'], occupancy['driver_label']), ('billing', 'Marina · Volvo EX30'))
         self.assertEqual(occupancy['fee_due'], '2.00')  # 4 min na vaga, 2 de tolerância, R$ 1,00/min
         charging = [i for i in live['items'] if i['session']]
-        self.assertEqual(charging[0]['session']['applied_power_kw'], '18.000')
+        self.assertEqual(Decimal(charging[0]['session']['applied_power_kw']), min(Decimal(60), Decimal(75) - load))
         # Idempotente enquanto o movimento continua no posto.
         await self.api.request('POST', f'stations/{self.sid}/demo-traffic', {})
         self.assertEqual((await self.api.request('GET', f'stations/{self.sid}/power'))['cars'], 1)
@@ -282,11 +277,9 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
                          ('closed', 840, '12.00'))
         self.assertEqual(done['payment']['settlement']['overstay_amount'], '12.00')
         self.assertNotIn('_driver_label', done)
-        # O motorista da demo não vê os pagamentos dos motoristas fictícios.
         self.assertIsNone(await self.api.request('GET', 'payments/current'))
-        # Depois que o carro desconecta, o pagamento é acertado com a taxa e a vaga fica livre.
         self.clock[0] = 30 * 60
-        live = await self.api.owner_live({'station_id': self.sid})
+        live = await self.api.request('GET', 'owner/live', params={'station_id': self.sid})
         self.assertFalse(any(i['occupancy'] for i in live['items']))
         sessions = (await self.api.request('GET', 'operator/charging-sessions', params={'limit': 20}))['items']
         settled = [s for s in sessions if s['payment'] and s['overstay']['status'] == 'closed']
@@ -294,174 +287,197 @@ class DemoSiteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(s['payment']['status'] == 'completed' for s in settled))
 
 
-# ---------------------------------------------------------------- telas do vendedor
+# ---------------------------------------------------------------- menu do posto
+REMOVED = ('Ao vivo', 'Energia do estabelecimento', 'Pagamentos', 'Potência por conector', 'QR do painel',
+           'Antecipado')
+
+
 class StationMenuTests(unittest.IsolatedAsyncioTestCase):
-    async def test_menu_routes_to_operation_pages(self):
+    async def test_menu_has_power_and_no_removed_pages(self):
         app = await demo_app()
         station = await owned(app)
         screen = await station_admin.build(app, station_id=station['id'])
         copy = texts(screen)
-        for label in ('Ao vivo', 'Energia do estabelecimento', 'Pagamentos · teste',
-                      'Sem limite contratado · rebalanceamento desligado',
-                      'Antecipado desligado · QR do painel desligado'):
-            self.assertIn(label, copy)
-        for label, page in (('Pontos agora', 'live'), ('Sem limite contratado', 'energy'),
-                            ('Antecipado desligado', 'payments')):
+        self.assertIn('Potência', copy)
+        self.assertIn('Limite 75 kW (padrão) · rebalanceamento ligado', copy)
+        for removed in REMOVED:
+            self.assertNotIn(removed, copy)
+        routes = []
+        for label in ('Dados da estação', 'Conectores', 'Limite 75 kW', 'Tarifa base'):
             await press(screen, label)(None)
-            self.assertEqual(app.go.await_args.kwargs, {'station_id': station['id'], 'page': page})
+            routes.append((app.go.await_args.args[0], app.go.await_args.kwargs.get('page')))
+        self.assertEqual(routes, [('station_admin', 'data'), ('station_admin', 'connectors'),
+                                  ('station_admin', 'power'), ('tariffs', None)])
+        # Rotas antigas caem no menu do posto (sem tela própria).
+        for page in ('live', 'energy', 'payments'):
+            old = texts(await station_admin.build(app, station_id=station['id'], page=page))
+            self.assertIn('Estação CG-001', old)
+            self.assertFalse(any(removed in old for removed in REMOVED))
         await app.api.close()
 
-    async def test_entries_hidden_when_api_does_not_send_the_fields(self):
+    async def test_old_api_keeps_the_previous_power_subtitle(self):
         app = PollApp()
         app.back = lambda event=None: None
-        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A, 1, Centro, São Paulo - SP', 'connectors': []}
+        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A, 1, Centro, São Paulo - SP', 'max_power_kw': None,
+                   'connectors': [{'id': 'p', 'connector_type': 'CCS2', 'power_kw': '60', 'active': True}]}
 
         async def request(method, path, body=None, **kwargs):
             return station if path == 'stations/s1' else {'items': [station], 'total': 1}
         app.api.request.side_effect = request
         copy = texts(await station_admin.build(app, station_id='s1'))
-        self.assertIn('Ao vivo', copy)
-        self.assertNotIn('Energia do estabelecimento', copy)
-        self.assertNotIn('Pagamentos', copy)
+        self.assertIn('CCS2: 60 kW', copy)
+        self.assertIn('Nome, endereço e status', copy)
+        for removed in REMOVED:
+            self.assertNotIn(removed, copy)
 
 
-class EnergyPageTests(unittest.IsolatedAsyncioTestCase):
-    async def test_energy_page_saves_limit_toggle_load_and_polls(self):
+# ---------------------------------------------------------------- tela Potência
+class PowerPageTests(unittest.IsolatedAsyncioTestCase):
+    async def _screen(self, **params):
         app = await demo_app()
         station = await owned(app)
-        sid = station['id']
-        screen = await station_admin.build(app, station_id=sid, page='energy')
+        screen = await station_admin.build(app, station_id=station['id'], page='power', **params)
+        return app, station, screen
+
+    async def test_overview_shows_limit_rebalance_simulated_store_and_connectors(self):
+        app, station, screen = await self._screen()
         copy = texts(screen)
-        for expected in ('Energia do estabelecimento', 'Limite contratado', 'Rebalanceamento ao vivo', 'SIMULADO',
-                         'Consumo da loja', 'Em uso 0 kW de sem limite disponíveis', '0 carros carregando',
-                         'Sem limite contratado: vale o teto do posto', 'Livre', 'Nenhuma decisão registrada',
+        for expected in ('Potência', 'Disponível para os carregadores', 'Limite contratado', '75 kW',
+                         'Padrão para o tipo de estabelecimento', 'Loja agora', 'SIMULADO', 'Carros agora',
+                         'Rebalanceamento', sp.REBALANCE_HELP, 'Por conector', 'CCS2 · Conector 01',
+                         '60 kW configurados', 'Ajustes', 'Teto dos carregadores', 'Sem teto · aviso desligado',
+                         '75 kW (padrão) · Loja de conveniência',
                          'Simular carros no posto (demo)'):
             self.assertIn(expected, copy)
+        self.assertNotIn('Últimas decisões', copy)  # sem excesso de informação
         self.assertEqual(app.poll_interval, sp.POLL_SECONDS)
-        field = by_data(screen, 'site_limit')
-        field.value = '7,55'
-        await press(screen, 'Salvar')(None)
-        self.assertIn('até 1 casa', field.error_text)
-        field.value = '30'
-        field.on_change(None)
-        await press(screen, 'Salvar')(None)
-        self.assertEqual(app.notices[-1], 'Limite contratado salvo')
-        self.assertEqual((await app.api.request('GET', f'stations/{sid}/power'))['site_limit_kw'], '30.0')
-        switch = by_data(screen, 'rebalance')
-        switch.value = True
-        await switch.on_change(SimpleNamespace(control=switch))
-        self.assertEqual(app.notices[-1], 'Rebalanceamento ligado')
-        self.assertIn('Ligado: ajusta os pontos', texts(screen))
-        slider = by_data(screen, 'building_load')
-        self.assertEqual(slider.max, 30.0)
-        for value in (5.2, 9.0, 12.4):
-            slider.value = value
-            await slider.on_change(SimpleNamespace(control=slider))
-        self.assertIn('12,5 kW', texts(screen))
-        await slider.on_change_end(None)  # soltar o controle envia já (só o último valor)
-        view = await app.api.request('GET', f'stations/{sid}/power')
-        self.assertEqual(view['building_load_kw'], '12.5')
-        self.assertEqual([d['trigger'] for d in view['decisions']][:1], ['building_load_changed'])
-        await app.api.request('POST', f'stations/{sid}/demo-traffic', {})
-        await app.poll()
-        copy = texts(screen)
-        for expected in ('30 kW contratados − 12,5 kW da loja = 17,5 kW para recarga', '1 carro carregando',
-                         'Alvo 17,5 kW · Aplicada 17,5 kW', 'Aplicada',
-                         '17,5 kW porque a loja usa 12,5 de 30 kW e só o seu carro está carregando.',
-                         'Em uso 17,5 kW de 17,5 kW disponíveis'):
-            self.assertIn(expected, copy)
+        await app.poll()  # atualização sem erro
+        selected = [texts(item) for item in descendants(by_data(screen, 'rebalance'))
+                    if isinstance(item, ft.Container) and item.on_click and item.bgcolor]
+        self.assertEqual(selected, ['Ligado'])  # ligado por padrão
+        routes = []
+        for data in ('power-site', 'power-cap', f"power-connector:{station['connectors'][0]['id']}"):
+            await by_data(screen, data).on_click(None)
+            routes.append(app.go.await_args.kwargs)
+        self.assertEqual([route.get('section') for route in routes], ['site', 'cap', 'connector'])
+        self.assertEqual(routes[2]['connector_id'], station['connectors'][0]['id'])
         await app.api.close()
 
-    async def test_unsupported_api_and_failed_toggle_revert(self):
-        app = PollApp()
-        station = {'id': 's1', 'name': 'Posto'}
-        app.api.request.side_effect = ApiError('Não encontrado', 404, 'not_found')
-        screen = await station_ops.energy_page(app, station)
-        self.assertIn('ainda não tem o rebalanceamento ao vivo', texts(screen))
-        view = {'station_id': 's1', 'rebalance_enabled': False, 'site_limit_kw': None, 'building_load_kw': None,
-                'available_kw': None, 'envelope_kw': '0', 'exceeded_kw': '0', 'cars': 0, 'points': [],
-                'decisions': []}
+    async def test_rebalance_toggle_waits_for_the_server(self):
+        app, station, screen = await self._screen()
+        await segment(screen, 'rebalance', 'Desligado')(None)
+        self.assertEqual(app.notices[-1], 'Rebalanceamento desligado')
+        self.assertFalse((await app.api.request('GET', f"stations/{station['id']}/power"))['rebalance_enabled'])
+        original = app.api.request
 
-        async def request(method, path, body=None, **kwargs):
+        async def failing(method, path, body=None, **kwargs):
             if method == 'PUT':
-                raise ApiError('Sem permissão', 403, 'forbidden')
-            return view
-        app.api.request.side_effect = request
-        screen = await station_ops.energy_page(app, station)
-        switch = by_data(screen, 'rebalance')
-        switch.value = True
-        await switch.on_change(SimpleNamespace(control=switch))
-        self.assertFalse(switch.value)
-        self.assertIn('Alteração de energia não salva', app.notices[-1])
-
-
-class LivePageTests(unittest.IsolatedAsyncioTestCase):
-    async def test_live_shows_applied_power_reason_and_who_holds_the_spot(self):
-        app = await demo_app()
-        station = await owned(app)
-        await app.api.request('PUT', f"stations/{station['id']}/pricing", ROTATION_ON)
-        await app.api.request('POST', f"stations/{station['id']}/demo-traffic", {})
-        screen = await station_admin.build(app, station_id=station['id'], page='live')
-        self.assertEqual(app.poll_interval, station_ops.LIVE_POLL_SECONDS)
-        copy = texts(screen)
-        for expected in ('Ao vivo', '1 carregando', '1 na vaga após a recarga', 'Em recarga', 'Ocupado',
-                         'Potência aplicada: 18 kW', '18 kW agora', '18 kW porque a loja usa 12 de 30 kW',
-                         'Cobrando permanência', 'Marina · Volvo EX30', 'Taxa acumulada R$ 2,00 de R$ 30,00',
-                         'Recarga terminou às', 'Offline'):
-            self.assertIn(expected, copy)
-        self.assertIsNotNone(by_data(screen, 'occupancy'))
-        # Alertas do posto (``/owner/alerts``): o ponto offline aparece como crítico.
-        self.assertTrue(by_data(screen, 'alerts').visible)
-        self.assertIn('Crítico', copy)
-        self.assertIn('Dispositivo offline', copy)
-        await app.poll()
+                raise ApiError('Sem conexão.', 503, 'network')
+            return await original(method, path, body, **kwargs)
+        app.api.request = failing
+        await segment(screen, 'rebalance', 'Ligado')(None)
+        self.assertIn('Rebalanceamento não alterado', app.notices[-1])
+        selected = [texts(item) for item in descendants(by_data(screen, 'rebalance'))
+                    if isinstance(item, ft.Container) and item.on_click and item.bgcolor]
+        self.assertEqual(selected, ['Desligado'])
+        app.api.request = original
         await app.api.close()
 
-    async def test_live_without_new_fields_hides_power_and_occupancy(self):
+    async def test_site_page_saves_limit_type_and_size(self):
+        app, station, screen = await self._screen(section='site')
+        copy = texts(screen)
+        self.assertIn('Tipo de estabelecimento', copy)
+        self.assertIn('Padrão: 75 kW · pico típico da loja 22 kW (SIMULADO)', copy)
+        field = by_data(screen, 'site_limit')
+        self.assertEqual((field.value, field.hint_text), ('', '75 (padrão)'))
+        await press(screen, 'Supermercado')(None)
+        await segment(screen, None, 'Grande', within=screen)(None)
+        self.assertIn('Padrão: 210 kW', by_data(screen, 'site-default').value)
+        field.value = '7,55'
+        await press(screen, 'Salvar limite')(None)
+        self.assertIn('até 1 casa', texts(screen))
+        field.value = '250'
+        await press(screen, 'Salvar limite')(None)
+        self.assertEqual(app.notices[-1], 'Limite contratado salvo.')
+        self.assertEqual(app.go.await_args.kwargs, {'station_id': station['id'], 'page': 'power'})
+        view = await app.api.request('GET', f"stations/{station['id']}/power")
+        self.assertEqual((view['site_limit_kw'], view['building_profile'], view['building_size']),
+                         ('250.0', 'supermercado', 'grande'))
+        screen = await station_admin.build(app, station_id=station['id'], page='power', section='site')
+        field = by_data(screen, 'site_limit')
+        self.assertEqual(field.value, '250')
+        field.value = ''
+        await press(screen, 'Salvar limite')(None)
+        self.assertTrue((await app.api.request('GET', f"stations/{station['id']}/power"))['site_limit_default'])
+        await app.api.close()
+
+    async def test_cap_page_saves_cap_and_notify(self):
+        app, station, screen = await self._screen(section='cap')
+        slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
+        self.assertEqual(slider.data, 'station_power')
+        self.assertIn('Sem teto: cada conector usa a própria potência.', texts(screen))
+        slider.value = 80.0
+        await slider.on_change(SimpleNamespace(control=slider))
+        self.assertIn('Dividido entre os conectores ativos.', texts(screen))
+        await segment(screen, None, 'Ligado', within=screen)(None)
+        await press(screen, 'Salvar teto')(None)
+        saved = await app.api.request('GET', f"stations/{station['id']}")
+        self.assertEqual((float(saved['max_power_kw']), saved['power_limit_notify']), (80.0, True))
+        self.assertEqual(app.notices[-1], 'Teto dos carregadores salvo.')
+        screen = await station_admin.build(app, station_id=station['id'], page='power', section='cap')
+        await press(screen, 'Sem teto')(None)
+        await press(screen, 'Salvar teto')(None)
+        self.assertIsNone((await app.api.request('GET', f"stations/{station['id']}"))['max_power_kw'])
+        await app.api.close()
+
+    async def test_connector_page_saves_power_and_shows_effective(self):
+        app = await demo_app()
+        station = await owned(app)
+        point = station['connectors'][0]
+        screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
+                                           connector_id=point['id'])
+        copy = texts(screen)
+        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('Máximo do carregador: 60 kW', copy)
+        self.assertIn('60 kW configurados · até', by_data(screen, 'connector-effective').value)
+        slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
+        slider.value = 40.0
+        await slider.on_change(SimpleNamespace(control=slider))
+        await press(screen, 'Salvar potência')(None)
+        saved = await app.api.request('GET', f"stations/{station['id']}")
+        self.assertEqual(float(saved['connectors'][0]['power_limit_kw']), 40.0)
+        self.assertEqual(float(saved['connectors'][0]['power_kw']), 60.0)  # nominal intocada
+        self.assertEqual(app.notices[-1], 'Potência do conector salva.')
+        screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
+                                           connector_id=point['id'])
+        await press(screen, 'Usar o máximo')(None)
+        await press(screen, 'Salvar potência')(None)
+        self.assertIsNone((await app.api.request('GET', f"stations/{station['id']}"))['connectors'][0]['power_limit_kw'])
+        await app.api.close()
+
+    async def test_old_api_without_power_route(self):
         app = PollApp()
-        item = {'connector_id': 'c1', 'public_code': 'CG-AB12', 'connector_type': 'Tipo 2', 'power_kw': '22.000',
-                'price_per_kwh': '1.89', 'online': True, 'has_device': True, 'availability_status': 'charging',
-                'session': {'id': 's', 'status': 'charging', 'started_at': '2026-10-20T12:00:00+00:00',
-                            'energy_wh': '2500', 'cost_estimate': '4.72', 'power_w': '7200', 'soc_percent': None}}
+        app.back = lambda event=None: None
+        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A', 'rebalance_enabled': True, 'max_power_kw': None,
+                   'connectors': [{'id': 'p', 'connector_type': 'CCS2', 'power_kw': '60', 'active': True}]}
 
         async def request(method, path, body=None, **kwargs):
-            if path == 'owner/alerts':
-                raise ApiError('Não encontrado', 404, 'not_found')  # API sem alertas: a página segue
-            return {'items': [item], 'generated_at': '2026-10-20T12:05:00+00:00'}
+            if path == 'stations/s1/power':
+                raise ApiError('Não encontrado', 404, 'not_found')
+            return station if path == 'stations/s1' else {'items': [station], 'total': 1}
         app.api.request.side_effect = request
-        screen = await station_ops.live_page(app, {'id': 's1'})
+        screen = await station_power.build(app, station)
         copy = texts(screen)
-        self.assertIn('2,50 kWh entregues · 7,2 kW agora · R$ 4,72', copy)
-        self.assertFalse(by_data(screen, 'alerts').visible)  # sem itens de alerta: seção oculta
-        self.assertNotIn('Potência aplicada', copy)
-        self.assertNotIn('Tolerância', copy)
+        self.assertNotIn('Disponível para os carregadores', copy)
+        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('Teto dos carregadores', copy)
 
-
-class PaymentsPageTests(unittest.IsolatedAsyncioTestCase):
-    async def test_switches_patch_station_without_optimistic_update(self):
-        app = await demo_app()
-        station = await owned(app)
-        screen = await station_admin.build(app, station_id=station['id'], page='payments')
-        copy = texts(screen)
-        for expected in ('Exigir pagamento antecipado (Stripe · teste)', 'Pagamento pelo QR do painel', 'TESTE',
-                         'nenhum valor real é cobrado'):
-            self.assertIn(expected, copy)
-        prepay = by_data(screen, 'prepay_required')
-        prepay.value = True
-        await prepay.on_change(SimpleNamespace(control=prepay))
-        self.assertEqual(app.notices[-1], 'Pagamento antecipado exigido')
-        self.assertTrue((await app.api.request('GET', f"stations/{station['id']}"))['prepay_required'])
-        await app.api.close()
-
-        failing = PollApp()
-        failing.api.request = AsyncMock(side_effect=ApiError('Sem conexão', 0, 'network'))
-        screen = station_ops.payments_page(failing, {'id': 's1', 'kiosk_payments': False})
-        self.assertIsNone(by_data(screen, 'prepay_required'))  # campo ausente: interruptor some
-        kiosk = by_data(screen, 'kiosk_payments')
-        kiosk.value = True
-        await kiosk.on_change(SimpleNamespace(control=kiosk))
-        self.assertFalse(kiosk.value)
-        self.assertIn('Configuração de pagamento não salva', failing.notices[-1])
+    def test_navigation_back_from_a_power_subpage(self):
+        from chargegrid_app.navigation import parent_route
+        self.assertEqual(parent_route('station_admin', {'station_id': 's', 'page': 'power', 'section': 'site'}),
+                         ('station_admin', {'station_id': 's', 'page': 'power'}))
+        self.assertEqual(parent_route('station_admin', {'station_id': 's', 'page': 'power'}),
+                         ('station_admin', {'station_id': 's'}))
 
 
 class SellerHistoryTests(unittest.IsolatedAsyncioTestCase):

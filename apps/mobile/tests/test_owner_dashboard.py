@@ -159,13 +159,16 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_alerts_live_and_new_demo_session_are_reflected(self):
         alerts = (await self.client.owner_alerts())['items']
         self.assertEqual({alert['kind'] for alert in alerts}, {'device_offline', 'command_failed'})
-        live = (await self.client.owner_live())['items']
+        live = (await self.client.request('GET', 'owner/live'))['items']
         self.assertEqual([item['availability_status'] for item in live], ['available', 'available', 'offline'])
+        station = (await self.client.request('GET', 'operator/stations'))['items'][0]
+        # Potência nominal (60 kW) sem o rebalanceamento, que é ligado por padrão.
+        await self.client.request('PUT', f"stations/{station['id']}/power-site", {'rebalance_enabled': False})
         before = (await self.client.owner_overview({'to': (START + timedelta(hours=2)).isoformat()}))['kpis']
         await self.client.request('POST', 'charging-sessions', {'presence_code': '#F12345', 'public_code': 'DEMO-11',
                                                                 'max_duration_minutes': 5}, key='k')
         self.clock.value = 3
-        charging = next(item for item in (await self.client.owner_live())['items'] if item['public_code'] == 'DEMO-11')
+        charging = next(item for item in (await self.client.request('GET', 'owner/live'))['items'] if item['public_code'] == 'DEMO-11')
         self.assertEqual(charging['availability_status'], 'charging')
         self.assertEqual(charging['session']['power_w'], '60000')
         self.clock.value = 400

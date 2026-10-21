@@ -264,6 +264,17 @@ def _schedule_summary(schedule):
     return text + ('' if schedule['enabled'] or not count else ' · Inativa')
 
 
+def entry_row(title, subtitle, icon, on_click, data=None):
+    """Linha de ajuste (Tarifa, Potência): tile escuro 46 + título/subtítulo + ``>``."""
+    return ft.Container(
+        ft.Row([design.icon_tile(icon, size=46, dark=True, icon_size=24),
+                ft.Column([design.txt(title, 13, 'semibold'), design.txt(subtitle, 11, 'regular', theme.GRAY_TEXT)],
+                          spacing=2, expand=True),
+                ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT)],
+               spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        on_click=on_click, ink=False, data=data)
+
+
 def overview(app, sid, data, details=False):
     rules = data['rules']
     state = {'data': data, 'details': details}
@@ -287,13 +298,7 @@ def overview(app, sid, data, details=False):
         app.set_poll(update, REFRESH_SECONDS)
 
     def entry(title, subtitle, key, icon):
-        return ft.Container(
-            ft.Row([design.icon_tile(icon, size=46, dark=True, icon_size=24),
-                    ft.Column([design.txt(title, 13, 'semibold'), design.txt(subtitle, 11, 'regular', theme.GRAY_TEXT)],
-                              spacing=2, expand=True),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT)],
-                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            on_click=app.link('tariffs', station_id=sid, page=key), ink=False, data=f'tariff-{key}')
+        return entry_row(title, subtitle, icon, app.link('tariffs', station_id=sid, page=key), f'tariff-{key}')
 
     demand, rotation = rules['demand'], rules['rotation']
     entries = [

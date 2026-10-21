@@ -462,10 +462,11 @@ class DemoApi(OwnerApiMixin):
         station = {'id': sid, 'owner_id': _USER, 'name': data['name'], 'address': data['address'],
                    'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
                    'amenities': [], 'max_power_kw': None, 'power_limit_notify': False,
-                   # Pagamento (Stripe, teste) e energia do estabelecimento: padrões da API (desligados).
-                   'prepay_required': False, 'kiosk_payments': False, 'kiosk_mode': False, 'rebalance_enabled': False,
+                   # Padrões da API: pagamentos por posto e totem desligados; rebalanceamento ligado com o
+                   # limite padrão do tipo/porte e o consumo da loja SIMULADO (chargegrid_core.site_load).
+                   'prepay_required': False, 'kiosk_payments': False, 'kiosk_mode': False, 'rebalance_enabled': True,
                    'site_limit_kw': None, 'building_load_kw': None, 'building_load_source': None,
-                   'building_load_updated_at': None}
+                   'building_load_updated_at': None, 'building_profile': None, 'building_size': None}
         self._stations[sid] = station
         return station
 

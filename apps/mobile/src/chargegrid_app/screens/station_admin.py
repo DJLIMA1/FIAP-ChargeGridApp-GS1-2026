@@ -1,35 +1,25 @@
 """Estação do vendedor: um único lugar para cada posto.
 
-Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power' | 'live' | 'energy' |
-'payments'). A tela do posto leva a Dados da estação, Conectores (pontos, edição e vincular outra tela), Potência
-por conector, Tarifa (``tariffs``: tarifa base, por horário e por demanda) e às páginas de operação de
-``station_ops``: Ao vivo, Energia do estabelecimento e Pagamentos (teste), estas duas só quando a API manda os
-campos do posto. Nome, endereço e status usam ``PATCH stations``; a
-localização vem do endereço (sem latitude/longitude na tela). A página de potência edita o teto do posto
-(``PATCH stations``: ``max_power_kw``, ``power_limit_notify``) e o limite de cada conector
-(``PATCH connectors``: ``power_limit_kw``). ``power_kw`` é a potência nominal do carregador e nunca é
-alterada aqui. A divisão do teto entre os conectores usa ``chargegrid_core.power`` (a mesma regra da API),
-recalculada ao vivo enquanto os controles se movem.
+Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'; ``page='power'``
+aceita ``section``/``connector_id``, ver ``station_power``). A tela do posto leva a Dados da estação
+(nome, endereço, status e o totem de autoatendimento), Conectores (pontos, edição e vincular outra tela),
+Potência (limite contratado, rebalanceamento, loja SIMULADA e cada conector) e Tarifa (``tariffs``).
+Nome, endereço, status e totem usam ``PATCH stations``; a localização vem do endereço (sem
+latitude/longitude na tela). ``power_kw`` é a potência nominal do carregador e nunca é alterada aqui.
 """
 
 
 import asyncio
-from decimal import Decimal
 
 import flet as ft
 
 from chargegrid_core import power as power_rules
-from chargegrid_core.formatting import kwh
 
 from ..api_client import ApiError
+from ..services import site_power
 from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
 from . import station_ops
-
-NEXT_START_NOTE = ('Recargas em andamento mantêm a potência com que começaram; '
-                   'os novos limites valem a partir da próxima recarga.')
-SHARE_NOTE = ('Se a soma dos conectores passar do limite do posto, a potência é dividida '
-              'proporcionalmente (mínimo de 1,4 kW por conector).')
 
 
 def _street(address):
@@ -50,7 +40,10 @@ def _live_points(station):
 
 
 def power_summary(station, points=None):
-    """Subtítulo do menu: ``Limite do posto: 80 kW · CCS2: 60 kW · Tipo 2: 22 kW``."""
+    """Subtítulo do menu: ``Limite 75 kW (padrão) · rebalanceamento ligado``; API sem o rebalanceamento:
+    ``Limite do posto: 80 kW · CCS2: 60 kW · Tipo 2: 22 kW``."""
+    if site_power.has_rebalance(station):
+        return site_power.menu_subtitle(station)
     points = _live_points(station) if points is None else points
     parts = list(dict.fromkeys(
         f"{point.get('connector_type')}: "
@@ -111,30 +104,15 @@ async def _load(app, station_id):
     return station, station_code(items, station_id)
 
 
-async def build(app, station_id=None, page=None, **params):
+async def build(app, station_id=None, page=None, section=None, connector_id=None, **params):
     if not station_id:
         from . import operator
         return await operator.build(app)
     prefetch = getattr(app.api, 'prefetch', None)
-    if prefetch is not None:
-        # Dados da subpágina em paralelo com o posto (a página só precisa do id para pedi-los).
-        if page == 'live':
-            prefetch('owner/live', {'station_id': station_id})
-            prefetch('owner/alerts', {'station_id': station_id})
-        elif page == 'energy':
-            prefetch(f'stations/{station_id}/power')
+    if prefetch is not None and page == 'power':
+        prefetch(f'stations/{station_id}/power')  # em paralelo com o posto (a página só precisa do id)
     station, code = await _load(app, station_id)
     if page == 'data':
-        return _data_page(app, station, code)
-    if page == 'power':
-        return _power_page(app, station)
-    if page == 'connectors':
-        return _connectors_page(app, station)
-    if page == 'live':
-        return await station_ops.live_page(app, station)
-    if page == 'energy':
-        return await station_ops.energy_page(app, station)
-    if page == 'payments':
         config = None
         if (station_ops.has_kiosk(station) and not station_ops.account_presentation(app)
                 and station_ops.server_kiosk_status(station, False) is None):
@@ -142,7 +120,12 @@ async def build(app, station_id=None, page=None, **params):
             # A API com ``kiosk_status`` no posto já decide; só a antiga precisa da consulta.
             from ..services import payments
             config = await payments.config(app, refresh=True)
-        return station_ops.payments_page(app, station, config)
+        return _data_page(app, station, code, config)
+    if page == 'power':
+        from . import station_power
+        return await station_power.build(app, station, section=section, connector_id=connector_id)
+    if page == 'connectors':
+        return _connectors_page(app, station)
     return _main_page(app, station, code)
 
 
@@ -152,6 +135,12 @@ def _connectors_line(points):
     live = sum(1 for point in points if point.get('active') is not False)
     plural = 's' if len(points) != 1 else ''
     return f"{len(points)} ponto{plural} · {live} publicado{'s' if live != 1 else ''} · editar e vincular outra tela"
+
+
+def _data_subtitle(station):
+    if station_ops.has_kiosk(station):
+        return f"Nome, endereço, status e totem ({'ligado' if station.get('kiosk_mode') else 'desligado'})"
+    return 'Nome, endereço e status'
 
 
 def _main_page(app, station, code):
@@ -165,17 +154,11 @@ def _main_page(app, station, code):
                    design.txt(_street(station.get('address')), 11, 'regular', theme.GRAY_TEXT)], spacing=9),
         ft.Container(height=19),
         ft.Column([
-            menu_row('Dados da estação', 'Nome, endereço e status', ft.Icons.EDIT_OUTLINED, go('data')),
+            menu_row('Dados da estação', _data_subtitle(station), ft.Icons.EDIT_OUTLINED, go('data')),
             menu_row('Conectores', _connectors_line(points), ft.Icons.EV_STATION_OUTLINED, go('connectors')),
-            menu_row('Potência por conector', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
+            menu_row('Potência', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
-            menu_row('Ao vivo', 'Pontos agora, potência aplicada e vaga após a recarga', ft.Icons.SENSORS,
-                     go('live')),
-            *([menu_row('Energia do estabelecimento', station_ops.energy_subtitle(station),
-                        ft.Icons.ELECTRICAL_SERVICES, go('energy'))] if station_ops.has_energy(station) else []),
-            *([menu_row('Pagamentos · teste', station_ops.payments_subtitle(station), ft.Icons.CREDIT_CARD,
-                        go('payments'))] if station_ops.has_payments(station) else []),
         ], spacing=29),
         ft.Container(height=18),
         chatbot_button(app, 38), gap=14)
@@ -221,13 +204,13 @@ def _connectors_page(app, station):
         gap=16, gutter=3)
 
 
-def _data_page(app, station, code):
+def _data_page(app, station, code, payments_config=None):
     sid = station['id']
     name = design.input_field(station.get('name') or '')
     address = design.input_field(station.get('address') or '')
     ident = design.input_field(code, read_only=True)
     state = {'active': station.get('active', True), 'saved': (station.get('name'), station.get('address'))}
-    holder = ft.Container()
+    holder = ft.Container(data='data-status')
 
     chosen = {}
 
@@ -251,7 +234,9 @@ def _data_page(app, station, code):
                 body.update({'latitude': str(lat), 'longitude': str(lng)})
         if not body:
             return
-        await app.api.request('PATCH', f'stations/{sid}', body)
+        saved = await app.api.request('PATCH', f'stations/{sid}', body)
+        if isinstance(saved, dict):  # status novo muda o totem (estação inativa = indisponível)
+            station.update({key: saved[key] for key in ('active', 'kiosk_status') if key in saved})
         state['saved'] = current
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
@@ -276,13 +261,17 @@ def _data_page(app, station, code):
             app.notice(str(exc))
             return
         state['active'] = active
+        station['active'] = active
         draw()
+        if redraw_kiosk:
+            redraw_kiosk()
         app.page.update()
 
     def draw():
         holder.content = design.segmented([('on', 'Ativa'), ('off', 'Inativa')],
                                           'on' if state['active'] else 'off', choose, height=37.5)
     draw()
+    kiosk, redraw_kiosk = station_ops.kiosk_control(app, station, payments_config)
     name.on_blur = app.action(blur)
     address.on_blur = app.action(blur)
     name.on_submit = app.action(blur)
@@ -295,219 +284,6 @@ def _data_page(app, station, code):
                                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH), gap=14),
             design.labeled('Identificador', _round(ident), gap=14),
             ft.Container(design.labeled('Status', holder, gap=5, strong=False), margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
+            *([kiosk] if kiosk else []),
         ], spacing=15), margin=ft.Margin(left=0, top=16, right=0, bottom=0)),
         gap=16, gutter=3)
-
-
-def _participates(point):
-    return point.get('active') is not False and not point.get('retired')
-
-
-def _kw(value):
-    return power_rules.to_kw(value)
-
-
-def _effective_note(allocated, rating):
-    if allocated['limited_by'] == power_rules.LIMITED_BY_STATION:
-        return 'limitado pelo posto'
-    if allocated['limited_by'] == power_rules.LIMITED_BY_PORT:
-        return 'limite do conector'
-    return 'potência máxima' if allocated['effective_kw'] >= rating else ''
-
-
-def _value_row(value, size=36):
-    unit = design.txt('kW', 14, 'semibold', theme.GRAY_TEXT)
-    return ft.Row([value, ft.Container(unit, margin=ft.Margin(left=0, top=size * 0.28, right=0, bottom=0))],
-                  spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-
-def _slider(value, low, high, on_change, data):
-    return ft.Slider(value=float(value), min=float(low), max=float(max(high, low + 1)),
-                     active_color=theme.BTN_PRIMARY, inactive_color=theme.SEGMENT_OFF, thumb_color=theme.BTN_PRIMARY,
-                     data=data, on_change=on_change, padding=0)
-
-
-def _snap(value, low, high):
-    """Valor do controle em kW inteiros (o piso de 1,4 kW fica exato)."""
-    number = power_rules.to_kw(round(float(value))) or low
-    return max(low, min(high, number))
-
-
-def _power_page(app, station):
-    """Limite do posto + limite de cada conector, com a divisão recalculada ao vivo."""
-    sid = station['id']
-    points = _live_points(station)
-    participants = [point for point in points if _participates(point)]
-    total_rating = sum((_kw(point.get('power_kw')) or 0 for point in participants), Decimal(0))
-    floor_total = sum((power_rules.floor_for(point.get('power_kw')) for point in participants), Decimal(0))
-    saved = {'cap': _kw(station.get('max_power_kw')), 'notify': bool(station.get('power_limit_notify')),
-             'limits': {point['id']: _kw(point.get('power_limit_kw')) for point in points}}
-    state = {'cap': saved['cap'], 'notify': saved['notify'], 'limits': dict(saved['limits'])}
-    views = {}
-
-    def allocation():
-        rows = [{**point, 'power_limit_kw': state['limits'].get(point['id'])} for point in points]
-        return power_rules.allocate(rows, state['cap'])
-
-    cap_value = design.txt('', 36, 'bold')
-    cap_caption = design.txt('', 11, 'regular', theme.GRAY_TEXT)
-    allocated_text = design.txt('', 11.5, 'semibold')
-    bar = ft.ProgressBar(value=0, color=theme.BTN_PRIMARY, bgcolor=theme.SEGMENT_OFF, bar_height=8, border_radius=4)
-
-    def refresh(update=True):
-        result = allocation()
-        cap = state['cap']
-        if cap is None:
-            cap_value.value = power_rules.kw_text(total_rating)
-            cap_caption.value = 'Sem limite: cada conector usa o próprio limite.'
-        else:
-            cap_value.value = power_rules.kw_text(cap)
-            cap_caption.value = ('Dividido entre os conectores ativos.' if result['shared']
-                                 else 'Os conectores cabem no limite do posto.')
-        top = cap if cap is not None else total_rating
-        allocated_text.value = (f"Alocado: {power_rules.kw_text(result['allocated_kw'])} de "
-                                f"{power_rules.kw_text(top)} kW")
-        bar.value = float(min(1, result['allocated_kw'] / top)) if top else 0
-        for point in points:
-            view = views.get(point['id'])
-            if not view:
-                continue
-            allocated = result['connectors'][point['id']]
-            rating = _kw(point.get('power_kw')) or Decimal(0)
-            limit = allocated['requested_kw']
-            view['value'].value = power_rules.kw_text(limit)
-            if not _participates(point):
-                view['effective'].value = 'Conector inativo: fica fora da divisão do posto.'
-                view['effective'].color = theme.GRAY_TEXT
-                continue
-            note = _effective_note(allocated, rating)
-            view['effective'].value = (f"Efetivo: {power_rules.kw_text(allocated['effective_kw'])} kW"
-                                       + (f' ({note})' if note else ''))
-            view['effective'].color = theme.RED if allocated['limited_by'] == power_rules.LIMITED_BY_STATION \
-                else theme.TEXT_COLOR
-        if update:
-            app.page.update()
-
-    async def cap_changed(event):
-        value = _snap(event.control.value, floor_total or power_rules.FLOOR_KW, total_rating)
-        state['cap'] = None if value >= total_rating else value
-        refresh()
-
-    async def notify_changed(event):
-        state['notify'] = bool(event.control.value)
-
-    def port_changed(point):
-        rating = _kw(point.get('power_kw')) or Decimal(0)
-        low = power_rules.floor_for(rating)
-
-        async def handler(event):
-            value = _snap(event.control.value, low, rating)
-            state['limits'][point['id']] = None if value >= rating else value
-            refresh()
-        return handler
-
-    cap_slider = _slider(state['cap'] if state['cap'] is not None else total_rating,
-                         floor_total or power_rules.FLOOR_KW, total_rating, cap_changed, 'station_power')
-    notify = ft.Switch(value=state['notify'], on_change=notify_changed, data='power_notify',
-                       active_color=theme.RED)
-    station_card = design.card_box(ft.Column([
-        design.txt('Potência total do posto', 12, 'regular', theme.GRAY_TEXT),
-        _value_row(cap_value),
-        cap_slider,
-        ft.Container(height=4),
-        ft.Row([allocated_text], alignment=ft.MainAxisAlignment.START),
-        bar,
-        cap_caption,
-        design.txt(SHARE_NOTE, 10.5, 'regular', theme.GRAY_TEXT),
-        ft.Container(height=2),
-        ft.Row([design.txt('Notificar quando o limite estiver em uso', 12.5, 'semibold', expand=True), notify],
-               vertical_alignment=ft.CrossAxisAlignment.CENTER),
-    ], spacing=6), padding=ft.Padding(left=16, right=16, top=17, bottom=12))
-    controls = [ft.Container(ft.Column([design.txt('Limite do posto', 14.6, 'bold'), station_card], spacing=14),
-                             margin=ft.Margin(left=0, top=0, right=0, bottom=12))]
-    if not points:
-        controls.append(design.txt('Nenhum conector vinculado a esta estação.', 12, 'regular', theme.GRAY_TEXT))
-    for index, point in enumerate(points, 1):
-        controls.append(_port_card(point, index, state, views, port_changed(point)))
-    controls.append(design.txt(NEXT_START_NOTE, 10.5, 'regular', theme.GRAY_TEXT))
-    refresh(update=False)
-
-    async def save():
-        failures, done = [], []
-        body = {}
-        if state['cap'] != saved['cap']:
-            body['max_power_kw'] = None if state['cap'] is None else float(state['cap'])
-        if state['notify'] != saved['notify']:
-            body['power_limit_notify'] = state['notify']
-        changed = [point for point in points if state['limits'].get(point['id']) != saved['limits'].get(point['id'])]
-        if not body and not changed:
-            app.notice('Nenhuma alteração para salvar.')
-            return
-        if body:
-            try:
-                await app.api.request('PATCH', f'stations/{sid}', body)
-                saved['cap'], saved['notify'] = state['cap'], state['notify']
-                done.append('limite do posto')
-            except ApiError as exc:
-                failures.append(f'Limite do posto: {exc}')
-        for index, point in enumerate(points, 1):
-            if point not in changed:
-                continue
-            limit = state['limits'].get(point['id'])
-            name = f"{point.get('connector_type') or 'Conector'} - Conector {index:02d}"
-            try:
-                await app.api.request('PATCH', f"connectors/{point['id']}",
-                                      {'power_limit_kw': None if limit is None else float(limit)})
-                saved['limits'][point['id']] = limit
-                done.append(name)
-            except ApiError as exc:
-                failures.append(f'{name}: {exc}')
-        if failures:
-            prefix = f"Salvo: {', '.join(done)}. " if done else ''
-            app.notice(prefix + 'Não salvo: ' + ' | '.join(failures))
-        else:
-            if hasattr(app, 'mark_saved'):
-                app.mark_saved()
-            app.notice('Limites de potência salvos.')
-
-    async def restore():
-        state['cap'] = None
-        state['limits'] = {key: None for key in state['limits']}
-        cap_slider.value = float(total_rating)
-        for point in points:
-            view = views.get(point['id'])
-            if view:
-                view['slider'].value = float(_kw(point.get('power_kw')) or 0)
-        refresh()
-        app.notice('Padrão restaurado: sem limites. Toque em Salvar limites para aplicar.')
-
-    footer = [ft.Row([
-        design.secondary_button('Restaurar padrão', app.action(restore), height=50, expand=True),
-        design.primary_button('Salvar limites', app.action(save), height=50, expand=True),
-    ], spacing=12)]
-    return design.page(heading(app, 'Potência por conector'), ft.Container(height=3), *controls, gap=14, gutter=5,
-                       footer=footer)
-
-
-def _port_card(point, index, state, views, on_change):
-    kind = point.get('connector_type') or 'Conector'
-    rating = _kw(point.get('power_kw')) or Decimal(0)
-    current = state['limits'].get(point['id']) or rating
-    value = design.txt(power_rules.kw_text(current), 36, 'bold')
-    effective = design.txt('', 12, 'semibold')
-    slider = _slider(current, power_rules.floor_for(rating), rating, on_change, 'power')
-    views[point['id']] = {'value': value, 'effective': effective, 'slider': slider}
-    energy = point.get('energy_kwh_total')
-    lines = [design.txt(f'Potência máxima do carregador: {power_rules.kw_text(rating)} kW', 11.5, 'regular',
-                        theme.GRAY_TEXT)]
-    if energy is not None:
-        lines.append(design.txt(f'Energia entregue: {kwh(energy, 1)}', 11.5, 'regular', theme.GRAY_TEXT))
-    card = design.card_box(ft.Column([
-        *lines,
-        ft.Container(height=6),
-        design.txt('Limite do conector', 12, 'regular', theme.GRAY_TEXT),
-        _value_row(value),
-        slider,
-        effective], spacing=3), padding=ft.Padding(left=16, right=16, top=17, bottom=17))
-    return ft.Container(ft.Column([design.txt(f'{kind} - Conector {index:02d}', 14.6, 'bold'), card], spacing=14),
-                        margin=ft.Margin(left=0, top=0, right=0, bottom=12))

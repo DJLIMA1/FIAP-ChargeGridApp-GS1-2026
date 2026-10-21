@@ -52,6 +52,7 @@ def fake_app(profile, routes):
     app = PollApp()
     app.api = FakeApi(routes)
     app.profile = dict(profile)
+    app.back = lambda event=None: None
     return app
 
 
@@ -155,48 +156,57 @@ class AccountModeSyncTests(StorageCase):
         await app.api.close()
 
 
-# ---------------------------------------------------------------- totem do posto (vendedor)
+# ---------------------------------------------------------------- totem do posto (vendedor, em Dados da estação)
+def segment(screen, holder, label):
+    """``on_click`` da opção ``label`` (Ligado/Desligado) do controle segmentado ``holder``."""
+    box = by_data(screen, holder)
+    return next(item.on_click for item in descendants(box)
+                if isinstance(item, ft.Container) and item.on_click and texts(item) == label)
+
+
 class KioskSwitchTests(StorageCase):
     def test_status_follows_the_account_mode(self):
         station = {'id': 's1', 'active': True, 'kiosk_mode': True}
         simulated = station_ops.kiosk_status(station, True, {'enabled': False})
         self.assertEqual((simulated['method'], simulated['label'], simulated['reason']), ('simulated', 'SIMULADO', None))
+        self.assertEqual(simulated['text'], 'Pagamento simulado (Modo apresentação)')
         stripe = station_ops.kiosk_status(station, False, {'enabled': True})
-        self.assertEqual((stripe['method'], stripe['label']), ('stripe', 'TESTE'))
+        self.assertEqual((stripe['method'], stripe['label'], stripe['text']), ('stripe', 'TESTE', 'Pagamento: Stripe (teste)'))
         missing = station_ops.kiosk_status(station, False, {'enabled': False})
         self.assertEqual((missing['enabled'], missing['reason']), (False, 'payments_unavailable'))
-        self.assertIn('payments_unavailable', missing['text'])
+        self.assertEqual(missing['text'], 'Indisponível: pagamentos Stripe não configurados no servidor')
         off = station_ops.kiosk_status({**station, 'active': False}, True)
-        self.assertEqual(off['reason'], 'point_disabled')
+        self.assertEqual((off['reason'], off['text']), ('point_disabled', 'Indisponível: estação inativa'))
 
-    def test_menu_entry_and_subtitle(self):
-        self.assertTrue(station_ops.has_payments({'kiosk_mode': False}))
+    def test_kiosk_field_detection(self):
+        self.assertTrue(station_ops.has_kiosk({'kiosk_mode': False}))
         self.assertFalse(station_ops.has_kiosk({'kiosk_payments': False}))
-        self.assertEqual(station_ops.payments_subtitle({'kiosk_payments': True, 'kiosk_mode': True}),
-                         'QR do painel ligado · Totem ligado')
+        for removed in ('has_payments', 'payments_subtitle', 'payments_page', 'kiosk_section'):
+            self.assertFalse(hasattr(station_ops, removed))
 
-    async def test_switch_patches_kiosk_mode_and_shows_the_method(self):
+    async def test_switch_in_station_data_patches_kiosk_mode_and_shows_the_method(self):
         app = await demo_app()
         vehicle_state.set_presentation_mode(app, False)
         station = (await app.api.request('GET', 'operator/stations'))['items'][0]
         self.assertIs(station['kiosk_mode'], False)
-        screen = await station_admin.build(app, station_id=station['id'], page='payments')
-        copy = texts(screen)
-        self.assertIn('Totem de autoatendimento', copy)
-        self.assertIn('Ao liga', by_data(screen, 'kiosk-status').value)
-        self.assertIn('Stripe (teste)', by_data(screen, 'kiosk-status').value)
-        self.assertIn('segue o Modo apresentação da sua conta', by_data(screen, 'kiosk-follows').value)
-        switch = by_data(screen, 'kiosk_mode')
-        switch.value = True
-        await switch.on_change(SimpleNamespace(control=switch))
+        menu = await station_admin.build(app, station_id=station['id'])
+        self.assertIn('Nome, endereço, status e totem (desligado)', texts(menu))
+        screen = await station_admin.build(app, station_id=station['id'], page='data')
+        self.assertIn('Totem de autoatendimento', texts(screen))
+        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento: Stripe (teste)')
+        await segment(screen, 'kiosk_mode', 'Ligado')(None)
         self.assertEqual(app.notices[-1], 'Totem de autoatendimento ligado')
         self.assertTrue((await app.api.request('GET', f"stations/{station['id']}"))['kiosk_mode'])
-        self.assertIn('Totem ligado', by_data(screen, 'kiosk-status').value)
+        # Estação inativa: o totem fica indisponível (motivo em uma linha).
+        await segment(screen, 'data-status', 'Inativa')(None)
+        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Indisponível: estação inativa')
+        await segment(screen, 'data-status', 'Ativa')(None)
+        await segment(screen, 'kiosk_mode', 'Desligado')(None)
+        self.assertEqual(app.notices[-1], 'Totem de autoatendimento desligado')
         # Conta em Modo apresentação: o totem usa o pagamento simulado.
         app.profile['presentation_mode'] = True
-        screen = await station_admin.build(app, station_id=station['id'], page='payments')
-        self.assertIn('SIMULADO', texts(screen))
-        self.assertIn('Pagamento simulado', by_data(screen, 'kiosk-status').value)
+        screen = await station_admin.build(app, station_id=station['id'], page='data')
+        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento simulado (Modo apresentação)')
         await app.api.close()
 
     async def test_unavailable_without_stripe_and_no_optimistic_update(self):
@@ -205,21 +215,26 @@ class KioskSwitchTests(StorageCase):
             ('PATCH', 'stations/s1'): ApiError('Sem conexão', 0, 'network_error'),
         })
         app.api.request = AsyncMock(wraps=app.api.request)
-        station = {'id': 's1', 'name': 'Posto', 'active': True, 'kiosk_mode': False, 'connectors': []}
+        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A', 'active': True, 'kiosk_mode': False,
+                   'connectors': []}
         with patch.object(station_admin, '_load', AsyncMock(return_value=(station, 'CG-1'))):
-            screen = await station_admin.build(app, station_id='s1', page='payments')
-        status = by_data(screen, 'kiosk-status').value
-        self.assertIn('payments_unavailable', status)
-        switch = by_data(screen, 'kiosk_mode')
-        switch.value = True
-        await switch.on_change(SimpleNamespace(control=switch))
-        self.assertFalse(switch.value)
+            screen = await station_admin.build(app, station_id='s1', page='data')
+        self.assertEqual(by_data(screen, 'kiosk-status').value,
+                         'Indisponível: pagamentos Stripe não configurados no servidor')
+        await segment(screen, 'kiosk_mode', 'Ligado')(None)
+        self.assertIs(station['kiosk_mode'], False)
         self.assertIn('Totem não alterado', app.notices[-1])
+        selected = [texts(item) for item in descendants(by_data(screen, 'kiosk_mode'))
+                    if isinstance(item, ft.Container) and item.on_click and item.bgcolor]
+        self.assertEqual(selected, ['Desligado'])  # sem atualização otimista
 
     async def test_hidden_on_old_api(self):
-        app = PollApp()
-        screen = station_ops.payments_page(app, {'id': 's1', 'kiosk_payments': False})
+        app = fake_app({**OWNER}, {})
+        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A', 'active': True, 'connectors': []}
+        with patch.object(station_admin, '_load', AsyncMock(return_value=(station, 'CG-1'))):
+            screen = await station_admin.build(app, station_id='s1', page='data')
         self.assertIsNone(by_data(screen, 'kiosk_mode'))
+        self.assertNotIn('Totem', texts(screen))
 
     def test_server_kiosk_status_wins_unless_the_account_mode_changed(self):
         station = {'id': 's1', 'active': True, 'kiosk_mode': True,
@@ -238,14 +253,14 @@ class KioskSwitchTests(StorageCase):
         off = {**station, 'kiosk_status': {'method': None, 'label': None, 'reason': 'point_disabled'}}
         self.assertEqual(station_ops.kiosk_status(off, True)['reason'], 'point_disabled')
 
-    async def test_payments_page_skips_payments_config_when_the_api_decides(self):
+    async def test_data_page_skips_payments_config_when_the_api_decides(self):
         app = fake_app({**OWNER, 'presentation_mode': False}, {('GET', 'payments/config'): {'enabled': True}})
         app.api.request = AsyncMock(wraps=app.api.request)
-        station = {'id': 's1', 'name': 'Posto', 'active': True, 'kiosk_mode': True, 'connectors': [],
-                   'kiosk_status': {'method': None, 'label': None, 'reason': 'payments_unavailable'}}
+        station = {'id': 's1', 'name': 'Posto', 'address': 'Rua A', 'active': True, 'kiosk_mode': True,
+                   'connectors': [], 'kiosk_status': {'method': None, 'label': None, 'reason': 'payments_unavailable'}}
         with patch.object(station_admin, '_load', AsyncMock(return_value=(station, 'CG-1'))):
-            screen = await station_admin.build(app, station_id='s1', page='payments')
-        self.assertIn('payments_unavailable', by_data(screen, 'kiosk-status').value)
+            screen = await station_admin.build(app, station_id='s1', page='data')
+        self.assertIn('Indisponível', by_data(screen, 'kiosk-status').value)
         called = [call.args[:2] for call in app.api.request.await_args_list]
         self.assertNotIn(('GET', 'payments/config'), called)
 

@@ -498,31 +498,6 @@ class NotificationTests(unittest.IsolatedAsyncioTestCase):
         await task
 
 
-class LivePageTests(unittest.IsolatedAsyncioTestCase):
-    async def test_live_and_alerts_load_together_and_alerts_keep_refreshing_on_the_poll(self):
-        from chargegrid_app.screens import station_ops
-        from test_behavior import HandlerApp
-        started, release = [], asyncio.Event()
-
-        async def request(method, path, body=None, **kwargs):
-            started.append(path)
-            await release.wait()
-            return {'items': []}
-        app = HandlerApp()
-        app.api = SimpleNamespace(request=request, is_demo=False)
-        task = asyncio.ensure_future(station_ops.live_page(app, {'id': 's1'}))
-        await asyncio.sleep(0.01)
-        self.assertEqual(sorted(started), ['owner/alerts', 'owner/live'])  # em paralelo
-        release.set()
-        await task
-        update = app.poll[0] if isinstance(app.poll, tuple) else app.poll
-        started.clear()
-        for _ in range(10):
-            await update()
-        self.assertEqual(started.count('owner/live'), 10)
-        self.assertEqual(started.count('owner/alerts'), 1)  # a cada ~30 s, como antes
-
-
 class ScreenSpeedTests(unittest.IsolatedAsyncioTestCase):
     """Orçamento de chamadas em série por tela (API com 20 ms de latência simulada)."""
 
