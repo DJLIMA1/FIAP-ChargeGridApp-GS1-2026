@@ -25,11 +25,13 @@ from ...service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
     device_for,
+    lock_screen_group,
     new_public_code,
     operator,
     owned,
     reset_blocks_point,
     screen_for,
+    screen_group_key,
 )
 from .discovery import discover, normalize_connector
 
@@ -120,6 +122,11 @@ def create_station(data: StationInput, user=Depends(current_user), db=Depends(db
 @router.patch("/stations/{station_id}")
 def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_user), db=Depends(db_session)):
     obj = owned(db, user, station_id)
+    # A station edit locks every connector. Take its screen groups in stable order first,
+    # so reset retirement cannot wait on a child while this edit waits on the screen.
+    ids = db.scalars(select(Connector.id).where(Connector.station_id == obj.id)).all()
+    for root in sorted({screen_group_key(db, point_id) for point_id in ids}):
+        lock_screen_group(db, root)
     points = db.scalars(
         select(Connector).where(Connector.station_id == obj.id).order_by(Connector.id).with_for_update()
     ).all()
@@ -167,6 +174,9 @@ def add_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_se
     if not point:
         fail("not_found", "Ponto não encontrado", 404)
     station = owned(db, user, point.station_id)
+    lock_screen_group(db, point.id)
+    if reset_blocks_point(db, point.id):
+        fail("reset_pending", "Aguarde a restauração da tela antes de adicionar carregadores", 409)
     # Trava a estação: dois "Adicionar carregador" seguidos não disputam o mesmo endereço.
     db.execute(select(Station.id).where(Station.id == station.id).with_for_update())
     screen = screen_for(db, device_for(db, point))
@@ -195,6 +205,7 @@ def add_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_se
 
 @router.patch("/connectors/{connector_id}")
 def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_user), db=Depends(db_session)):
+    lock_screen_group(db, connector_id)
     obj = db.scalar(select(Connector).where(Connector.id == connector_id).with_for_update())
     if not obj:
         fail("not_found", "Ponto não encontrado", 404)
