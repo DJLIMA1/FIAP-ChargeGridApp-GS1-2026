@@ -456,19 +456,30 @@ def _idle(link="absent"):
 HCA_LINK = {"model": "goodwe_hca_g2", "transport": "modbus_tcp", "address": 1, "host": "cg-hca-1.local"}
 
 
-def test_hca_link_screen_follows_the_api_link_and_reports_address_and_link():
+def test_every_connector_is_a_charger_the_screen_follows_the_api_address():
     device = Device(hca_link=True)
-    assert device.payload()["charger"]["model"] == "simulated_bench"  # sem link: relé interno
+    assert device.payload()["charger"]["model"] == "simulated_bench"  # API antiga: sem charger_link
     device.response(_idle(HCA_LINK))
     charger = device.payload()["charger"]
     assert charger["model"] == "goodwe_hca_g2" and charger["transport"] == "modbus_tcp"
     assert charger["address"] == 1 and charger["link"] == "online"
     assert (charger["min_power_w"], charger["max_power_w"], charger["step_w"]) == (1400, 7000, 100)
-    device.link_online = False
-    assert device.payload()["charger"]["link"] == "offline"
-    device.response(_idle(None))  # dono removeu o carregador
-    assert device.payload()["charger"]["model"] == "simulated_bench"
-    assert "address" not in device.payload()["charger"]
+    device.link_online = False  # sem resposta: a tela declara a simulação dela (limites de sempre)
+    charger = device.payload()["charger"]
+    assert charger["link"] == "offline" and charger["address"] == 1
+    assert charger["model"] == "simulated_bench" and charger["max_power_w"] == 7200
+    device.response(_idle({**HCA_LINK, "address": 2, "host": "cg-hca-2.local"}))  # dono trocou o endereço
+    assert device.payload()["charger"]["address"] == 2
+
+
+def test_without_a_charger_answering_the_screen_reports_the_address_offline():
+    device = Device()  # nenhum carregador simulado na rede
+    device.response(_idle(HCA_LINK))
+    charger = device.payload()["charger"]
+    assert device.link_address == 1 and charger["model"] == "simulated_bench"
+    assert charger["transport"] == "simulated" and charger["max_power_w"] == 7200
+    assert charger["address"] == 1 and charger["link"] == "offline"
+    assert "charger" not in Device(legacy=True, hca_link=True, hca_address=1).payload()
 
 
 def test_hca_link_ignores_invalid_links_and_keeps_address_with_old_api():
@@ -480,20 +491,20 @@ def test_hca_link_ignores_invalid_links_and_keeps_address_with_old_api():
         assert device.link_address is None
 
 
-def test_without_hca_link_the_screen_ignores_charger_link_and_legacy_never_reports_it():
-    device = Device()
-    device.response(_idle(HCA_LINK))
-    assert device.link_address is None and device.payload()["charger"]["model"] == "simulated_bench"
-    assert "charger" not in Device(legacy=True, hca_link=True, hca_address=1).payload()
+def _start(power_w=6000, identifier="command", version=2, session="session"):
+    body = response(version=version, identifier=identifier)
+    body["authorized"]["session"]["id"] = body["commands"][0]["session_id"] = session
+    body["commands"][0]["parameters"] = {"power_limit_w": power_w}
+    body["connector"] = {"charger_link": HCA_LINK}
+    return body
 
 
-def test_hca_start_drives_registers_and_unreachable_charger_stops_the_session():
+def test_online_charger_start_drives_registers_and_losing_it_stops_the_session():
     now = [0]
     device = Device(clock=lambda: now[0], hca_link=True, hca_address=1)
-    start = response()
-    start["commands"][0]["parameters"] = {"power_limit_w": 6000}
-    device.response(start)
-    assert device.state == "charging" and device.power_w == 6000
+    device.response(_start())
+    assert device.state == "charging" and device.power_w == 6000 and device.session_on_charger
+    assert device.transport is device.hca_transport
     assert device.transport.read(10029) == [60] and device.transport.read(10060) == [2]
     device.link_online = False
     now[0] = 5
@@ -502,9 +513,41 @@ def test_hca_start_drives_registers_and_unreachable_charger_stops_the_session():
     assert body["charger"]["link"] == "offline"
 
 
-def test_hca_start_fails_when_the_charger_is_unreachable():
-    device = Device(hca_link=True, hca_address=1)
-    device.link_online = False
-    device.response(response())
-    assert device.state != "charging"
-    assert device.acks[0]["status"] == "failed" and device.acks[0]["error"] == "charger_unreachable"
+def test_offline_charger_start_uses_the_screen_simulation_until_the_end():
+    now = [0]
+    device = Device(clock=lambda: now[0], hca_address=1)  # carregador não responde
+    writes = []
+    original = device.hca_transport.write
+    device.hca_transport.write = lambda address, value: (writes.append((address, value)), original(address, value))[1]
+    device.response(_start())
+    assert device.acks[0]["status"] == "applied" and device.state == "charging"
+    assert not device.session_on_charger and device.transport is None  # bancada interna
+    assert writes == []  # nada escrito no carregador
+    body = device.payload()
+    assert body["source"] == "simulated" and body["charger"]["link"] == "offline"
+    # O carregador aparece no meio: a sessão continua simulada (não troca de modo).
+    device.link_online = True
+    now[0] = 10
+    body = device.payload()
+    assert body["physical_state"] == "charging" and body["charger"]["link"] == "online"
+    assert body["charger"]["model"] == "simulated_bench"  # quem carrega é a simulação
+    assert not device.session_on_charger and writes == []
+    assert body["energy_wh"] > 0
+
+
+def test_charger_that_appears_later_is_used_by_the_next_charge():
+    now = [0]
+    device = Device(clock=lambda: now[0], hca_address=1)
+    device.response(_start(session="first"))
+    assert not device.session_on_charger
+    stop = response(version=3, identifier="stop")
+    stop["commands"][0].update(type="STOP", session_id="first")
+    stop["authorized"]["session"]["id"] = "first"
+    device.response(stop)
+    assert device.state == "stopped"
+    idle = _idle(HCA_LINK)
+    device.response(idle)
+    device.link_online = True  # carregador ligado/achado na rede
+    device.response(_start(power_w=5000, identifier="second-start", version=4, session="second"))
+    assert device.state == "charging" and device.session_on_charger
+    assert device.hca_transport.read(10060) == [2] and device.hca_transport.read(10029) == [50]

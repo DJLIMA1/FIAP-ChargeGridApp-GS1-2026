@@ -46,9 +46,12 @@ CAPABILITIES = ["set_power_v1"]
 # simulado continua conectado depois da parada, até ``unplug()`` (SIGUSR1 na linha de comando)
 # ou ``unplug_after`` segundos. Sem termos: desconecta ao parar, como antes.
 UNPLUG_AFTER_SECONDS = 120
-# Tela com carregador GoodWe HCA G2 externo (``--hca-link``): a API manda ``connector.charger_link``
-# ({model, transport, address, host}) e a tela reporta ``charger`` com address/link. O Modbus TCP
-# é SIMULADO aqui (registradores em memória, tools/edge/modbus_sim); nenhum hardware é acessado.
+# Todo conector é um carregador GoodWe HCA G2: a API manda ``connector.charger_link`` ({model,
+# transport, address, host}) e a tela reporta ``charger`` com address/link. Como no painel: no
+# START, carregador online → recarga por Modbus; offline → simulação interna da tela (link
+# "offline"). A sessão termina no modo em que começou. ``--hca-link`` = há um carregador
+# simulado respondendo no endereço. O Modbus TCP é SIMULADO aqui (registradores em memória,
+# tools/edge/modbus_sim); nenhum hardware é acessado.
 HCA_MODEL, HCA_TRANSPORT = "goodwe_hca_g2", "modbus_tcp"
 
 
@@ -112,14 +115,16 @@ class Device:
         self.legacy = legacy
         self.charger = charger
         self.transport = transport
-        # Carregador externo (só com ``hca_link``): endereço vindo da API (ou ``hca_address`` com API
-        # antiga, sem ``charger_link``) e se o carregador responde na rede local simulada.
+        # Carregador GoodWe do conector: endereço vindo da API (ou ``hca_address`` com API antiga,
+        # sem ``charger_link``) e se ele responde na rede local simulada (``hca_link``). A sessão
+        # guarda o modo do START (``session_on_charger``): Modbus ou simulação interna.
         self.base_charger, self.base_transport = charger, transport
-        self.hca_link = bool(hca_link) and not legacy
         self.hca_variant = hca_variant
+        self.hca_charger = self.hca_transport = None
         self.link_address = None
-        self.link_online = True
-        if self.hca_link and hca_address is not None:
+        self.link_online = bool(hca_link) and not legacy
+        self.session_on_charger = False
+        if not legacy and hca_address is not None:
             self.link_charger(hca_address)
         self.presence_code = None
         self.public_code = None
@@ -183,19 +188,17 @@ class Device:
         return self.charger.limits().max_power_w if self.charger else BENCH_POWER_W
 
     def link_charger(self, address):
-        """Liga a tela ao carregador ``address`` (1–247) ou volta ao relé interno (``None``)."""
+        """Endereço do carregador GoodWe do conector (1–247; ``None`` = API sem charger_link)."""
         if address == self.link_address:
             return
         self.link_address = address
-        if address is None:
-            self.charger, self.transport = self.base_charger, self.base_transport
-        else:
-            self.charger, self.transport = load_charger("goodwe-hca-g2", self.hca_variant)
+        self.hca_charger, self.hca_transport = (load_charger("goodwe-hca-g2", self.hca_variant)
+                                                if address is not None else (None, None))
 
     def read_charger_link(self, connector):
         """``connector.charger_link`` do sync. Ausente (API antiga): mantém o endereço atual.
         Durante a recarga o carregador não muda (a API também recusa a troca)."""
-        if not self.hca_link or "charger_link" not in connector or self.state == "charging":
+        if self.legacy or "charger_link" not in connector or self.state == "charging":
             return
         link = connector.get("charger_link")
         address = link.get("address") if isinstance(link, dict) else None
@@ -203,17 +206,34 @@ class Device:
                  and isinstance(address, int) and not isinstance(address, bool) and 1 <= address <= 247)
         self.link_charger(address if valid else None)
 
+    def charger_ready(self):
+        """Carregador do endereço respondendo agora: o próximo START usa Modbus."""
+        return self.link_address is not None and self.link_online
+
+    def choose_session_mode(self):
+        """No START: Modbus com o carregador online; senão a simulação interna (relé/bancada)."""
+        self.session_on_charger = self.charger_ready()
+        self.charger, self.transport = ((self.hca_charger, self.hca_transport) if self.session_on_charger
+                                        else (self.base_charger, self.base_transport))
+
     def charger_unreachable(self):
-        return self.link_address is not None and not self.link_online
+        """Recarga iniciada por Modbus e o carregador sumiu (a simulada nunca depende dele)."""
+        return self.session_on_charger and not self.link_online
 
     def charger_info(self):
+        """Como o painel: quem carrega (modo da sessão; fora dela, o do próximo START) e, com
+        endereço, ``address``/``link`` (offline = simulação da tela, com os limites dela)."""
+        via_charger = self.session_on_charger if self.state == "charging" else self.charger_ready()
+        if via_charger:
+            info = {**self.hca_charger.capability(), "transport": HCA_TRANSPORT}
+        elif self.base_charger:
+            info = {**self.base_charger.capability(), "transport": "simulated"}
+        else:
+            info = {"model": "simulated_bench", "transport": "simulated", "min_power_w": BENCH_MIN_POWER_W,
+                    "max_power_w": BENCH_POWER_W, "step_w": 100, "phases": 1}
         if self.link_address is not None:
-            return {**self.charger.capability(), "transport": HCA_TRANSPORT, "address": self.link_address,
-                    "link": "online" if self.link_online else "offline"}
-        if self.charger:
-            return {**self.charger.capability(), "transport": "simulated"}
-        return {"model": "simulated_bench", "transport": "simulated", "min_power_w": BENCH_MIN_POWER_W,
-                "max_power_w": BENCH_POWER_W, "step_w": 100, "phases": 1}
+            info.update(address=self.link_address, link="online" if self.link_online else "offline")
+        return info
 
     def install_power(self, power_w):
         """Instala o limite (W). Com adaptador, escreve os registradores e só confirma pela
@@ -288,7 +308,7 @@ class Device:
         if self.state != "charging":
             return
         if self.charger_unreachable():
-            # Carregador externo inalcançável: a tela para a sessão com segurança e reporta a falha.
+            # Recarga por Modbus e o carregador sumiu: a tela para a sessão com segurança e reporta a falha.
             self.stop("charger_unreachable")
             return
         # Só integra o tempo até o watchdog ou limite local.
@@ -383,9 +403,8 @@ class Device:
                     error = "unauthorized_session"
                 elif self.session_id:
                     error = "previous_session_requires_reconciliation"
-                elif self.charger_unreachable():
-                    error = "charger_unreachable"
                 else:
+                    self.choose_session_mode()
                     self.session_id = command["session_id"]
                     self.energy = 0
                     self.save()
@@ -466,11 +485,14 @@ class Device:
 
 
 def charger_text(device):
-    """`` carregador=1 goodwe_hca_g2 modbus_tcp (online)`` com carregador externo; vazio sem ele."""
+    """`` carregador=1 goodwe_hca_g2 modbus_tcp (SIMULADO, online) recarga=modbus``; vazio sem endereço."""
     if device.link_address is None:
         return ""
+    mode = ""
+    if device.state == "charging":
+        mode = " recarga=modbus" if device.session_on_charger else " recarga=simulacao_da_tela"
     return (f" carregador={device.link_address} {HCA_MODEL} {HCA_TRANSPORT} (SIMULADO, "
-            f"{'online' if device.link_online else 'offline'})")
+            f"{'online' if device.link_online else 'offline'}){mode}")
 
 
 def kiosk_text(device):
@@ -639,11 +661,11 @@ def main():
     parser.add_argument("--hca-fail-writes", type=int, default=0, help="Perde as N primeiras escritas (teste de ACK)")
     parser.add_argument("--legacy", action="store_true", help="Simula firmware 0.4.0 (sem SET_POWER)")
     parser.add_argument("--hca-link", action="store_true",
-                        help="Tela com carregador GoodWe HCA G2 externo (Modbus TCP SIMULADO): segue o "
-                             "connector.charger_link da API e reporta address/link; kill -USR2 <pid> alterna "
-                             "o carregador entre online e offline")
+                        help="Há um carregador GoodWe HCA G2 (Modbus TCP SIMULADO) respondendo no endereço do "
+                             "conector (connector.charger_link): o START usa Modbus. Sem ele, a tela carrega com "
+                             "a simulação interna e reporta link offline. kill -USR2 <pid> alterna online/offline")
     parser.add_argument("--hca-address", type=int, choices=range(1, 248), metavar="1-247", default=None,
-                        help="Com --hca-link: endereço usado enquanto a API não mandar charger_link (API antiga)")
+                        help="Endereço usado enquanto a API não mandar charger_link (API antiga)")
     parser.add_argument("--hca-offline", action="store_true", help="Com --hca-link: começa com o carregador inalcançável")
     parser.add_argument("--kiosk", action="store_true",
                         help="Totem 0.8.0: percorre oferta → orçamento → pedido → pagar → START → recarga → "
@@ -666,11 +688,11 @@ def main():
     device = Device(args.state, legacy=args.legacy, charger=charger, transport=transport,
                     unplug_after=args.unplug_after, hca_link=args.hca_link, hca_address=args.hca_address,
                     hca_variant=args.hca_model)
-    device.link_online = not args.hca_offline
-    if args.hca_link and hasattr(signal, "SIGUSR2"):
+    device.link_online = args.hca_link and not args.hca_offline and not args.legacy
+    if hasattr(signal, "SIGUSR2"):
         def toggle_link(*_):
             device.link_online = not device.link_online
-            print(f"Carregador externo simulado: {'online' if device.link_online else 'offline'}")
+            print(f"Carregador GoodWe simulado: {'online' if device.link_online else 'offline'}")
         signal.signal(signal.SIGUSR2, toggle_link)
         print(f"Alternar o carregador HCA simulado (online/offline): kill -USR2 {os.getpid()}")
     unplug_requested = []
