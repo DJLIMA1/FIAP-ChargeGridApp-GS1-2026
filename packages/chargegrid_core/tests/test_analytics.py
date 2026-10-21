@@ -152,6 +152,7 @@ def test_charger_offline_alert_keeps_the_station_online():
     kinds = [(alert["public_code"], alert["kind"]) for alert in alerts]
     assert kinds == [("A", "charger_offline"), ("C", "device_offline")]  # tela offline prevalece
     assert alerts[0]["title"] == "Carregador offline" and "carregador 2 não responde" in alerts[0]["detail"]
+    assert "a central da estação está online" in alerts[0]["detail"]
 
 
 def test_csv_export_neutralizes_formulas_and_keeps_numbers():

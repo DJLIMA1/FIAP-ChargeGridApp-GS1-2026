@@ -538,7 +538,7 @@ def charger_text(device):
         return ""
     mode = ""
     if device.state == "charging":
-        mode = " recarga=modbus" if device.session_on_charger else " recarga=simulacao_da_tela"
+        mode = " recarga=modbus" if device.session_on_charger else " recarga=simulacao_da_central"
     return (f" carregador={device.link_address} {HCA_MODEL} {HCA_TRANSPORT} (SIMULADO, "
             f"{'online' if device.link_online else 'offline'}){mode}")
 
@@ -739,7 +739,7 @@ def main():
     device.link_online = not args.hca_offline and not args.legacy
 
     def make_child(address):
-        print(f"Carregador adicional {address} desta tela (GoodWe HCA G2 SIMULADO, online)")
+        print(f"Carregador adicional {address} desta central (GoodWe HCA G2 SIMULADO, online)")
         return Device(f"{args.state}.charger-{address}.json", unplug_after=args.unplug_after,
                       hca_link=True if args.hca_link else None, hca_address=address,
                       hca_variant=args.hca_model, charger_address=address)

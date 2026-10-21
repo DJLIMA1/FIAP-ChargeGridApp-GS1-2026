@@ -417,8 +417,8 @@ def build_alerts(points: Iterable[Mapping], now: datetime, *, idle_hours: int = 
     ``public_code``, ``published`` (ponto e posto ativos), ``has_device``,
     ``online``, ``last_seen``, ``physical_state``, ``failed_commands``,
     ``last_session_at``, ``created_reference`` (opcional), ``retired`` e, opcionais,
-    ``charger_offline``/``charger_address`` (tela da estação online, carregador GoodWe sem resposta:
-    só este ponto; ``online`` aqui é o da tela).
+    ``charger_offline``/``charger_address`` (central da estação online, carregador GoodWe sem resposta:
+    só este ponto; ``online`` aqui é o da central).
     """
     alerts = []
     for point in points:
@@ -443,7 +443,7 @@ def build_alerts(points: Iterable[Mapping], now: datetime, *, idle_hours: int = 
             address = point.get("charger_address")
             alerts.append({**base, "kind": "charger_offline", "severity": "critical",
                            "title": "Carregador offline",
-                           "detail": f"{label}: a tela da estação está online, mas o carregador"
+                           "detail": f"{label}: a central da estação está online, mas o carregador"
                                      f"{f' {address}' if address else ''} não responde. Só este ponto fica indisponível.",
                            "at": None})
         if point.get("physical_state") == "fault":

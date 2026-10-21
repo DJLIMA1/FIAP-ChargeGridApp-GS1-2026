@@ -79,7 +79,7 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, point.station_id)
     if reset_blocks_point(db, point.id):
-        fail("point_retired", "Escaneie o novo QR da tela do ponto para criar outro ponto", 409)
+        fail("point_retired", "Escaneie o novo QR da central do ponto para criar outro ponto", 409)
     if device_for(db, point):
         fail("device_exists", "Ponto já tem dispositivo; revogue ou rotacione")
     key = secrets.token_urlsafe(32)
@@ -92,12 +92,12 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
 def _screen_only(obj):
     """Carregador adicional não tem chave nem firmware próprio: credencial e restauração são da tela."""
     if obj.parent_device_id is not None:
-        fail("charger_device", "Este carregador é comandado pela tela da estação; gerencie a tela", 409)
+        fail("charger_device", "Este carregador é comandado pela central da estação; gerencie a central", 409)
 
 
 def _idle_screen_group(db, obj):
     if screen_group_busy(db, obj):
-        fail("point_busy", "Encerre reservas/recargas dos carregadores antes de mudar a tela", 409)
+        fail("point_busy", "Encerre reservas/recargas dos carregadores antes de mudar a central", 409)
 
 
 @router.post("/devices/{device_id}/rotate-key")

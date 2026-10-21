@@ -48,7 +48,7 @@ def charger_device(db, screen, address):
     O próprio endereço da tela → a tela. Outro carregador do posto ligado a ela
     (``parent_device_id``) → a linha dele. Endereço sem carregador desta tela: 409."""
     if screen.parent_device_id is not None:
-        fail("unauthorized", "Só a tela sincroniza pelos carregadores", 401)
+        fail("unauthorized", "Só a central sincroniza pelos carregadores", 401)
     own = db.get(Connector, screen.connector_id)
     if own.charger_address == address:
         return screen
@@ -57,7 +57,7 @@ def charger_device(db, screen, address):
     child = db.scalar(select(Device).where(Device.connector_id == point.id, Device.revoked.is_(False))) \
         if point is not None else None
     if child is None or child.parent_device_id != screen.id:
-        fail("charger_not_linked", f"Nenhum carregador com endereço {address} ligado a esta tela", 409)
+        fail("charger_not_linked", f"Nenhum carregador com endereço {address} ligado a esta central", 409)
     return child
 
 
@@ -96,7 +96,7 @@ def sync(db, authenticated_device, data, *, screen=None):
         if screen.revoked or screen.key_hash != authenticated_key_hash or device.parent_device_id != screen.id:
             fail("unauthorized", "Chave revogada ou alterada", 401)
         if device.revoked:
-            fail("charger_not_linked", "Carregador desligado desta tela", 409)
+            fail("charger_not_linked", "Carregador desligado desta central", 409)
     elif device.revoked or device.key_hash != authenticated_key_hash:
         fail("unauthorized", "Chave revogada ou alterada", 401)
     was_offline = not online(device)

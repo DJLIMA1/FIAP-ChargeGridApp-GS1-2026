@@ -138,7 +138,7 @@ async def validation_error(request: Request, error: RequestValidationError):
             message = (
                 "Atualize o app e informe o código temporário #F exibido no posto."
                 if any(item["type"] == "missing" for item in presence_errors)
-                else "O código temporário deve ter #F e cinco números. Confira a tela do posto."
+                else "O código temporário deve ter #F e cinco números. Confira o código na central do posto."
             )
     code = "validation_error"
     if request.method == "PATCH" and any("charger_address" in item["loc"] for item in error.errors()):

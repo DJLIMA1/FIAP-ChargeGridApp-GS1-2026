@@ -176,12 +176,12 @@ def add_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_se
     station = owned(db, user, point.station_id)
     lock_screen_group(db, point.id)
     if reset_blocks_point(db, point.id):
-        fail("reset_pending", "Aguarde a restauração da tela antes de adicionar carregadores", 409)
+        fail("reset_pending", "Aguarde a restauração da central antes de adicionar carregadores", 409)
     # Trava a estação: dois "Adicionar carregador" seguidos não disputam o mesmo endereço.
     db.execute(select(Station.id).where(Station.id == station.id).with_for_update())
     screen = screen_for(db, device_for(db, point))
     if screen is None:
-        fail("screen_required", "Este ponto não tem tela vinculada. Vincule a tela pelo QR antes de "
+        fail("screen_required", "Este ponto não tem central vinculada. Vincule a central pelo QR antes de "
              "adicionar carregadores.", 409)
     base = db.get(Connector, screen.connector_id)
     used = db.scalars(select(Connector.charger_address).where(Connector.station_id == base.station_id)).all()
@@ -211,7 +211,7 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, obj.station_id)
     if data.active is True and reset_blocks_point(db, obj.id):
-        fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
+        fail("point_retired", "Ponto em restauração de fábrica; vincule a central novamente pelo QR", 409)
     if "charger_address" in data.model_fields_set and data.charger_address is None:
         # Todo conector é um carregador GoodWe: o endereço pode mudar, nunca ficar vazio.
         fail("invalid_charger_address", charger_link.EMPTY_ADDRESS_MESSAGE, 422)
