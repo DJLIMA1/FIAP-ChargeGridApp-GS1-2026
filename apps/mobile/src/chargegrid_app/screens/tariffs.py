@@ -25,9 +25,9 @@ from ..ui import design, theme
 from .station_admin import heading
 
 PAGES = {
-    'base': ('Tarifa base', 'Preço por kWh de cada conector, fora dos horários especiais e antes da demanda.'),
+    'base': ('Tarifa base', 'Preço por kWh de cada carregador, fora dos horários especiais e antes da demanda.'),
     'schedule': ('Tarifação por horário', 'Defina tarifas base diferentes por horário. Fora desses horários vale a '
-                                          'tarifa base de cada conector.'),
+                                          'tarifa base de cada carregador.'),
     'demand': ('Tarifa por demanda', 'O ChargeGrid ajusta o preço pela procura real do posto, como um app de '
                                      'corrida. Você define só o limite e quão rápido ele reage.'),
     'rotation': ('Taxa de permanência', 'Cobrada quando o carro continua conectado depois que a recarga '
@@ -42,7 +42,7 @@ LEVEL_COLORS = {'low': '#3B8B5A', 'normal': '#4A6FA5', 'high': '#C27C1E', 'very_
 REASON_COLORS = {'normal': '#3B8B5A', 'schedule': '#4A6FA5'}
 REFRESH_SECONDS = 30
 NEW_INTERVAL = {'start': '18:00', 'end': '21:00', 'days': [0, 1, 2, 3, 4], 'prices': {}}
-SCENARIOS = (  # simulação com 4 conectores
+SCENARIOS = (  # simulação com 4 carregadores
     ('Metade ocupado', {'in_use': 2, 'busy_15m': Decimal('0.5'), 'starts_60m': 2, 'baseline_60m': 2}),
     ('3 de 4 ocupados', {'in_use': 3, 'busy_15m': Decimal('0.7'), 'starts_60m': 3, 'baseline_60m': 2}),
     ('Lotado, procura em alta', {'in_use': 4, 'busy_15m': Decimal('0.9'), 'starts_60m': 6, 'baseline_60m': 2}),
@@ -228,7 +228,7 @@ def tariff_card(status, connectors, rules, expanded=False, on_toggle=None):
     body = [ft.Row([design.txt('Tarifa atual', 13.5, 'bold', expand=True), _pill(label, color)],
                    vertical_alignment=ft.CrossAxisAlignment.CENTER)]
     if not points:
-        body.append(design.txt('Nenhum conector neste posto.', 12, 'regular', theme.GRAY_TEXT))
+        body.append(design.txt('Nenhum carregador neste posto.', 12, 'regular', theme.GRAY_TEXT))
     elif len(pairs) == 1:
         base, price = next(iter(pairs))
         body += [design.txt(_per_kwh(price), 30, 'semibold'),
@@ -252,10 +252,10 @@ def tariff_card(status, connectors, rules, expanded=False, on_toggle=None):
 def _base_summary(connectors):
     prices = {Decimal(str(p['base_price_per_kwh'])) for p in _points(connectors)}
     if not prices:
-        return 'Nenhum conector'
+        return 'Nenhum carregador'
     if len(prices) == 1:
-        return f'{_per_kwh(next(iter(prices)))} · todos os conectores'
-    return f'De {svc.fmt_money(min(prices))} a {_per_kwh(max(prices))} por conector'
+        return f'{_per_kwh(next(iter(prices)))} · todos os carregadores'
+    return f'De {svc.fmt_money(min(prices))} a {_per_kwh(max(prices))} por carregador'
 
 
 def _schedule_summary(schedule):
@@ -368,7 +368,7 @@ def base_page(app, sid, data):
     message = design.txt('', 12, 'regular', theme.ERROR, visible=False)
     if not points:
         return _simple_page(app, title, description,
-                            [design.txt('Nenhum conector neste posto.', 12, 'regular', theme.GRAY_TEXT)], [],
+                            [design.txt('Nenhum carregador neste posto.', 12, 'regular', theme.GRAY_TEXT)], [],
                             _back(app, sid))
     rows, fields = _price_rows(points, {p['id']: p['base_price_per_kwh'] for p in points})
 
@@ -464,12 +464,12 @@ def demand_page(app, sid, data):
     simulate()
     how = _card('Como calculamos', *[
         design.txt(f'• {text}', 12, 'regular', theme.GRAY_TEXT) for text in (
-            'Ocupação dos conectores agora e a média dos últimos 15 minutos.',
+            'Ocupação dos carregadores agora e a média dos últimos 15 minutos.',
             'Recargas da última hora comparadas ao normal deste dia e horário.',
             'Reservas aguardando com o posto lotado.',
             'O acréscimo vale sobre a tarifa base do horário.',
             'O preço sobe em passos de 0,05× e nunca passa do seu limite.')], spacing=6)
-    simulation = _card('Simulação (4 conectores)', rows)
+    simulation = _card('Simulação (4 carregadores)', rows)
 
     def collect(enabled):
         percent = svc.parse_int(increase.value, minimum=0, maximum=100)
@@ -599,7 +599,7 @@ def interval_page(app, sid, data, index):
         if not state['days']:
             return fail('Escolha ao menos um dia.')
         if not points:
-            return fail('Cadastre um conector antes de definir horários.')
+            return fail('Cadastre um carregador antes de definir horários.')
         values = _read_prices(points, fields)
         if isinstance(values, str):
             return fail(values)
@@ -625,7 +625,7 @@ def interval_page(app, sid, data, index):
     if index != 'new':
         footer.append(design.secondary_button('Remover horário', app.action(remove), height=42))
     title = 'Novo horário' if index == 'new' else 'Editar horário'
-    return _simple_page(app, title, 'Escolha quando esta tarifa vale e o preço de cada conector.', fields_, footer,
+    return _simple_page(app, title, 'Escolha quando esta tarifa vale e o preço de cada carregador.', fields_, footer,
                         back)
 
 

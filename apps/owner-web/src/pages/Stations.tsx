@@ -3,20 +3,8 @@ import type { Station } from '../api/types'
 import { Icon } from '../components/Icon'
 import { Badge, EmptyState, ErrorBanner, PageHead, Skeleton } from '../components/ui'
 import { useFilters } from '../lib/filters'
+import { chargersLabel, stationSummary } from '../lib/charger'
 import { formatTariff, toNumber } from '../lib/format'
-
-function stationSummary(station: Station): { line: string; tone: 'green' | 'amber' | 'red' | 'gray' } {
-  const points = station.connectors.filter((c) => !c.retired)
-  if (!station.active) return { line: 'Inativa · oculta para motoristas', tone: 'gray' }
-  if (!points.length) return { line: 'Sem conectores vinculados', tone: 'amber' }
-  const online = points.filter((c) => c.online).length
-  const busy = points.filter((c) => ['charging', 'occupied', 'reserved'].includes(c.availability_status ?? '')).length
-  const problems = points.filter((c) => ['offline', 'fault'].includes(c.availability_status ?? '')).length
-  if (!online) return { line: 'Offline · nenhum conector respondendo', tone: 'red' }
-  const parts = [`Online · ${busy ? `${busy} de ${points.length} conectores em uso` : `${points.length} conector(es) livre(s)`}`]
-  if (problems) parts.push(`${problems} com problema`)
-  return { line: parts.join(' · '), tone: problems ? 'amber' : 'green' }
-}
 
 function baseTariff(station: Station): string {
   const prices = station.connectors.map((c) => toNumber(c.price_per_kwh)).filter((p): p is number => p !== null)
@@ -35,7 +23,7 @@ export default function Stations() {
     <>
       <PageHead
         title="Suas estações"
-        sub={stations.length ? `${active} de ${stations.length} ativas · ${connectors} conectores` : 'Gerencie dados, tarifas e comodidades de cada estação'}
+        sub={stations.length ? `${active} de ${stations.length} ativas · ${chargersLabel(connectors)}` : 'Gerencie dados, tarifas e comodidades de cada estação'}
       />
       {stationsError ? <ErrorBanner error={stationsError} onRetry={reloadStations} /> : null}
       {stationsLoading && !stations.length ? (
@@ -75,7 +63,7 @@ export default function Stations() {
               <div style={{ textAlign: 'right' }} className="desktop-tariff">
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{baseTariff(station)}</div>
                 <div className="dim" style={{ fontSize: 12 }}>
-                  {station.connectors.length} conector(es)
+                  {chargersLabel(station.connectors.filter((c) => !c.retired).length)}
                 </div>
               </div>
               <Icon name="chevronRight" size={20} className="dim" />

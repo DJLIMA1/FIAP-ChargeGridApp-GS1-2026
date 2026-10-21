@@ -540,7 +540,7 @@ def create_kiosk_payment(db, public_code, code_digits, amount_cents, request_bas
     connector = db.scalar(select(Connector).where(Connector.id == connector.id).with_for_update())
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state, "Ponto em uso ou indisponível agora")
+        fail_unavailable(state, "Ponto em uso ou indisponível agora", db=db, connector=connector)
     guest = guest_profile(db, connector)
     request = SimpleNamespace(mode="value", minutes=None, max_cost=billing.money(amount_cents), energy_kwh=None,
                               max_power_kw=None, coupon_code=None)

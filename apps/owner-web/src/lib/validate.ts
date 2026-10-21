@@ -42,6 +42,20 @@ export function validatePower(input: string): { value?: string; error?: string }
   return { value }
 }
 
+/**
+ * Limite do dono para o carregador (`power_limit_kw`): vazio = usa a potência nominal (`null`);
+ * senão maior que zero e até a nominal (`rating`, quando conhecida), como `power.validate_port_limit`.
+ */
+export function validatePowerLimit(input: string, rating?: number | null): { value?: string | null; error?: string } {
+  if (!input.trim()) return { value: null }
+  const value = parseDecimal(input)
+  if (value === null) return { error: 'Informe o limite em kW ou deixe vazio' }
+  if (Number(value) <= 0) return { error: 'O limite deve ser maior que zero' }
+  if (decimalPlaces(value) > 3) return { error: 'Use no máximo 3 casas decimais' }
+  if (rating !== null && rating !== undefined && Number(value) > rating) return { error: 'O limite não pode passar da potência nominal' }
+  return { value }
+}
+
 export function validateDuration(input: string): { value?: number; error?: string } {
   const text = input.trim()
   if (!/^\d+$/.test(text)) return { error: 'Informe minutos inteiros' }

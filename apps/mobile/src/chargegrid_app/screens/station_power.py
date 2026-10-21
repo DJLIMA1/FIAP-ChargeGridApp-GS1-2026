@@ -1,4 +1,4 @@
-"""Potência do posto (vendedor): limite contratado, rebalanceamento, loja SIMULADA e cada conector.
+"""Potência do posto (vendedor): limite contratado, rebalanceamento, loja SIMULADA e cada carregador.
 
 Rota ``station_admin`` com ``page='power'`` e ``section`` (None | 'site' | 'cap' | 'connector', este com
 ``connector_id``). Mesmo padrão da Tarifa: um cartão com o que vale agora e linhas de ajuste que abrem
@@ -7,7 +7,7 @@ subtelas simples (descrição, campos e Salvar no rodapé).
 * Cartão (``GET stations/{id}/power``, a cada 3 s): disponível para os carregadores, limite contratado
   (o do dono ou o padrão do tipo/porte), consumo da loja agora (SIMULADO) e potência dos carros.
 * Rebalanceamento: Ligado/Desligado (``PUT power-site``), ligado por padrão; muda só com a resposta.
-* Por conector: potência configurada e efetiva; a subtela edita ``power_limit_kw`` (``PATCH connectors``).
+* Por carregador: potência configurada e efetiva; a subtela edita ``power_limit_kw`` (``PATCH connectors``).
 * Ajustes: Limite contratado (valor, tipo e porte do estabelecimento; ``PUT power-site``) e Teto dos
   carregadores (``max_power_kw`` e aviso; ``PATCH stations``).
 
@@ -30,9 +30,9 @@ from .tariffs import _row, _save_button, entry_row
 
 CONNECTOR_ICON = '/design/icon_station_charge.svg'
 SITE_HELP = 'Potência máxima da instalação, loja incluída. Vazio usa o padrão do tipo de estabelecimento.'
-CAP_HELP = ('Soma máxima dos conectores deste posto. Acima dela a potência é dividida '
-            '(mínimo de 1,4 kW por conector).')
-CONNECTOR_HELP = 'Potência máxima que este conector entrega. O rebalanceamento pode reduzi-la enquanto houver outros carros.'
+CAP_HELP = ('Soma máxima dos carregadores deste posto. Acima dela a potência é dividida '
+            '(mínimo de 1,4 kW por carregador).')
+CONNECTOR_HELP = 'Potência máxima que este carregador entrega. O rebalanceamento pode reduzi-la enquanto houver outros carros.'
 FIXED_NOTE = 'Rebalanceamento desligado: recargas em andamento mantêm a potência com que começaram.'
 
 
@@ -158,8 +158,8 @@ def overview(app, station, view):
         controls += [card, ft.Column([design.labeled('Rebalanceamento', rebalance, gap=5, strong=False),
                                       design.txt(sp.REBALANCE_HELP, 11, 'regular', theme.GRAY_TEXT)], spacing=6,
                                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH)]
-    controls.append(design.section_label('Por conector'))
-    controls += connectors or [design.txt('Nenhum conector vinculado a esta estação.', 12, 'regular',
+    controls.append(design.section_label('Por carregador'))
+    controls += connectors or [design.txt('Nenhum carregador vinculado a esta estação.', 12, 'regular',
                                           theme.GRAY_TEXT)]
     controls.append(design.section_label('Ajustes'))
     if view is not None:
@@ -276,8 +276,8 @@ def cap_page(app, station):
     def draw():
         cap = state['cap']
         value.value = power_rules.kw_text(cap if cap is not None else total)
-        caption.value = ('Sem teto: cada conector usa a própria potência.' if cap is None else
-                         'Dividido entre os conectores ativos.' if total > cap else 'Os conectores cabem no teto.')
+        caption.value = ('Sem teto: cada carregador usa a própria potência.' if cap is None else
+                         'Dividido entre os carregadores ativos.' if total > cap else 'Os carregadores cabem no teto.')
         notify.content = design.segmented([(True, 'Ligado'), (False, 'Desligado')], state['notify'], set_notify,
                                           height=37.5)
 
@@ -350,7 +350,7 @@ def connector_page(app, station, point, index, view):
                               {'power_limit_kw': None if state['limit'] is None else float(state['limit'])})
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
-        app.notice('Potência do conector salva.')
+        app.notice('Potência do carregador salva.')
         await app.go('station_admin', station_id=sid, page='power')
 
     lines = [design.txt(f'Máximo do carregador: {sp.kw(rating)}', 11.5, 'regular', theme.GRAY_TEXT),

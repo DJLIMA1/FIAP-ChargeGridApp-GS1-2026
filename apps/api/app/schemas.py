@@ -145,6 +145,9 @@ class SyncInput(Input):
     capabilities: list[Annotated[str, StringConstraints(max_length=40)]] = Field(default_factory=list, max_length=10)
     applied_power_w: Decimal | None = Field(default=None, ge=0, le=1000000)
     charger: ChargerInfo | None = None
+    # Sync endereçado (tela com vários carregadores): este corpo é do carregador deste endereço
+    # da mesma estação, não do ponto da própria tela. Ausente = o ponto da tela (como antes).
+    charger_address: int | None = Field(default=None, ge=1, le=247, strict=True)
 
 
 class CouponInput(Input):

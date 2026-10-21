@@ -114,6 +114,28 @@ void testAckOnlyAfterReadback() {
     assert(link.start(2000, now, &applied) == charger::Error::Offline);
     assert(!link.online() && !link.expectRunning() && !client.device.relayClosed());
     assert(link.lastError() == charger::Error::Offline);
+    // Recusa só depois de kStartAttempts tentativas, cada uma pedindo resolução imediata.
+    assert(client.count("R 10032x1") == charger::kStartAttempts && client.urgent == charger::kStartAttempts);
+  }
+  {  // 1ª tentativa sem resposta (conexão velha, mDNS lento após reboot), 2ª confirma: START ok.
+    FakeChargerClient client(&now);
+    charger::Link link;
+    link.setClient(&client);
+    link.configure(link1());
+    client.failNext = 1;
+    applied = -1;
+    assert(link.start(2000, now, &applied) == charger::Error::None && applied == 2000);
+    assert(client.urgent == 2 && client.device.relayClosed() && link.online() && link.expectRunning());
+    assert(client.writes() == "W 10032=0|W 10029=20|W 10060=2");
+  }
+  {  // Online na última leitura: a 1ª tentativa não força resolução; a recusa (0x0B) não repete.
+    FakeChargerClient client(&now, 3);
+    charger::Link link;
+    link.setClient(&client);
+    link.configure(link1());
+    link.poll(now);
+    assert(link.online() && client.urgent == 0);
+    assert(link.start(2000, now, &applied) == charger::Error::Rejected && client.urgent == 0);
   }
   {  // Escrita do 10029 perdida (eco ok, não aplicada): a releitura não bate → falha e desliga.
     FakeChargerClient client(&now);
@@ -154,7 +176,7 @@ void testAckOnlyAfterReadback() {
     assert(link.start(2000, now, &applied) == charger::Error::Rejected && link.online());
     assert(!client.device.relayClosed());
   }
-  puts("PASS: ACK applied só depois da releitura (offline, escrita perdida no START e no SET_POWER, STOP perdido → pendente, unit id errado)");
+  puts("PASS: ACK applied só depois da releitura (offline após 2 tentativas, 2ª tentativa ok, escrita perdida no START e no SET_POWER, STOP perdido → pendente, unit id errado sem repetir)");
 }
 
 void testPollingAndLoss() {

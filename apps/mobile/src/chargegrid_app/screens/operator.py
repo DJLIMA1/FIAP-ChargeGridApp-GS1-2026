@@ -14,8 +14,8 @@ from ..ui.components import (
     money,
     title,
 )
+from . import chargers, ownership
 from . import onboarding as onboarding_screen
-from . import ownership
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title
 from .station_admin import chatbot_button, menu_row
 
@@ -81,17 +81,18 @@ def _station_state(station):
     online = [point for point in points if point.get('online')]
     in_use = [point for point in online if point.get('available') is False]
     live = [point for point in points if point.get('active', True)]
+    screen = chargers.screen_online(station)  # estação = a tela: online enquanto a tela tiver contato
     if not station.get('active', True):
         status = 'Desativada'
     elif points and not live:
-        return 'Pontos desativados - revise para publicar'
-    elif online:
+        return 'Carregadores desativados - revise para publicar'
+    elif online or screen:
         status = 'Online'
     else:
         status = 'Offline'
     if in_use:
-        return f'{status} - Conectores em uso'
-    return f'{status} - Conectores livres' if online and station.get('active', True) else status
+        return f'{status} - Carregadores em uso'
+    return f'{status} - Carregadores livres' if online and station.get('active', True) else status
 
 
 def text_button(text, on_click, *, primary=True, height=48):
@@ -176,7 +177,7 @@ def _status_pill(label, color):
 async def station_form(app, station=None, edited=False, code=None):
     """Criar posto (``Configurar Estação``): nome e endereço com sugestões; a localização vem do endereço.
 
-    Postos existentes são editados em ``station_admin`` (dados, conectores, potência e tarifas)."""
+    Postos existentes são editados em ``station_admin`` (dados, carregadores, potência e tarifas)."""
     is_demo = bool(getattr(app.api,'is_demo',False))
     name_box = setup_field('Nome da estação', '', 'Ex.: Posto Centro', gap=14, height=FIELD_HEIGHT)
     address_box = setup_field('Endereço', '', 'Rua, número, bairro, cidade e estado', gap=14, height=FIELD_HEIGHT)
@@ -230,10 +231,13 @@ def _decimal_text(value, places=None):
 
 
 def _point_status(connector, device=None):
+    """Status do CARREGADOR: Desvinculado, Desativado, Online, Offline ou Aguardando a tela."""
     if connector.get('retired') or (device or {}).get('retired'):
         return 'Desvinculado', theme.SLATE
     if not connector.get('active', True):
         return 'Desativado', theme.AMBER
+    if connector.get('charger_link') and (device or {}).get('online') is not False:
+        return chargers.link_status(connector)  # o link lido pela tela (online/offline/aguardando a tela)
     online = (device or connector).get('online')
     return ('Online', theme.GREEN) if online else ('Offline', theme.SLATE)
 
@@ -274,14 +278,6 @@ def _mini_button(text, on_click, kind='secondary'):
                         alignment=ft.Alignment(0, 0), on_click=on_click, ink=True)
 
 
-def _action_row(icon, label, description, control):
-    """Linha de equipamento: tile branco + título/descrição + botão compacto."""
-    return ft.Row([design.icon_tile(icon, size=40),
-                   ft.Column([design.txt(label, 13, 'semibold'), design.txt(description, 10.5, 'regular', theme.GRAY_TEXT)],
-                             spacing=2, expand=True),
-                   control], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-
 def _set_visible(box, visible):
     box.visible = visible
     box.controls[1].visible = visible
@@ -311,10 +307,10 @@ async def connector_form(app, station_id, connector=None, device_id=None):
                             gap=gap, height=FIELD_HEIGHT, suffix='kW')
     duration_box = setup_field('Limite por recarga', str(connector.get('max_duration_minutes','60')),
                                keyboard=ft.KeyboardType.NUMBER, gap=gap, height=FIELD_HEIGHT, suffix='min')
-    device_box = setup_field('Dispositivo vinculado', linked_device['device_id'] if linked_device else '', read_only=True,
-                             gap=gap, height=FIELD_HEIGHT)
-    public, kind, power, duration, device = (box.controls[1] for box in
-                                             (public_box, kind_box, power_box, duration_box, device_box))
+    public, kind, power, duration = (box.controls[1] for box in (public_box, kind_box, power_box, duration_box))
+    # Dispositivo (a tela) que comanda este carregador: só leitura, usado por trocar chave/revogar.
+    device = design.txt(linked_device['device_id'] if linked_device else '', 12.5, 'bold', data='device-id',
+                        text_align=ft.TextAlign.END)
     back_to_connectors = app.link('station_admin', station_id=station_id, page='connectors')
     active = _Toggle(app, connector.get('active',True))
     active_box = ft.Column([design.label('Disponível para motoristas', strong=False), active.holder], spacing=4,
@@ -359,7 +355,6 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     _paint_chips(power_chips, power_preset(), palette)
     power.on_change = typed_power
 
-    _set_visible(device_box, bool(linked_device))
     device_status = ft.Text(
         ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else
          'Último contato: '+date_time(linked_device.get('last_seen')))
@@ -369,10 +364,8 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     )
     status_label, status_color = _point_status(connector, linked_device)
     status_badge = _status_pill(status_label, status_color)
-    status_colors = {'Desvinculado': theme.SLATE, 'Desativado': theme.AMBER, 'Online': theme.GREEN, 'Offline': theme.SLATE}
     def paint_status():
-        label = _point_status(connector, linked_device)[0]
-        color = status_colors[label]
+        label, color = _point_status(connector, linked_device)
         status_badge.content.value = label
         status_badge.bgcolor = color
         status_badge.content.color = theme.on_color(color)
@@ -383,10 +376,10 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         reset_state.clear()
         reset_state['status'] = 'not_requested'
         device.value = identifier
-        _set_visible(device_box, bool(identifier))
+        device_row.visible = bool(identifier)
         device_status.value = message
         provision_row.visible = provision_button.visible = not identifier
-        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(identifier)
+        key_row.visible = rotate_button.visible = revoke_button.visible = bool(identifier)
         reset_box.visible = bool(identifier)
         reset_button.visible = bool(identifier)
         reset_info.visible = False
@@ -453,11 +446,11 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         if status in ('pending', 'received', 'applied'):
             active.value, active.disabled = False, True
             active.draw()
-            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = False
+            key_row.visible = rotate_button.visible = revoke_button.visible = False
         elif status in ('failed', 'expired'):
             active.disabled = False
             active.draw()
-            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = True
+            key_row.visible = rotate_button.visible = revoke_button.visible = True
         if status == 'applied':
             if linked_device:
                 linked_device['retired'] = True
@@ -509,7 +502,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
 
     note = lambda text: design.txt(text, 11.5, 'regular', theme.GRAY_TEXT)  # noqa: E731
     controls = [
-        setup_title(app, 'Editar ponto' if connector else 'Novo ponto', on_back=back_to_connectors,
+        setup_title(app, 'Editar carregador' if connector else 'Novo carregador', on_back=back_to_connectors,
                     bottom=2.25),
         design.card_box(ft.Column(header,spacing=8)),
         design.section_label('Conector'),
@@ -522,52 +515,56 @@ async def connector_form(app, station_id, connector=None, device_id=None):
         note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifa, na tela do posto.'),
     ]
     if connector:
-        controls += [active_box, note('O posto também precisa estar ativo para o ponto aparecer na busca.')]
+        controls += [active_box, note('O posto também precisa estar ativo para o carregador aparecer na busca.')]
     controls += [design.section_label('Identificação'), public_box,
-                 note('Código exibido aos motoristas para encontrar este ponto.'),
-                 cta('Salvar alterações' if connector else 'Salvar ponto',app.action(save),weight='semibold')]
+                 note('Código exibido aos motoristas para encontrar este carregador.'),
+                 cta('Salvar alterações' if connector else 'Salvar carregador',app.action(save),weight='semibold')]
     if connector:
+        # Daqui para baixo: o carregador GoodWe HCA G2 (simulado) e a tela que o comanda.
         provision_button = _mini_button('Provisionar',app.action(provision),'primary')
         rotate_button = _mini_button('Rotacionar',app.action(rotate))
         revoke_button = _mini_button('Revogar',app.action(revoke))
         reset_button = _mini_button('Restaurar',app.action(reset_device),'danger')
-        provision_row = _action_row(ft.Icons.KEY_OUTLINED,'Nova credencial','Gera uma chave fictícia para testar o fluxo.' if is_demo else
-                                    'Gera a chave do equipamento; ela aparece uma única vez.',provision_button)
-        rotate_row = _action_row(ft.Icons.SYNC,'Trocar chave','Troca a chave fictícia da demonstração.' if is_demo else
-                                 'Invalida a chave atual; o equipamento precisa da nova.',rotate_button)
-        revoke_row = _action_row(ft.Icons.LINK_OFF,'Desconectar','Desativa a credencial simulada.' if is_demo else
-                                 'Recusa a chave atual até nova credencial.',revoke_button)
+        for button in (rotate_button, revoke_button):
+            button.expand = True
+        provision_row = ft.Row([design.txt('Sem credencial. Gere uma para a tela conectar.' if not is_demo else
+                                           'Sem credencial simulada.', 11.5, 'regular', theme.GRAY_TEXT, expand=True),
+                                provision_button], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        key_row = ft.Row([rotate_button, revoke_button], spacing=10)
         reset_box = ft.Container(
-            _action_row(ft.Icons.RESTORE,'Restaurar de fábrica',reset_messages['not_requested'],reset_button),
-            bgcolor=theme.WARN_BG,border=ft.Border.all(1,ft.Colors.with_opacity(0.45,theme.RED)),
-            border_radius=design.RADIUS_CARD,padding=14)
+            ft.Row([design.txt(reset_messages['not_requested'], 10.5, 'regular', theme.GRAY_TEXT, expand=True),
+                    reset_button], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=theme.WARN_BG, border=ft.Border.all(1, ft.Colors.with_opacity(0.45, theme.RED)),
+            border_radius=design.RADIUS_BTN, padding=ft.Padding(left=12, right=10, top=10, bottom=10))
+        device_row = chargers.row('Dispositivo', device)
+        maintenance_ok = bool(linked_device) and not linked_device.get('retired', False) and \
+            reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
         provision_row.visible = provision_button.visible = not linked_device
-        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
+        key_row.visible = rotate_button.visible = revoke_button.visible = maintenance_ok
         reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
-        reset_box.visible = bool(linked_device)
+        reset_box.visible = device_row.visible = bool(linked_device)
         if linked_device and (linked_device.get('retired') or reset_state.get('status') in ('pending', 'received', 'applied')):
             active.value, active.disabled = False, True
             active.draw()
-        controls += [
-            design.section_label('Conexão do equipamento'),
-            note('Credencial e restauração simuladas' if is_demo else 'Credencial, chave e restauração'),
-            note('Ações apenas desta demonstração; nada real é alterado.' if is_demo else
-                 'Não é preciso mexer aqui para mudar tarifa ou disponibilidade.'),
-            device_box,provision_row,rotate_row,revoke_row,reset_box]
+        controls += [design.section_label('Carregador e tela'),
+                     charger_controls(app, connector),
+                     screen_card(app, station_id, connector, linked_device, device_row,
+                                 [design.txt('Credencial e restauração simuladas' if is_demo else
+                                             'Credencial e restauração da tela', 11, 'bold', theme.GRAY_TEXT),
+                                  provision_row, key_row, reset_box])]
         if reset_state.get('status') in ('pending', 'received'):
             app.set_poll(poll_reset, 5)
-        controls += charger_controls(app, connector, note)
-    controls.append(cta('Voltar aos conectores',back_to_connectors,primary=False,weight='semibold'))
+    controls.append(cta('Voltar aos carregadores',back_to_connectors,primary=False,weight='semibold'))
     return design.page(*controls, gap=16)
 
 
-CHARGER_FIELD = 'Carregador GoodWe (endereço)'
+CHARGER_FIELD = 'Endereço do carregador'
 CHARGER_HINT = f'{charger_link.MIN_ADDRESS} a {charger_link.MAX_ADDRESS}'
 _ADDRESS_ERRORS = ('invalid_charger_address', 'charger_address_taken')
 
 
 def charger_status(connector):
-    """``Carregador GoodWe · endereço 1 · online`` ou ``… · aguardando carregador (simulação da tela)``.
+    """``Carregador 1 · GoodWe HCA G2 (simulado) · online`` (``offline``, ``aguardando a tela``), do core.
 
     Todo ponto é um carregador GoodWe HCA G2; vazio só em payload sem endereço (API antiga/motorista)."""
     block = connector.get('charger_link')
@@ -588,16 +585,33 @@ def charger_address_input(value):
     return charger_link.validate_address(number)
 
 
-def charger_controls(app, connector, note):
-    """Carregador GoodWe HCA G2 do ponto: endereço Modbus (sempre preenchido), salvar e status do link.
-
-    Salva só ``charger_address`` (``PATCH connectors``), independente do formulário do ponto."""
+def charger_controls(app, connector):
+    """Cartão do carregador GoodWe HCA G2 (simulado): status do link, endereço (salvo à parte),
+    última leitura e potência lida. Salva só ``charger_address`` (``PATCH connectors``)."""
     current = connector.get('charger_address')
-    box = setup_field(CHARGER_FIELD, '' if current is None else str(current), CHARGER_HINT,
-                      keyboard=ft.KeyboardType.NUMBER, gap=14, height=FIELD_HEIGHT)
-    field = box.controls[1]
-    status = design.txt(charger_status(connector), 13, 'regular', expand=True)
-    status.data = 'charger-status'
+    field = design.input_field('' if current is None else str(current), CHARGER_HINT, keyboard=ft.KeyboardType.NUMBER)
+    field.data = CHARGER_FIELD
+    field.input_filter = ft.InputFilter(regex_string=r'[0-9 ]', allow=True)
+    field.fill_color = theme.BTN_SECONDARY  # destaca o campo sobre o cartão
+    holder = ft.Container(data='charger-card')
+
+    def draw():
+        block = connector.get('charger_link') or {}
+        label, color = chargers.link_status(connector)
+        editor = ft.Row([ft.Container(field, expand=True), _mini_button('Salvar', app.action(save), 'primary')],
+                        spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        address = chargers.address_of(connector)
+        holder.content = chargers.card(
+            f'Carregador {address}' if address is not None else 'Carregador',
+            ft.Column([design.label(CHARGER_FIELD), editor,
+                       design.txt('Único no posto. Use o mesmo número no CG_ADDR do ESP do carregador.', 10.5,
+                                  'regular', theme.GRAY_TEXT)], spacing=6,
+                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+            chargers.row('Última leitura', date_time(block.get('last_online_at')) if block.get('last_online_at')
+                         else 'Sem leitura'),
+            chargers.row('Potência lida', chargers.measured_text(block.get('measured_power_w'))),
+            trailing=chargers.pill(label, color),
+            subtitle=f'{charger_link.STATUS_LABEL} · {chargers.spec_line(connector)}')
 
     def refuse(message):
         field.error_text = message
@@ -619,22 +633,42 @@ def charger_controls(app, connector, note):
         saved = saved if isinstance(saved, dict) else {}
         connector['charger_address'] = saved.get('charger_address', address)
         connector['charger_link'] = saved.get('charger_link')
-        if 'online' in saved:
-            connector['online'] = saved['online']
+        for key in ('online', 'screen', 'screen_online', 'unavailable_reason'):
+            if key in saved:
+                connector[key] = saved[key]
         field.value = str(connector['charger_address'])
         field.error_text = None
-        status.value = charger_status(connector)
+        draw()
         app.page.update()
-        app.notice(f'Endereço {connector["charger_address"]} salvo para o carregador deste ponto.')
+        app.notice(f'Endereço {connector["charger_address"]} salvo. Configure CG_ADDR = '
+                   f'{connector["charger_address"]} no ESP do carregador.')
 
-    save_row = _action_row(ft.Icons.CABLE, 'Salvar endereço',
-                           'Sem resposta do carregador, a tela carrega com a simulação interna.',
-                           _mini_button('Salvar', app.action(save), 'primary'))
-    return [design.section_label('Carregador GoodWe'),
-            note('Cada ponto é um carregador GoodWe HCA G2. O endereço Modbus é único no posto e a tela o '
-                 'procura na rede Wi-Fi local.'),
-            box, ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED, size=18, color=theme.GRAY_TEXT), status], spacing=8),
-            save_row]
+    draw()
+    return holder
+
+
+def screen_card(app, station_id, connector, linked_device, device_row, maintenance):
+    """Vínculo com a TELA da estação: código do ponto da tela, online, papel e (no ponto da tela) a
+    credencial/restauração. Carregador adicional: atalho para a tela, sem ações de credencial aqui."""
+    screen = connector.get('screen') if isinstance(connector.get('screen'), dict) else None
+    if screen is None and linked_device:
+        screen = {'device_id': linked_device.get('device_id'), 'online': linked_device.get('online'),
+                  'last_seen': linked_device.get('last_seen'), 'public_code': connector.get('public_code'),
+                  'role': 'screen'}
+    role = (screen or {}).get('role') or 'screen'
+    if screen is None:
+        return chargers.card('Tela da estação', device_row, *maintenance, subtitle='Nenhuma tela vinculada a este ponto.')
+    label, color = chargers.screen_status(screen.get('online'))
+    rows = [chargers.row('Ponto da tela', screen.get('public_code') or '—'),
+            chargers.row('Último contato', date_time(screen.get('last_seen')) if screen.get('last_seen') else 'Sem contato')]
+    if role == 'charger':
+        rows.append(cta(f"Abrir a tela ({screen.get('public_code') or 'ponto da tela'})",
+                        app.link('operator', station_id=station_id, connector_id=screen.get('connector_id'), nav=False),
+                        primary=False, height=42, size=13, weight='semibold'))
+        return chargers.card('Tela da estação', *rows, trailing=_status_pill(label, color),
+                             subtitle=chargers.ROLE_LABELS['charger'])
+    return chargers.card('Tela da estação', *rows, device_row, ft.Divider(height=1, color=theme.BORDER_SOFT),
+                         *maintenance, trailing=_status_pill(label, color), subtitle=chargers.ROLE_LABELS['screen'])
 
 
 def show_key(app, result):

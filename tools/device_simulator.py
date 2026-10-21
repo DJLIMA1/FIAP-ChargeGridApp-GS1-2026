@@ -48,10 +48,15 @@ CAPABILITIES = ["set_power_v1"]
 UNPLUG_AFTER_SECONDS = 120
 # Todo conector é um carregador GoodWe HCA G2: a API manda ``connector.charger_link`` ({model,
 # transport, address, host}) e a tela reporta ``charger`` com address/link. Como no painel: no
-# START, carregador online → recarga por Modbus; offline → simulação interna da tela (link
-# "offline"). A sessão termina no modo em que começou. ``--hca-link`` = há um carregador
-# simulado respondendo no endereço. O Modbus TCP é SIMULADO aqui (registradores em memória,
-# tools/edge/modbus_sim); nenhum hardware é acessado.
+# START, carregador online → recarga por Modbus; offline → ACK ``failed`` ``charger_offline``
+# (sem simulação interna). Sem ``charger_link`` (API antiga) a bancada carrega como antes.
+# Por padrão há um carregador simulado respondendo no endereço, com os limites da bancada
+# (``hca_link=None``); ``--hca-link`` (``hca_link=True``) emula os registradores do HCA G2 (GW7K,
+# 7,0 kW); ``--hca-offline``/``hca_link=False`` começa sem resposta (kill -USR2 alterna). O Modbus
+# TCP é SIMULADO aqui (registradores em memória, tools/edge/modbus_sim); nenhum hardware é acessado.
+# Estação = a tela: com ``chargers`` na resposta do sync (carregadores adicionais da tela), a
+# bancada sincroniza por cada um com ``charger_address`` (``Station``; capacidade multi_charger_v1).
+MULTI_CHARGER = "multi_charger_v1"
 HCA_MODEL, HCA_TRANSPORT = "goodwe_hca_g2", "modbus_tcp"
 
 
@@ -87,7 +92,8 @@ def power_cap_w(*sources):
 
 class Device:
     def __init__(self, state_path=None, clock=time.monotonic, *, legacy=False, charger=None, transport=None,
-                 unplug_after=UNPLUG_AFTER_SECONDS, hca_link=False, hca_address=None, hca_variant="GW7K-HCA-20"):
+                 unplug_after=UNPLUG_AFTER_SECONDS, hca_link=None, hca_address=None, hca_variant="GW7K-HCA-20",
+                 charger_address=None):
         self.path = Path(state_path) if state_path else None
         self.clock = clock
         saved = json.loads(self.path.read_text()) if self.path and self.path.exists() else {}
@@ -122,12 +128,16 @@ class Device:
         self.hca_variant = hca_variant
         self.hca_charger = self.hca_transport = None
         self.link_address = None
-        self.link_online = bool(hca_link) and not legacy
+        self.link_online = hca_link is not False and not legacy
+        # True: registradores do HCA G2 emulados (GW7K); None: carregador simulado com os limites da bancada.
+        self.hca_emulated = hca_link is True
         self.session_on_charger = False
         if not legacy and hca_address is not None:
             self.link_charger(hca_address)
         self.presence_code = None
         self.public_code = None
+        # Carregador adicional de uma tela (sync endereçado): ``charger_address`` no corpo.
+        self.charger_address = charger_address
         # Cabo simulado: segurar após a parada só quando a sessão tem termos de permanência.
         # Após um reboot o cabo volta desconectado (a API encerra a permanência com segurança).
         self.hold_cable = False
@@ -193,7 +203,7 @@ class Device:
             return
         self.link_address = address
         self.hca_charger, self.hca_transport = (load_charger("goodwe-hca-g2", self.hca_variant)
-                                                if address is not None else (None, None))
+                                                if address is not None and self.hca_emulated else (None, None))
 
     def read_charger_link(self, connector):
         """``connector.charger_link`` do sync. Ausente (API antiga): mantém o endereço atual.
@@ -211,9 +221,10 @@ class Device:
         return self.link_address is not None and self.link_online
 
     def choose_session_mode(self):
-        """No START: Modbus com o carregador online; senão a simulação interna (relé/bancada)."""
+        """No START: Modbus no carregador do endereço; sem ``charger_link`` (API antiga), a bancada."""
         self.session_on_charger = self.charger_ready()
-        self.charger, self.transport = ((self.hca_charger, self.hca_transport) if self.session_on_charger
+        self.charger, self.transport = ((self.hca_charger, self.hca_transport)
+                                        if self.session_on_charger and self.hca_emulated
                                         else (self.base_charger, self.base_transport))
 
     def charger_unreachable(self):
@@ -222,9 +233,9 @@ class Device:
 
     def charger_info(self):
         """Como o painel: quem carrega (modo da sessão; fora dela, o do próximo START) e, com
-        endereço, ``address``/``link`` (offline = simulação da tela, com os limites dela)."""
+        endereço, ``address``/``link`` (offline = START recusado; limites de sempre)."""
         via_charger = self.session_on_charger if self.state == "charging" else self.charger_ready()
-        if via_charger:
+        if via_charger and self.hca_emulated:
             info = {**self.hca_charger.capability(), "transport": HCA_TRANSPORT}
         elif self.base_charger:
             info = {**self.base_charger.capability(), "transport": "simulated"}
@@ -344,8 +355,10 @@ class Device:
                 "energy_wh": self.energy, "power_w": self.power_w if self.state == "charging" else 0,
                 "source": "simulated", "captured_at": utc_now(), "end_reason": self.reason, "acks": list(self.acks)}
         if not self.legacy:
-            body.update(capabilities=list(CAPABILITIES), charger=self.charger_info(),
+            body.update(capabilities=list(CAPABILITIES) + [MULTI_CHARGER], charger=self.charger_info(),
                         applied_power_w=self.power_w if self.state == "charging" else 0)
+        if self.charger_address is not None:
+            body["charger_address"] = self.charger_address
         return body
 
     def response(self, response):
@@ -403,6 +416,9 @@ class Device:
                     error = "unauthorized_session"
                 elif self.session_id:
                     error = "previous_session_requires_reconciliation"
+                elif self.link_address is not None and not self.link_online:
+                    # Como o painel: carregador do endereço sem resposta → START recusado, sem simulação.
+                    error = "charger_offline"
                 else:
                     self.choose_session_mode()
                     self.session_id = command["session_id"]
@@ -482,6 +498,38 @@ class Device:
             self.state = "idle" if not authorization.get("reservation") else self.state
         self.save()
         return changed
+
+
+class Station:
+    """Estação = a tela: o ponto da própria tela (``screen``) e um ``Device`` por carregador
+    adicional listado em ``chargers`` na resposta do sync da tela (sync endereçado por cada um)."""
+
+    def __init__(self, screen, make_child):
+        self.screen = screen
+        self.make_child = make_child
+        self.children = {}
+
+    def follow(self, response):
+        """Acompanha a lista de carregadores da tela; um carregador removido só sai ocioso."""
+        listed = set()
+        for item in response.get("chargers") or []:
+            address = item.get("address") if isinstance(item, dict) else None
+            if isinstance(address, int) and not isinstance(address, bool) and 1 <= address <= 247:
+                listed.add(address)
+        for address in sorted(listed - set(self.children)):
+            self.children[address] = self.make_child(address)
+        for address in [key for key in self.children if key not in listed]:
+            if self.children[address].state != "charging":
+                del self.children[address]
+
+    def exchange_all(self, post):
+        """Sync da tela e de cada carregador (``post(body) -> resposta``). True = algo mudou."""
+        response = post(self.screen.payload())
+        changed = self.screen.response(response)
+        self.follow(response)
+        for child in self.children.values():
+            changed = child.response(post(child.payload())) or changed
+        return changed, response
 
 
 def charger_text(device):
@@ -661,12 +709,12 @@ def main():
     parser.add_argument("--hca-fail-writes", type=int, default=0, help="Perde as N primeiras escritas (teste de ACK)")
     parser.add_argument("--legacy", action="store_true", help="Simula firmware 0.4.0 (sem SET_POWER)")
     parser.add_argument("--hca-link", action="store_true",
-                        help="Há um carregador GoodWe HCA G2 (Modbus TCP SIMULADO) respondendo no endereço do "
-                             "conector (connector.charger_link): o START usa Modbus. Sem ele, a tela carrega com "
-                             "a simulação interna e reporta link offline. kill -USR2 <pid> alterna online/offline")
+                        help="Emula os registradores do GoodWe HCA G2 (Modbus TCP SIMULADO, GW7K) no endereço do "
+                             "conector; sem a opção, o carregador simulado responde com os limites da bancada. "
+                             "kill -USR2 <pid> alterna online/offline; offline, o START é recusado (charger_offline)")
     parser.add_argument("--hca-address", type=int, choices=range(1, 248), metavar="1-247", default=None,
                         help="Endereço usado enquanto a API não mandar charger_link (API antiga)")
-    parser.add_argument("--hca-offline", action="store_true", help="Com --hca-link: começa com o carregador inalcançável")
+    parser.add_argument("--hca-offline", action="store_true", help="Começa com o carregador inalcançável")
     parser.add_argument("--kiosk", action="store_true",
                         help="Totem 0.8.0: percorre oferta → orçamento → pedido → pagar → START → recarga → "
                              "Encerrar → recibo pelos endpoints do dispositivo e sai")
@@ -686,9 +734,17 @@ def main():
         parser.error("Defina CHARGEGRID_DEVICE_KEY com a chave individual")
     charger, transport = load_charger(args.charger, args.hca_model, args.hca_fail_writes, echo=print)
     device = Device(args.state, legacy=args.legacy, charger=charger, transport=transport,
-                    unplug_after=args.unplug_after, hca_link=args.hca_link, hca_address=args.hca_address,
-                    hca_variant=args.hca_model)
-    device.link_online = args.hca_link and not args.hca_offline and not args.legacy
+                    unplug_after=args.unplug_after, hca_link=True if args.hca_link else None,
+                    hca_address=args.hca_address, hca_variant=args.hca_model)
+    device.link_online = not args.hca_offline and not args.legacy
+
+    def make_child(address):
+        print(f"Carregador adicional {address} desta tela (GoodWe HCA G2 SIMULADO, online)")
+        return Device(f"{args.state}.charger-{address}.json", unplug_after=args.unplug_after,
+                      hca_link=True if args.hca_link else None, hca_address=address,
+                      hca_variant=args.hca_model, charger_address=address)
+
+    station = Station(device, make_child)
     if hasattr(signal, "SIGUSR2"):
         def toggle_link(*_):
             device.link_online = not device.link_online
@@ -728,13 +784,14 @@ def main():
                     print("Cabo simulado desconectado.")
                     next_sync = 0  # informa a desconexão já
             if time.monotonic() >= next_sync:
-                payload = device.payload()
-                try:
-                    result = client.post(args.api.rstrip("/") + "/v1/devices/sync", json=payload,
+                def post(body):
+                    result = client.post(args.api.rstrip("/") + "/v1/devices/sync", json=body,
                                          headers={"Authorization": "Device " + key})
                     result.raise_for_status()
-                    response = result.json()
-                    changed = device.response(response)
+                    return result.json()
+
+                try:
+                    changed, response = station.exchange_all(post)
                     interval = max(1, min(30, response["sync_interval_seconds"]))
                     next_sync = time.monotonic() if changed else time.monotonic() + interval
                     soc = f" soc={device.soc():.1f}% ({device.soc_source})" if device.soc_known() else ""
@@ -742,6 +799,9 @@ def main():
                     cable = " cabo=conectado" if device.connected else ""
                     print(f"{device.state} source=simulated energy_wh={device.energy:.2f}{power}{soc}{cable}"
                           f"{charger_text(device)}{overstay_text(device.overstay)}{kiosk_text(device)}")
+                    for address, child in station.children.items():
+                        print(f"  carregador {address}: {child.state} energy_wh={child.energy:.2f}"
+                              f"{charger_text(child)}")
                 except (httpx.HTTPError, ValueError, KeyError):
                     interval = min(30, interval * 2)
                     next_sync = time.monotonic() + interval

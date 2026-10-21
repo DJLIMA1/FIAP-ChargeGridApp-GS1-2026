@@ -156,11 +156,15 @@ def start(db, user, data, key):
             or device.physical_state != "reserved"
         ):
             fail("point_unavailable", "Ponto sem confirmação recente")
+        # Reserva confirmada, mas o carregador GoodWe do ponto parou de responder à tela.
+        state = availability(db, connector, data.reservation_id, device=device)
+        if state["unavailable_reason"] == "charger_offline":
+            fail_unavailable(state, db=db, connector=connector)
     else:
         # O pedido do totem pago por este pagamento não bloqueia o próprio START.
         state = availability(db, connector, device=device, allow_kiosk_payment=data.payment_id)
         if not state["available"]:
-            fail_unavailable(state)
+            fail_unavailable(state, db=db, connector=connector)
     payment = claim_for_start(db, user, connector, data.payment_id)
     if payment:
         data = funded_input(data, payment)

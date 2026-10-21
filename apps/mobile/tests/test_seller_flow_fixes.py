@@ -194,7 +194,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
             {'items':[station_fixture()],'total':1},
         ]
         screen = await operator.build(app)
-        self.assertIn('Pontos desativados',texts(screen))
+        self.assertIn('Carregadores desativados',texts(screen))
         self.assertNotIn('Configuração pendente',texts(screen))
         row = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
                    and 'Posto Central' in texts(c) and not isinstance(c.content,ft.Column))
@@ -204,7 +204,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
     async def test_review_disabled_point_preserves_shared_station(self):
         app = HandlerApp()
         screen = station_admin._connectors_page(app,station_fixture())
-        await click(screen,'Revisar e ativar ponto')(None)
+        await click(screen,'Revisar e ativar carregador')(None)
         app.go.assert_awaited_with('operator',station_id='station',point_id='point',
                                   onboarding=True,step=2,existing_station=True)
 

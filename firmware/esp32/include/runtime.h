@@ -106,8 +106,8 @@ void kioskResume(const char* orderId, uint32_t seed);
 // Link Modbus TCP com o carregador (firmware/goodwe-hca-sim). Configurado pelo sync
 // (connector.charger_link); sem ele (API antiga) = igual a antes, só a simulação interna.
 extern charger::Link chargerLink;
-// Modo da sessão decidido no START: true = Modbus (carregador online); false = simulação
-// interna da tela. Não troca no meio da sessão.
+// Sessão no carregador GoodWe (Modbus): toda recarga com charger_link (START só confirmado
+// pela releitura; offline → ACK failed charger_offline). false = API antiga (simulação interna).
 extern bool sessionOnCharger;
 // Limite que o carregador instala para um pedido em W (0,1 kW para baixo, 1,4..7,0 kW; 0 = pausa).
 float chargerLinkLimitW(float requestedW);

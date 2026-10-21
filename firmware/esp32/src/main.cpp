@@ -10,6 +10,8 @@
 #include "runtime.h"
 #include "panel_ui.h"
 #include "charger_modbus_esp32.h"
+#include "extra_chargers.h"
+#include <esp_system.h>
 #ifdef CHARGEGRID_PANEL_ENABLED
 #include "panel_service_config.h"
 #include "panel_hardware.h"
@@ -234,17 +236,27 @@ void handleChargerCommand(const String& line) {
       client.readHolding(link, hca::kPowerSpec, 1, &spec, &exception) &&
       client.readHolding(link, hca::kChargerType, 1, &type, &exception) &&
       client.readHolding(link, hca::kStartStop, 1, &run, &exception);
-  // Modo: o da recarga em andamento; fora dela, o que o próximo START usaria.
-  const bool viaCharger = state == "charging" ? sessionOnCharger : chargerLink.online();
+  // Próximo START: por Modbus com o carregador respondendo; offline, recusado (charger_offline).
+  const char* path = state == "charging" ? (sessionOnCharger ? "modbus" : "simulacao_da_tela")
+                                         : (chargerLink.online() ? "modbus" : "recusada_carregador_offline");
   Serial.printf("[charger] goodwe_hca_g2 host=%s porta=%u endereco=%u link=%s recarga=%s falhas=%u ultimo_erro=%s espera_ligado=%s parada_pendente=%s %s\n",
                 link.host, link.port, link.address, chargerLink.online() ? "online" : "offline",
-                viaCharger ? "modbus" : "simulacao_da_tela", chargerLink.failures(),
+                path, chargerLink.failures(),
                 charger::errorCode(chargerLink.lastError()) ? charger::errorCode(chargerLink.lastError()) : "-",
                 chargerLink.expectRunning() ? "sim" : "nao", chargerLink.pendingStop() ? "sim" : "nao",
                 espChargerDescribe().c_str());
   if (ok) Serial.printf("[charger] leitura agora: 10015=%u (%.1f kW) 10017=%u 10029=%u (%.1f kW) 10032=%u 10058=%u 10059=%u 10060=%u\n",
                         live[0], live[0] / 10.0f, live[2], limit, limit / 10.0f, mode, spec, type, run);
   else Serial.printf("[charger] leitura agora falhou%s\n", exception ? " (excecao Modbus)" : "");
+  // Carregadores adicionais desta tela (multi_charger_v1).
+  for (uint8_t i = 0; i < extra::kMaxSlots; ++i) {
+    const extra::Slot& slot = extra::slots[i];
+    if (!slot.used) continue;
+    Serial.printf("[charger] adicional endereco=%u host=%s link=%s estado=%s sessao=%s energia_wh=%.1f %s%s\n",
+                  slot.address, slot.link.config().host, slot.link.online() ? "online" : "offline",
+                  slot.state.c_str(), slot.sessionId.length() ? "sim" : "nao", slot.energyWh,
+                  espChargerDescribe(i + 1).c_str(), slot.unsupported ? " (sync recusado pela API)" : "");
+  }
 }
 
 void handleSerialMaintenance() {
@@ -363,6 +375,8 @@ void handleSerialMaintenance() {
         reading.connected ? "yes" : "no",
         kioskSync.kiosk.enabled ? (kioskSync.kiosk.method == kiosk::Method::Simulated ? "simulated" : "stripe") : "off",
         store.isKey("kord") ? "present" : "none", CHARGEGRID_FIRMWARE_VERSION);
+      // Motivo do último reset (1 power-on, 3 software, 4 panic, 5-7 watchdogs, 9 brownout...).
+      Serial.printf("[status] reset_reason=%d\n", (int)esp_reset_reason());
       return;
     }
     if (line == "CG_CHARGER" || line.startsWith("CG_CHARGER_IP")) {
@@ -399,6 +413,7 @@ void handleSerialMaintenance() {
   panelWifiSsid = pendingSsid; panelWifiPassword = line; line = "";
   panelNetworkConfigured = true;
   panelIntegrationEnabled = panelNetworkConfigured && panelIdentityConfigured;
+  WiFi.setSleep(false);  // sem economia de energia: Modbus/mDNS com o carregador sem atrasos
   WiFi.begin(panelWifiSsid.c_str(), panelWifiPassword.c_str());
   connectStarted = millis(); step = 3;
   Serial.printf("[setup] Network saved; connecting to SSID: %s\n", pendingSsid.c_str());
@@ -442,6 +457,25 @@ void setup() {
   }
   reading.socPercent = currentSessionSoc(reading.energyWh);
   applyBootSafety();
+  // Carregadores adicionais (multi_charger_v1): sessões do diário relatadas como device_reboot.
+  {
+    String addresses = store.getString("xaddrs", "");
+    int from = 0;
+    while (from < (int)addresses.length()) {
+      int comma = addresses.indexOf(',', from);
+      if (comma < 0) comma = addresses.length();
+      const long address = addresses.substring(from, comma).toInt();
+      from = comma + 1;
+      if (address < 1 || address > 247) continue;
+      char name[8];
+      snprintf(name, sizeof(name), "x%ldc", address); const String command = store.getString(name, "");
+      snprintf(name, sizeof(name), "x%lds", address); const String session = store.getString(name, "");
+      snprintf(name, sizeof(name), "x%lde", address); const float energy = store.getFloat(name, 0);
+      snprintf(name, sizeof(name), "x%ldv", address); const uint32_t saved = store.getUInt(name, 0);
+      extra::restore((uint8_t)address, session.c_str(), energy, saved, command.c_str(), millis());
+    }
+  }
+  Serial.printf("[boot] firmware %s reset_reason=%d\n", CHARGEGRID_FIRMWARE_VERSION, (int)esp_reset_reason());
   bootId = String(esp_random(), HEX) + String(esp_random(), HEX) + String(esp_random(), HEX);
   acknowledgements.to<JsonArray>();
   lastContact = lastTick = millis();
@@ -457,12 +491,17 @@ void setup() {
   panelIdentityConfigured = panelDeviceKey.length();
   panelNetworkConfigured = panelWifiSsid.length() > 0;
   panelIntegrationEnabled = panelIdentityConfigured && panelNetworkConfigured;
+  // Sem economia de energia no Wi-Fi: com o modem dormindo, respostas Modbus passavam do
+  // tempo limite e o multicast do mDNS se perdia (link do carregador "preso" offline).
+  WiFi.setSleep(false);
   if (panelNetworkConfigured) WiFi.begin(panelWifiSsid.c_str(), panelWifiPassword.c_str());
 #else
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 #endif
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  chargerLink.setClient(&espChargerClient());
+  chargerLink.setClient(&espChargerClient(0));
+  for (uint8_t i = 0; i < extra::kMaxSlots; ++i) extra::setClient(i, &espChargerClient(i + 1));
 #ifdef CHARGEGRID_PANEL_ENABLED
   espChargerSetFixedIp(configStore.getString("chg_ip", ""));
 #endif
@@ -480,17 +519,23 @@ void loop() {
   }
 #endif
   tick();
-  chargerLinkService(); // Lê o carregador do conector (online/offline decide o próximo START); API antiga: retorna na hora.
+  // O sync com a API tem prioridade: com ele vencido, a leitura Modbus (até ~0,8 s por
+  // carregador offline) espera a próxima volta — o vigia de 45 s nunca depende do Modbus.
+  const bool syncDue =
+#ifdef CHARGEGRID_PANEL_ENABLED
+      panelIntegrationEnabled &&
+#endif
+      WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000 && (long)(millis() - nextSync) >= 0;
+  if (!syncDue) {
+    chargerLinkService(); // Carregador do ponto da tela (link online/offline vai no sync); API antiga: retorna na hora.
+    extra::service(millis()); // Carregadores adicionais desta tela (multi_charger_v1).
+  }
   panelTick();
 #ifdef CHARGEGRID_PANEL_ENABLED
   handleSerialMaintenance();
 #endif
   // Hora confiável é necessária para certificados e expiração.
-  if (
-#ifdef CHARGEGRID_PANEL_ENABLED
-      panelIntegrationEnabled &&
-#endif
-      WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000 && (long)(millis() - nextSync) >= 0) syncDevice();
+  if (syncDue) syncDevice();
 #ifdef CHARGEGRID_KIOSK
   // Um pedido do totem por vez, na mesma tarefa e conexão TLS do sync (nunca em recarga).
   if (panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && time(nullptr) > 1700000000) kioskApiService();

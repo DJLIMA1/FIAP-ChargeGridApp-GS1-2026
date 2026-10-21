@@ -1,4 +1,5 @@
 import math
+import secrets
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -12,20 +13,23 @@ from chargegrid_core.chargers import link as charger_link
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, point_row, retired_ids, station_row, station_rows, update
-from ...models import ChargingSession, Connector, Reservation, Station
+from ...models import ChargingSession, Connector, Device, Reservation, Station
 from ...schemas import (
     ConnectorInput,
     ConnectorPatch,
     StationInput,
     StationPatch,
 )
-from ...security import current_user
+from ...security import current_user, digest
 from ...service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
+    device_for,
+    new_public_code,
     operator,
     owned,
     reset_blocks_point,
+    screen_for,
 )
 from .discovery import discover, normalize_connector
 
@@ -150,6 +154,43 @@ def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_use
 def create_point(station_id: UUID, data: ConnectorInput, user=Depends(current_user), db=Depends(db_session)):
     owned(db, user, station_id)
     fail("claim_required", "Escaneie o QR de propriedade do equipamento para adicionar um ponto", 409)
+
+
+@router.post("/connectors/{connector_id}/chargers", status_code=201)
+def add_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    """Adicionar carregador: o próximo carregador GoodWe da estação, comandado pela mesma tela.
+
+    Nasce inativo (o dono revisa e publica), com o próximo endereço livre do posto e os dados
+    do ponto da tela (tipo, potência, preço, duração). A tela passa a sincronizar por ele
+    (``chargers`` na resposta do sync dela; firmware com ``multi_charger_v1``)."""
+    point = db.get(Connector, connector_id)
+    if not point:
+        fail("not_found", "Ponto não encontrado", 404)
+    station = owned(db, user, point.station_id)
+    # Trava a estação: dois "Adicionar carregador" seguidos não disputam o mesmo endereço.
+    db.execute(select(Station.id).where(Station.id == station.id).with_for_update())
+    screen = screen_for(db, device_for(db, point))
+    if screen is None:
+        fail("screen_required", "Este ponto não tem tela vinculada. Vincule a tela pelo QR antes de "
+             "adicionar carregadores.", 409)
+    base = db.get(Connector, screen.connector_id)
+    used = db.scalars(select(Connector.charger_address).where(Connector.station_id == base.station_id)).all()
+    try:
+        address = charger_link.next_free_address(used)
+    except ValueError as exc:
+        fail("charger_address_full", str(exc), 409)
+    charger = Connector(
+        station_id=base.station_id, public_code=new_public_code(db), connector_type=base.connector_type,
+        power_kw=base.power_kw, price_per_kwh=base.price_per_kwh, max_duration_minutes=base.max_duration_minutes,
+        active=False, charger_address=address,
+    )
+    db.add(charger)
+    db.flush()
+    # Sem chave utilizável: só a tela sincroniza por ele (sync endereçado).
+    db.add(Device(connector_id=charger.id, key_hash=digest(secrets.token_urlsafe(32)), parent_device_id=screen.id))
+    db.flush()
+    db.refresh(charger)
+    return point_row(db, charger, user)
 
 
 @router.patch("/connectors/{connector_id}")

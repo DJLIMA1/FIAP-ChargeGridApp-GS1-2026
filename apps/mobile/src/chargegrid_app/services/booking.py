@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from chargegrid_core import power as power_rules
+from chargegrid_core.chargers import link as charger_link
 
 RESERVATION_FEE = Decimal('4.90')
 TOLERANCE_MINUTES = 15
@@ -85,9 +86,25 @@ def kiosk_held(group):
     return sum(1 for point in group['connectors'] if point.get('kiosk_in_use') is True)
 
 
+def charger_offline_text(count, total=None):
+    """``Carregador offline`` (o único do grupo) ou ``2 carregadores offline``."""
+    if count == 1:
+        return charger_link.CHARGER_OFFLINE_SHORT if total == 1 else '1 carregador offline'
+    return f'{count} carregadores offline'
+
+
 def group_subtitle(group):
     total, free = len(group['connectors']), len(group['free'])
     held = kiosk_held(group)
+    # Tela da estação com contato, mas o carregador do ponto sem resposta: nunca conta como livre.
+    down = sum(1 for point in group['connectors'] if point.get('unavailable_reason') == charger_link.CHARGER_OFFLINE)
+    if down:
+        offline = charger_offline_text(down, total)
+        if down == total:
+            return f'{offline} · use outro ponto desta estação'
+        head = (f"{free} de {total} conectores {'livre' if free == 1 else 'livres'}" if free
+                else 'Nenhum conector livre')
+        return f'{head} · {offline}'
     if total == 1:
         return '1 conector livre' if free else ('Ponto em uso no totem' if held else 'Indisponível no momento')
     if free == total:

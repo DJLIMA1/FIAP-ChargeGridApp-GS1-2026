@@ -178,14 +178,20 @@ def test_screen_reports_link_state_and_owner_sees_it(setup, factory):
     device = client.get(f"/v1/connectors/{seed['point']}/device").json()
     assert device["charger"]["address"] == 1 and device["charger"]["link"] == "online"
     assert device["charger_address"] == 1
+    seen = device["charger"]["last_online_at"]
+    assert seen and device["charger"]["measured_power_w"] == 0 and point["charger_link"]["last_online_at"] == seen
     offline = sync_payload(2, charger={**HCA, "address": 1, "link": "offline"})
     assert client.post("/v1/devices/sync", headers=DEVICE, json=offline).status_code == 200
-    assert _point(client.get(f"/v1/stations/{seed['station']}").json())["charger_link"]["link"] == "offline"
+    point = _point(client.get(f"/v1/stations/{seed['station']}").json())
+    assert point["charger_link"]["link"] == "offline"
+    assert point["charger_link"]["last_online_at"] == seen  # última leitura OK continua visível
+    assert point["online"] is False and point["screen_online"] is True
     # Tela sem contato há mais de 45 s: o link aparece offline.
     with factory.begin() as db:
         db.get(Device, seed["device"]).last_seen = None
     point = _point(client.get(f"/v1/stations/{seed['station']}").json())
     assert point["online"] is False and point["charger_link"]["link"] == "offline"
+    assert point["screen_online"] is False and point["unavailable_reason"] == "screen_offline"
 
 
 @pytest.mark.parametrize("charger", [
@@ -224,10 +230,11 @@ def _simulated_start(client, factory, seed, selected, key):
     return uuid.UUID(started.json()["id"])
 
 
-def test_simulator_without_a_charger_charges_with_the_screen_simulation(setup, factory, tmp_path):
-    """Nenhum carregador responde no endereço: a recarga acontece na simulação da tela."""
+def test_simulator_without_a_charger_refuses_start_and_the_point_is_charger_offline(setup, factory, tmp_path):
+    """Nenhum carregador responde no endereço: o ponto fica indisponível (carregador offline), a
+    estação continua online, a API recusa o START e não existe recarga na simulação da tela."""
     client, selected, seed = setup
-    simulator = Simulator(tmp_path / "sim.json")
+    simulator = Simulator(tmp_path / "sim.json", hca_link=False)
 
     def exchange():
         response = client.post("/v1/devices/sync", headers=DEVICE, json=simulator.payload())
@@ -238,16 +245,53 @@ def test_simulator_without_a_charger_charges_with_the_screen_simulation(setup, f
     exchange()
     assert simulator.link_address == 1 and simulator.payload()["charger"]["link"] == "offline"
     selected["id"] = seed["owner"]
-    point = _point(client.get(f"/v1/stations/{seed['station']}").json())
+    body = client.get(f"/v1/stations/{seed['station']}").json()
+    point = _point(body)
     assert point["charger_link"]["link"] == "offline"
-    assert point["charger_link"]["reported"] == {"model": "simulated_bench", "transport": "simulated",
-                                                 "address": 1, "link": "offline"}
-    session_id = _simulated_start(client, factory, seed, selected, "sim-start")
-    exchange()
-    exchange()
-    assert simulator.state == "charging" and not simulator.session_on_charger
+    assert point["online"] is False and point["screen_online"] is True and body["screen_online"] is True
+    assert point["available"] is False and point["availability_status"] == "offline"
+    assert point["unavailable_reason"] == "charger_offline"
+    selected["id"] = seed["a"]
+    driver = _point(client.get(f"/v1/stations/{seed['station']}").json())
+    assert driver["unavailable_reason"] == "charger_offline" and driver["online"] is False
+    refused = client.post("/v1/charging-sessions", headers={"Idempotency-Key": "sim-start"},
+                          json={"public_code": "CG-01", "presence_code": _code(factory, seed)})
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert error["code"] == "point_unavailable" and error["reason"] == "charger_offline"
+    assert error["message"] == "Carregador offline — use outro ponto desta estação"
+    assert error["alternatives"] == []  # CG-02 não tem tela
     with factory() as db:
-        assert db.get(ChargingSession, session_id).status == "charging"
+        assert db.query(ChargingSession).count() == 0
+
+
+def test_start_race_with_the_charger_dropping_fails_the_session_with_charger_offline(setup, factory, tmp_path):
+    """A API aceitou (carregador online no último sync), mas a tela não confirmou o carregador
+    no START: ACK failed charger_offline → sessão failed com o motivo para o motorista."""
+    client, selected, seed = setup
+    simulator = Simulator(tmp_path / "race.json")
+
+    def exchange():
+        response = client.post("/v1/devices/sync", headers=DEVICE, json=simulator.payload())
+        assert response.status_code == 200, response.text
+        simulator.response(response.json())
+        return response.json()
+
+    exchange()
+    exchange()
+    session_id = _simulated_start(client, factory, seed, selected, "race-start")
+    simulator.link_online = False  # some entre o último sync e o START
+    sent = None
+    for _ in range(4):
+        exchange()
+        sent = sent or next((ack for ack in simulator.acks if ack["status"] == "failed"), None)
+    assert sent == {"command_id": sent["command_id"], "status": "failed", "error": "charger_offline"}
+    assert simulator.state != "charging" and simulator.session_id is None
+    with factory() as db:
+        session = db.get(ChargingSession, session_id)
+        assert session.status == "failed" and session.end_reason == "charger_offline"
+    from chargegrid_core.receipt import END_REASONS
+    assert END_REASONS["charger_offline"] == "Carregador offline — use outro ponto desta estação"
 
 
 def test_simulator_follows_the_link_and_charges_through_the_goodwe_charger(setup, factory, tmp_path):

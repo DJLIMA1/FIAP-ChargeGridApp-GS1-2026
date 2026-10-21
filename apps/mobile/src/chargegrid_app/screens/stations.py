@@ -6,13 +6,14 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
+from ..services.booking import charger_offline_text
 from ..services.discovery import discover
 from ..services.location import geocode_address, geocode_demo_address
 from ..services.maps import station_map_widget
 from ..services.planning import estimate_text, intent_limits
 from ..ui import design as D
 from ..ui import theme
-from ..ui.availability import point_status, station_map_record
+from ..ui.availability import charger_offline, point_status, station_map_record
 from ..ui.components import badge, button, card, money
 from ..ui.deferred import fill_when_ready, skeleton
 from ..ui.point_summary import point_context
@@ -105,16 +106,20 @@ def _connector_groups(station):
     groups = {}
     for point in station.get('connectors') or []:
         key = (str(point.get('connector_type') or ''), _number(point.get('power_kw') or 0))
-        total, free = groups.get(key, (0, 0))
-        groups[key] = (total + 1, free + (1 if _available(station, point) else 0))
+        total, free, down = groups.get(key, (0, 0, 0))
+        groups[key] = (total + 1, free + (1 if _available(station, point) else 0), down + charger_offline(point))
     rows = []
-    for (kind, power), (total, free) in groups.items():
-        if free == 0:
+    for (kind, power), (total, free, down) in groups.items():
+        if free == 0 and down == total:
+            sub = charger_offline_text(down, total)
+        elif free == 0:
             sub = 'Nenhum conector livre'
         elif free == total:
             sub = f'{free} conector livre' if total == 1 else f'{free} conectores livres'
         else:
             sub = f"{free} de {total} conectores livre{'' if free == 1 else 's'}"
+        if down and down != total:
+            sub += f' · {charger_offline_text(down, total)}'
         rows.append((f'{kind} - {power} kW', sub))
     return rows
 
@@ -547,7 +552,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                 if station.get('active') is False or connector.get('active') is False or connector.get('retired'):
                     status,status_color = 'Desativado',theme.SLATE
                 elif connector.get('online') is False:
-                    status,status_color = 'Offline',theme.SLATE
+                    status,status_color = point_status(connector) if charger_offline(connector) else ('Offline',theme.SLATE)
                 elif status == 'Disponível' and not _available(station,connector):
                     status,status_color = 'Indisponível',theme.SLATE
                 details = [ft.Text(f"{connector['public_code']} · {connector['connector_type']}",size=18,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
@@ -570,6 +575,8 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                                 ft.Text('A reserva precisa ser confirmada pelo equipamento antes de você se deslocar.',size=12,color=theme.GRAY_TEXT)]
                 elif status == 'Offline':
                     details.append(ft.Text('Equipamento sem comunicação no momento.',size=12,color=theme.GRAY_TEXT))
+                elif charger_offline(connector):
+                    details.append(ft.Text('Use outro ponto desta estação.',size=12,color=theme.GRAY_TEXT))
                 items.append(card(ft.Column(details,spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16))
         return items
     listing.controls = station_cards(stations)

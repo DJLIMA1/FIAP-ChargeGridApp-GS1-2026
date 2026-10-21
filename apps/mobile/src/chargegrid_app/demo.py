@@ -28,6 +28,7 @@ DEMO_EMAIL = 'demo@chargegrid.example'
 DEMO_PASSWORD = 'demo1234'
 DEMO_PRESENCE_CODE = '#F12345'
 DEMO_CLAIM_TOKEN = 'DEMO-CLAIM-' + '0' * 32
+DEMO_FIRMWARE = 'demo-0.3.6'
 DEMO_LOCATIONS = (
     {'name': 'Villa Lobos', 'address': 'Av. Prof Fonseca Rodrigues, 4777, Pinheiros, São Paulo - SP',
      'latitude': -23.5467, 'longitude': -46.7224},
@@ -85,8 +86,8 @@ def demo_address_suggestions(query):
     return {'items': items[:6], 'available': True, 'attribution': 'Endereços de demonstração (sem consulta externa)'}
 
 
-def _fail(message, code='validation_error', status=422, reason=None):
-    raise api_error(message, status, code, reason)
+def _fail(message, code='validation_error', status=422, reason=None, alternatives=None):
+    raise api_error(message, status, code, reason, alternatives)
 
 
 def _number(value, label, minimum, maximum, *, integer=False, positive=False):
@@ -185,6 +186,11 @@ class DemoApi(OwnerApiMixin):
         # Todo ponto é um carregador GoodWe HCA G2: ``connectors.charger_address`` (1–247, único no posto,
         # próximo livre pela ordem de criação; só o dono vê).
         self._charger_addresses = {}
+        # Estação = a TELA (um dispositivo); cada ponto é um carregador. Carregador adicional de uma tela:
+        # ponto -> ponto da tela (sem dispositivo próprio). Carregadores simulados respondem (online), salvo
+        # os desligados por ``set_charger_online`` (testes do "Carregador offline").
+        self._charger_screen = {}
+        self._chargers_offline = set()
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
@@ -196,8 +202,13 @@ class DemoApi(OwnerApiMixin):
             station = self._make_station(dict(location), active=True)
             if index not in _DEMO_OWNED:
                 station['owner_id'] = 'demo-network'
-            for kind, power, price, online in _DEMO_POINTS[index]:
-                self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price, online=online)
+            screen = None
+            for number, (kind, power, price, online) in enumerate(_DEMO_POINTS[index]):
+                # Posto da conta demo: o 2º ponto é um carregador adicional da tela do 1º (2 carregadores, 1 tela).
+                shared = screen if number == 1 and index in _DEMO_OWNED else None
+                point = self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price,
+                                         online=online, screen=shared)
+                screen = screen or point['id']
             if index == 0:
                 station['amenities'] = [{'kind': 'cafe', 'name': 'Café do Parque', 'distance_m': 60},
                                         {'kind': 'banheiro', 'name': '', 'distance_m': None}]
@@ -373,6 +384,11 @@ class DemoApi(OwnerApiMixin):
                                    end_reason=runtime.get('stop_reason', 'requested'))
                     self._event(sid, 'ended', at=session['ended_at'])
                 continue
+            if session['status'] == 'starting' and session['connector_id'] in self._chargers_offline:
+                # Como a tela: o carregador não respondeu no START -> falha, nada de simulação interna.
+                session.update(status='failed', ended_at=self._iso(), end_reason=charger_link.CHARGER_OFFLINE)
+                self._event(sid, 'ended', at=session['ended_at'])
+                continue
             if self._elapsed < start:
                 continue
             session['started_at'] = self._iso(start)
@@ -484,7 +500,7 @@ class DemoApi(OwnerApiMixin):
             _fail('Ponto em uso no totem', 'point_unavailable', 409, reason='kiosk_in_use')
 
     def _make_point(self, station_id, *, active=True, online=True, connector_type='Tipo 2', power_kw='7.200',
-                    price_per_kwh='1.5000'):
+                    price_per_kwh='1.5000', screen=None):
         pid = self._id('point')
         point = {'id': pid, 'station_id': station_id, 'public_code': 'DEMO-' + pid.rsplit('-', 1)[-1],
                  'connector_type': connector_type, 'power_kw': power_kw, 'price_per_kwh': price_per_kwh,
@@ -493,8 +509,17 @@ class DemoApi(OwnerApiMixin):
         used = (self._charger_addresses.get(p['id']) for p in self._points.values() if p['station_id'] == station_id)
         self._charger_addresses[pid] = charger_link.next_free_address(used)
         self._points[pid] = point
-        self._make_device(pid, online=online)
+        if screen is None:
+            self._make_device(pid, online=online)
+        else:  # carregador adicional: usa a tela (dispositivo) do ponto ``screen``
+            self._charger_screen[pid] = screen
+            self._id('device')  # mantém os códigos públicos da demo (DEMO-15...) estáveis
         return point
+
+    def set_charger_online(self, point_id, online=True):
+        """Só na demo (testes/capturas): o carregador do ponto para (ou volta a) responder à tela."""
+        self._get(self._points, point_id)
+        (self._chargers_offline.discard if online else self._chargers_offline.add)(point_id)
 
     def _make_device(self, point_id, *, online=True):
         did = self._id('device')
@@ -509,6 +534,8 @@ class DemoApi(OwnerApiMixin):
         return result
 
     def _device_for(self, point_id):
+        """Dispositivo (tela) que comanda o ponto: o próprio ou o da tela de um carregador adicional."""
+        point_id = self._charger_screen.get(point_id, point_id)
         return next((d for d in self._devices.values() if d['connector_id'] == point_id and not d['revoked']), None)
 
     def _current(self, kind, point_id=None):
@@ -545,22 +572,63 @@ class DemoApi(OwnerApiMixin):
                        power_limited=allocated['power_limited'], power_limited_by=allocated['limited_by'])
         if station['owner_id'] == _USER:
             row['energy_kwh_total'] = _decimal(self._energy_total(point['id']), '0.001')
-            row.update(self._charger_fields(point['id'], row['online']))
+            row.update(self._charger_fields(point['id'], row['screen_online']))
         return row
 
-    def _charger_fields(self, point_id, online):
-        """Como a API (só o dono): endereço do carregador e o link reportado pela tela simulada.
+    def _measured_w(self, point_id):
+        """Potência lida do carregador simulado: a da recarga em andamento, ou 0 parado."""
+        session = self._current('session', point_id)
+        if not session or session['status'] != 'charging':
+            return 0
+        return int(Decimal(str(self._session_runtime[session['id']]['power_kw'])) * 1000)
 
-        A demo não tem carregador GoodWe de verdade: a tela simulada (online) reporta a simulação
-        interna dela com o endereço e o link ``offline``, como o painel — "aguardando carregador"."""
+    def _charger_fields(self, point_id, screen_online):
+        """Como a API (só o dono): endereço, link do carregador lido pela tela e a tela que o comanda.
+
+        Os carregadores GoodWe HCA G2 da demo são simulados e respondem à tela (link ``online``, última
+        leitura agora e a potência da recarga), salvo os desligados por ``set_charger_online``."""
         address = self._charger_addresses.get(point_id)
-        reported = ({'model': 'esp32_bench', 'transport': 'simulated', 'address': address,
-                     'link': 'offline'} if address is not None and online else None)
-        return {'charger_address': address, 'charger_link': charger_link.owner_block(address, reported, online)}
+        reported = None
+        if address is not None and screen_online:
+            up = point_id not in self._chargers_offline
+            reported = {'model': charger_link.MODEL, 'transport': charger_link.TRANSPORT, 'address': address,
+                        'link': 'online' if up else 'offline',
+                        'last_online_at': self._iso(max(0.0, self._elapsed - 2)) if up else self._iso(0),
+                        'measured_power_w': self._measured_w(point_id) if up else None}
+        return {'charger_address': address, 'charger_link': charger_link.owner_block(address, reported, screen_online),
+                'screen': self._screen_block(point_id)}
+
+    def _screen_block(self, point_id):
+        """``screen`` do ponto (só o dono): a tela que comanda este carregador, ou ``None``."""
+        device = self._device_for(point_id)
+        if device is None:
+            return None
+        screen = self._charger_screen.get(point_id, point_id)
+        return {'device_id': device['id'], 'connector_id': screen, 'public_code': self._points[screen]['public_code'],
+                'online': device['online'], 'last_seen': self._iso() if device['online'] else None,
+                'firmware_version': DEMO_FIRMWARE, 'role': 'charger' if point_id in self._charger_screen else 'screen',
+                'multi_charger': True}
+
+    def _station_screens(self, station):
+        """``screens`` do posto (só o dono): cada tela com os carregadores que ela comanda."""
+        screens = {}
+        for point in self._points.values():
+            if point['station_id'] != station['id'] or point['retired']:
+                continue
+            block = self._screen_block(point['id'])
+            if block is None:
+                continue
+            entry = screens.setdefault(block['device_id'], {
+                **{key: block[key] for key in ('device_id', 'connector_id', 'public_code', 'online', 'last_seen',
+                                               'firmware_version', 'multi_charger')}, 'charger_ids': []})
+            entry['charger_ids'].append(point['id'])
+        return list(screens.values())
 
     def _availability_row(self, point):
         device = self._device_for(point['id'])
-        online = bool(device and device['online'])
+        screen_online = bool(device and device['online'])
+        # ``online`` = carregador online: tela com contato E carregador respondendo (contrato estação × carregador).
+        online = screen_online and point['id'] not in self._chargers_offline
         reservation, session = self._current('reservation', point['id']), self._current('session', point['id'])
         state = 'charging' if session and session['status'] == 'charging' else 'reserved' if reservation else 'idle'
         if not point['active'] or not self._stations[point['station_id']]['active'] or point['retired']:
@@ -578,7 +646,11 @@ class DemoApi(OwnerApiMixin):
         else:
             status = 'available'
         held = status == 'occupied' and point['id'] in self._kiosk_holds
-        return {**point, 'online': online, 'physical_state': state, 'available': status == 'available',
+        reason = None
+        if status == 'offline':
+            reason = charger_link.SCREEN_OFFLINE if not screen_online else charger_link.CHARGER_OFFLINE
+        return {**point, 'online': online, 'screen_online': screen_online, 'unavailable_reason': reason,
+                'physical_state': state, 'available': status == 'available',
                 'availability_status': status, 'kiosk_in_use': held,
                 'reserved_until': reservation['expires_at'] if reservation and reservation['status'] == 'confirmed' else None}
 
@@ -596,6 +668,10 @@ class DemoApi(OwnerApiMixin):
                                                         'reason', 'reason_label')},
                 # Como a API (``app.overstay.public_terms``): condições mostradas antes de aceitar a recarga.
                 'overstay': overstay_rules.public(self._overstay_terms(station)),
+                # Estação = a tela: online se alguma tela do posto tem contato (``None`` = sem tela).
+                'screen_online': (any(p['screen_online'] for p in connectors)
+                                  if any(self._device_for(p['id']) for p in connectors) else None),
+                **({'screens': self._station_screens(station)} if station['owner_id'] == _USER else {}),
                 'connectors': connectors}
 
     def _overstay_terms(self, station):
@@ -802,6 +878,8 @@ class DemoApi(OwnerApiMixin):
             _fail('Use Adicionar equipamento simulado para criar um ponto.', 'claim_required', 409)
         if parts[0] == 'connectors' and len(parts) == 2 and method == 'PATCH':
             return self._patch_point(parts[1], body)
+        if parts[0] == 'connectors' and len(parts) == 3 and parts[2] == 'chargers' and method == 'POST':
+            return self._add_charger(parts[1])
         if (method, path) == ('POST', 'ownership/claim'):
             return self._claim(body)
         if parts[0] == 'connectors' and len(parts) == 3 and parts[2] == 'device' and method in ('GET', 'POST'):
@@ -964,6 +1042,35 @@ class DemoApi(OwnerApiMixin):
                   'Escolha outro endereço.', 'charger_address_taken', 409)
         return address
 
+    def _add_charger(self, point_id):
+        """``POST connectors/{id}/chargers``: próximo carregador da tela do ponto (endereço livre, inativo)."""
+        point = self._get(self._points, point_id)
+        station = self._owned(point['station_id'])
+        screen_id = self._charger_screen.get(point_id, point_id)
+        if point['retired'] or self._device_for(screen_id) is None:
+            _fail('Este ponto não tem tela vinculada', 'screen_required', 409)
+        used = [self._charger_addresses.get(p['id']) for p in self._points.values() if p['station_id'] == station['id']]
+        try:
+            charger_link.next_free_address(used)
+        except ValueError as exc:
+            _fail(str(exc), 'charger_address_full', 409)
+        screen = self._points[screen_id]
+        new = self._make_point(station['id'], active=False, connector_type=screen['connector_type'],
+                               power_kw=screen['power_kw'], price_per_kwh=screen['price_per_kwh'], screen=screen_id)
+        new['max_duration_minutes'] = screen['max_duration_minutes']
+        return self._point_row(new)
+
+    def _refuse_offline_charger(self, point):
+        """Como a API: START/reserva num carregador offline -> 409 com os pontos livres da estação."""
+        row = self._point_row(point)
+        if row.get('unavailable_reason') != charger_link.CHARGER_OFFLINE:
+            return
+        alternatives = [{'id': p['id'], 'public_code': p['public_code']} for p in self._points.values()
+                        if p['station_id'] == point['station_id'] and p['id'] != point['id']
+                        and self._point_row(p)['available']]
+        _fail(charger_link.CHARGER_OFFLINE_MESSAGE, 'point_unavailable', 409, reason=charger_link.CHARGER_OFFLINE,
+              alternatives=alternatives)
+
     def _claim(self, body):
         _fields(body, ('token', 'station_id'))
         token = body.get('token')
@@ -986,7 +1093,7 @@ class DemoApi(OwnerApiMixin):
 
     def _device_row(self, device):
         point = self._point_row(self._points[device['connector_id']])
-        return {'device_id': device['id'], 'connector_id': device['connector_id'], 'firmware_version': 'demo-0.3.6',
+        return {'device_id': device['id'], 'connector_id': device['connector_id'], 'firmware_version': DEMO_FIRMWARE,
                 'last_seen': self._iso() if device['online'] and not device['revoked'] else None,
                 'online': device['online'] and not device['revoked'], 'physical_state': point['physical_state'],
                 'connected': point['physical_state'] == 'charging', 'reconciled': point['availability_status'] != 'reconciling',
@@ -1091,6 +1198,7 @@ class DemoApi(OwnerApiMixin):
         point = self._get(self._points, body.get('connector_id'))
         self._user_free()
         self._refuse_kiosk_hold(point)
+        self._refuse_offline_charger(point)
         if not self._point_row(point)['available']:
             _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
         rid = self._id('reservation')
@@ -1136,6 +1244,7 @@ class DemoApi(OwnerApiMixin):
         self._user_free(reservation_id)
         if not reservation:
             self._refuse_kiosk_hold(point)
+        self._refuse_offline_charger(point)
         if not reservation and not self._point_row(point)['available']:
             _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
         if reservation and (not point['active'] or not self._stations[point['station_id']]['active'] or not self._point_row(point)['online']):

@@ -1,5 +1,7 @@
 from math import isfinite
 
+from chargegrid_core.chargers.link import CHARGER_OFFLINE, CHARGER_OFFLINE_SHORT
+
 from . import theme
 
 LABELS = {
@@ -15,7 +17,15 @@ LABELS = {
 KIOSK_LABEL = 'Em uso no totem'
 
 
+def charger_offline(point):
+    """A tela da estação tem contato, mas o carregador deste ponto não responde (``unavailable_reason``)."""
+    return point.get('unavailable_reason') == CHARGER_OFFLINE
+
+
 def point_status(point):
+    if charger_offline(point) and point.get('availability_status') != 'disabled':
+        # Nunca "Disponível": só este ponto está fora; os outros da estação seguem.
+        return CHARGER_OFFLINE_SHORT, theme.SLATE
     state = point.get('availability_status')
     if state not in LABELS:
         # Backwards compatible while the API/mobile rollout is in progress.
@@ -62,7 +72,7 @@ def station_map_record(station, available):
     elif free:
         status = 'Disponível'
     elif not any(point.get('online') is not False for point in enabled):
-        status = 'Offline'
+        status = CHARGER_OFFLINE_SHORT if any(charger_offline(point) for point in enabled) else 'Offline'
     else:
         status = next((point_status(point)[0] for point in enabled
                        if point.get('online') is not False and point_status(point)[0] != 'Disponível'),'Indisponível')
