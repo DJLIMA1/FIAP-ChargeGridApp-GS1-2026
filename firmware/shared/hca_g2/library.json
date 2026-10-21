@@ -1,0 +1,7 @@
+{
+  "name": "hca_g2",
+  "version": "1.0.0",
+  "description": "ChargeGrid: mapa Modbus do GoodWe HCA G2 (sem validação em hardware) e Modbus TCP mínimo (FC03/FC06/FC16), C++ puro",
+  "frameworks": "*",
+  "platforms": "*"
+}
