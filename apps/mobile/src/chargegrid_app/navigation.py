@@ -167,6 +167,8 @@ def _flow_parent(route, data, mode):
         return 'station_admin', {'station_id': sid}
     # station_admin
     sid = data.get('station_id')
+    if data.get('page') == 'power' and data.get('section') and sid:
+        return 'station_admin', {'station_id': sid, 'page': 'power'}  # subtela de Potência -> Potência
     if data.get('page') and sid:
         return 'station_admin', {'station_id': sid}
     return 'operator', {}

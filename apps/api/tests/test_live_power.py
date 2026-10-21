@@ -50,6 +50,7 @@ class Bench:
             db.flush()
             station = Station(owner_id=owner.id, name="Loja", address="Rua", latitude=0, longitude=0,
                               site_limit_kw=D(30), building_load_kw=D(12), building_load_source="simulated",
+                              building_load_updated_at=now(),  # valor do simulador (vale 30 min)
                               rebalance_enabled=live_enabled)
             db.add(station)
             db.flush()
@@ -482,3 +483,123 @@ def test_device_capabilities_follow_each_sync(bench):
 def test_sync_rate_limit_allows_one_second_syncs(bench):
     for _ in range(70):
         bench.sync("a")
+
+
+# ---- Consumo SIMULADO da loja e rebalanceamento ligado por padrão ----------------------------------
+
+
+def _plain_station(factory, **fields):
+    """Posto sem limite nem consumo informados (como um posto novo), com um ponto e um dono."""
+    with factory.begin() as db:
+        owner = Profile(id=uuid.uuid4(), name="Owner", operator_enabled=True)
+        db.add(owner)
+        db.flush()
+        station = Station(owner_id=owner.id, name="Loja", address="Rua", latitude=0, longitude=0, **fields)
+        db.add(station)
+        db.flush()
+        return owner.id, station.id
+
+
+def test_new_stations_have_rebalancing_on_and_payment_switches_off(factory):
+    owner, _ = _plain_station(factory)
+    client, _ = client_for(factory, owner)
+    try:
+        created = client.post("/v1/stations", json={"name": "Nova", "address": "Rua 2", "latitude": "-23.5",
+                                                    "longitude": "-46.6"})
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert body["rebalance_enabled"] is True
+        assert body["prepay_required"] is False and body["kiosk_payments"] is False and body["kiosk_mode"] is False
+        assert body["site_limit_kw"] is None  # o dono não informou: vale o padrão do tipo/porte
+    finally:
+        clear_overrides()
+
+
+def test_power_view_uses_default_limit_and_simulated_store_load(factory):
+    from chargegrid_core import site_load
+
+    owner, station_id = _plain_station(factory)
+    client, _ = client_for(factory, owner)
+    try:
+        view = client.get(f"/v1/stations/{station_id}/power").json()
+        assert view["rebalance_enabled"] is True
+        assert view["site_limit_kw"] == "75.000" and view["site_limit_default"] is True
+        assert view["site_limit_configured_kw"] is None and view["site_limit_default_kw"] == "75.000"
+        assert view["building_load_simulated"] is True and view["building_load_mode"] == "profile"
+        assert view["building_profile"] == "conveniencia" and view["building_size"] == "medio"
+        assert view["building_profile_label"] == "Loja de conveniência · porte médio"
+        expected = site_load.simulate(str(station_id), now(), "conveniencia", "medio", site_limit_kw=D(75))
+        assert abs(D(view["building_load_kw"]) - expected) <= D("0.5")  # mesma janela (ou a vizinha)
+        assert D(view["available_kw"]) == D(75) - D(view["building_load_kw"])
+        # Tipo/porte mudam a curva e o limite padrão; um limite do dono vale no lugar do padrão.
+        view = client.put(f"/v1/stations/{station_id}/power-site",
+                          json={"building_profile": "supermercado", "building_size": "grande"}).json()
+        assert view["site_limit_kw"] == "210.000" and view["building_profile"] == "supermercado"
+        assert client.put(f"/v1/stations/{station_id}/power-site",
+                          json={"building_profile": "fabrica"}).status_code == 422
+        view = client.put(f"/v1/stations/{station_id}/power-site", json={"site_limit_kw": "120"}).json()
+        assert view["site_limit_kw"] == "120.000" and view["site_limit_default"] is False
+        assert D(view["building_load_kw"]) <= D(120) * site_load.MAX_LOAD_SHARE
+        view = client.put(f"/v1/stations/{station_id}/power-site", json={"site_limit_kw": None,
+                                                                          "building_profile": None}).json()
+        assert view["site_limit_kw"] == "75.000" and view["building_profile"] == "conveniencia"
+    finally:
+        clear_overrides()
+
+
+def test_simulator_load_lasts_30_minutes_and_null_returns_to_the_curve(factory):
+    owner, station_id = _plain_station(factory)
+    client, _ = client_for(factory, owner)
+    url = f"/v1/stations/{station_id}/building-load"
+    try:
+        view = client.put(url, json={"building_load_kw": "33.3"}).json()
+        assert view["building_load_kw"] == "33.300" and view["building_load_mode"] == "manual"
+        assert view["building_load_manual_until"] is not None
+        with factory.begin() as db:
+            db.get(Station, station_id).building_load_updated_at = now() - timedelta(minutes=31)
+        view = client.get(f"/v1/stations/{station_id}/power").json()
+        assert view["building_load_mode"] == "profile" and view["building_load_manual_until"] is None
+        client.put(url, json={"building_load_kw": "40"})
+        view = client.put(url, json={"building_load_kw": None}).json()
+        assert view["building_load_mode"] == "profile"
+        with factory() as db:
+            station = db.get(Station, station_id)
+            assert station.building_load_kw is None and station.building_load_source is None
+        assert client.put(url, json={}).status_code == 422  # o campo continua obrigatório
+    finally:
+        clear_overrides()
+
+
+def test_simulated_store_plus_chargers_stay_within_the_default_limit(factory, tmp_path):
+    bench = Bench(factory, tmp_path)
+    try:
+        with factory.begin() as db:  # posto "de fábrica": sem limite informado nem valor do simulador
+            station = db.get(Station, bench.station)
+            station.site_limit_kw = None
+            station.building_load_kw = None
+            station.building_load_source = None
+        for name in "abc":
+            _charge(bench, name)
+        for _ in range(3):
+            for name in "abc":
+                bench.sync(name, 2)
+        bench.as_user(bench.owner)
+        view = bench.client.get(f"/v1/stations/{bench.station}/power").json()
+        assert view["site_limit_default"] is True and view["building_load_mode"] == "profile"
+        assert D(view["building_load_kw"]) + bench.envelope_total() <= D(view["site_limit_kw"])
+        assert view["exceeded_kw"] == "0.000"
+    finally:
+        clear_overrides()
+
+
+def test_migration_turns_rebalancing_on_for_new_and_existing_stations():
+    column = Station.__table__.c.rebalance_enabled
+    assert column.default.arg is True and "true" in str(column.server_default.arg)
+    root = Path(__file__).resolve().parents[1]
+    migration = (root / "migrations/versions/a3e8c5d1f7b9_rebalance_on_simulated_load.py").read_text()
+    assert 'down_revision = "f4b9d2c7e1a3"' in migration
+    offline = (root / "sql/migracao_a3e8c5d1f7b9.sql").read_text()
+    assert "ALTER COLUMN rebalance_enabled SET DEFAULT true" in offline
+    assert "UPDATE stations SET rebalance_enabled = true" in offline
+    assert "SET prepay_required = false, kiosk_payments = false" in offline
+    assert "ADD COLUMN building_profile" in offline and "ADD COLUMN building_size" in offline

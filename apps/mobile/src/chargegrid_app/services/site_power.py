@@ -1,38 +1,18 @@
-"""Energia do estabelecimento (rebalanceamento ao vivo) vista pelo vendedor, sem Flet.
+"""Tela Potência do vendedor, sem Flet: textos e contas sobre ``GET /stations/{id}/power``.
 
-Mesmas regras do painel web (``apps/owner-web/src/lib/power.ts``) sobre ``GET /stations/{id}/power``:
-rótulos do estado e do gatilho, kW com até 1 casa, soma da potência dos pontos contra o disponível,
-texto "30 kW contratados − 12 kW da loja = 18 kW para recarga", faixa do controle do consumo da loja
-(SIMULADO), validação do limite contratado e o debounce do controle deslizante.
+Mesmas regras da API (``chargegrid_core.site_load`` e ``chargegrid_core.power``): limite contratado
+efetivo (o do dono ou o padrão do tipo/porte), consumo da loja SIMULADO, disponível para os
+carregadores, potência configurada × efetiva de cada conector e a validação do limite digitado.
 """
 
-import asyncio
-from decimal import ROUND_CEILING, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
-POLL_SECONDS = 1.5           # atualização do cartão enquanto a página está aberta
-DEBOUNCE_SECONDS = 0.35      # espera sem mexer no controle antes de gravar o consumo simulado
+from chargegrid_core import power as power_rules
+from chargegrid_core import site_load
+
+POLL_SECONDS = 3             # atualização do cartão enquanto a tela está aberta
 SITE_MAX_KW = Decimal(10000)
-
-# Estado da potência do ponto (``power_state``): rótulo e tom (``theme``).
-POWER_STATE = {
-    'applied': ('Aplicada', 'GREEN'),
-    'reducing': ('Reduzindo', 'AMBER'),
-    'raising': ('Aumentando', 'BLUE'),
-    'waiting': ('Aguardando', 'AMBER'),
-    'paused': ('Pausada', 'RED'),
-    'fixed': ('Fixa', 'SLATE'),
-}
-
-POWER_TRIGGER = {
-    'initial': 'Início',
-    'building_load_changed': 'Consumo da loja',
-    'site_limit_changed': 'Limite contratado',
-    'station_cap_changed': 'Teto do posto',
-    'session_started': 'Recarga iniciada',
-    'session_ended': 'Recarga encerrada',
-    'request_changed': 'Pedido alterado',
-    'power_confirmed': 'Confirmação do equipamento',
-}
+REBALANCE_HELP = 'Divide a potência entre os carros sem passar do limite contratado.'
 
 
 def number(value):
@@ -56,42 +36,92 @@ def kw(value, empty='—'):
     return f'{text} kW'
 
 
-def usage(view):
-    """Soma das potências reservadas aos pontos contra o disponível.
+def has_rebalance(station):
+    """A API manda as colunas do rebalanceamento no posto (``rebalance_enabled``)."""
+    return isinstance((station or {}).get('rebalance_enabled'), bool)
 
-    ``{used, available, fraction (0–1, para a barra), exceeded, over}``."""
+
+def station_limit(station):
+    """``(limite efetivo, é o padrão?)`` pelo posto (``GET stations/{id}``), como a API calcula."""
+    station = station or {}
+    return site_load.effective_site_limit(number(station.get('site_limit_kw')), station.get('building_profile'),
+                                          station.get('building_size'))
+
+
+def menu_subtitle(station):
+    """Subtítulo do menu do posto: ``Limite 75 kW (padrão) · rebalanceamento ligado``."""
+    limit, default = station_limit(station)
+    head = f"Limite {kw(limit)}{' (padrão)' if default else ''}"
+    return f"{head} · rebalanceamento {'ligado' if station.get('rebalance_enabled') else 'desligado'}"
+
+
+def summary(view):
+    """Cartão do topo: disponível, limite, loja (SIMULADO) e carros agora."""
+    available = number(view.get('available_kw'))
     used = number(view.get('envelope_kw'))
     if used is None:
         used = number(view.get('allocated_kw')) or Decimal(0)
-    available = number(view.get('available_kw'))
     exceeded = max(Decimal(0), number(view.get('exceeded_kw')) or Decimal(0))
-    if available is not None and available > 0:
-        fraction = min(Decimal(1), used / available)
-    else:
-        fraction = Decimal(1) if used > 0 else Decimal(0)
-    over = exceeded > 0 or (available is not None and used > available)
-    return {'used': used, 'available': available, 'fraction': float(fraction), 'exceeded': exceeded, 'over': over}
+    count = int(view.get('cars') or 0)
+    profile = view.get('building_profile_label') or site_load.profile_label()
+    manual = view.get('building_load_mode') == 'manual'
+    return {
+        'available': kw(available, 'Sem limite'),
+        'limit': kw(view.get('site_limit_kw'), 'Sem limite'),
+        'limit_detail': 'Padrão para o tipo de estabelecimento' if view.get('site_limit_default') else 'Informado por você',
+        'load': kw(view.get('building_load_kw'), '0 kW'),
+        'load_detail': 'Valor do simulador (30 min)' if manual else profile.split(' · ')[0],
+        'cars': kw(used, '0 kW'),
+        'cars_detail': 'Nenhum carro carregando' if not count else f"{count} carro{'s' if count != 1 else ''} carregando",
+        'over': (f'Excesso transitório de {kw(exceeded)}: reduções enviadas, aguardando os equipamentos.'
+                 if exceeded > 0 else None),
+    }
 
 
-def availability_text(view):
-    """``30 kW contratados − 12 kW da loja = 18 kW para recarga`` (ou o texto sem limite)."""
-    limit = number(view.get('site_limit_kw'))
-    load = number(view.get('building_load_kw')) or Decimal(0)
-    if limit is None:
-        return f"Sem limite contratado: vale o teto do posto ({kw(view.get('station_cap_kw'), 'potência nominal')})."
-    return f"{kw(limit)} contratados − {kw(load)} da loja = {kw(view.get('available_kw'))} para recarga"
+def site_subtitle(view):
+    """``75 kW (padrão) · Loja de conveniência`` (o porte fica na subtela)."""
+    head = f"{kw(view.get('site_limit_kw'))}{' (padrão)' if view.get('site_limit_default') else ''}"
+    return f"{head} · {site_load.PROFILES[site_load.profile_key(view.get('building_profile'))].label}"
 
 
-def load_max(view):
-    """Fim do controle do consumo da loja: o limite contratado (ou 100 kW sem limite), no mínimo 10."""
-    limit = number(view.get('site_limit_kw'))
-    load = number(view.get('building_load_kw')) or Decimal(0)
-    top = max(limit if limit is not None else Decimal(100), load)
-    return max(10, int(top.to_integral_value(rounding=ROUND_CEILING)))
+def cap_subtitle(station):
+    """``Sem teto · aviso desligado`` ou ``80 kW · aviso ligado``."""
+    cap = power_rules.to_kw((station or {}).get('max_power_kw'))
+    head = 'Sem teto' if cap is None else kw(cap)
+    return f"{head} · aviso {'ligado' if station.get('power_limit_notify') else 'desligado'}"
+
+
+def points(station):
+    return [point for point in (station or {}).get('connectors') or [] if not point.get('retired')]
+
+
+def point_name(point, index):
+    return f"{point.get('connector_type') or 'Conector'} · Conector {index:02d}"
+
+
+def connector_line(point, station, view=None):
+    """``60 kW configurados · 47 kW efetivos`` (carregando) ou ``... · até 55 kW efetivos`` (livre)."""
+    if point.get('active') is False:
+        return 'Inativo: fica fora da divisão do posto'
+    configured = power_rules.requested_kw(point.get('power_kw'), point.get('power_limit_kw'))
+    head = f'{kw(configured)} configurados'
+    session = next(((item.get('session') or {}) for item in (view or {}).get('points') or []
+                    if item.get('connector_id') == point.get('id')), {})
+    if session:
+        effective = number(session.get('applied_kw'))
+        effective = number(session.get('target_kw')) if effective is None else effective
+        if effective is not None:
+            return f'{head} · {kw(effective)} efetivos'
+    shared = power_rules.allocate(points(station), station.get('max_power_kw'))['connectors'].get(point.get('id'))
+    effective = shared['effective_kw'] if shared else configured
+    available = number((view or {}).get('available_kw'))
+    if available is not None and available < effective:
+        effective = available
+    return f"{head} · até {kw(effective)} efetivos"
 
 
 def limit_input(value):
-    """Valor da API -> texto do campo (``75,5``; vazio sem limite)."""
+    """Valor da API -> texto do campo (``75,5``; vazio sem valor)."""
     amount = number(value)
     if amount is None:
         return ''
@@ -100,7 +130,7 @@ def limit_input(value):
 
 
 def parse_site_limit(text):
-    """Limite contratado digitado -> ``(valor da API | None, erro | None)``. Vazio remove o limite."""
+    """Limite contratado digitado -> ``(valor da API | None, erro | None)``. Vazio = padrão do tipo/porte."""
     raw = str(text or '').strip()
     if not raw:
         return None, None
@@ -115,102 +145,3 @@ def parse_site_limit(text):
     if amount > SITE_MAX_KW:
         return None, 'O limite contratado vai até 10.000 kW.'
     return f'{amount:.1f}', None
-
-
-def state_label(session):
-    """(rótulo, tom) do estado do ponto; ``Livre`` sem sessão, ``Em recarga`` sem rebalanceamento."""
-    if not session:
-        return 'Livre', 'SLATE'
-    state = session.get('power_state')
-    if not state:
-        return 'Em recarga', 'BLUE'
-    return POWER_STATE.get(state, (str(state), 'SLATE'))
-
-
-def point_detail(point):
-    """``60 kW nominal · carga fixa · offline``."""
-    parts = [f"{kw(point.get('power_kw'))} nominal"]
-    if point.get('adjustable') is False:
-        parts.append('carga fixa')
-    if point.get('online') is False:
-        parts.append('offline')
-    return ' · '.join(parts)
-
-
-def decision_detail(decision):
-    """``Consumo da loja · 18 kW disponíveis · excesso 3 kW``."""
-    trigger = decision.get('trigger')
-    parts = [POWER_TRIGGER.get(trigger, str(trigger or 'Decisão')),
-             f"{kw(decision.get('available_kw'), 'sem limite')} disponíveis"]
-    if (number(decision.get('exceeded_kw')) or 0) > 0:
-        parts.append(f"excesso {kw(decision.get('exceeded_kw'))}")
-    return ' · '.join(parts)
-
-
-def over_text(view, info):
-    """Aviso quando a soma passa do disponível (redução em andamento ou rebalanceamento desligado)."""
-    if not info['over']:
-        return None
-    amount = info['exceeded'] if info['exceeded'] > 0 else info['used'] - (info['available'] or 0)
-    if view.get('rebalance_enabled'):
-        return (f'Excesso transitório de {kw(amount)}: as reduções já foram enviadas e aguardam a confirmação '
-                'dos equipamentos.')
-    return f'{kw(amount)} acima do disponível: ligue o rebalanceamento para reduzir os pontos em recarga.'
-
-
-class Debouncer:
-    """Último valor vence: ``call(valor)`` agenda o envio; ``flush()`` envia já (ao soltar o controle).
-
-    Os envios são em fila (um de cada vez) para a resposta mais nova ser a última aplicada."""
-
-    def __init__(self, send, wait=DEBOUNCE_SECONDS):
-        self.send, self.wait = send, wait
-        self._task = None
-        self._last = None
-        self._lock = None
-        self._sending = 0
-
-    @property
-    def pending(self):
-        """Há valor aguardando a pausa ou um envio em andamento (o controle fica com o valor local)."""
-        return self._last is not None or self._sending > 0
-
-    def __call__(self, *args):
-        self._last = args
-        if self._task is not None:
-            self._task.cancel()
-        self._task = asyncio.ensure_future(self._later())
-
-    async def _later(self):
-        try:
-            await asyncio.sleep(self.wait)
-        except asyncio.CancelledError:
-            return
-        self._task = None
-        await self._run()
-
-    async def flush(self):
-        if self._task is not None:
-            self._task.cancel()
-            self._task = None
-        await self._run()
-
-    def cancel(self):
-        if self._task is not None:
-            self._task.cancel()
-        self._task = None
-        self._last = None
-
-    async def _run(self):
-        if self._last is None:
-            return
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        self._sending += 1
-        try:
-            async with self._lock:
-                args, self._last = self._last, None
-                if args is not None:
-                    await self.send(*args)
-        finally:
-            self._sending -= 1

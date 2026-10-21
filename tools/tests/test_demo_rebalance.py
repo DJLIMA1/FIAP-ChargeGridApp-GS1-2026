@@ -33,7 +33,8 @@ class FakeClient:
                 return Response(401, {})
             return Response(202, {"id": "session-1", "power_reason": "6 kW porque a loja usa 12 de 30 kW"})
         if path.endswith("/building-load"):
-            return Response(200, {"building_load_kw": json["building_load_kw"], "available_kw": "6.000"})
+            self.loads = [*getattr(self, "loads", []), json["building_load_kw"]]
+            return Response(200, {"building_load_kw": json["building_load_kw"] or "18.4", "available_kw": "6.000"})
         return Response(202, {})
 
 
@@ -64,7 +65,10 @@ def test_commands_start_stop_and_store_load_with_relogin_on_401():
     logins = [call for call in client.calls if call[1] == "/v1/auth/login"]
     assert len(logins) == 2  # token expirado: novo login e nova tentativa
     demo.handle("loja 24,5")
-    assert lines[-1] == "Loja (SIMULADO) em 24.5 kW: disponível 6.000 kW"
+    assert lines[-1] == "Loja (SIMULADO, valor da demo, 30 min) em 24.5 kW: disponível 6.000 kW"
+    demo.handle("loja auto")  # volta à curva simulada do estabelecimento
+    assert client.loads[-1] is None
+    assert lines[-1] == "Loja (SIMULADO, curva do estabelecimento) em 18.4 kW: disponível 6.000 kW"
     demo.handle("sai 1")
     assert ("POST", "/v1/charging-sessions/session-1/stop") in [call[:2] for call in client.calls]
     demo.handle("entra 9")

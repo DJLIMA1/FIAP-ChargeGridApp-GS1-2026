@@ -50,9 +50,10 @@ def test_request_ack_retry_reconcile_end_and_owner_isolation(factory, seed):
                         acks=[{"command_id": command_id, "status": "applied"}])
     device_sync(factory, seed, applied)
     device_sync(factory, seed, applied)
+    # Rebalanceamento ligado por padrão: o START confirmado também registra a potência aplicada.
     assert events(factory) == [
         ("start_requested", "api"), ("command_received", "device_sync"),
-        ("start_applied", "device_sync"),
+        ("power_applied", "device_sync"), ("start_applied", "device_sync"),
     ]
 
     with factory.begin() as db:
@@ -70,7 +71,7 @@ def test_request_ack_retry_reconcile_end_and_owner_isolation(factory, seed):
     device_sync(factory, seed, ended)
     device_sync(factory, seed, ended)
     assert [kind for kind, _ in events(factory)] == [
-        "start_requested", "command_received", "start_applied", "offline_reconciled",
+        "start_requested", "command_received", "power_applied", "start_applied", "offline_reconciled",
         "stop_requested", "stop_applied", "ended",
         # Cable reported disconnected at the end: no overstay, the final amount is known.
         "vehicle_disconnected", "settlement_ready",

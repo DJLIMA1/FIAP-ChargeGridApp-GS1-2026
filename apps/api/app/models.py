@@ -72,12 +72,18 @@ class Station(Base):
     prepay_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     kiosk_payments: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     # Rebalanceamento ao vivo (migração b7d2f4a91c36): limite contratado da instalação (loja
-    # incluída) e consumo do estabelecimento, hoje só simulado pelo vendedor.
+    # incluída; NULL = padrão do tipo/porte, chargegrid_core.site_load) e consumo do estabelecimento.
+    # Sem medição real, o consumo é SIMULADO pela curva do tipo/porte; ``building_load_kw`` com
+    # ``building_load_source = 'simulated'`` é o valor enviado pelo simulador/demo (PUT building-load),
+    # válido por 30 min. Ligado por padrão desde a migração a3e8c5d1f7b9.
     site_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     building_load_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     building_load_source: Mapped[str | None] = mapped_column(String(20))
     building_load_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Tipo e porte do estabelecimento para a curva simulada (NULL = conveniência, porte médio).
+    building_profile: Mapped[str | None] = mapped_column(String(20))
+    building_size: Mapped[str | None] = mapped_column(String(10))
     # Totem de autoatendimento no painel físico (migração f4b9d2c7e1a3; modules/kiosk_totem).
     kiosk_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     __table_args__ = (

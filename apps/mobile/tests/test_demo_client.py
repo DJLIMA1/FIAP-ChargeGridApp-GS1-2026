@@ -92,6 +92,9 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
             await self.assert_error('POST', 'ownership/claim', body={'token': 'real-secret'}, code='invalid_claim')
 
     async def test_poll_count_does_not_advance_reservation_or_charging(self):
+        # Mede o relógio da demo à potência nominal: sem o rebalanceamento (ligado por padrão), que
+        # dividiria o limite contratado com o consumo SIMULADO da loja.
+        await self.client.request('PUT', f"stations/{self.station['id']}/power-site", {'rebalance_enabled': False})
         reservation = await self.client.request('POST', 'reservations', {'connector_id': self.point['id']}, key='reserve')
         for _ in range(10):
             self.assertEqual(await self.client.request('GET', 'reservations/current'), reservation)
@@ -150,6 +153,9 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history['cost_estimate'], final['cost_estimate'])
 
     async def test_duration_limit_and_manual_stop_are_terminal_and_allow_another_session(self):
+        # Mede o relógio da demo à potência nominal: sem o rebalanceamento (ligado por padrão), que
+        # dividiria o limite contratado com o consumo SIMULADO da loja.
+        await self.client.request('PUT', f"stations/{self.station['id']}/power-site", {'rebalance_enabled': False})
         session = await self.start(max_duration_minutes=1)
         self.clock.advance(1000)
         final = await self.client.request('GET', f"charging-sessions/{session['id']}")

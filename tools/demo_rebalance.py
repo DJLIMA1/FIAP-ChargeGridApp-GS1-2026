@@ -8,8 +8,8 @@ como simulados e o consumo da loja é simulado. Credenciais só pelo ambiente:
   CHARGEGRID_DEMO_DRIVERS       e-mail:senha das contas de motorista de demo, separadas por vírgula
   CHARGEGRID_DEMO_OWNER         e-mail:senha do vendedor (opcional; necessário para "loja")
 
-Comandos: ``entra N`` (motorista N inicia no ponto simulado N), ``sai N``, ``loja KW``,
-``status`` e ``sair``. Ex.: ``python tools/demo_rebalance.py --api https://… --station <id>
+Comandos: ``entra N`` (motorista N inicia no ponto simulado N), ``sai N``, ``loja KW`` (vale 30 min),
+``loja auto`` (volta à curva SIMULADA do estabelecimento), ``status`` e ``sair``. Ex.: ``python tools/demo_rebalance.py --api https://… --station <id>
 --hca 2`` (o carro 2 usa o adaptador GoodWe HCA G2 com transporte simulado).
 """
 
@@ -116,11 +116,15 @@ class Demo:
             elif command == "loja":
                 if not self.owner or not self.station:
                     raise ValueError("Configure CHARGEGRID_DEMO_OWNER e --station para mudar a loja")
+                # "loja auto" volta à curva SIMULADA do tipo/porte; um valor vale 30 min no servidor.
+                value = None if args[0].lower() == "auto" else args[0].replace(",", ".")
                 response = self.owner.request("PUT", f"/v1/stations/{self.station}/building-load",
-                                              json={"building_load_kw": args[0].replace(",", ".")})
+                                              json={"building_load_kw": value})
                 body = response.json()
                 if response.status_code == 200:
-                    self.out(f"Loja (SIMULADO) em {body['building_load_kw']} kW: disponível {body['available_kw']} kW")
+                    origin = "curva do estabelecimento" if value is None else "valor da demo, 30 min"
+                    self.out(f"Loja (SIMULADO, {origin}) em {body['building_load_kw']} kW: "
+                             f"disponível {body['available_kw']} kW")
                 else:
                     self.out(f"Loja recusada: {body}")
             elif command == "status":
