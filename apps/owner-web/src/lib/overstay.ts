@@ -7,7 +7,7 @@
  * parcial (`pricing.merge_rules`): enviamos só `{ rotation }` e a tarifa por horário e
  * por demanda continuam como estão no servidor (sem sobrescrever com uma cópia velha).
  */
-import type { LiveOccupancy, PricingRules, RotationRule, SessionPayment } from '../api/operations'
+import type { PricingRules, RotationRule, SessionPayment } from '../api/operations'
 import { formatCurrency, toNumber } from './format'
 import type { Tone } from './labels'
 
@@ -77,47 +77,6 @@ export function rotationSummary(values: RotationValues): string {
   const grace = values.start_after_min ? `${values.start_after_min} min de tolerância` : 'sem tolerância'
   const each = values.interval_min === 1 ? `${formatCurrency(values.amount)}/min` : `${formatCurrency(values.amount)} a cada ${values.interval_min} min`
   return `Após a recarga: ${grace}, depois ${each} (máx. ${formatCurrency(values.max_amount)})`
-}
-
-/* ------------------------------------------------ vaga ocupada após a recarga */
-
-export const OVERSTAY_STATUS: Record<string, { label: string; tone: Tone }> = {
-  none: { label: 'Sem permanência', tone: 'gray' },
-  no_fee: { label: 'Na vaga · sem taxa', tone: 'gray' },
-  grace: { label: 'Em tolerância', tone: 'amber' },
-  billing: { label: 'Cobrando permanência', tone: 'red' },
-  capped: { label: 'Taxa no máximo', tone: 'red' },
-  closed: { label: 'Permanência encerrada', tone: 'green' },
-}
-
-/** "04:37" (minutos:segundos); horas viram "1:02:05". */
-export function formatCountdown(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '—'
-  const total = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  const mm = String(m).padStart(2, '0')
-  const ss = String(s).padStart(2, '0')
-  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
-/** Linha do ao vivo para quem ocupa a vaga depois da recarga. */
-export function occupancyText(occupancy: LiveOccupancy, elapsedSeconds = 0): string {
-  const fee = formatCurrency(occupancy.fee_due ?? '0')
-  const max = occupancy.max_fee ? ` de ${formatCurrency(occupancy.max_fee)}` : ''
-  switch (occupancy.status) {
-    case 'grace':
-      return `Tolerância: restam ${formatCountdown((occupancy.grace_remaining_seconds ?? 0) - elapsedSeconds)}`
-    case 'billing':
-      return `Taxa acumulada ${fee}${max}`
-    case 'capped':
-      return `Taxa no máximo: ${fee}`
-    case 'no_fee':
-      return 'Recarga concluída, sem taxa de permanência'
-    default:
-      return OVERSTAY_STATUS[occupancy.status]?.label ?? occupancy.status
-  }
 }
 
 /**

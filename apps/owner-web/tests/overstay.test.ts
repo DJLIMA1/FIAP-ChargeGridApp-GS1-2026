@@ -4,8 +4,6 @@ import { endpoints } from '../src/api/endpoints'
 import type { PricingRules } from '../src/api/operations'
 import { createTokenStore, type KeyValueStorage } from '../src/auth/tokens'
 import {
-  formatCountdown,
-  occupancyText,
   overstayCell,
   paymentBadge,
   rotationForm,
@@ -68,19 +66,7 @@ describe('taxa de permanência: rules.rotation com as chaves reais da API', () =
   })
 })
 
-describe('vaga ocupada e coluna Permanência', () => {
-  it('formata a tolerância restante e a taxa acumulada', () => {
-    expect(formatCountdown(277)).toBe('04:37')
-    expect(formatCountdown(3725)).toBe('1:02:05')
-    expect(formatCountdown(-3)).toBe('00:00')
-    expect(formatCountdown(null)).toBe('—')
-    const base = { session_id: 's', started_at: null, max_fee: '30.00', billable_minutes: 0, fee_applies: true, driver_label: 'Ana', as_of: null }
-    expect(occupancyText({ ...base, status: 'grace', grace_remaining_seconds: 300, fee_due: '0.00' })).toBe('Tolerância: restam 05:00')
-    expect(occupancyText({ ...base, status: 'grace', grace_remaining_seconds: 300, fee_due: '0.00' }, 30)).toBe('Tolerância: restam 04:30')
-    expect(occupancyText({ ...base, status: 'billing', grace_remaining_seconds: 0, fee_due: '4.00' })).toBe('Taxa acumulada R$ 4,00 de R$ 30,00')
-    expect(occupancyText({ ...base, status: 'capped', grace_remaining_seconds: 0, fee_due: '30.00' })).toBe('Taxa no máximo: R$ 30,00')
-  })
-
+describe('coluna Permanência', () => {
   it('coluna Permanência usa overstay_fee (texto) e overstay_minutes (inteiro) de /owner/sessions', () => {
     expect(overstayCell({})).toEqual({ text: '—' })
     // analytics.session_export_row: sem permanência vem "0.00" e 0.

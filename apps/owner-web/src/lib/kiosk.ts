@@ -1,6 +1,6 @@
 /**
- * Totem de autoatendimento (firmware 0.8.0) no painel do vendedor: status do totem do posto e
- * canal/método das sessões pagas. Mesmas regras do app (`screens/station_ops.py`,
+ * Totem de autoatendimento (firmware 0.8.0) no painel do vendedor: status do totem do posto (uma linha
+ * em Dados da estação) e canal/método das sessões pagas. Mesmas regras do app (`screens/station_ops.py`,
  * `services/owner_sessions.py`) e da API (`kiosk_totem.method_for`, `funding.payment_channel`).
  */
 import type { SessionPayment } from '../api/operations'
@@ -19,12 +19,15 @@ export interface KioskStatus {
   tone: Tone
 }
 
-export const KIOSK_FOLLOWS =
-  'O método de pagamento do totem segue o Modo apresentação da sua conta (app ChargeGrid → Conta → Modo apresentação): ligado, pagamento simulado; desligado, Stripe (teste).'
+/** Status numa linha, como o app (`station_ops.KIOSK_TEXTS`/`KIOSK_REASONS`). */
+export const KIOSK_TEXTS: Record<KioskMethod, string> = {
+  stripe: 'Pagamento: Stripe (teste)',
+  simulated: 'Pagamento simulado (Modo apresentação)',
+}
 
 export const KIOSK_REASON_TEXT: Record<KioskReason, string> = {
-  payments_unavailable: 'Indisponível: pagamentos Stripe não configurados no servidor (payments_unavailable). Ligue o Modo apresentação para usar o pagamento simulado.',
-  point_disabled: 'Indisponível: posto desativado (point_disabled).',
+  payments_unavailable: 'Indisponível: pagamentos Stripe não configurados no servidor',
+  point_disabled: 'Indisponível: estação inativa',
 }
 
 /**
@@ -67,8 +70,8 @@ export function kioskStatus(station: Pick<Station, 'active' | 'kiosk_status'>, p
     method = null
     reason = 'payments_unavailable'
   }
-  if (method === 'simulated') return { enabled: true, method, label: 'SIMULADO', reason, tone: 'amber', text: 'Pagamento simulado: nenhuma cobrança, acerto local sem Stripe.' }
-  if (method === 'stripe') return { enabled: true, method, label: 'TESTE', reason, tone: 'blue', text: 'Stripe (teste): QR do pedido na tela do totem abre a Checkout hospedada.' }
+  if (method === 'simulated') return { enabled: true, method, label: 'SIMULADO', reason, tone: 'amber', text: KIOSK_TEXTS.simulated }
+  if (method === 'stripe') return { enabled: true, method, label: 'TESTE', reason, tone: 'blue', text: KIOSK_TEXTS.stripe }
   return { enabled: false, method, label: null, reason, tone: 'red', text: KIOSK_REASON_TEXT[reason as KioskReason] }
 }
 

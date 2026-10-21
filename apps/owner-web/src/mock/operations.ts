@@ -3,19 +3,19 @@
  *
  * - C · Resultado: custo do kWh por posto (Villa Olímpia sem custo, para mostrar o "—"),
  *   `/owner/margin` com a regra de `chargegrid_core.economics` e exportações CSV/PDF;
- * - B · Energia do estabelecimento: limite contratado, consumo SIMULADO da loja, divisão
- *   da potência, confirmação do equipamento com atraso (excesso transitório) e decisões;
- * - A · Pagamentos (Stripe · teste): interruptores do posto e `payment` nas sessões;
+ * - Potência: limite contratado (padrão do tipo/porte ou o do dono), consumo da loja SIMULADO pela
+ *   curva do tipo/porte, rebalanceamento ligado por padrão, divisão da potência, confirmação do
+ *   equipamento com atraso (excesso transitório) e potência efetiva por conector;
+ * - Pagamento automático (Stripe · teste; simulado no totem em Modo apresentação): `payment` nas sessões;
  * - Totem 0.8.0: `kiosk_mode` (Villa Lobos ligado), CG-003 travado por um pedido do totem
  *   (`kiosk_in_use`) e `payment.channel` (app / QR do painel / totem, simulado ou Stripe) nas sessões;
  * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
  *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
- *   sessões e `occupancy` no ao vivo.
+ *   sessões.
  *
  * Nunca entra no build de produção (importado só pelo mock).
  */
 import type {
-  LiveOccupancy,
   MarginReport,
   MarginRow,
   PowerDecision,
@@ -27,11 +27,11 @@ import type {
   StationPower,
   StationPricing,
 } from '../api/operations'
-import type { LiveItem, SessionItem, Station } from '../api/types'
+import type { SessionItem, Station } from '../api/types'
+import { defaultSiteLimitKw, profileLabel, requestedKw, sizeKey, profileKey } from '../lib/power'
 import { formatCurrency } from '../lib/format'
 import * as data from './data'
 
-const START = Date.now()
 const S = data.STATIONS
 
 function hash(text: string): number {
@@ -43,7 +43,6 @@ const cents = (value: number) => Math.round(value * 100 + Number.EPSILON * 100)
 const money = (c: number) => (c / 100).toFixed(2)
 /** Mesmo caminho de `economics._value`: 4 casas (como o cost_estimate) e depois o centavo. */
 const value = (amount: number) => cents(Number(amount.toFixed(4)))
-const round2 = (value: number) => cents(value) / 100
 
 export class MockFailure extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
@@ -180,11 +179,12 @@ export function stationOverstay(stationId: string): StationOverstay {
 
 function decorateStation(station: Station) {
   const index = S.indexOf(station)
-  station.prepay_required ??= index === 1
-  station.kiosk_payments ??= index !== 2
   station.kiosk_mode ??= index === 0
   for (const connector of station.connectors) {
     connector.kiosk_in_use ??= false
+    connector.power_limit_kw ??= null
+    // Sem teto no posto: a efetiva é o pedido (nominal ou o limite do vendedor), como `power.allocate`.
+    connector.effective_power_kw ??= requestedKw(connector).toFixed(3)
     // Pedido do totem aberto: o ponto aparece ocupado ("Em uso no totem"), como `availability()` da API.
     if (index === 0 && connector.public_code === 'CG-003' && connector.availability_status === 'available') {
       Object.assign(connector, { available: false, availability_status: 'occupied', kiosk_in_use: true })
@@ -232,8 +232,8 @@ function overstayFor(session: SessionItem): Pick<SessionItem, 'overstay_fee' | '
 
 function paymentFor(session: SessionItem, overstayCents: number): SessionPayment | null {
   const h = hash(`pay-${session.id}`)
-  const prepay = S.find((s) => s.id === session.station_id)?.prepay_required
-  if (!prepay && h % 100 >= 35) return null
+  // Pagamento automático (sem pré-pagamento obrigatório): parte das recargas tem pagamento registrado.
+  if (h % 100 >= 35) return null
   if (session.status === 'failed') return null
   const energy = cents(Number(session.cost_estimate ?? 0))
   const amount = Math.max(2000, Math.ceil((energy + overstayCents + 1000) / 1000) * 1000)
@@ -460,24 +460,48 @@ export function marginPdf(params: URLSearchParams): Uint8Array {
   return new TextEncoder().encode(pdf)
 }
 
-/* ------------------------------------------ B · energia do estabelecimento */
+/* -------------------------------------------------------------- potência */
 
 interface PowerSite {
   rebalance: boolean
+  /** Informado pelo dono (`null` = padrão do tipo/porte). */
   limit: number | null
-  load: number
-  updatedAt: string | null
+  profile: string
+  size: string
   applied: Record<string, number>
   pendingSince: Record<string, number>
   decisions: PowerDecision[]
   lastKey: string
 }
 
+const site = (profile: string, size: string, limit: number | null): PowerSite => ({ rebalance: true, limit, profile, size, applied: {}, pendingSince: {}, decisions: [], lastKey: '' })
+
+/** Rebalanceamento ligado por padrão; Villa Lobos e Villa Olímpia no limite padrão, Marginal com o do dono. */
 const POWER: Record<string, PowerSite> = {
-  [S[0].id]: { rebalance: true, limit: 75, load: 30, updatedAt: new Date(START - 60_000).toISOString(), applied: {}, pendingSince: {}, decisions: [], lastKey: '' },
-  [S[1].id]: { rebalance: true, limit: 150, load: 62, updatedAt: new Date(START - 120_000).toISOString(), applied: {}, pendingSince: {}, decisions: [], lastKey: '' },
-  [S[2].id]: { rebalance: false, limit: null, load: 0, updatedAt: null, applied: {}, pendingSince: {}, decisions: [], lastKey: '' },
+  [S[0].id]: site('conveniencia', 'medio', null),
+  [S[1].id]: site('supermercado', 'grande', 150),
+  [S[2].id]: site('restaurante', 'pequeno', null),
 }
+
+const PEAK: Record<string, number> = { conveniencia: 22, farmacia: 12, padaria: 45, supermercado: 100, restaurante: 30, shopping: 750 }
+const SIZE: Record<string, number> = { pequeno: 0.6, medio: 1, grande: 1.6 }
+/** Curva diurna simples (fração do pico por hora local), só para a demonstração. */
+const CURVE = [0.5, 0.48, 0.47, 0.46, 0.46, 0.5, 0.6, 0.72, 0.82, 0.88, 0.92, 0.96, 1, 0.98, 1, 1, 0.97, 0.94, 0.9, 0.84, 0.76, 0.68, 0.6, 0.54]
+
+function effectiveLimit(power: PowerSite): { kw: number; isDefault: boolean } {
+  return power.limit === null ? { kw: defaultSiteLimitKw(power.profile, power.size), isDefault: true } : { kw: power.limit, isDefault: false }
+}
+
+/** Consumo SIMULADO da loja: pico do tipo/porte × curva horária × variação suave por janela de 5 min (≤ 85 % do limite). */
+export function simulatedLoad(stationId: string, power: PowerSite, at = Date.now()): number {
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(new Date(at)))
+  const window = Math.floor(at / 300_000)
+  const jitter = 0.94 + (hash(`${stationId}:${window}`) % 1200) / 10_000
+  const peak = (PEAK[profileKey(power.profile)] ?? 22) * (SIZE[sizeKey(power.size)] ?? 1)
+  const value = Math.round(peak * CURVE[hour] * jitter * 10) / 10
+  return Math.min(value, Math.floor(effectiveLimit(power).kw * 0.85 * 10) / 10)
+}
+
 const FLOOR = 1.4
 let decisionSeq = 1
 const kwText = (value: number) => (Math.round(value * 10) / 10).toFixed(1).replace(/\.0$/, '').replace('.', ',')
@@ -488,10 +512,10 @@ interface Allocation {
   code: 'site' | 'charger' | 'paused' | 'fixed'
 }
 
-function allocate(station: Station, site: PowerSite) {
+function allocate(station: Station, site: PowerSite, load: number) {
   const charging = station.connectors.filter((c) => c.availability_status === 'charging')
-  const available = site.limit === null ? Infinity : Math.max(0, site.limit - site.load)
-  const requests = charging.map((c) => Number(c.power_kw))
+  const available = Math.max(0, effectiveLimit(site).kw - load)
+  const requests = charging.map((c) => requestedKw(c))
   const want = requests.reduce((t, r) => t + r, 0)
   const allocations: Allocation[] = charging.map((connector, i) => {
     if (!site.rebalance) return { connector, target: requests[i], code: 'fixed' as const }
@@ -503,17 +527,17 @@ function allocate(station: Station, site: PowerSite) {
     }
     return { connector, target: Math.round(((available * requests[i]) / want) * 10) / 10, code: 'site' as const }
   })
-  return { available: site.limit === null ? null : available, allocations, cars: charging.length }
+  return { available, allocations, cars: charging.length }
 }
 
-function reasonFor(alloc: Allocation, site: PowerSite, cars: number) {
+function reasonFor(alloc: Allocation, site: PowerSite & { load: number }, cars: number) {
   const alone = cars === 1 ? 'só o seu carro está carregando' : `há ${cars} carros carregando`
   const kw = kwText(alloc.target)
   switch (alloc.code) {
     case 'site':
-      return { text: `${kw} kW porque a loja usa ${kwText(site.load)} de ${kwText(site.limit ?? 0)} kW e ${alone}.`, short: `Loja ${kwText(site.load)}/${kwText(site.limit ?? 0)} kW` }
+      return { text: `${kw} kW porque a loja usa ${kwText(site.load)} de ${kwText(effectiveLimit(site).kw)} kW e ${alone}.`, short: `Loja ${kwText(site.load)}/${kwText(effectiveLimit(site).kw)} kW` }
     case 'paused':
-      return { text: `Pausado: a loja usa ${kwText(site.load)} de ${kwText(site.limit ?? 0)} kW e não sobra o mínimo de 1,4 kW para mais um carro.`, short: 'Pausado: sem capacidade' }
+      return { text: `Pausado: a loja usa ${kwText(site.load)} de ${kwText(effectiveLimit(site).kw)} kW e não sobra o mínimo de 1,4 kW para mais um carro.`, short: 'Pausado: sem capacidade' }
     case 'fixed':
       return { text: `${kw} kW: rebalanceamento desligado, vale a potência definida no início da recarga.`, short: 'Rebalanceamento desligado' }
     default:
@@ -521,22 +545,24 @@ function reasonFor(alloc: Allocation, site: PowerSite, cars: number) {
   }
 }
 
-function record(site: PowerSite, trigger: string, available: number | null, allocations: Allocation[], exceeded: number) {
+function record(site: PowerSite, trigger: string, available: number, allocations: Allocation[], exceeded: number) {
   const parts = allocations.map((a) => `${a.connector.public_code} ${kwText(a.target)} kW`).join(', ')
   const summary = allocations.length
-    ? `${available === null ? 'Sem limite contratado' : `Disponível ${kwText(available)} kW`} para ${allocations.length} carro(s): ${parts}.`
-    : `${available === null ? 'Sem limite contratado' : `Disponível ${kwText(available)} kW`}; nenhum carro carregando.`
-  site.decisions.unshift({ id: decisionSeq++, created_at: new Date().toISOString(), trigger, available_kw: available === null ? null : available.toFixed(1), exceeded_kw: exceeded.toFixed(1), summary })
+    ? `Disponível ${kwText(available)} kW para ${allocations.length} carro(s): ${parts}.`
+    : `Disponível ${kwText(available)} kW; nenhum carro carregando.`
+  site.decisions.unshift({ id: decisionSeq++, created_at: new Date().toISOString(), trigger, available_kw: available.toFixed(1), exceeded_kw: exceeded.toFixed(1), summary })
   site.decisions.length = Math.min(site.decisions.length, 20)
 }
 
 /** Visão de `/stations/{id}/power`; o equipamento "confirma" ajustes ~1,2 s depois. */
-export function power(stationId: string, trigger = 'initial'): StationPower {
+export function power(stationId: string, trigger = 'initial', at = Date.now()): StationPower {
   const station = S.find((s) => s.id === stationId)!
   const site = POWER[stationId]
   const now = Date.now()
-  const { available, allocations, cars } = allocate(station, site)
-  const key = JSON.stringify([site.rebalance, site.limit, site.load, allocations.map((a) => a.target)])
+  const load = simulatedLoad(stationId, site, at)
+  const limit = effectiveLimit(site)
+  const { available, allocations, cars } = allocate(station, site, load)
+  const key = JSON.stringify([site.rebalance, limit.kw, load, allocations.map((a) => a.target)])
   let confirmed = false
   for (const a of allocations) {
     const id = a.connector.id
@@ -552,7 +578,7 @@ export function power(stationId: string, trigger = 'initial'): StationPower {
   }
   const envelopes = allocations.map((a) => Math.max(a.target, site.applied[a.connector.id] ?? a.target))
   const envelope = envelopes.reduce((t, e) => t + e, 0)
-  const exceeded = available === null ? 0 : Math.max(0, envelope - available)
+  const exceeded = Math.max(0, envelope - available)
   if (key !== site.lastKey) {
     record(site, site.lastKey ? trigger : 'initial', available, allocations, exceeded)
     site.lastKey = key
@@ -562,13 +588,22 @@ export function power(stationId: string, trigger = 'initial'): StationPower {
   return {
     station_id: stationId,
     rebalance_enabled: site.rebalance,
-    site_limit_kw: site.limit === null ? null : site.limit.toFixed(1),
-    building_load_kw: site.load.toFixed(1),
-    building_load_source: site.updatedAt ? 'simulated' : null,
-    building_load_simulated: Boolean(site.updatedAt),
-    building_load_updated_at: site.updatedAt,
+    site_limit_kw: limit.kw.toFixed(1),
+    site_limit_default: limit.isDefault,
+    site_limit_configured_kw: site.limit === null ? null : site.limit.toFixed(1),
+    site_limit_default_kw: defaultSiteLimitKw(site.profile, site.size).toFixed(1),
+    building_load_kw: load.toFixed(1),
+    building_load_source: 'simulated',
+    building_load_simulated: true,
+    building_load_mode: 'auto',
+    building_load_updated_at: new Date(Math.floor(at / 300_000) * 300_000).toISOString(),
+    building_load_manual_until: null,
+    building_profile: profileKey(site.profile),
+    building_size: sizeKey(site.size),
+    building_profile_label: `${profileLabel(site.profile)} · porte ${sizeKey(site.size) === 'medio' ? 'médio' : sizeKey(site.size)}`,
+    building_peak_kw: ((PEAK[profileKey(site.profile)] ?? 22) * (SIZE[sizeKey(site.size)] ?? 1)).toFixed(1),
     station_cap_kw: null,
-    available_kw: available === null ? null : available.toFixed(1),
+    available_kw: available.toFixed(1),
     allocated_kw: allocations.reduce((t, a) => t + a.target, 0).toFixed(1),
     envelope_kw: envelope.toFixed(1),
     exceeded_kw: exceeded.toFixed(1),
@@ -576,7 +611,7 @@ export function power(stationId: string, trigger = 'initial'): StationPower {
     points: station.connectors.map((connector) => {
       const alloc = allocations.find((a) => a.connector.id === connector.id)
       const applied = alloc ? site.applied[connector.id] : null
-      const reason = alloc ? reasonFor(alloc, site, cars) : null
+      const reason = alloc ? reasonFor(alloc, { ...site, load }, cars) : null
       const state = !alloc ? null : alloc.code === 'paused' && applied === 0 ? 'paused' : applied === alloc.target ? 'applied' : (applied ?? 0) > alloc.target ? 'reducing' : 'raising'
       return {
         connector_id: connector.id,
@@ -597,7 +632,14 @@ export function power(stationId: string, trigger = 'initial'): StationPower {
   }
 }
 
-export function putPowerSite(stationId: string, body: { site_limit_kw?: string | null; rebalance_enabled?: boolean }): StationPower {
+const PROFILES = Object.keys(PEAK)
+const SIZES = Object.keys(SIZE)
+
+/** `PUT power-site` parcial, como `power.service.set_site`: `site_limit_kw: null` volta ao padrão. */
+export function putPowerSite(
+  stationId: string,
+  body: { site_limit_kw?: string | null; rebalance_enabled?: boolean; building_profile?: string | null; building_size?: string | null },
+): StationPower {
   const site = POWER[stationId]
   let trigger = 'site_limit_changed'
   if ('site_limit_kw' in body) {
@@ -609,72 +651,17 @@ export function putPowerSite(stationId: string, body: { site_limit_kw?: string |
       site.limit = Math.round(value * 10) / 10
     }
   }
-  if (typeof body.rebalance_enabled === 'boolean') {
+  if ('rebalance_enabled' in body) {
+    if (typeof body.rebalance_enabled !== 'boolean') throw new MockFailure(422, 'null_not_allowed', 'Campo não aceita null')
     site.rebalance = body.rebalance_enabled
     trigger = 'request_changed'
   }
+  for (const [key, allowed] of [['building_profile', PROFILES], ['building_size', SIZES]] as const) {
+    if (!(key in body)) continue
+    const value = body[key]
+    if (value !== null && value !== undefined && !allowed.includes(value)) throw new MockFailure(422, 'validation_error', 'Valor inválido')
+    if (key === 'building_profile') site.profile = value ?? 'conveniencia'
+    else site.size = value ?? 'medio'
+  }
   return power(stationId, trigger)
-}
-
-export function putBuildingLoad(stationId: string, body: { building_load_kw?: string | number }): StationPower {
-  const value = Number(body.building_load_kw)
-  if (!Number.isFinite(value) || value < 0 || value > 10000) throw new MockFailure(422, 'validation_error', 'O consumo vai de 0 a 10.000 kW.')
-  const site = POWER[stationId]
-  site.load = Math.round(value * 10) / 10
-  site.updatedAt = new Date().toISOString()
-  return power(stationId, 'building_load_changed')
-}
-
-/* ------------------------------------------------- ao vivo: potência e vaga */
-
-/** Carros que continuam na vaga depois da recarga (ponto livre, cabo conectado). */
-const OCCUPIED: Record<string, { endedMinutesAgo: number; label: string }> = {
-  'CG-002': { endedMinutesAgo: 4, label: 'Motorista do app' },
-  'CG-006': { endedMinutesAgo: 14, label: 'Visitante do painel' },
-}
-
-/** `overstay.occupancy_by_connector`: mesmo formato e regras de fase da API. */
-function occupancyFor(item: LiveItem): LiveOccupancy | null {
-  const spot = OCCUPIED[item.public_code]
-  const rule = RULES[item.station_id]?.rotation
-  if (!spot || item.availability_status !== 'available') return null
-  const since = Math.floor((Date.now() - START) / 1000 + spot.endedMinutesAgo * 60)
-  const started = new Date(Date.now() - since * 1000).toISOString()
-  const base = { session_id: `ovs-${item.connector_id.slice(0, 8)}`, started_at: started, driver_label: spot.label, as_of: new Date().toISOString() }
-  if (!rule?.enabled) {
-    return { ...base, status: 'no_fee', grace_remaining_seconds: 0, billable_minutes: 0, fee_due: '0.00', max_fee: null, fee_applies: false }
-  }
-  const grace = rule.start_after_min * 60
-  const amount = Number(rule.amount)
-  const max = Number(rule.max_amount)
-  const intervals = Math.max(0, Math.floor((since - grace) / (rule.interval_min * 60)))
-  const fee = Math.min(round2(intervals * amount), max)
-  const capped = fee >= max
-  const status = capped ? 'capped' : since <= grace ? 'grace' : 'billing'
-  const cap = amount > 0 ? Math.ceil(max / amount) : intervals
-  return {
-    ...base, status, grace_remaining_seconds: Math.max(0, grace - since), billable_minutes: Math.min(intervals, cap) * rule.interval_min,
-    fee_due: fee.toFixed(2), max_fee: rule.max_amount, fee_applies: true,
-  }
-}
-
-export function decorateLive(payload: { items: LiveItem[]; generated_at: string }) {
-  const views: Record<string, StationPower> = {}
-  for (const item of payload.items) {
-    const occupancy = occupancyFor(item)
-    item.occupancy = occupancy
-    if (occupancy) item.availability_status = 'occupied'
-    if (item.session) {
-      views[item.station_id] ??= power(item.station_id)
-      const point = views[item.station_id].points.find((p) => p.connector_id === item.connector_id)?.session
-      if (point) {
-        item.session.applied_power_kw = point.applied_kw
-        item.session.power_state = point.power_state
-        item.session.power_reason = point.reason
-        const appliedW = Number(point.applied_kw) * 1000
-        if (item.session.power_w && Number(item.session.power_w) > appliedW) item.session.power_w = (appliedW * 0.97).toFixed(0)
-      }
-    }
-  }
-  return payload
 }

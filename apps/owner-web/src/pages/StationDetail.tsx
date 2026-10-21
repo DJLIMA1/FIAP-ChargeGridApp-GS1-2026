@@ -8,10 +8,9 @@ import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
 import { EconomicsCard } from '../components/station/EconomicsCard'
-import { KioskCard } from '../components/station/KioskCard'
+import { KioskField } from '../components/station/KioskField'
 import { OverstayCard } from '../components/station/OverstayCard'
-import { PaymentsCard } from '../components/station/PaymentsCard'
-import { SitePowerCard } from '../components/station/SitePowerCard'
+import { PowerCard } from '../components/station/PowerCard'
 import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
 import { useFilters } from '../lib/filters'
 import { formatPower, formatRelative, formatTariff } from '../lib/format'
@@ -28,7 +27,7 @@ function errorText(error: unknown): string {
 }
 
 /* ------------------------------------------------------------ dados da estação */
-function StationForm({ station, onSaved }: { station: Station; onSaved(next: Station): void }) {
+export function StationForm({ station, onSaved }: { station: Station; onSaved(next: Station): void }) {
   const { ep } = useAuth()
   const toast = useToast()
   const [name, setName] = useState(station.name)
@@ -40,12 +39,13 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
   const [error, setError] = useState<string | null>(null)
   const [touched, setTouched] = useState(false)
 
+  // Só os campos do formulário: ligar o totem (salvo na hora) não descarta o que está sendo digitado.
   useEffect(() => {
     setName(station.name)
     setAddress(station.address)
     setActive(station.active)
     setCoords(null)
-  }, [station])
+  }, [station.name, station.address, station.active])
 
   const nameError = validateText(name, 'o nome da estação', 100)
   const addressError = validateText(address, 'o endereço', 300)
@@ -80,7 +80,7 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
   }
 
   return (
-    <Card title="Dados da estação" sub="Visíveis para os motoristas no app" id="station-data">
+    <Card title="Dados da estação" sub="Visíveis para os motoristas no app; o totem liga e desliga na hora" id="station-data">
       <form onSubmit={save} className="stack" noValidate>
         {error ? <ErrorBanner error={error} title="Alterações não salvas" /> : null}
         <div className="form-grid">
@@ -113,6 +113,7 @@ function StationForm({ station, onSaved }: { station: Station; onSaved(next: Sta
               />
             </Field>
           </div>
+          <KioskField station={station} onSaved={onSaved} />
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button
@@ -443,11 +444,9 @@ export default function StationDetail() {
             </EmptyState>
           )}
         </Card>
-        <SitePowerCard stationId={station.id} />
+        <PowerCard station={station} />
         <EconomicsCard stationId={station.id} />
         <OverstayCard station={station} />
-        <PaymentsCard station={station} onSaved={update} />
-        <KioskCard station={station} onSaved={update} />
         <AmenitiesEditor station={station} onSaved={update} />
       </div>
     </>

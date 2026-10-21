@@ -149,11 +149,23 @@ export interface PowerDecision {
 export interface StationPower {
   station_id: string
   rebalance_enabled: boolean
+  /** Limite efetivo: o informado pelo dono ou o padrão do tipo/porte (`site_limit_default`). */
   site_limit_kw: Decimal | null
+  site_limit_default: boolean
+  /** Informado pelo dono (`null` = vale o padrão). */
+  site_limit_configured_kw: Decimal | null
+  site_limit_default_kw: Decimal | null
+  /** Consumo da loja agora: sempre SIMULADO (sem medidor), pela curva do tipo/porte ou do simulador. */
   building_load_kw: Decimal | null
   building_load_source: string | null
   building_load_simulated: boolean
+  building_load_mode?: 'auto' | 'manual' | string | null
   building_load_updated_at: string | null
+  building_load_manual_until?: string | null
+  building_profile: string
+  building_size: string
+  building_profile_label?: string
+  building_peak_kw?: Decimal | null
   station_cap_kw: Decimal | null
   available_kw: Decimal | null
   allocated_kw: Decimal | null
@@ -164,9 +176,12 @@ export interface StationPower {
   decisions: PowerDecision[]
 }
 
+/** `PUT /stations/{id}/power-site` (parcial): `site_limit_kw: null` volta ao padrão do tipo/porte. */
 export interface PowerSiteInput {
   site_limit_kw?: string | null
   rebalance_enabled?: boolean
+  building_profile?: 'conveniencia' | 'farmacia' | 'padaria' | 'supermercado' | 'restaurante' | 'shopping'
+  building_size?: 'pequeno' | 'medio' | 'grande'
 }
 
 /* ------------------------------------------------------------ A · pagamentos */
@@ -285,20 +300,3 @@ export interface StationOverstay {
   summary: string | null
 }
 
-export type OverstayStatus = 'none' | 'no_fee' | 'grace' | 'billing' | 'capped' | 'closed'
-
-/** `occupancy` de cada ponto em `/owner/live` (`app/overstay.py::occupancy_by_connector`). */
-export interface LiveOccupancy {
-  session_id: string
-  status: OverstayStatus | string
-  started_at: string | null
-  /** 0 fora de grace/billing/capped (nunca `null`). */
-  grace_remaining_seconds: number
-  billable_minutes: number
-  fee_due: Decimal
-  /** `null` sem termos aceitos (taxa zero). */
-  max_fee: Decimal | null
-  fee_applies: boolean
-  driver_label: string
-  as_of: string | null
-}

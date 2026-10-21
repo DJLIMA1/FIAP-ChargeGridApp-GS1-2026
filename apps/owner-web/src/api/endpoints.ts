@@ -6,7 +6,6 @@ import type {
   Coupon,
   CouponInput,
   Heatmap,
-  LiveItem,
   Overview,
   OwnerInsights,
   Page,
@@ -31,7 +30,7 @@ export interface SessionFilters extends PeriodQuery {
   offset?: number
 }
 
-export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities' | 'prepay_required' | 'kiosk_payments' | 'kiosk_mode'>> & {
+export type StationPatch = Partial<Pick<Station, 'name' | 'address' | 'active' | 'amenities' | 'kiosk_mode'>> & {
   latitude?: number
   longitude?: number
 }
@@ -67,8 +66,6 @@ export function endpoints(api: ApiClient) {
     sessions: (q: SessionFilters, signal?: AbortSignal) => api.get<Page<SessionItem>>('/owner/sessions', { ...q }, signal),
     alerts: (stationId?: string | null, signal?: AbortSignal) =>
       api.get<{ items: AlertItem[]; generated_at: string }>('/owner/alerts', { station_id: stationId }, signal),
-    live: (stationId?: string | null, signal?: AbortSignal) =>
-      api.get<{ items: LiveItem[]; generated_at: string }>('/owner/live', { station_id: stationId }, signal),
     stations: (signal?: AbortSignal) =>
       api.get<Page<Station>>('/operator/stations', { limit: 100, offset: 0 }, signal),
     station: (id: string, signal?: AbortSignal) => api.get<Station>(`/stations/${encodeURIComponent(id)}`, undefined, signal),
@@ -84,11 +81,9 @@ export function endpoints(api: ApiClient) {
       api.put<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, { energy_cost_per_kwh: energyCostPerKwh }),
     margin: (q: MarginFilters, signal?: AbortSignal) => api.get<MarginReport>('/owner/margin', { ...q }, signal),
     exportMargin: (fmt: 'csv' | 'pdf', q: PeriodQuery) => api.blob(`/owner/export/margin.${fmt}`, { ...marginExportQuery(q) }),
-    // B · Energia do estabelecimento (rebalanceamento ao vivo).
+    // Potência do posto: limite contratado (padrão ou do dono), loja SIMULADA, rebalanceamento e tipo/porte.
     power: (id: string, signal?: AbortSignal) => api.get<StationPower>(`/stations/${encodeURIComponent(id)}/power`, undefined, signal),
     putPowerSite: (id: string, body: PowerSiteInput) => api.put<StationPower>(`/stations/${encodeURIComponent(id)}/power-site`, body),
-    putBuildingLoad: (id: string, kw: string) =>
-      api.put<StationPower>(`/stations/${encodeURIComponent(id)}/building-load`, { building_load_kw: kw }),
     // D · Tarifa do posto (a taxa de permanência fica em rules.rotation). O PUT é parcial na API
     // (`pricing.merge_rules`): o que não vier no corpo continua como está.
     pricing: (id: string, signal?: AbortSignal) => api.get<StationPricing>(`/stations/${encodeURIComponent(id)}/pricing`, undefined, signal),

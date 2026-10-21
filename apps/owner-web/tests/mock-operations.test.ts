@@ -33,16 +33,16 @@ describe('mock do painel (modo demonstração)', () => {
     ops.putEconomics(villaOlimpia, { energy_cost_per_kwh: null })
   })
 
-  it('consumo da loja reduz o alvo e o excesso aparece até a confirmação', () => {
+  it('limite contratado menor reduz o alvo e o excesso aparece até a confirmação', () => {
     const villaLobos = data.STATIONS[0].id
     const before = ops.power(villaLobos)
-    expect(before.available_kw).toBe('45.0')
-    const after = ops.putBuildingLoad(villaLobos, { building_load_kw: '60' })
+    const load = Number(before.building_load_kw)
+    const after = ops.putPowerSite(villaLobos, { site_limit_kw: (load + 15).toFixed(1) })
     expect(after.available_kw).toBe('15.0')
     expect(after.points.find((p) => p.session)?.session?.target_kw).toBe('15.0')
     expect(Number(after.exceeded_kw)).toBeGreaterThan(0)
-    expect(after.decisions[0].trigger).toBe('building_load_changed')
-    ops.putBuildingLoad(villaLobos, { building_load_kw: '30' })
+    expect(after.decisions[0].trigger).toBe('site_limit_changed')
+    ops.putPowerSite(villaLobos, { site_limit_kw: null })
   })
 
   it('PUT de tarifa parcial é mesclado como na API (rotation sozinho e sugestão da Previsão)', () => {

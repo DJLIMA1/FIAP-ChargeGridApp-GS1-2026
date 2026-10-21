@@ -3,7 +3,6 @@ import { useAuth } from '../auth/AuthContext'
 import { TrendChart, type Point } from '../components/Charts'
 import { HeatmapGrid } from '../components/Heatmap'
 import { Icon } from '../components/Icon'
-import { LivePanel } from '../components/LivePanel'
 import { AlertRow } from '../components/AlertRow'
 import { Card, EmptyState, ErrorBanner, Kpi, PageHead, Skeleton, SkeletonRows } from '../components/ui'
 import { useFilters } from '../lib/filters'
@@ -224,10 +223,6 @@ export default function Overview() {
             </div>
           ) : null}
         </Card>
-      </div>
-
-      <div className="section">
-        <LivePanel />
       </div>
     </>
   )

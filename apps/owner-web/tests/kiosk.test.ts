@@ -30,8 +30,13 @@ describe('totem de autoatendimento: status do posto', () => {
   it('conta oficial sem Stripe no servidor e posto inativo ficam indisponíveis', () => {
     const missing = kioskStatus({ active: true }, false, false)
     expect(missing).toMatchObject({ enabled: false, method: null, reason: 'payments_unavailable', tone: 'red' })
-    expect(missing.text).toContain('payments_unavailable')
-    expect(kioskStatus({ active: false }, true, true)).toMatchObject({ enabled: false, reason: 'point_disabled' })
+    expect(missing.text).toBe('Indisponível: pagamentos Stripe não configurados no servidor')
+    expect(kioskStatus({ active: false }, true, true)).toMatchObject({ enabled: false, reason: 'point_disabled', text: 'Indisponível: estação inativa' })
+  })
+
+  it('status numa linha com os mesmos textos do app', () => {
+    expect(kioskStatus({ active: true }, false, true).text).toBe('Pagamento: Stripe (teste)')
+    expect(kioskStatus({ active: true }, true).text).toBe('Pagamento simulado (Modo apresentação)')
   })
 
   it('usa o kiosk_status da API e cai no cálculo se o modo da conta mudou depois', () => {
