@@ -210,7 +210,16 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     if (['charging', 'reserved'].includes(connector.availability_status ?? '')) {
       return fail(409, 'point_busy', 'Encerre reservas/recargas antes de alterar o ponto')
     }
-    Object.assign(connector, body)
+    const { charger_address: chargerAddress, ...rest } = (body ?? {}) as Record<string, unknown>
+    if (body && typeof body === 'object' && 'charger_address' in body) {
+      try {
+        ops.setChargerAddress(connector.id, chargerAddress)
+      } catch (error) {
+        if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)
+        throw error
+      }
+    }
+    Object.assign(connector, rest)
     return json(structuredClone(connector))
   }
   const couponMatch = /^\/coupons\/([^/]+)$/.exec(path)

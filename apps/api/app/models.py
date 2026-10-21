@@ -112,12 +112,19 @@ class Connector(Base):
     control_version: Mapped[int] = mapped_column(Integer, default=0)
     # Limite do vendedor para este conector; ``power_kw`` continua sendo a nominal.
     power_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    # Carregador externo (GoodWe HCA G2 via Modbus TCP) ligado à tela deste ponto: unit id /
+    # mDNS cg-hca-<endereço>.local. Nulo = a tela usa o relé/simulação interna.
+    charger_address: Mapped[int | None] = mapped_column(Integer)
     __table_args__ = (
         CheckConstraint("power_kw > 0 AND price_per_kwh >= 0 AND max_duration_minutes > 0"),
         CheckConstraint(
             "power_limit_kw IS NULL OR (power_limit_kw > 0 AND power_limit_kw <= power_kw)",
             name="connector_power_limit_range",
         ),
+        CheckConstraint("charger_address IS NULL OR charger_address BETWEEN 1 AND 247",
+                        name="connector_charger_address_range"),
+        # Dois pontos do mesmo posto nunca falam com o mesmo carregador.
+        UniqueConstraint("station_id", "charger_address", name="uq_connector_station_charger_address"),
     )
 
 

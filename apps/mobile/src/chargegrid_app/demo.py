@@ -16,6 +16,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from chargegrid_core import overstay as overstay_rules
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
+from chargegrid_core.chargers import link as charger_link
 
 from . import demo_receipt, demo_site
 from .api_client import api_error
@@ -181,6 +182,8 @@ class DemoApi(OwnerApiMixin):
         self._payments = {}  # pagamentos Stripe (teste) simulados: demo_payments
         self._kiosk_holds = set()  # pontos travados por um pedido do totem (``hold_for_kiosk``)
         self._power_decisions = {}  # registro de decisões do rebalanceamento por posto: demo_site
+        # Carregador GoodWe HCA G2 (simulado) ligado a cada ponto: ``connectors.charger_address`` (só o dono vê).
+        self._charger_addresses = {}
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
@@ -194,6 +197,9 @@ class DemoApi(OwnerApiMixin):
                 station['owner_id'] = 'demo-network'
             for kind, power, price, online in _DEMO_POINTS[index]:
                 self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price, online=online)
+            if index in _DEMO_OWNED and not self._charger_addresses:
+                first = next(p for p in self._points.values() if p['station_id'] == station['id'])
+                self._charger_addresses[first['id']] = charger_link.SUGGESTED_ADDRESS
             if index == 0:
                 station['amenities'] = [{'kind': 'cafe', 'name': 'Café do Parque', 'distance_m': 60},
                                         {'kind': 'banheiro', 'name': '', 'distance_m': None}]
@@ -539,7 +545,15 @@ class DemoApi(OwnerApiMixin):
                        power_limited=allocated['power_limited'], power_limited_by=allocated['limited_by'])
         if station['owner_id'] == _USER:
             row['energy_kwh_total'] = _decimal(self._energy_total(point['id']), '0.001')
+            row.update(self._charger_fields(point['id'], row['online']))
         return row
+
+    def _charger_fields(self, point_id, online):
+        """Como a API (só o dono): endereço do carregador e o link reportado pela tela simulada."""
+        address = self._charger_addresses.get(point_id)
+        reported = ({'model': charger_link.MODEL, 'transport': charger_link.TRANSPORT, 'address': address,
+                     'link': 'online'} if address is not None and online else None)
+        return {'charger_address': address, 'charger_link': charger_link.owner_block(address, reported, online)}
 
     def _availability_row(self, point):
         device = self._device_for(point['id'])
@@ -893,9 +907,12 @@ class DemoApi(OwnerApiMixin):
         if body.get('active') is True and (point['retired'] or any(r['status'] == 'pending' for did, r in self._resets.items() if self._devices[did]['connector_id'] == identifier)):
             _fail('Este equipamento está sendo restaurado. Adicione outro equipamento simulado.', 'point_retired', 409)
         _fields(body, ('public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes', 'active',
-                       'power_limit_kw'))
+                       'power_limit_kw', 'charger_address'))
+        address = self._charger_address(point, body) if 'charger_address' in body else None
         changes = {}
         for name, value in body.items():
+            if name == 'charger_address':
+                continue  # validado acima (1–247, único no posto)
             if name in ('public_code', 'connector_type'):
                 changes[name] = _text(value, name, 50)
             elif name == 'power_kw':
@@ -924,7 +941,26 @@ class DemoApi(OwnerApiMixin):
         elif 'power_kw' in changes and point.get('power_limit_kw') and Decimal(point['power_limit_kw']) >= Decimal(rating):
             changes['power_limit_kw'] = None
         point.update(changes)
+        if 'charger_address' in body:
+            if address is None:
+                self._charger_addresses.pop(identifier, None)
+            else:
+                self._charger_addresses[identifier] = address
         return self._point_row(point)
+
+    def _charger_address(self, point, body):
+        try:
+            address = charger_link.validate_address(body['charger_address'])
+        except ValueError as exc:
+            _fail(str(exc), 'invalid_charger_address')
+        if address is not None:
+            taken = next((p for pid, used in self._charger_addresses.items() if used == address
+                          and pid != point['id'] and (p := self._points.get(pid))
+                          and p['station_id'] == point['station_id']), None)
+            if taken:
+                _fail(f"O carregador {address} já está ligado ao ponto {taken['public_code']} deste posto. "
+                      'Escolha outro endereço.', 'charger_address_taken', 409)
+        return address
 
     def _claim(self, body):
         _fields(body, ('token', 'station_id'))

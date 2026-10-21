@@ -62,6 +62,8 @@ class ConnectorPatch(Input):
     active: bool | None = None
     # Limite do vendedor para este conector (null remove); nunca acima de power_kw.
     power_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    # Carregador externo GoodWe HCA G2 ligado à tela deste ponto (null remove); único por posto.
+    charger_address: int | None = Field(default=None, ge=1, le=247, strict=True)
 
 
 class ProfilePatch(Input):
@@ -119,6 +121,9 @@ class ChargerInfo(Input):
     max_power_w: int = Field(gt=0, le=1000000)
     step_w: int = Field(default=100, gt=0, le=100000)
     phases: int | None = Field(default=None, ge=1, le=3)
+    # Carregador externo (aditivo, tela com GoodWe HCA G2 via Modbus TCP): endereço e estado do link.
+    address: int | None = Field(default=None, ge=1, le=247)
+    link: Literal["online", "offline"] | None = None
 
 
 class SyncInput(Input):

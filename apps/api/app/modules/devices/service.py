@@ -4,6 +4,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 
+from chargegrid_core.chargers import link as charger_link
+
 from ... import overstay
 from ...errors import fail
 from ...models import (
@@ -110,7 +112,10 @@ def sync(db, authenticated_device, data):
     device.connected = data.connected
     # Capacidade declarada a cada sync: firmware rebaixado deixa de receber SET_POWER.
     device.capabilities = list(data.capabilities)
-    device.charger = data.charger.model_dump() if data.charger else None
+    # Firmware sem carregador externo guarda o mesmo formato de antes (sem address/link nulos).
+    device.charger = data.charger.model_dump(
+        exclude={key for key in ("address", "link") if getattr(data.charger, key) is None}
+    ) if data.charger else None
     if reboot and session:
         session.status = "stopping"
         issue(db, connector, device, "STOP", session=session, parameters={"reason": "device_reboot"})
@@ -479,6 +484,8 @@ def response(db, connector, device):
             "active": bool(connector.active and station.active),
             "presence_code": presence_code if connector.active and station.active and station.owner_id else None,
             "presence_expires_at": presence_expires_at.isoformat(),
+            # Carregador externo que a tela deve controlar (Modbus TCP, unit id = endereço), ou null.
+            "charger_link": charger_link.sync_link(connector.charger_address),
             **payment_device_fields(db, connector, station),
             **({"kiosk": kiosk["kiosk"]} if kiosk else {}),
         },

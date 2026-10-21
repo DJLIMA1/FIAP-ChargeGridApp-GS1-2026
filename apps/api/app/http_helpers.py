@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from chargegrid_core import power as power_rules
 from chargegrid_core import pricing
+from chargegrid_core.chargers import link as charger_link
 
 from . import overstay
 from .errors import fail
@@ -27,7 +28,8 @@ SESSION_RECEIPT_FIELDS = ("price_terms", *ECONOMICS_FIELDS)
 
 def update(obj, data):
     for key, value in data.model_dump(exclude_unset=True).items():
-        if value is None and key not in ("phone", "vehicle_description", "max_power_kw", "power_limit_kw"):
+        if value is None and key not in ("phone", "vehicle_description", "max_power_kw", "power_limit_kw",
+                                              "charger_address"):
             fail("null_not_allowed", "Campo não aceita null", 422)
         setattr(obj, key, value)
 
@@ -132,6 +134,11 @@ def _render_point(db, connector, station, devices, reservations, sessions, retir
     if energy is not None:
         # Owner-only: total energy delivered by this point.
         result["energy_kwh_total"] = _kw(energy.get(connector.id, Decimal(0)))
+        # Owner-only: external charger linked to this screen and its link state from the last sync.
+        result["charger_link"] = charger_link.owner_block(
+            connector.charger_address, device.charger if device else None, result["online"])
+    else:
+        result.pop("charger_address", None)  # drivers: nothing changes
     return result
 
 

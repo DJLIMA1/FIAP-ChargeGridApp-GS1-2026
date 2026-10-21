@@ -4,7 +4,7 @@
  */
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { Station } from '../src/api/types'
 import * as data from '../src/mock/data'
 
@@ -74,5 +74,33 @@ describe('totem em Dados da estação', () => {
     expect(inactive).toContain('Indisponível: estação inativa')
     const legacy = renderToStaticMarkup(createElement(KioskField, { station: station({ kiosk_mode: undefined }), onSaved: () => undefined }))
     expect(legacy).toBe('')
+  })
+})
+
+describe('carregador GoodWe no conector (como Conectores → conector no app)', () => {
+  // O mock decora os postos (charger_address/charger_link) ao carregar as operações.
+  beforeAll(async () => {
+    await import('../src/mock/operations')
+  })
+  const point = (code: string) => structuredClone(data.STATIONS[0].connectors.find((c) => c.public_code === code)!)
+
+  it('campo de endereço, Salvar/Remover e o status numa linha dentro do cartão do conector', async () => {
+    const { ChargerField } = await import('../src/components/station/ChargerField')
+    const html = renderToStaticMarkup(createElement(ChargerField, { connector: point('CG-002'), onSaved: () => undefined }))
+    expect(html).toContain('Carregador GoodWe (endereço)')
+    expect(html).toMatch(/data-testid="charger-address"[^>]*value="1"/)
+    expect(html).toContain('Remover')
+    expect(html).toContain('Carregador 1 · GoodWe HCA G2 (simulado) · online')
+    expect(read('pages/StationDetail.tsx')).toContain('<ChargerField connector={connector} onSaved={onSaved} />')
+  })
+
+  it('sem carregador: 1 sugerido, sem Remover; API antiga (sem o campo): nada aparece', async () => {
+    const { ChargerField } = await import('../src/components/station/ChargerField')
+    const html = renderToStaticMarkup(createElement(ChargerField, { connector: point('CG-003'), onSaved: () => undefined }))
+    expect(html).toMatch(/data-testid="charger-address"[^>]*value="1"/)
+    expect(html).not.toContain('Remover')
+    expect(html).toContain('Sem carregador externo')
+    const legacy = { ...point('CG-003'), charger_address: undefined, charger_link: undefined }
+    expect(renderToStaticMarkup(createElement(ChargerField, { connector: legacy, onSaved: () => undefined }))).toBe('')
   })
 })
