@@ -57,6 +57,8 @@ END_REASONS = {
     "reboot": "Equipamento reiniciado", "command_timeout": "Equipamento não confirmou a operação",
     "start_timeout": "Equipamento não confirmou o início", "start_failed": "Falha ao iniciar",
     "battery_full": "Bateria cheia (100%)",
+    # A tela não confirmou o carregador GoodWe do ponto no START (sem resposta Modbus).
+    "charger_offline": "Carregador offline — use outro ponto desta estação",
 }
 EVENT_LABELS = {
     "start_requested": "Início solicitado", "stop_requested": "Parada solicitada",

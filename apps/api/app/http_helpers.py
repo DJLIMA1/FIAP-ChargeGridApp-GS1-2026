@@ -11,9 +11,11 @@ from .errors import fail
 from .models import ChargingSession, Command, Connector, Device, Reservation, Station
 from .modules.payments.funding import payment_channel, payment_row, payments_by_session, totem_payment_ids
 from .service import (
+    MULTI_CHARGER_CAPABILITY,
     RES_ACTIVE,
     SESSION_ACTIVE,
     availability,
+    hardware_state,
     kiosk_holds,
     online,
     owned,
@@ -74,6 +76,41 @@ def _point_state(db, connectors):
     return devices, reservations, sessions, _retired_ids(db, ids)
 
 
+def _screens(db, devices):
+    """Telas (estações) dos dispositivos carregados: a própria linha ou a tela-mãe (uma consulta)."""
+    parents = {device.parent_device_id for device in devices.values() if device.parent_device_id}
+    loaded = {
+        device.id: device
+        for device in (db.scalars(select(Device).where(Device.id.in_(parents), Device.revoked.is_(False)))
+                       if parents else [])
+    }
+    return {
+        connector_id: (device if device.parent_device_id is None else loaded.get(device.parent_device_id))
+        for connector_id, device in devices.items()
+    }
+
+
+def screen_block(db, screen, device, codes=None):
+    """Dono: a TELA que comanda este carregador (``role`` screen = o ponto da própria tela)."""
+    if screen is None:
+        return None
+    codes = codes if codes is not None else {}
+    code = codes.get(screen.connector_id)
+    if code is None:
+        point = db.get(Connector, screen.connector_id)
+        code = point.public_code if point is not None else None
+    return {
+        "device_id": str(screen.id),
+        "connector_id": str(screen.connector_id),
+        "public_code": code,
+        "online": online(screen),
+        "last_seen": screen.last_seen.isoformat() if screen.last_seen else None,
+        "firmware_version": screen.firmware_version,
+        "role": "screen" if device is screen else "charger",
+        "multi_charger": MULTI_CHARGER_CAPABILITY in (screen.capabilities or []),
+    }
+
+
 KW = Decimal("0.001")
 
 
@@ -110,16 +147,19 @@ def energy_totals(db, connector_ids):
 
 
 def _render_point(db, connector, station, devices, reservations, sessions, retired, power=None, energy=None,
-                  holds=None):
+                  holds=None, screens=None, codes=None):
     result = row(connector)
     device = devices.get(connector.id)
+    screen = (screens if screens is not None else _screens(db, devices)).get(connector.id)
     result.update(availability(
         db, connector, device=device, station=station,
         reservation=reservations.get(connector.id), session=sessions.get(connector.id),
-        hold=(holds or {}).get(connector.id),
+        hold=(holds or {}).get(connector.id), screen=screen,
     ))
+    _, charger_online, _ = hardware_state(connector, device, screen)
     result.update(
-        online=online(device),
+        # "online" = o CARREGADOR responde (tela com contato e GoodWe lido); a estação é screen_online.
+        online=charger_online,
         physical_state=device.physical_state if device else "unknown",
         retired=connector.id in retired,
     )
@@ -135,7 +175,12 @@ def _render_point(db, connector, station, devices, reservations, sessions, retir
         result["energy_kwh_total"] = _kw(energy.get(connector.id, Decimal(0)))
         # Owner-only: the GoodWe charger of this point (address) and its link state from the last sync.
         result["charger_link"] = charger_link.owner_block(
-            connector.charger_address, device.charger if device else None, result["online"])
+            connector.charger_address, device.charger if device else None, result["screen_online"])
+        if device is not None and device is not screen and result["screen_online"] and not online(device):
+            # Carregador adicional que a tela parou de sincronizar: offline (não "aguardando").
+            result["charger_link"]["link"] = "offline"
+        # Dono: a tela (estação) que comanda este carregador.
+        result["screen"] = screen_block(db, screen, device, codes)
     else:
         result.pop("charger_address", None)  # drivers: nothing changes
     return result
@@ -153,7 +198,8 @@ def point_row(db, connector, viewer=None):
     energy = energy_totals(db, [connector.id]) if _owner_view(station, viewer) else None
     devices, reservations, sessions, _ = _point_state(db, [connector])
     return _render_point(db, connector, station, devices, reservations, sessions, retired, power, energy,
-                         kiosk_holds(db, [connector.id]))
+                         kiosk_holds(db, [connector.id]), _screens(db, devices),
+                         {point.id: point.public_code for point in siblings})
 
 
 def station_rows(db, stations, viewer=None):
@@ -168,6 +214,8 @@ def station_rows(db, stations, viewer=None):
         select(Connector).where(Connector.station_id.in_([station.id for station in stations]))
     ).all()
     state = _point_state(db, connectors)
+    screens = _screens(db, state[0])
+    codes = {point.id: point.public_code for point in connectors}
     holds = kiosk_holds(db, [point.id for point in connectors])
     retired = state[3]
     owned_stations = {station.id for station in stations if _owner_view(station, viewer)}
@@ -204,8 +252,20 @@ def station_rows(db, stations, viewer=None):
 
             result["kiosk_status"] = station_status(station, viewer)
         result["connectors"] = [
-            _render_point(db, point, station, *state, power["connectors"], station_energy, holds) for point in points
+            _render_point(db, point, station, *state, power["connectors"], station_energy, holds, screens, codes)
+            for point in points
         ]
+        # Estação = a tela: online enquanto alguma tela do posto tem contato (null = sem tela).
+        station_screens = {screens[point.id].id: screens[point.id] for point in points if screens.get(point.id)}
+        result["screen_online"] = (any(online(item) for item in station_screens.values())
+                                   if station_screens else None)
+        if station_energy is not None:
+            result["screens"] = [
+                {**{key: value for key, value in screen_block(db, item, item, codes).items() if key != "role"},
+                 "charger_ids": [point["id"] for point in result["connectors"]
+                                 if point.get("screen") and point["screen"]["device_id"] == str(item.id)]}
+                for item in station_screens.values()
+            ]
         for point in result["connectors"]:
             # Preço que o motorista paga agora (base do horário × demanda); travado ao reservar ou iniciar.
             current, price = pricing.connector_price(status, point["id"], point["price_per_kwh"])

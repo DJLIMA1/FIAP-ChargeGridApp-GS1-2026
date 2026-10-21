@@ -23,7 +23,7 @@ def reserve(db, user, data, key):
     ensure_user_free(db, user)
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state)
+        fail_unavailable(state, db=db, connector=connector)
     # Tarifa dinâmica travada ao reservar: a recarga desta reserva paga este multiplicador;
     # ``price_terms`` guarda o motivo (demanda e horário) para o recibo.
     multiplier, terms = reservation_terms(db, connector)

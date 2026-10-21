@@ -464,7 +464,7 @@ def create_order(db, device, data, key):
         fail("overstay_terms_changed", "As condições da taxa de permanência mudaram. Revise e confirme de novo.", 409)
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state)
+        fail_unavailable(state, db=db, connector=connector)
     fields, view = compute_quote(db, connector, station, guest, data, method)
     if not secrets.compare_digest(view["quote_hash"], data.quote_hash):
         fail("quote_changed", "O orçamento mudou. Revise os novos valores.", 409, quote=view)

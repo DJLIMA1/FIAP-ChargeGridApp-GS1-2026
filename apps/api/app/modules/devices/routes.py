@@ -24,7 +24,7 @@ from ...service import (
     reset_blocks_point,
 )
 from ..auth.routes import limit
-from ..devices.service import sync
+from ..devices.service import charger_device, sync
 from ..kiosk_totem import service as totem
 
 router = APIRouter()
@@ -63,6 +63,8 @@ def connector_device(connector_id: UUID, user=Depends(current_user), db=Depends(
         # quando há um GoodWe HCA G2 externo) e o endereço configurado pelo dono.
         "charger": device.charger,
         "charger_address": point.charger_address,
+        # Carregador adicional: a tela (dispositivo) da estação que o comanda; null = é a própria tela.
+        "screen_device_id": str(device.parent_device_id) if device.parent_device_id else None,
     }
 
 
@@ -83,9 +85,16 @@ def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_sess
     return {"device_id": str(obj.id), "device_key": key}
 
 
+def _screen_only(obj):
+    """Carregador adicional não tem chave nem firmware próprio: credencial e restauração são da tela."""
+    if obj.parent_device_id is not None:
+        fail("charger_device", "Este carregador é comandado pela tela da estação; gerencie a tela", 409)
+
+
 @router.post("/devices/{device_id}/rotate-key")
 def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
+    _screen_only(obj)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
         fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
@@ -100,6 +109,7 @@ def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
 @router.post("/devices/{device_id}/revoke")
 def revoke(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
+    _screen_only(obj)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
         fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
@@ -143,6 +153,7 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
     obj = own_device(db, user, device_id)
     point = db.scalar(select(Connector).where(Connector.id == obj.connector_id).with_for_update())
     obj = db.scalar(select(Device).where(Device.id == obj.id).with_for_update())
+    _screen_only(obj)
     if obj.revoked:
         fail("device_revoked", "Este equipamento já foi desvinculado", 409)
     existing = _reset_command(db, obj.id)
@@ -173,13 +184,16 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
 def device_sync(data: SyncInput, device=Depends(current_device), db=Depends(db_session)):
     # Sync de 1 s em recarga + sync imediato após aplicar comando: 120/min (antes 40/min
     # derrubava cerca de 1/3 dos syncs com 429 e atrasava os ACKs).
-    limit(db, "device:" + str(device.id), maximum=120)
-    result = sync(db, device, data)
+    # Tela com vários carregadores: ``charger_address`` endereça o sync a um carregador adicional
+    # dela (mesma chave); cada carregador tem o seu limite.
+    target = charger_device(db, device, data.charger_address) if data.charger_address is not None else device
+    limit(db, "device:" + str(target.id), maximum=120)
+    result = sync(db, target, data, screen=device if target is not device else None)
     if "kiosk_order" in result:
         # Totem: verificação na Stripe, START pago e acerto do pedido depois de gravar o sync
         # (fora da trava do ponto); o START sai em ``commands`` no sync seguinte.
         db.commit()
-        block = totem.after_sync(db, device.connector_id)
+        block = totem.after_sync(db, target.connector_id)
         if block is not None:
             result["kiosk_order"] = block
     return result

@@ -472,7 +472,7 @@ def test_concurrent_raises_never_share_the_same_headroom(bench):
 def test_device_capabilities_follow_each_sync(bench):
     with bench.factory() as db:
         device = db.scalar(select(Device).where(Device.connector_id == bench.points["a"]))
-        assert device.capabilities == ["set_power_v1"]
+        assert device.capabilities == ["set_power_v1", "multi_charger_v1"]  # tela que comanda vários carregadores
     bench.sims["a"].legacy = True
     bench.sync("a")
     with bench.factory() as db:

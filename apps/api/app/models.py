@@ -177,8 +177,13 @@ class Device(Base):
     # controla ({model, variant, transport, min_power_w, max_power_w, step_w, phases}).
     capabilities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     charger: Mapped[dict | None] = mapped_column(JSONB)
+    # Estação = a TELA (dispositivo com chave). Carregador adicional comandado por ela: linha
+    # própria (sessões/comandos/estado do ponto) sem chave utilizável, ligada à tela; a tela
+    # sincroniza por ele com ``charger_address`` no corpo do sync (migração d3f8a1c6e2b7).
+    parent_device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id"), index=True)
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
+        CheckConstraint("parent_device_id IS NULL OR parent_device_id <> id", name="device_parent_not_self"),
     )
 
 

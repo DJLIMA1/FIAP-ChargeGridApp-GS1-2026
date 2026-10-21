@@ -11,8 +11,10 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import String, and_, case, cast, extract, func, or_, select
+from sqlalchemy.orm import aliased
 
 from chargegrid_core import analytics
+from chargegrid_core.chargers import link as charger_link
 
 from ... import overstay
 from ...models import ChargingSession, Command, Connector, Device, Reservation, Station, Telemetry, now
@@ -297,11 +299,16 @@ def live(db, scope):
     else:
         retired = set()
     holds = kiosk_holds(db, ids)
+    # Estação = a tela: carregadores adicionais dependem da tela-mãe (uma consulta).
+    parents = {device.parent_device_id for _, _, device in points if device is not None and device.parent_device_id}
+    screens = {item.id: item for item in db.scalars(
+        select(Device).where(Device.id.in_(parents), Device.revoked.is_(False)))} if parents else {}
     items = []
     for point, station, device in points:
         session = sessions.get(point.id)
         reservation = reservations.get(point.id)
-        state = live_status(point, station, device, reservation, session, moment, holds.get(point.id))
+        screen = device if device is None or device.parent_device_id is None else screens.get(device.parent_device_id)
+        state = live_status(point, station, device, reservation, session, moment, holds.get(point.id), screen)
         sample = samples.get(session.id) if session else None
         power = (sample.data or {}).get("power_w") if sample else None
         items.append({
@@ -311,7 +318,8 @@ def live(db, scope):
             "price_per_kwh": str(point.price_per_kwh), "max_duration_minutes": point.max_duration_minutes,
             "active": point.active, "retired": point.id in retired,
             "has_device": device is not None, "device_id": str(device.id) if device else None,
-            "online": _online(device, moment), "last_seen": device.last_seen.isoformat()
+            # "online" = o carregador responde; a estação (tela) vem em screen_online.
+            "online": state.pop("_charger_online"), "last_seen": device.last_seen.isoformat()
             if device and device.last_seen else None,
             "firmware_version": device.firmware_version if device else None,
             "physical_state": device.physical_state if device else "unknown",
@@ -342,9 +350,22 @@ def _online(device, moment):
     return bool(device and device.last_seen and device.last_seen > moment - ONLINE_WINDOW)
 
 
-def live_status(connector, station, device, reservation, session, moment, hold=None):
+def _hardware(connector, device, screen, moment):
+    """Mesma regra de :func:`app.service.hardware_state` no instante ``moment``."""
+    if not _online(screen, moment):
+        return False, False, charger_link.SCREEN_OFFLINE
+    if device is not screen and not _online(device, moment):
+        return True, False, charger_link.CHARGER_OFFLINE
+    reason = charger_link.availability_reason(connector.charger_address, device.charger, True)
+    return True, reason is None, reason
+
+
+def live_status(connector, station, device, reservation, session, moment, hold=None, screen=False):
     """Mesmas regras de :func:`app.service.availability`, sem consultas extras (``hold``: pedido do
-    totem que trava o ponto, de ``service.kiosk_holds``)."""
+    totem que trava o ponto, de ``service.kiosk_holds``; ``screen``: a tela que comanda o
+    carregador — por padrão o próprio dispositivo)."""
+    screen = device if screen is False else screen
+    screen_online, charger_online, hardware = _hardware(connector, device, screen, moment)
     reserved_until = (
         reservation.expires_at
         if reservation and reservation.status == "confirmed" and reservation.expires_at
@@ -353,13 +374,15 @@ def live_status(connector, station, device, reservation, session, moment, hold=N
     )
     if not connector.active or not station or not station.active or station.owner_id is None:
         status = "disabled"
-    elif not _online(device, moment):
+    elif not screen_online or not _online(device, moment):
         status = "offline"
     elif device.physical_state == "fault":
         status = "fault"
     elif session:
         status = ("charging" if session.status == "charging" and device.physical_state == "charging"
                   and device.reconciled else "reconciling")
+    elif hardware is not None:
+        status = "offline"  # só este carregador; a estação segue online
     elif reservation:
         status = ("reserved" if reserved_until and device.physical_state == "reserved" and device.reconciled
                   else "reconciling")
@@ -373,10 +396,27 @@ def live_status(connector, station, device, reservation, session, moment, hold=N
         status = "available"
     return {"available": status == "available", "availability_status": status,
             "reserved_until": reserved_until.isoformat() if reserved_until else None,
-            "kiosk_in_use": hold is not None}
+            "kiosk_in_use": hold is not None,
+            "unavailable_reason": hardware if status == "offline" else None,
+            "screen_online": screen_online, "_charger_online": charger_online}
+
+
+def _alert_point(row, moment):
+    """Ponto para os alertas: ``online`` = a TELA da estação; ``charger_offline`` = tela online e o
+    carregador GoodWe deste ponto sem resposta (ou, num carregador adicional, sem sync pela tela)."""
+    def alive(seen):
+        return bool(seen and seen > moment - ONLINE_WINDOW)
+
+    child = row["parent_device_id"] is not None
+    screen_online = alive(row["screen_last_seen"]) if child else alive(row["last_seen"])
+    charger_offline = screen_online and (
+        (child and not alive(row["last_seen"]))
+        or charger_link.availability_reason(row["charger_address"], row["charger"], True) is not None)
+    return {**row, "online": screen_online, "charger_offline": charger_offline}
 
 
 def alerts(db, scope):
+    screen_device = aliased(Device)
     moment = now()
     failed_cmd = or_(
         Command.status == "failed",
@@ -409,6 +449,8 @@ def alerts(db, scope):
                 Station.name.label("station_name"), Connector.public_code,
                 and_(Connector.active.is_(True), Station.active.is_(True)).label("published"),
                 (Device.id.is_not(None)).label("has_device"), Device.last_seen, Device.physical_state,
+                Device.charger, Connector.charger_address, Device.parent_device_id,
+                screen_device.last_seen.label("screen_last_seen"),
                 func.coalesce(failures.c.failed, 0).label("failed_commands"),
                 last_session.c.last_session_at,
                 case((retired.c.connector_id.is_not(None), True), else_=False).label("retired"),
@@ -416,11 +458,11 @@ def alerts(db, scope):
             .select_from(Connector)
             .join(Station, Station.id == Connector.station_id)
             .outerjoin(Device, and_(Device.connector_id == Connector.id, Device.revoked.is_(False)))
+            .outerjoin(screen_device, and_(screen_device.id == Device.parent_device_id, screen_device.revoked.is_(False)))
             .outerjoin(failures, failures.c.connector_id == Connector.id)
             .outerjoin(last_session, last_session.c.connector_id == Connector.id)
             .outerjoin(retired, retired.c.connector_id == Connector.id)
         )
     ).mappings()
-    points = [{**row, "online": bool(row["last_seen"] and row["last_seen"] > moment - ONLINE_WINDOW)}
-              for row in rows]
+    points = [_alert_point(row, moment) for row in rows]
     return {"items": analytics.build_alerts(points, moment), "generated_at": moment.isoformat()}
