@@ -178,8 +178,10 @@ void Link::poll(uint32_t nowMs) {
   lastPollMs_ = now_ = nowMs;
   Error error = Error::None;
   if (pendingStop_) {
-    if (write(hca::kStartStop, hca::kStopValue, error)) pendingStop_ = false;
-    else if (!online_) return;
+    // Eco da escrita não prova que o relé abriu. Use a mesma confirmação do STOP
+    // síncrono (10060 = 1 e 10015 = 0); releitura perdida mantém a pendência.
+    lastError_ = apply(0);
+    return;
   }
   uint16_t live[3];
   if (!read(hca::kChargingPower, 3, live, error)) return;
@@ -191,7 +193,7 @@ void Link::poll(uint32_t nowMs) {
     } else stoppedPolls_ = 0;
   } else if (status_ == hca::kStatusCharging || power_ > 0) {
     // Carregador ligado sem recarga na tela (tela reiniciou, outro mestre): desliga.
-    if (!write(hca::kStartStop, hca::kStopValue, error)) pendingStop_ = true;
+    lastError_ = apply(0);
   }
 }
 

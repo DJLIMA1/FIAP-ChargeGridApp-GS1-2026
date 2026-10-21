@@ -572,11 +572,50 @@ static void runExtraChargerScenarios() {
   assert(slot.state == "stopped" && slot.endReason == "device_fault" && nextSync == testMillis);
   body.clear(); extra::fillBody(slot, body);
   assert(body["physical_state"] == "stopped" && body["end_reason"] == "device_fault" && body["power_w"] == 0);
-  // A API encerra: sessão some e o slot (fora da lista da tela) fica livre no próximo sync da tela.
-  two.offline = false;
+  // A API encerra mesmo sem confirmação física: a sessão some, mas o endpoint do STOP fica.
   auto ended = extraResponse(2, nullptr, nullptr, 2, nullptr);
   extra::apply(slot, ended, testMillis);
   assert(slot.state == "idle" && !slot.sessionId.length());
+  assert(slot.link.pendingStop() && two.device.relayClosed());
+  const charger::LinkConfig pendingEndpoint = slot.link.config();
+  const int resetsBefore = two.resets;
+  auto prematureStart = extraResponse(2, "START", "x-start-before-stop", 3, "x-session-before-stop");
+  two.log.clear();
+  extra::apply(slot, prematureStart, testMillis);
+  assert(slot.acks[0]["status"] == "failed" &&
+         slot.acks[0]["error"] == "previous_session_requires_reconciliation");
+  assert(!slot.sessionId.length() && slot.link.pendingStop() && two.log.empty());
+  // Nem a lista da tela nem o sync endereçado podem trocar o endpoint pendente.
+  JsonDocument changedEndpoint = screen;
+  changedEndpoint["chargers"][0]["charger_link"]["host"] = "replacement.local";
+  changedEndpoint["chargers"][0]["charger_link"]["port"] = 1502;
+  apply(changedEndpoint);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint) && two.resets == resetsBefore);
+  ended["connector"]["charger_link"]["host"] = "replacement.local";
+  ended["connector"]["charger_link"]["port"] = 1502;
+  extra::apply(slot, ended, testMillis);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint) && two.resets == resetsBefore);
+  // Remover da lista não perde o slot; outro endereço só ocupa um slot diferente.
+  apply(shrink);
+  assert(slot.used && slot.address == 2 && slot.link.pendingStop());
+  apply(screen);
+  assert(extra::slots[1].used && extra::slots[1].address == 3 && slot.address == 2);
+  testMillis += 1000; extra::service(testMillis);
+  assert(slot.used && slot.link.pendingStop() && charger::sameConfig(slot.link.config(), pendingEndpoint));
+  // Reconexão: escreve STOP no carregador antigo, mas readback interrompido ainda o retém.
+  two.offline = false; two.failReadAt = hca::kStartStop; two.failReads = 1;
+  testMillis += 1000; extra::service(testMillis);
+  assert(!two.device.relayClosed() && slot.link.pendingStop());
+  apply(shrink);
+  assert(slot.used && slot.address == 2 && slot.link.pendingStop());
+  // Releitura completa confirma 10060 = 1 / potência 0; agora o slot pode ser liberado/reusado.
+  testMillis += 1000; extra::service(testMillis);
+  assert(!slot.link.pendingStop() && !two.device.relayClosed());
+  // As duas origens voltam a aceitar configuração depois de confirmar STOP.
+  extra::apply(slot, ended, testMillis);
+  assert(std::string(slot.link.config().host) == "replacement.local" && slot.link.config().port == 1502);
+  apply(screen);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint));
   apply(shrink);
   assert(!slot.used);
   // Vigia de 45 s sem a API no carregador adicional.
@@ -601,7 +640,8 @@ static void runExtraChargerScenarios() {
   for (const extra::Slot& item : extra::slots) assert(!item.used);
   extra::setClient(0, nullptr); extra::setClient(1, nullptr);
   puts("PASS: carregadores adicionais da tela (lista do sync, corpo endereçado, START estrito por Modbus, energia "
-       "pelo 10015, SET_POWER, charger_offline, perda → device_fault, vigia de 45 s, reboot → device_reboot)");
+       "pelo 10015, SET_POWER, charger_offline, perda → device_fault, STOP pendente retém endpoint/slot e bloqueia "
+       "START até releitura confirmar, reconexão e reuso, vigia de 45 s, reboot → device_reboot)");
 }
 
 static void runChargerLinkScenarios() {

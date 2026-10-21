@@ -16,6 +16,8 @@ struct FakeChargerClient : charger::ModbusClient {
   bool offline = false;
   int dropWrites = 0;   // próximas N escritas respondem ok, mas não são aplicadas
   int failNext = 0;     // próximas N transações sem resposta (carregador "piscando"/conexão velha)
+  int failReads = 0;    // próximas N leituras do endereço escolhido sem resposta
+  int failReadAt = -1;  // -1 = qualquer leitura; permite interromper o readback depois da escrita
   int urgent = 0;       // pedidos de resolução imediata (prepareUrgent) do START
   std::vector<std::string> log;
   int resets = 0;
@@ -34,6 +36,7 @@ struct FakeChargerClient : charger::ModbusClient {
     log.push_back("R " + std::to_string(address) + "x" + std::to_string(count));
     if (offline) return false;
     if (failNext > 0) { --failNext; return false; }
+    if (failReads > 0 && (failReadAt < 0 || failReadAt == address)) { --failReads; return false; }
     uint8_t request[mbtcp::kMaxAdu], response[mbtcp::kMaxAdu];
     const size_t size = mbtcp::buildReadHolding(++transaction, link.address, address, count, request);
     const size_t length = exchange(request, size, response);
