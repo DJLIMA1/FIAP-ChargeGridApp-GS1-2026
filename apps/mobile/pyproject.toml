@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.8.0"
+version = "0.8.1"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
@@ -24,7 +24,7 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 40
+build_number = 41
 # "location": GPS do Modo motorista, pedido só quando o motorista toca "Usar minha localização".
 permissions = ["camera", "location"]
 
