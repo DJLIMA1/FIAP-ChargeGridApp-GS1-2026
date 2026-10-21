@@ -204,7 +204,7 @@ bool savePanelConnection(const char* ssid, const char* password, const char* dev
 }
 
 #ifdef CHARGEGRID_PANEL_ENABLED
-// Carregador externo (teste manual): CG_CHARGER lê agora e mostra o estado; CG_CHARGER_IP
+// Carregador GoodWe do conector (teste manual): CG_CHARGER lê agora e mostra o estado; CG_CHARGER_IP
 // <ip> fixa o IP (fallback ao mDNS cg-hca-<endereço>.local) e CG_CHARGER_IP clear volta ao host.
 void handleChargerCommand(const String& line) {
   if (line.startsWith("CG_CHARGER_IP")) {
@@ -220,7 +220,7 @@ void handleChargerCommand(const String& line) {
     return;
   }
   if (!chargerLink.configured()) {
-    Serial.printf("[charger] sem carregador externo (connector.charger_link ausente): rele/simulacao interna; %s\n",
+    Serial.printf("[charger] API sem connector.charger_link (sem endereco): rele/simulacao interna; %s\n",
                   espChargerDescribe().c_str());
     return;
   }
@@ -234,8 +234,11 @@ void handleChargerCommand(const String& line) {
       client.readHolding(link, hca::kPowerSpec, 1, &spec, &exception) &&
       client.readHolding(link, hca::kChargerType, 1, &type, &exception) &&
       client.readHolding(link, hca::kStartStop, 1, &run, &exception);
-  Serial.printf("[charger] goodwe_hca_g2 host=%s porta=%u endereco=%u link=%s falhas=%u ultimo_erro=%s espera_ligado=%s parada_pendente=%s %s\n",
-                link.host, link.port, link.address, chargerLink.online() ? "online" : "offline", chargerLink.failures(),
+  // Modo: o da recarga em andamento; fora dela, o que o próximo START usaria.
+  const bool viaCharger = state == "charging" ? sessionOnCharger : chargerLink.online();
+  Serial.printf("[charger] goodwe_hca_g2 host=%s porta=%u endereco=%u link=%s recarga=%s falhas=%u ultimo_erro=%s espera_ligado=%s parada_pendente=%s %s\n",
+                link.host, link.port, link.address, chargerLink.online() ? "online" : "offline",
+                viaCharger ? "modbus" : "simulacao_da_tela", chargerLink.failures(),
                 charger::errorCode(chargerLink.lastError()) ? charger::errorCode(chargerLink.lastError()) : "-",
                 chargerLink.expectRunning() ? "sim" : "nao", chargerLink.pendingStop() ? "sim" : "nao",
                 espChargerDescribe().c_str());
@@ -477,7 +480,7 @@ void loop() {
   }
 #endif
   tick();
-  chargerLinkService(); // Só com connector.charger_link; sem ele retorna na hora.
+  chargerLinkService(); // Lê o carregador do conector (online/offline decide o próximo START); API antiga: retorna na hora.
   panelTick();
 #ifdef CHARGEGRID_PANEL_ENABLED
   handleSerialMaintenance();

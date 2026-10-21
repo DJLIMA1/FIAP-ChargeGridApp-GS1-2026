@@ -1,6 +1,8 @@
 // Cliente Modbus TCP da tela para o carregador externo (HCA G2 simulado). Uma conexão
 // persistente, timeouts curtos e resolução mDNS em cache: o loop nunca fica preso mais que
 // ~kConnectTimeoutMs (+ kResolveTimeoutMs na primeira resolução). O LVGL roda em outra tarefa.
+// Todo conector tem endereço: sem carregador na rede, a tela tenta resolver o nome a cada
+// kResolveRetryMs (no máximo kResolveTimeoutMs de espera) e carrega com a simulação interna.
 #include "charger_modbus_esp32.h"
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -10,8 +12,8 @@ namespace {
 
 constexpr int32_t kConnectTimeoutMs = 400;
 constexpr uint32_t kResponseTimeoutMs = 300;
-constexpr uint32_t kResolveTimeoutMs = 1000;
-constexpr uint32_t kResolveRetryMs = 10000;
+constexpr uint32_t kResolveTimeoutMs = 500;
+constexpr uint32_t kResolveRetryMs = 15000;
 
 class EspChargerClient : public charger::ModbusClient {
  public:

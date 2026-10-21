@@ -228,25 +228,32 @@ Só `Authorization: Device <chave>` (Bearer de pessoa → `401 unauthorized`). O
 - `GET /pay/r/{order_id}?t=<token>` — status e recibo do visitante (a partir de `receipts.service`), com atualização automática até ficar final; `GET /pay/r/{order_id}.pdf?t=<token>` — PDF do recibo (depois que a recarga existe). Pagamento simulado aparece rotulado **SIMULADO** (cabeçalho e recibo: "Pagamento simulado: nenhum dinheiro real foi movimentado").
 - Token: 24 bytes (32 caracteres base64url), um por pedido, entregue só ao dispositivo autenticado; derivado (HMAC) de um segredo do posto que nunca sai do servidor + sal aleatório do pedido; o banco guarda só o sal e o SHA-256. Sem dado pessoal. Token errado → 404.
 
-## Carregador externo GoodWe HCA G2 (charger_link)
+## Carregador GoodWe do conector (charger_link)
 
-Aditivo, para o carregador HCA G2 simulado num ESP32 DevKit (`docs/carregador-hca-simulado.md`). A tela é o mestre Modbus TCP do carregador na rede local; a API continua falando só com a tela, e os comandos da API **não mudam** (START/STOP/SET_POWER/RESERVE/RELEASE). Sem `charger_link` (API antiga, `charger_address` nulo ou bloco inválido) a tela segue idêntica: relé/simulação interna e `charger.model = "esp32_bench"`.
+Todo conector é um carregador GoodWe HCA G2 (hoje o simulado num ESP32 DevKit, `docs/carregador-hca-simulado.md`) com endereço Modbus. A tela é o mestre Modbus TCP do carregador na rede local; a API continua falando só com a tela, e os comandos da API **não mudam** (START/STOP/SET_POWER/RESERVE/RELEASE). Sem `charger_link` (API antiga ou bloco inválido) a tela segue idêntica: relé/simulação interna e `charger.model = "esp32_bench"`.
 
-**Resposta do sync, `connector.charger_link`** (ou `null`/ausente):
+**Modo da recarga, decidido no START e mantido até o fim da sessão:**
+- Carregador do endereço **online** (respondeu na última leitura; link recém-configurado no mesmo sync é lido uma vez antes de decidir) → recarga por Modbus (tabela abaixo).
+- **Offline** (sem resposta, inclusive se some exatamente no START) → simulação interna da tela, igual a antes (relé/energia simulada, limites da bancada); o sync reporta `charger.link: "offline"` e `source: "simulated"`. A recarga simulada nunca depende do carregador: se ele aparece no meio, ela continua simulada e só o próximo START usa Modbus.
+- A tela lê o carregador também fora de recarga: ~1 s online; offline, a cada 5 s, com nova resolução mDNS a cada 15 s (no máximo 500 ms de espera). Os frames da tela não mudam (sem carregador online, idênticos aos de antes).
+
+**Resposta do sync, `connector.charger_link`** (a API manda para todo conector; `null`/ausente só em API antiga):
 ```json
 {"model": "goodwe_hca_g2", "transport": "modbus_tcp", "address": 1, "host": "cg-hca-1.local"}
 ```
-- `address`: unit id Modbus 1–247 (o `charger_address` do conector). `host`: nome mDNS ou IP (`[A-Za-z0-9.-]`, até 63); sem `host`, a tela usa `cg-hca-<address>.local`. `port` opcional (padrão 502). Outro `model`/`transport` ou endereço fora da faixa = sem carregador externo.
-- A troca do link só vale fora de recarga: uma recarga em andamento termina com o carregador que a iniciou. Fallback de IP fixo na tela pelo serial: `CG_CHARGER_IP <ip>` (NVS; `clear` volta ao host).
+- `address`: unit id Modbus 1–247 (o `charger_address` do conector = `CG_ADDR` do ESP). `host`: nome mDNS ou IP (`[A-Za-z0-9.-]`, até 63); sem `host`, a tela usa `cg-hca-<address>.local`. `port` opcional (padrão 502). Outro `model`/`transport` ou endereço fora da faixa = só a simulação interna.
+- A troca do link só vale fora de recarga: uma recarga em andamento termina com o carregador (ou a simulação) que a iniciou. Fallback de IP fixo na tela pelo serial: `CG_CHARGER_IP <ip>` (NVS; `clear` volta ao host).
 
-**Corpo do sync, `charger`** (substitui o `esp32_bench` só enquanto há link):
+**Corpo do sync, `charger`**: quem carrega (na recarga, o modo da sessão; fora dela, o que o próximo START usaria) + `address`/`link` sempre que há `charger_link`.
 ```json
 {"model": "goodwe_hca_g2", "variant": "GW7K-HCA-20", "transport": "modbus_tcp", "address": 1, "link": "online",
  "min_power_w": 1400, "max_power_w": 7000, "step_w": 100, "phases": 1}
+{"model": "esp32_bench", "transport": "simulated", "address": 1, "link": "offline",
+ "min_power_w": 1400, "max_power_w": 7200, "step_w": 100, "phases": 1}
 ```
-- `link`: `online` se a última leitura/escrita teve resposta, `offline` senão. `address` e `link` são campos novos do `ChargerInfo`: a tela só os envia quando a API mandou `charger_link` (portanto uma API que já os aceita). `applied_power_w` continua sendo o limite instalado no 10029 (0 pausado/fora de recarga); `power_w`/`energy_wh` vêm do 10015 lido a cada ~1 s (`source: "simulated"`: no simulador a potência é SIMULADA).
+- `link`: `online` se a última leitura/escrita teve resposta, `offline` senão. Na simulação a tela declara os limites da bancada (7,2 kW), então a alocação de potência da API não muda sem carregador. `address` e `link` são campos do `ChargerInfo` (API b7c4e2a9d1f3+): a tela só os envia quando a API mandou `charger_link`. `applied_power_w` continua sendo o limite instalado (no 10029 por Modbus; 0 pausado/fora de recarga); por Modbus, `power_w`/`energy_wh` vêm do 10015 lido a cada ~1 s. `source` continua `"simulated"` (no carregador simulado a potência também é SIMULADA).
 
-**Tradução na tela** (todas FC06; ACK `applied` só depois da releitura de 10029/10060/10015..10017):
+**Tradução na tela, recarga por Modbus** (todas FC06; ACK `applied` só depois da releitura de 10029/10060/10015..10017):
 
 | Comando | Escritas | Confirmação |
 | --- | --- | --- |
@@ -254,6 +261,6 @@ Aditivo, para o carregador HCA G2 simulado num ESP32 DevKit (`docs/carregador-hc
 | SET_POWER | igual ao START sem o 10032; < 1.400 W pausa com `10060 ← 1` | idem; `applied_power_w` = 10029 × 100 (0,1 kW para baixo, teto 7.000 W) |
 | STOP | `10060 ← 1` | 10060 = 1 e 10015 = 0 |
 
-- ACK `failed`: `charger_offline`, `charger_rejected` (exceção Modbus) ou `charger_readback_mismatch`. START com falha não cria sessão local (a API manda o STOP `start_failed`, que a tela confirma sem depender do carregador). SET_POWER com falha mantém o limite anterior (a API reenvia e depois para, como no HCA simulado do `device_simulator`). STOP de uma recarga sem confirmação: a tela para a sessão do mesmo jeito (sync `stopped`, a API encerra) e reenvia `10060 ← 1` a cada leitura; o ACK sai `failed`.
-- **Perda do carregador**: sem resposta por 5 s durante a recarga (inclusive pausada), 10017 = 5/8 ou parado sozinho por 3 leituras → parada segura local com `end_reason: "device_fault"` e sync imediato. O carregador abre o relé sozinho depois de 15 s sem contato do mestre. O watchdog de 45 s sem a API continua igual.
-- Uma conexão TCP, timeouts curtos (400 ms conexão, 300 ms resposta, 1 s na resolução mDNS, que fica em cache); o LVGL roda em outra tarefa. Diagnóstico pelo serial do painel: `CG_CHARGER`.
+- ACK `failed`: `charger_offline` (STOP/SET_POWER; no START, sem resposta = simulação), `charger_rejected` (exceção Modbus) ou `charger_readback_mismatch`. START com falha não cria sessão local (a API manda o STOP `start_failed`, que a tela confirma sem depender do carregador). SET_POWER com falha mantém o limite anterior (a API reenvia e depois para, como no HCA simulado do `device_simulator`). STOP de uma recarga sem confirmação: a tela para a sessão do mesmo jeito (sync `stopped`, a API encerra) e reenvia `10060 ← 1` a cada leitura; o ACK sai `failed`.
+- **Perda do carregador** (só na recarga por Modbus): sem resposta por 5 s durante a recarga (inclusive pausada), 10017 = 5/8 ou parado sozinho por 3 leituras → parada segura local com `end_reason: "device_fault"` e sync imediato. O carregador abre o relé sozinho depois de 15 s sem contato do mestre. O watchdog de 45 s sem a API continua igual.
+- Uma conexão TCP, timeouts curtos (400 ms conexão, 300 ms resposta, 500 ms na resolução mDNS, que fica em cache e é refeita no máximo a cada 15 s sem resposta); o LVGL roda em outra tarefa. Diagnóstico pelo serial do painel: `CG_CHARGER` (inclui `recarga=modbus|simulacao_da_tela`).

@@ -169,9 +169,12 @@ export interface Connector {
   /** Limite do vendedor para o conector (`null` = nominal) e a potência efetiva no posto (`power.allocate`). */
   power_limit_kw?: Decimal | null
   effective_power_kw?: Decimal | null
-  /** Carregador GoodWe HCA G2 ligado à tela deste ponto (só o dono): endereço 1–247 ou `null`. */
+  /**
+   * Cada conector É um carregador GoodWe HCA G2 (só o dono): endereço 1–247, único no posto,
+   * automático pela ordem do posto. `null` só em dado legado; ausente na API antiga.
+   */
   charger_address?: number | null
-  /** Estado do link pelo último sync da tela (só o dono); `null` sem carregador externo. */
+  /** Estado do link pelo último sync da tela (só o dono); `offline`/`pending` = a tela usa a simulação interna. */
   charger_link?: ChargerLink | null
 }
 

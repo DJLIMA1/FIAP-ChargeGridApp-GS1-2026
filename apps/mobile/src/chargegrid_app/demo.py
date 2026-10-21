@@ -182,7 +182,8 @@ class DemoApi(OwnerApiMixin):
         self._payments = {}  # pagamentos Stripe (teste) simulados: demo_payments
         self._kiosk_holds = set()  # pontos travados por um pedido do totem (``hold_for_kiosk``)
         self._power_decisions = {}  # registro de decisões do rebalanceamento por posto: demo_site
-        # Carregador GoodWe HCA G2 (simulado) ligado a cada ponto: ``connectors.charger_address`` (só o dono vê).
+        # Todo ponto é um carregador GoodWe HCA G2: ``connectors.charger_address`` (1–247, único no posto,
+        # próximo livre pela ordem de criação; só o dono vê).
         self._charger_addresses = {}
         self.operation_keys.clear()
         self.charging_operation_sessions.clear()
@@ -197,9 +198,6 @@ class DemoApi(OwnerApiMixin):
                 station['owner_id'] = 'demo-network'
             for kind, power, price, online in _DEMO_POINTS[index]:
                 self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price, online=online)
-            if index in _DEMO_OWNED and not self._charger_addresses:
-                first = next(p for p in self._points.values() if p['station_id'] == station['id'])
-                self._charger_addresses[first['id']] = charger_link.SUGGESTED_ADDRESS
             if index == 0:
                 station['amenities'] = [{'kind': 'cafe', 'name': 'Café do Parque', 'distance_m': 60},
                                         {'kind': 'banheiro', 'name': '', 'distance_m': None}]
@@ -492,6 +490,8 @@ class DemoApi(OwnerApiMixin):
                  'connector_type': connector_type, 'power_kw': power_kw, 'price_per_kwh': price_per_kwh,
                  'max_duration_minutes': 120, 'active': active, 'control_version': 0, 'retired': False,
                  'power_limit_kw': None}
+        used = (self._charger_addresses.get(p['id']) for p in self._points.values() if p['station_id'] == station_id)
+        self._charger_addresses[pid] = charger_link.next_free_address(used)
         self._points[pid] = point
         self._make_device(pid, online=online)
         return point
@@ -549,10 +549,13 @@ class DemoApi(OwnerApiMixin):
         return row
 
     def _charger_fields(self, point_id, online):
-        """Como a API (só o dono): endereço do carregador e o link reportado pela tela simulada."""
+        """Como a API (só o dono): endereço do carregador e o link reportado pela tela simulada.
+
+        A demo não tem carregador GoodWe de verdade: a tela simulada (online) reporta a simulação
+        interna dela com o endereço e o link ``offline``, como o painel — "aguardando carregador"."""
         address = self._charger_addresses.get(point_id)
-        reported = ({'model': charger_link.MODEL, 'transport': charger_link.TRANSPORT, 'address': address,
-                     'link': 'online'} if address is not None and online else None)
+        reported = ({'model': 'esp32_bench', 'transport': 'simulated', 'address': address,
+                     'link': 'offline'} if address is not None and online else None)
         return {'charger_address': address, 'charger_link': charger_link.owner_block(address, reported, online)}
 
     def _availability_row(self, point):
@@ -901,6 +904,9 @@ class DemoApi(OwnerApiMixin):
     def _patch_point(self, identifier, body):
         point = self._get(self._points, identifier)
         self._owned(point['station_id'])
+        if 'charger_address' in body and type(body['charger_address']) is int \
+                and body['charger_address'] == self._charger_addresses.get(identifier):
+            body = {k: v for k, v in body.items() if k != 'charger_address'}  # mesmo carregador: nada muda
         # Like the API: a power limit applies to the next start, so it may change while busy.
         if set(body) - {'power_limit_kw'} and self._busy(identifier):
             _fail('Encerre reservas e recargas antes de editar o ponto.', 'point_busy', 409)
@@ -912,7 +918,7 @@ class DemoApi(OwnerApiMixin):
         changes = {}
         for name, value in body.items():
             if name == 'charger_address':
-                continue  # validado acima (1–247, único no posto)
+                continue  # validado acima (1–247, nunca vazio, único no posto)
             if name in ('public_code', 'connector_type'):
                 changes[name] = _text(value, name, 50)
             elif name == 'power_kw':
@@ -942,10 +948,7 @@ class DemoApi(OwnerApiMixin):
             changes['power_limit_kw'] = None
         point.update(changes)
         if 'charger_address' in body:
-            if address is None:
-                self._charger_addresses.pop(identifier, None)
-            else:
-                self._charger_addresses[identifier] = address
+            self._charger_addresses[identifier] = address
         return self._point_row(point)
 
     def _charger_address(self, point, body):
@@ -953,13 +956,12 @@ class DemoApi(OwnerApiMixin):
             address = charger_link.validate_address(body['charger_address'])
         except ValueError as exc:
             _fail(str(exc), 'invalid_charger_address')
-        if address is not None:
-            taken = next((p for pid, used in self._charger_addresses.items() if used == address
-                          and pid != point['id'] and (p := self._points.get(pid))
-                          and p['station_id'] == point['station_id']), None)
-            if taken:
-                _fail(f"O carregador {address} já está ligado ao ponto {taken['public_code']} deste posto. "
-                      'Escolha outro endereço.', 'charger_address_taken', 409)
+        taken = next((p for pid, used in self._charger_addresses.items() if used == address
+                      and pid != point['id'] and (p := self._points.get(pid))
+                      and p['station_id'] == point['station_id']), None)
+        if taken:
+            _fail(f"O carregador {address} já está ligado ao ponto {taken['public_code']} deste posto. "
+                  'Escolha outro endereço.', 'charger_address_taken', 409)
         return address
 
     def _claim(self, body):

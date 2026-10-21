@@ -1,6 +1,8 @@
 # Carregador GoodWe HCA G2 simulado (ESP32 DevKit + relé)
 
-Um ESP32 DevKit com um módulo de relés faz o papel de um carregador **GoodWe HCA G2** e fala o **mesmo protocolo** do adaptador (`docs/adaptador-hca-g2.md`): Modbus TCP, mesmos registradores, mesmas escalas. O relé da **GPIO 13** liga uma tomada, e a "carga" de verdade é o carregador de um celular. A tela do ponto (painel ESP32-S3, `firmware/esp32`) é o mestre Modbus e manda no carregador quando o app liga o conector a ele.
+Um ESP32 DevKit com um módulo de relés faz o papel de um carregador **GoodWe HCA G2** e fala o **mesmo protocolo** do adaptador (`docs/adaptador-hca-g2.md`): Modbus TCP, mesmos registradores, mesmas escalas. O relé da **GPIO 13** liga uma tomada, e a "carga" de verdade é o carregador de um celular. A tela do ponto (painel ESP32-S3, `firmware/esp32`) é o mestre Modbus e manda no carregador.
+
+**Cada conector é um carregador GoodWe.** Todo conector do app tem um **endereço de carregador** (1–247, único no posto, automático pela ordem: 1, 2, 3…; o dono pode trocar). **O endereço do conector é o `CG_ADDR` do ESP32 DevKit**: o carregador com `CG_ADDR 1` responde pelo conector de endereço 1 (`cg-hca-1.local`), o `CG_ADDR 2` pelo de endereço 2, e assim por diante. Enquanto nenhum carregador responde no endereço, a tela carrega com a **simulação interna** dela (como sempre fez) e o app mostra "aguardando carregador (simulação da tela)".
 
 **Nada disso foi validado num HCA G2 real.** A potência (10015) e a energia são **SIMULADAS**: o carregador informa a potência configurada no 10029 enquanto o relé está fechado, mesmo que o celular consuma bem menos. Frase certa para a apresentação: "carregador simulado que fala o mapa Modbus V1.0.15 do HCA G2, sem validação em hardware GoodWe".
 
@@ -107,14 +109,14 @@ Sem placa: `python tools/validate_firmware.py --hca-only` compila `tmp/panel-val
 
 ## Ligar ao ponto no app
 
-1. Tela e carregador na **mesma rede Wi-Fi** e sub-rede, com mDNS liberado (redes de visitante com isolamento de clientes bloqueiam o Modbus e o mDNS).
-2. No app do dono: Conectores → conector → "Carregador GoodWe: endereço 1" (ou no painel web). A API grava `charger_address` no conector e passa a mandar `connector.charger_link` no sync da tela (`docs/esp32-protocol.md`, seção "Carregador externo").
-3. A tela resolve `cg-hca-1.local`, lê o carregador a cada ~1 s e informa `link: online` no sync; o app mostra "Carregador 1 · GoodWe HCA G2 (simulado) · online".
-4. Na recarga nada muda para o motorista: START/STOP/SET_POWER da API viram escritas Modbus, e a tela só confirma depois de reler.
+1. **O ESP32 DevKit precisa estar na mesma rede Wi-Fi da tela** (mesmo SSID e sub-rede: `CG_WIFI <ssid> <senha>` com a rede que a tela usa), com mDNS liberado. Redes de visitante com isolamento de clientes bloqueiam o Modbus e o mDNS; em outra rede a tela nunca acha o carregador e segue na simulação.
+2. No app do dono: Conectores → conector mostra "Carregador GoodWe · endereço N". Grave esse número no ESP pelo serial: `CG_ADDR N` (ou troque o endereço do conector no app/painel web para o número do ESP). A API manda `connector.charger_link` (com o endereço) no sync da tela de todo conector (`docs/esp32-protocol.md`, seção "Carregador GoodWe do conector").
+3. A tela resolve `cg-hca-N.local` e lê o carregador (a cada ~1 s online; a cada 5 s, com nova resolução mDNS a cada 15 s, enquanto não acha). Respondeu: o sync informa `link: online` e o app mostra "Carregador GoodWe · endereço N · online". Sem resposta: "Carregador GoodWe · endereço N · aguardando carregador (simulação da tela)".
+4. Na recarga nada muda para o motorista. **No START** a tela decide o modo: carregador online → START/STOP/SET_POWER viram escritas Modbus e a tela só confirma depois de reler; offline → a recarga usa o relé/energia simulada da tela, como antes, e o sync reporta `charger.link: "offline"` com `source: "simulated"`. **A sessão termina no modo em que começou**: se o carregador aparece no meio de uma recarga simulada, ela continua simulada e só a próxima usa Modbus; se some no meio de uma recarga por Modbus, vale a parada segura abaixo.
 
-Na tela (serial do painel): `CG_CHARGER` mostra o link (host, IP resolvido, online/offline, falhas, último erro) e lê os registradores na hora; `CG_CHARGER_IP 192.168.0.42` fixa o IP quando o mDNS não funciona na rede (`CG_CHARGER_IP clear` volta ao `cg-hca-<n>.local`). Sem `charger_link` a tela continua exatamente como antes (relé/simulação interna).
+Na tela (serial do painel): `CG_CHARGER` mostra o link (host, IP resolvido, online/offline, modo `recarga=modbus|simulacao_da_tela`, falhas, último erro) e lê os registradores na hora; `CG_CHARGER_IP 192.168.0.42` fixa o IP quando o mDNS não funciona na rede (`CG_CHARGER_IP clear` volta ao `cg-hca-<n>.local`). Com uma API antiga, sem `charger_link`, a tela continua exatamente como antes (relé/simulação interna).
 
-## Como a tela comanda o carregador
+## Como a tela comanda o carregador (recarga iniciada com ele online)
 
 | Comando da API | Escritas (FC06) | ACK `applied` só quando a releitura mostra |
 | --- | --- | --- |
@@ -124,7 +126,7 @@ Na tela (serial do painel): `CG_CHARGER` mostra o link (host, IP resolvido, onli
 | SET_POWER < 1,4 kW | `10060 ← 1` (pausa; o 10029 fica como estava) | 10060 = 1 e 10015 = 0 |
 | STOP | `10060 ← 1` | 10060 = 1 e 10015 = 0 |
 
-- Falhas no ACK: `charger_offline` (sem conexão/resposta), `charger_rejected` (exceção Modbus, ex.: endereço errado → 0x0B), `charger_readback_mismatch` (escrita perdida). START que falha não cria sessão local e desliga o carregador se ele chegou a ligar. SET_POWER que falha mantém o limite anterior. STOP sem confirmação: a sessão termina na tela do mesmo jeito (o sync reporta `stopped`), o ACK sai `failed` e a parada é reenviada a cada leitura até confirmar.
+- Falhas no ACK: `charger_rejected` (exceção Modbus, ex.: endereço errado → 0x0B), `charger_readback_mismatch` (escrita perdida) e, no STOP/SET_POWER, `charger_offline`. START que falha não cria sessão local e desliga o carregador se ele chegou a ligar; carregador que some exatamente no START (sem resposta) não falha: a recarga começa na simulação da tela. SET_POWER que falha mantém o limite anterior. STOP sem confirmação: a sessão termina na tela do mesmo jeito (o sync reporta `stopped`), o ACK sai `failed` e a parada é reenviada a cada leitura até confirmar.
 - Leitura a cada ~1 s de 10015..10017: potência mostrada e energia integrada na tela vêm daí (SIMULADAS no carregador simulado). Uma conexão TCP só, timeouts de 400 ms (conexão) e 300 ms (resposta); ocioso e offline, tenta a cada 5 s.
 - **Carregador inalcançável por 5 s durante a recarga** (inclusive pausada), em alarme (10017 = 5) ou parado sozinho por 3 leituras (reiniciou): a tela faz a parada segura local com `end_reason: "device_fault"` e sincroniza na hora. Do outro lado, o watchdog do carregador abre o relé em 15 s sem contato.
 - Carregador ligado sem recarga na tela (a tela reiniciou, outro mestre): a leitura periódica escreve `10060 ← 1`.
@@ -152,7 +154,7 @@ Regras do relé: fecha só com 10060 = 2, 10029 ≥ 14 e sem falha; abre com 100
 
 ```bash
 python tools/validate_firmware.py --hca-only                      # lógica do carregador + link da tela (C++, sanitizers)
-python tools/validate_firmware.py --compare-panel <frames-antigos> # tudo, inclusive o controlador real com charger_link
+python tools/validate_firmware.py --compare-panel <frames-antigos> # tudo, inclusive o controlador real (Modbus e simulação)
 python -m pytest -q tools/tests/test_hca_sim_e2e.py               # Modbus TCP de verdade contra o servidor de host
 cd firmware/goodwe-hca-sim && pio run                             # compila o firmware (não grava)
 ```

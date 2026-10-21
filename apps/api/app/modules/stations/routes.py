@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 
 from chargegrid_core import power as power_rules
+from chargegrid_core.chargers import link as charger_link
 
 from ...database import db_session
 from ...errors import fail
@@ -159,6 +160,9 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     owned(db, user, obj.station_id)
     if data.active is True and reset_blocks_point(db, obj.id):
         fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
+    if "charger_address" in data.model_fields_set and data.charger_address is None:
+        # Todo conector é um carregador GoodWe: o endereço pode mudar, nunca ficar vazio.
+        fail("invalid_charger_address", charger_link.EMPTY_ADDRESS_MESSAGE, 422)
     if "charger_address" in data.model_fields_set and data.charger_address == obj.charger_address:
         data.model_fields_set.discard("charger_address")  # mesmo carregador: nada muda (nem com recarga)
     limit_only = data.model_fields_set <= {"power_limit_kw"}
@@ -186,7 +190,7 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     ):
         # Was a generic IntegrityError 409 ("Operação conflita com registro existente").
         fail("public_code_taken", "Já existe um ponto com este código público. Escolha outro.", 409)
-    if "charger_address" in data.model_fields_set and data.charger_address is not None:
+    if "charger_address" in data.model_fields_set:
         # Endereço único por posto: dois pontos no mesmo carregador disputariam o mesmo relé.
         taken = db.scalar(select(Connector).where(
             Connector.station_id == obj.station_id, Connector.charger_address == data.charger_address,

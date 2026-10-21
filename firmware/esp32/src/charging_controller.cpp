@@ -17,8 +17,12 @@ float overstayFeeDue = -1, overstayMaxFee = -1, overstayAmount = -1;
 long overstayIntervalMinutes = 0;
 // 0.8.0: blocos do totem no sync (definidos aqui para os testes de host).
 kiosk::SyncFacts kioskSync;
-// Carregador externo HCA G2 (connector.charger_link). Sem link: nada abaixo é chamado.
+// Carregador GoodWe HCA G2 do conector (connector.charger_link; todo conector é um carregador).
+// API antiga, sem charger_link: nada abaixo é chamado.
 charger::Link chargerLink;
+// Modo da sessão, decidido no START e mantido até o fim: true = Modbus no carregador do
+// endereço (estava online); false = simulação interna da tela (relé/energia simulada).
+bool sessionOnCharger = false;
 static charger::Error chargerStopResult = charger::Error::None;
 float chargerLinkLimitW(float requestedW) {
   return (float)hca::powerWForRegister(hca::registerForPowerW(lroundf(requestedW)));
@@ -163,9 +167,9 @@ void stop(const char* reason) {
   reading.connected = overstayEnabled;
   endReason = reason;
   persist();
-  // Carregador externo: 10060 = 1 confirmado por leitura (sem resposta, tenta de novo na
-  // leitura periódica e o watchdog de 15 s do carregador abre o relé).
-  chargerStopResult = chargerLink.active() ? chargerLink.stop(millis()) : charger::Error::None;
+  // Sessão no carregador GoodWe: 10060 = 1 confirmado por leitura (sem resposta, tenta de novo
+  // na leitura periódica e o watchdog de 15 s do carregador abre o relé). Sessão simulada: só local.
+  chargerStopResult = sessionOnCharger && chargerLink.active() ? chargerLink.stop(millis()) : charger::Error::None;
 }
 // Reboot: saída desenergizada, carro tratado como desconectado (conservador) e sessão
 // anterior apenas relatada para reconciliação, nunca retomada.
@@ -174,6 +178,7 @@ void applyBootSafety() {
   reading.connected = false;
   overstayEnabled = false;
   chargePowerW = kBenchPowerW;
+  sessionOnCharger = false;
   if (sessionId.length()) { state = "stopped"; endReason = "communication_lost"; }
 }
 void requestLocalSafeStop() {
@@ -201,8 +206,8 @@ void tick() {
   unsigned long elapsed = now - lastTick;
   lastTick = now;
   if (state == "charging") {
-    // Carregador externo: integra a potência lida no 10015 (SIMULADA no simulador).
-    const float powerW = chargerLink.active() ? (float)chargerLink.measuredPowerW() : chargePowerW;
+    // Sessão no carregador GoodWe: integra a potência lida no 10015 (SIMULADA no simulador).
+    const float powerW = sessionOnCharger ? (float)chargerLink.measuredPowerW() : chargePowerW;
     // O relógio local limita a energia, mesmo durante falha HTTP.
     unsigned long overdueContact = now - lastContact > 45000 ? now - lastContact - 45000 : 0;
     unsigned long overdueDuration = now - started > maxDurationMs ? now - started - maxDurationMs : 0;
@@ -286,22 +291,30 @@ void fillSyncBody(JsonDocument& body, bool extensions) {
   // Limite instalado agora: 0 fora de recarga ou pausado (resolve ACK perdido na API).
   body["applied_power_w"] = state == "charging" ? lroundf(chargePowerW) : 0L;
   JsonObject charger = body["charger"].to<JsonObject>();
-  if (chargerLink.active()) {
-    // Carregador GoodWe HCA G2 (simulado no ESP32 DevKit) por Modbus TCP na rede local.
+  // Quem carrega: na recarga, o modo da sessão; fora dela, o que o próximo START usaria.
+  const bool viaCharger = chargerLink.active() && (state == "charging" ? sessionOnCharger : chargerLink.online());
+  if (viaCharger) {
+    // Carregador GoodWe HCA G2 do conector (simulado no ESP32 DevKit) por Modbus TCP na rede local.
     charger["model"] = "goodwe_hca_g2"; charger["variant"] = hca::kGw7k.name;
-    charger["transport"] = "modbus_tcp"; charger["address"] = chargerLink.config().address;
-    charger["link"] = chargerLink.online() ? "online" : "offline";
+    charger["transport"] = "modbus_tcp";
     charger["min_power_w"] = hca::powerWForRegister(hca::kGw7k.minTenths);
     charger["max_power_w"] = hca::powerWForRegister(hca::kGw7k.maxTenths);
     charger["step_w"] = 100; charger["phases"] = hca::kGw7k.phases;
-    return;
+  } else {
+    // Simulação interna da tela (limites de sempre: a alocação de potência não muda).
+    charger["model"] = "esp32_bench"; charger["transport"] = "simulated";
+    charger["min_power_w"] = kChargerMinPowerW; charger["max_power_w"] = kChargerMaxPowerW;
+    charger["step_w"] = kChargerStepW; charger["phases"] = 1;
   }
-  charger["model"] = "esp32_bench"; charger["transport"] = "simulated";
-  charger["min_power_w"] = kChargerMinPowerW; charger["max_power_w"] = kChargerMaxPowerW;
-  charger["step_w"] = kChargerStepW; charger["phases"] = 1;
+  if (chargerLink.active()) {
+    // Endereço do carregador do conector e se ele responde agora (offline = simulação da tela).
+    charger["address"] = chargerLink.config().address;
+    charger["link"] = chargerLink.online() ? "online" : "offline";
+  }
 }
-// connector.charger_link (aditivo): ausente/null/inválido = sem carregador externo. A troca
-// só vale fora de recarga; uma recarga em andamento termina com o carregador que a iniciou.
+// connector.charger_link (aditivo; a API manda para todo conector): ausente/null/inválido = API
+// antiga, só a simulação interna. A troca só vale fora de recarga; uma recarga em andamento
+// termina com o carregador (ou a simulação) que a iniciou.
 static void readChargerLink(JsonObjectConst connector) {
   charger::LinkConfig config;
   JsonObjectConst link = connector["charger_link"].as<JsonObjectConst>();
@@ -315,8 +328,9 @@ static void readChargerLink(JsonObjectConst connector) {
 void chargerLinkService() {
   if (!chargerLink.active()) return;
   const unsigned long now = millis();
-  chargerLink.poll(now);
-  if (state == "charging" && chargerLink.faulted(now, true)) {
+  chargerLink.poll(now); // Também fora de recarga: online/offline decide o modo do próximo START.
+  // Só a sessão iniciada no carregador depende dele; a simulada nunca troca de modo.
+  if (state == "charging" && sessionOnCharger && chargerLink.faulted(now, true)) {
     tick(); // Integra a energia até a perda.
     if (state == "charging") {
       // Mesma parada segura local; o motivo vai no próximo sync (imediato).
@@ -444,22 +458,32 @@ bool apply(JsonDocument& response) {
         resetSessionSoc();
         readStartSoc(session);
         readStartSoc(command["parameters"].as<JsonObjectConst>()); // parameters prevalecem.
-        chargePowerW = readStartPower(command["parameters"].as<JsonObjectConst>(), session);
-        if (chargerLink.active()) chargePowerW = chargerLinkLimitW(chargePowerW);
+        const float requestedPowerW = readStartPower(command["parameters"].as<JsonObjectConst>(), session);
+        // Modo da sessão: carregador GoodWe do endereço online (respondeu na última leitura) →
+        // Modbus; senão a simulação interna da tela. Vale até o fim desta sessão. Link recém
+        // configurado (mesmo sync) e ainda sem leitura: lê uma vez agora para decidir.
+        if (chargerLink.active() && !chargerLink.polled()) chargerLink.poll(millis());
+        sessionOnCharger = chargerLink.active() && chargerLink.online();
+        chargePowerW = sessionOnCharger ? chargerLinkLimitW(requestedPowerW) : requestedPowerW;
         overstayEnabled = command["parameters"]["overstay"].is<JsonObjectConst>();
         if (socStartPercent >= 0 && !socSource.length()) socSource = "simulated";
         if (socSource == "phone") phoneSocPercent = socStartPercent;
         reading.energyWh = 0; persistSessionSoc(); persist(); // Sessão salva antes de autorizar a bancada.
-        // Carregador externo: liga e confirma pela leitura antes de aceitar a sessão.
-        const charger::Error linkError = chargerLink.active()
+        // Carregador GoodWe: liga e confirma pela leitura antes de aceitar a sessão.
+        charger::Error linkError = sessionOnCharger
             ? chargerLink.start(lroundf(chargePowerW), millis(), nullptr) : charger::Error::None;
+        if (linkError == charger::Error::Offline) {
+          // Sumiu entre a última leitura e o START: segue na simulação interna (link offline).
+          // O Link já pediu 10060 = 1 (repete nas leituras; o watchdog do carregador abre o relé).
+          sessionOnCharger = false; chargePowerW = requestedPowerW; linkError = charger::Error::None;
+        }
         if (linkError != charger::Error::None) {
           error = charger::errorCode(linkError);
           sessionId = ""; sessionPricingKnown = false; overstayEnabled = false; chargePowerW = kBenchPowerW;
           resetSessionSoc(); persistSessionSoc(); persist();
         } else {
           sensors.start(); reading = sensors.read(true, 0, chargePowerW);
-          if (chargerLink.active()) reading.powerW = chargerLink.measuredPowerW();
+          if (sessionOnCharger) reading.powerW = chargerLink.measuredPowerW();
           reading.socPercent = currentSessionSoc(reading.energyWh);
           started = lastTick = millis(); state = "charging"; endReason = "";
         }
@@ -481,11 +505,11 @@ bool apply(JsonDocument& response) {
         const bool wasCharging = state == "charging";
         // Uma parada local já reportada (ex.: battery_full) mantém o motivo original.
         if (!(state == "stopped" && endReason.length())) stop(full ? "battery_full" : "requested");
-        else if (chargerLink.active()) chargerStopResult = chargerLink.stop(millis());
-        // Carregador externo: parar uma recarga só tem ACK applied com 10060 = 1 e 10015 = 0
+        else if (sessionOnCharger && chargerLink.active()) chargerStopResult = chargerLink.stop(millis());
+        // Sessão no carregador GoodWe: parar só tem ACK applied com 10060 = 1 e 10015 = 0
         // relidos. A sessão termina de qualquer forma (o sync reporta stopped); sem recarga
         // em andamento a parada do carregador é só um reforço e não falha o comando.
-        if (wasCharging && chargerLink.active() && chargerStopResult != charger::Error::None)
+        if (wasCharging && sessionOnCharger && chargerStopResult != charger::Error::None)
           error = charger::errorCode(chargerStopResult);
       }
     } else if (type == "SET_POWER") {
@@ -495,8 +519,8 @@ bool apply(JsonDocument& response) {
       else {
         tick(); // Integra a potência antiga até o instante da troca.
         if (state != "charging") error = "no_active_session";
-        else if (chargerLink.active()) {
-          // Carregador externo: 10029 (só se mudou) ou pausa por 10060 = 1, confirmado por leitura.
+        else if (sessionOnCharger) {
+          // Sessão no carregador GoodWe: 10029 (só se mudou) ou pausa por 10060 = 1, confirmado por leitura.
           const float limit = chargerLinkLimitW(requested);
           const charger::Error linkError = chargerLink.setPower(lroundf(limit), millis(), nullptr);
           if (linkError != charger::Error::None) error = charger::errorCode(linkError);
