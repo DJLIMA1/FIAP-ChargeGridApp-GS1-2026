@@ -24,6 +24,7 @@ from ...service import (
     lock_point,
     online,
     remember,
+    reset_blocks_point,
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
@@ -156,9 +157,10 @@ def start(db, user, data, key):
             or device.physical_state != "reserved"
         ):
             fail("point_unavailable", "Ponto sem confirmação recente")
-        # Reserva confirmada, mas o carregador GoodWe do ponto parou de responder à tela.
+        # A reserva autoriza o estado físico "reserved" (availability ainda o chama de
+        # occupied); preserve esse fluxo e cheque os novos bloqueios de hardware/tela.
         state = availability(db, connector, data.reservation_id, device=device)
-        if state["unavailable_reason"] == "charger_offline":
+        if state["unavailable_reason"] is not None or reset_blocks_point(db, connector.id):
             fail_unavailable(state, db=db, connector=connector)
     else:
         # O pedido do totem pago por este pagamento não bloqueia o próprio START.

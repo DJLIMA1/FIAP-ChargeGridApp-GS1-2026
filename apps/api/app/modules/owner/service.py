@@ -18,7 +18,7 @@ from chargegrid_core.chargers import link as charger_link
 
 from ... import overstay
 from ...models import ChargingSession, Command, Connector, Device, Reservation, Station, Telemetry, now
-from ...service import RES_ACTIVE, SESSION_ACTIVE, kiosk_holds
+from ...service import RES_ACTIVE, SESSION_ACTIVE, kiosk_holds, resetting_screens
 
 TZ = analytics.REPORT_TZ_NAME
 ONLINE_WINDOW = timedelta(seconds=45)
@@ -303,12 +303,14 @@ def live(db, scope):
     parents = {device.parent_device_id for _, _, device in points if device is not None and device.parent_device_id}
     screens = {item.id: item for item in db.scalars(
         select(Device).where(Device.id.in_(parents), Device.revoked.is_(False)))} if parents else {}
+    resetting = resetting_screens(db, [device.id for _, _, device in points if device] + list(parents))
     items = []
     for point, station, device in points:
         session = sessions.get(point.id)
         reservation = reservations.get(point.id)
         screen = device if device is None or device.parent_device_id is None else screens.get(device.parent_device_id)
-        state = live_status(point, station, device, reservation, session, moment, holds.get(point.id), screen)
+        state = live_status(point, station, device, reservation, session, moment, holds.get(point.id), screen,
+                            resetting=screen is not None and screen.id in resetting)
         sample = samples.get(session.id) if session else None
         power = (sample.data or {}).get("power_w") if sample else None
         items.append({
@@ -360,7 +362,7 @@ def _hardware(connector, device, screen, moment):
     return True, reason is None, reason
 
 
-def live_status(connector, station, device, reservation, session, moment, hold=None, screen=False):
+def live_status(connector, station, device, reservation, session, moment, hold=None, screen=False, *, resetting=False):
     """Mesmas regras de :func:`app.service.availability`, sem consultas extras (``hold``: pedido do
     totem que trava o ponto, de ``service.kiosk_holds``; ``screen``: a tela que comanda o
     carregador — por padrão o próprio dispositivo)."""
@@ -378,6 +380,8 @@ def live_status(connector, station, device, reservation, session, moment, hold=N
         status = "offline"
     elif device.physical_state == "fault":
         status = "fault"
+    elif resetting:
+        status = "reconciling"
     elif session:
         status = ("charging" if session.status == "charging" and device.physical_state == "charging"
                   and device.reconciled else "reconciling")

@@ -17,8 +17,10 @@ from .service import (
     availability,
     hardware_state,
     kiosk_holds,
+    lock_screen_group,
     online,
     owned,
+    resetting_screens,
     row,
 )
 
@@ -147,14 +149,16 @@ def energy_totals(db, connector_ids):
 
 
 def _render_point(db, connector, station, devices, reservations, sessions, retired, power=None, energy=None,
-                  holds=None, screens=None, codes=None):
+                  holds=None, screens=None, codes=None, resetting=None):
     result = row(connector)
     device = devices.get(connector.id)
     screen = (screens if screens is not None else _screens(db, devices)).get(connector.id)
+    resetting = resetting if resetting is not None else resetting_screens(db, [screen.id] if screen else [])
     result.update(availability(
         db, connector, device=device, station=station,
         reservation=reservations.get(connector.id), session=sessions.get(connector.id),
         hold=(holds or {}).get(connector.id), screen=screen,
+        resetting=screen is not None and screen.id in resetting,
     ))
     _, charger_online, _ = hardware_state(connector, device, screen)
     result.update(
@@ -215,6 +219,7 @@ def station_rows(db, stations, viewer=None):
     ).all()
     state = _point_state(db, connectors)
     screens = _screens(db, state[0])
+    resetting = resetting_screens(db, [screen.id for screen in screens.values() if screen])
     codes = {point.id: point.public_code for point in connectors}
     holds = kiosk_holds(db, [point.id for point in connectors])
     retired = state[3]
@@ -252,7 +257,7 @@ def station_rows(db, stations, viewer=None):
 
             result["kiosk_status"] = station_status(station, viewer)
         result["connectors"] = [
-            _render_point(db, point, station, *state, power["connectors"], station_energy, holds, screens, codes)
+            _render_point(db, point, station, *state, power["connectors"], station_energy, holds, screens, codes, resetting)
             for point in points
         ]
         # Estação = a tela: online enquanto alguma tela do posto tem contato (null = sem tela).
@@ -373,6 +378,8 @@ def own_device(db, user, device_id, *, require_idle=True):
     obj = db.get(Device, device_id)
     if not obj:
         fail("not_found", "Dispositivo não encontrado", 404)
+    if require_idle:
+        lock_screen_group(db, obj.connector_id)
     query = select(Connector).where(Connector.id == obj.connector_id)
     point = db.scalar(query.with_for_update() if require_idle else query)
     owned(db, user, point.station_id)

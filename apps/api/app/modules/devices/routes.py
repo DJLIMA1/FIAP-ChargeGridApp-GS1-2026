@@ -18,10 +18,13 @@ from ...service import (
     active_session,
     device_for,
     issue,
+    lock_screen_group,
     online,
     operator,
     owned,
     reset_blocks_point,
+    retire_screen_chargers,
+    screen_group_busy,
 )
 from ..auth.routes import limit
 from ..devices.service import charger_device, sync
@@ -70,6 +73,7 @@ def connector_device(connector_id: UUID, user=Depends(current_user), db=Depends(
 
 @router.post("/connectors/{connector_id}/device", status_code=201)
 def provision(connector_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    lock_screen_group(db, connector_id)
     point = db.scalar(select(Connector).where(Connector.id == connector_id).with_for_update())
     if not point:
         fail("not_found", "Ponto não encontrado", 404)
@@ -91,10 +95,16 @@ def _screen_only(obj):
         fail("charger_device", "Este carregador é comandado pela tela da estação; gerencie a tela", 409)
 
 
+def _idle_screen_group(db, obj):
+    if screen_group_busy(db, obj):
+        fail("point_busy", "Encerre reservas/recargas dos carregadores antes de mudar a tela", 409)
+
+
 @router.post("/devices/{device_id}/rotate-key")
 def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
     _screen_only(obj)
+    _idle_screen_group(db, obj)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
         fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
@@ -110,11 +120,13 @@ def rotate(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
 def revoke(device_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = own_device(db, user, device_id)
     _screen_only(obj)
+    _idle_screen_group(db, obj)
     reset = _reset_command(db, obj.id)
     if reset and reset.status in ("pending", "received") and reset.expires_at > now():
         fail("reset_pending", "Aguarde o equipamento confirmar a restauração", 409)
     obj.revoked = True
     obj.reconciled = False
+    retire_screen_chargers(db, obj)
     return {"revoked": True}
 
 
@@ -154,6 +166,7 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
     point = db.scalar(select(Connector).where(Connector.id == obj.connector_id).with_for_update())
     obj = db.scalar(select(Device).where(Device.id == obj.id).with_for_update())
     _screen_only(obj)
+    _idle_screen_group(db, obj)
     if obj.revoked:
         fail("device_revoked", "Este equipamento já foi desvinculado", 409)
     existing = _reset_command(db, obj.id)

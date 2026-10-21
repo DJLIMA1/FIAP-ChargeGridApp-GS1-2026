@@ -28,7 +28,15 @@ from ...errors import fail
 from ...models import PAYMENT_OPEN, ChargingSession, Connector, Payment, PaymentEvent, Profile, Station, now
 from ...presence_code import current_code, valid_code
 from ...schemas import StartInput
-from ...service import SESSION_ACTIVE, active_res, availability, fail_unavailable, idempotent, remember
+from ...service import (
+    SESSION_ACTIVE,
+    active_res,
+    availability,
+    fail_unavailable,
+    idempotent,
+    lock_screen_group,
+    remember,
+)
 from ..auth.routes import limit
 from ..charging.service import find_coupon, session_power_limit, start, stop
 from ..pricing.service import locked_terms
@@ -537,6 +545,7 @@ def create_kiosk_payment(db, public_code, code_digits, amount_cents, request_bas
     if amount_cents not in KIOSK_AMOUNTS_CENTS:
         fail("invalid_amount", "Escolha um dos valores", 422)
     limit(db, f"kiosk:{connector.id}", maximum=10, seconds=300)
+    lock_screen_group(db, connector.id)
     connector = db.scalar(select(Connector).where(Connector.id == connector.id).with_for_update())
     state = availability(db, connector)
     if not state["available"]:

@@ -5,7 +5,8 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
+from sqlalchemy.orm import aliased
 
 from .errors import fail
 from .models import (
@@ -84,6 +85,46 @@ def screen_for(db, device):
     return screen if screen is not None and not screen.revoked else None
 
 
+def lock_screen_group(db, connector_id):
+    """Serialize a screen lifecycle with all its chargers, before locking any Connector.
+
+    Order: existing Profile lock -> screen-group advisory lock -> Connector -> Device ->
+    power advisory lock. Lifecycle checks read siblings without FOR UPDATE: taking sibling
+    connector locks after the screen connector would invert that order. The key is the
+    screen's connector, so reprovisioning its Device cannot change the lock identity.
+    Resolve with scalar columns (not a possibly stale authenticated ORM object); callers
+    reload device/revocation state after acquiring the lock. No external I/O under this lock.
+    """
+    root = screen_group_key(db, connector_id)
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+               {"key": f"screen-group:{root}"})
+
+
+def screen_group_key(db, connector_id):
+    parent = aliased(Device)
+    return db.scalar(
+        select(parent.connector_id).select_from(Device).join(parent, parent.id == Device.parent_device_id)
+        .where(Device.connector_id == connector_id, Device.revoked.is_(False))
+    ) or connector_id
+
+
+def screen_group_busy(db, screen):
+    """Called with the screen-group lock held; preserve the existing session/reservation rule."""
+    ids = select(Device.connector_id).where(or_(Device.id == screen.id, Device.parent_device_id == screen.id))
+    return bool(db.scalar(select(ChargingSession.id).where(
+        ChargingSession.connector_id.in_(ids), ChargingSession.status.in_(SESSION_ACTIVE)).limit(1))
+        or db.scalar(select(Reservation.id).where(
+            Reservation.connector_id.in_(ids), Reservation.status.in_(RES_ACTIVE)).limit(1)))
+
+
+def retire_screen_chargers(db, screen):
+    """Retire idle dependents with their screen; keep connectors and history for the owner."""
+    for child in db.scalars(select(Device).where(Device.parent_device_id == screen.id, Device.revoked.is_(False))):
+        child.revoked = True
+        child.reconciled = False
+        db.get(Connector, child.connector_id).active = False
+
+
 def hardware_state(connector, device, screen):
     """``(screen_online, charger_online, reason)`` do ponto.
 
@@ -103,14 +144,25 @@ def hardware_state(connector, device, screen):
 
 
 def reset_blocks_point(db, connector_id):
+    # Includes the screen's reset for an additional charger (also after retirement).
+    parent_ids = select(Device.parent_device_id).where(Device.connector_id == connector_id)
     return bool(db.scalar(
         select(Command.id).join(Device, Device.id == Command.device_id).where(
-            Device.connector_id == connector_id,
+            or_(Device.connector_id == connector_id, Device.id.in_(parent_ids)),
             Command.type == "FACTORY_RESET",
             (Command.status == "applied")
             | (Command.status.in_(("pending", "received")) & (Command.expires_at > now())),
         ).limit(1)
     ))
+
+
+def resetting_screens(db, screen_ids):
+    """Batch the pending screen-reset state used by public and owner availability."""
+    if not screen_ids:
+        return set()
+    return set(db.scalars(select(Command.device_id).where(
+        Command.device_id.in_(screen_ids), Command.type == "FACTORY_RESET",
+        Command.status.in_(("pending", "received")), Command.expires_at > now())))
 
 
 def online(device):
@@ -250,6 +302,7 @@ def reconcile_expiry(db, connector):
 
 def lock_point(db, user, connector_id):
     db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
+    lock_screen_group(db, connector_id)
     connector = db.scalar(
         select(Connector)
         .where(Connector.id == connector_id)
@@ -264,7 +317,8 @@ def lock_point(db, user, connector_id):
 
 def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED,
                  station=_DEVICE_NOT_LOADED, reservation=_DEVICE_NOT_LOADED, session=_DEVICE_NOT_LOADED,
-                 hold=_DEVICE_NOT_LOADED, allow_kiosk_payment=None, screen=_DEVICE_NOT_LOADED):
+                 hold=_DEVICE_NOT_LOADED, allow_kiosk_payment=None, screen=_DEVICE_NOT_LOADED,
+                 resetting=_DEVICE_NOT_LOADED):
     """Public state without identity data: available/offline/reserved/charging/
     reconciling/disabled/fault/occupied. A deadline never implies availability.
 
@@ -283,6 +337,8 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
         device = device_for(db, connector)
     if screen is _DEVICE_NOT_LOADED:
         screen = screen_for(db, device)
+    if resetting is _DEVICE_NOT_LOADED:
+        resetting = bool(screen and screen.id in resetting_screens(db, [screen.id]))
     screen_online, _, hardware = hardware_state(connector, device, screen)
     if station is _DEVICE_NOT_LOADED:
         station = db.get(Station, connector.station_id)
@@ -308,6 +364,8 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
         status = "offline"
     elif device.physical_state == "fault":
         status = "fault"
+    elif resetting:
+        status = "reconciling"
     elif session:
         status = (
             "charging"

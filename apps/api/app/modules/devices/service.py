@@ -27,10 +27,13 @@ from ...service import (
     active_session,
     derived_soc,
     issue,
+    lock_screen_group,
     new_public_code,
     online,
     reconcile_expiry,
+    retire_screen_chargers,
     row,
+    screen_group_busy,
     stop_if_battery_full,
 )
 from ...session_events import record as record_session_event
@@ -73,6 +76,7 @@ def sync(db, authenticated_device, data, *, screen=None):
     """Sync de um ponto. ``screen``: a tela autenticada sincronizando pelo carregador adicional
     ``authenticated_device`` (sync endereçado, ``charger_address``); mesma regra por ponto."""
     authenticated_key_hash = (screen or authenticated_device).key_hash
+    lock_screen_group(db, authenticated_device.connector_id)
     connector = db.scalar(
         select(Connector)
         .where(Connector.id == authenticated_device.connector_id)
@@ -208,6 +212,7 @@ def sync(db, authenticated_device, data, *, screen=None):
                 or data.session_id
                 or active_res(db, connector.id)
                 or active_session(db, connector.id)
+                or screen_group_busy(db, device)
                 or not ack.new_device_key_hash
                 or not ack.new_claim_token_hash
                 or ack.new_device_key_hash == device.key_hash
@@ -237,6 +242,7 @@ def sync(db, authenticated_device, data, *, screen=None):
             cmd.status = "applied"
             device.revoked = True
             device.reconciled = False
+            retire_screen_chargers(db, device)
             completed_reset_id = str(cmd.id)
             continue
         if cmd.type == "SET_POWER":
