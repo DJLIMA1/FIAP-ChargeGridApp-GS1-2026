@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
+from chargegrid_core.chargers import link as charger_link
+
 from ..api_client import ApiError
 from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
@@ -554,8 +556,79 @@ async def connector_form(app, station_id, connector=None, device_id=None):
             device_box,provision_row,rotate_row,revoke_row,reset_box]
         if reset_state.get('status') in ('pending', 'received'):
             app.set_poll(poll_reset, 5)
+        controls += charger_controls(app, connector, note)
     controls.append(cta('Voltar aos conectores',back_to_connectors,primary=False,weight='semibold'))
     return design.page(*controls, gap=16)
+
+
+CHARGER_FIELD = 'Carregador GoodWe (endereço)'
+CHARGER_NONE = 'Nenhum carregador externo. A tela usa o relé interno.'
+
+
+def charger_status(connector):
+    """``Carregador 1 · GoodWe HCA G2 (simulado) · online`` ou vazio (ponto sem carregador externo)."""
+    block = connector.get('charger_link')
+    if not block and connector.get('charger_address') is not None:
+        block = charger_link.owner_block(connector['charger_address'], None, bool(connector.get('online')))
+    return charger_link.status_text(block)
+
+
+def charger_controls(app, connector, note):
+    """Carregador GoodWe HCA G2 ligado ao ponto: endereço (1 sugerido), salvar/remover e status do link.
+
+    Salva só ``charger_address`` (``PATCH connectors``), independente do formulário do ponto."""
+    current = connector.get('charger_address')
+    box = setup_field(CHARGER_FIELD, str(current if current is not None else charger_link.SUGGESTED_ADDRESS),
+                      f'{charger_link.SUGGESTED_ADDRESS} (sugerido)', keyboard=ft.KeyboardType.NUMBER, gap=14,
+                      height=FIELD_HEIGHT)
+    field = box.controls[1]
+    status = design.txt(charger_status(connector) or CHARGER_NONE, 13, 'regular', expand=True)
+    status.data = 'charger-status'
+
+    def paint():
+        linked = connector.get('charger_address') is not None
+        status.value = charger_status(connector) or CHARGER_NONE
+        save_row.controls[1].controls[0].value = 'Salvar endereço' if linked else 'Ligar carregador'
+        remove_row.visible = remove_button.visible = linked
+
+    async def persist(address):
+        saved = await app.api.request('PATCH', f"connectors/{connector['id']}", {'charger_address': address})
+        saved = saved if isinstance(saved, dict) else {}
+        connector['charger_address'] = saved.get('charger_address', address)
+        connector['charger_link'] = saved.get('charger_link')
+        if 'online' in saved:
+            connector['online'] = saved['online']
+        field.error_text = None
+        paint()
+        app.page.update()
+
+    async def save():
+        try:
+            address = charger_link.validate_address(int((field.value or '').strip()))
+        except ValueError:
+            field.error_text = 'Informe um endereço de 1 a 247.'
+            app.page.update()
+            raise ApiError('Informe um endereço de 1 a 247.') from None
+        await persist(address)
+        app.notice(f'Carregador {address} ligado a este ponto.')
+
+    async def remove():
+        await persist(None)
+        field.value = str(charger_link.SUGGESTED_ADDRESS)
+        app.page.update()
+        app.notice('Carregador removido. A tela volta ao relé interno.')
+
+    save_button = _mini_button('Salvar', app.action(save), 'primary')
+    remove_button = _mini_button('Remover', app.action(remove))
+    save_row = _action_row(ft.Icons.CABLE, 'Ligar carregador',
+                           'A tela fala com o carregador por Modbus TCP na rede Wi-Fi local.', save_button)
+    remove_row = _action_row(ft.Icons.LINK_OFF, 'Remover carregador', 'A tela volta ao relé interno.', remove_button)
+    paint()
+    return [design.section_label('Carregador externo'),
+            note('Endereço do carregador GoodWe HCA G2 que esta tela comanda (o carregador 1 responde em '
+                 'cg-hca-1.local).'),
+            box, ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED, size=18, color=theme.GRAY_TEXT), status], spacing=8),
+            save_row, remove_row]
 
 
 def show_key(app, result):

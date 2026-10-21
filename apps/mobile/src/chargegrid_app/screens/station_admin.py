@@ -170,6 +170,7 @@ def _connectors_page(app, station):
         _point_line,
         _point_status,
         _status_pill,
+        charger_status,
     )
     from .setup_ui import cta
 
@@ -183,6 +184,9 @@ def _connectors_page(app, station):
             icon='/design/icon_station_charge.svg', trailing=_status_pill(status, color),
             on_click=app.link('operator', station_id=sid, connector_id=connector['id'],
                               connector={**connector, 'station_name': station.get('name')}, nav=False))]
+        charger = charger_status(connector)
+        if charger:
+            details.append(design.txt(charger, 11, 'regular', theme.GRAY_TEXT))
         if not connector.get('active') and not connector.get('retired'):
             shared = bool(station.get('active') or len(station.get('connectors') or []) > 1)
             details.append(cta('Revisar e ativar ponto', app.link(
