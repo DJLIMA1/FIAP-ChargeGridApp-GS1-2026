@@ -58,7 +58,7 @@ END_REASONS = {'user_stop':'Parada solicitada', 'stop_requested':'Parada solicit
 END_REASONS.update(requested='Parada solicitada', communication_lost='Conexão perdida com o servidor',
                    device_reboot='Equipamento reiniciado', command_timeout='Equipamento não confirmou a operação',
                    battery_full='Bateria cheia (100%)')
-# A tela não confirmou o carregador do ponto no START: rótulo do core (oriente outro ponto da estação).
+# A central não confirmou o carregador do ponto no START: rótulo do core (oriente outro ponto da estação).
 END_REASONS['charger_offline'] = RECEIPT_END_REASONS.get('charger_offline',
                                                          'Carregador offline — use outro ponto desta estação')
 MODES = [('time','Por tempo'),('value','Por valor'),('autonomy','Por autonomia')]
@@ -419,7 +419,7 @@ def _route(draft, step):
 def _code(draft):
     digits = (draft['presence_digits'] or '').strip()
     if len(digits) != 5 or not digits.isascii() or not digits.isdigit():
-        raise ApiError('Digite os cinco números que aparecem após #F na tela do posto.')
+        raise ApiError('Digite os cinco números que aparecem após #F na central.')
     return '#F'+digits
 
 
@@ -814,7 +814,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await navigate(2)
         controls += [point_summary(context,'Ponto reservado' if reservation_id else 'Ponto selecionado'),
                      ft.Text('Use #F12345 na conta demo; não é necessário um equipamento real.' if demo else
-                             'No local, leia os cinco números atuais após #F na tela do equipamento. O código muda periodicamente e é conferido pela API ao solicitar o início.',
+                             'No local, leia os cinco números atuais após #F na central. O código muda periodicamente e é conferido pela API ao solicitar o início.',
                              size=13,color=theme.GRAY_TEXT),presence,button('Continuar',app.action(continue_code))]
         if not context:
             controls.append(button('Prefiro escolher o ponto na lista',app.link('stations'),secondary=True))

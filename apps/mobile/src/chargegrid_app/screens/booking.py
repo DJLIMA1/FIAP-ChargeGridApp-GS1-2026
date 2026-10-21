@@ -438,7 +438,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                     design.txt(f'Ponto reservado por {rules.TOLERANCE_MINUTES} minutos', 15, 'bold', expand=True)],
                    spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             design.txt('O prazo começa quando o posto confirma a reserva. Chegando, toque em "Cheguei" e informe o '
-                       'código #F da tela do equipamento. Se não chegar a tempo, a reserva expira.', 12, 'regular',
+                       'código #F exibido pela central. Se não chegar a tempo, a reserva expira.', 12, 'regular',
                        theme.GRAY_TEXT)], spacing=10), padding=ft.Padding(left=15, right=15, top=15, bottom=16))
         body = [ft.Container(height=4), hold, ft.Container(height=6), _fee_box(free=stripe_only)]
         return _page(*body, title='Reservar estação', on_back=app.back, steps=4, step=2, edge='c2r',

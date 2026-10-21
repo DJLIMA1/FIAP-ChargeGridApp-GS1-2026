@@ -30,7 +30,7 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'account_type': 'vendor', 'operator_enabled': False}
         screen = await operator.build(app)
-        await click(screen, 'Escanear QR da tela')(None)
+        await click(screen, 'Escanear QR da central')(None)
         app.go.assert_awaited_once_with('operator', claim=True)
         screen = await operator.build(app, claim=True)
         self.assertTrue(click(screen, 'Vincular ponto à minha conta'))
@@ -52,9 +52,9 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = request
         screen = await operator.build(app)
         text = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item, ft.Text))
-        self.assertIn('O QR aparece na tela do ponto ainda sem dono.', text)
+        self.assertIn('O QR é exibido pela central ainda sem dono.', text)
         self.assertIn('Defina nome, local e tarifa', text)
-        await click(screen, 'Escanear QR da tela')(None)
+        await click(screen, 'Escanear QR da central')(None)
         app.go.assert_awaited_once_with('operator', claim=True)
 
     async def test_claim_sends_secret_only_on_confirmation_and_clears_after_success(self):

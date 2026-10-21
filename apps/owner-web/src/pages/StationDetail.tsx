@@ -27,7 +27,8 @@ import {
 import { useFilters } from '../lib/filters'
 import { formatRelative } from '../lib/format'
 import { AMENITY_KINDS, AMENITY_LABELS } from '../lib/labels'
-import { useApi } from '../lib/useApi'
+import { useStationView } from '../lib/useStationView'
+import { useLiveDraft } from '../lib/useLiveDraft'
 import { validateText } from '../lib/validate'
 
 function errorText(error: unknown): string {
@@ -42,22 +43,17 @@ function errorText(error: unknown): string {
 export function StationForm({ station, onSaved }: { station: Station; onSaved(next: Station): void }) {
   const { ep } = useAuth()
   const toast = useToast()
-  const [name, setName] = useState(station.name)
-  const [address, setAddress] = useState(station.address)
-  const [active, setActive] = useState(station.active)
-  // Coordenadas da sugestão escolhida: o mapa do app passa a apontar para o novo endereço.
+  const initial = useMemo(() => ({ name: station.name, address: station.address, active: station.active }),
+    [station.name, station.address, station.active])
+  const [draft, setDraft, formEvents] = useLiveDraft(initial)
+  const { name, address, active } = draft
+  const setName = (value: string) => setDraft((previous) => ({ ...previous, name: value }))
+  const setAddress = (value: string) => setDraft((previous) => ({ ...previous, address: value }))
+  const setActive = (value: boolean) => setDraft((previous) => ({ ...previous, active: value }))
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [touched, setTouched] = useState(false)
-
-  // Só os campos do formulário: ligar o totem (salvo na hora) não descarta o que está sendo digitado.
-  useEffect(() => {
-    setName(station.name)
-    setAddress(station.address)
-    setActive(station.active)
-    setCoords(null)
-  }, [station.name, station.address, station.active])
 
   const nameError = validateText(name, 'o nome da estação', 100)
   const addressError = validateText(address, 'o endereço', 300)
@@ -92,9 +88,10 @@ export function StationForm({ station, onSaved }: { station: Station; onSaved(ne
   }
 
   return (
-    <Card title="Dados da estação" sub="A estação é a tela: dados visíveis no app; o totem liga e desliga na hora" id="station-data">
-      <form onSubmit={save} className="stack" noValidate>
+    <Card title="Dados da estação" sub="Dados visíveis para motoristas; a central gerencia os carregadores." id="station-data">
+      <form onSubmit={save} className="stack" noValidate {...formEvents}>
         <ScreenStatus station={station} />
+        {stationScreenState(station) === 'offline' ? <StationHealth station={station} /> : null}
         {error ? <ErrorBanner error={error} title="Alterações não salvas" /> : null}
         <div className="form-grid">
           <Field label="Nome da estação" error={touched || name !== station.name ? nameError : null}>
@@ -160,7 +157,7 @@ export function StationHealth({ station }: { station: Station }) {
   if (state === 'offline') {
     return (
       <Banner tone="error" icon="wifiOff" title="Estação offline">
-        A tela está sem contato: todos os carregadores ficam indisponíveis até ela voltar.
+        A central está sem contato: todos os carregadores ficam indisponíveis até ela voltar.
       </Banner>
     )
   }
@@ -168,7 +165,7 @@ export function StationHealth({ station }: { station: Station }) {
   if (state !== 'online' || !offline.length) return null
   const codes = offline.map((c) => c.public_code).join(', ')
   return (
-    <Banner tone="info" icon="alert" title={`Estação online · ${offline.length === 1 ? `carregador ${codes} offline` : `carregadores ${codes} offline`}`}>
+    <Banner tone="info" icon="alert" title={offline.length === 1 ? `Carregador ${codes} offline` : `Carregadores ${codes} offline`}>
       {offline.length === 1 ? 'Só esse ponto fica indisponível' : 'Só esses pontos ficam indisponíveis'}; os motoristas são orientados a usar outro ponto da estação.
     </Banner>
   )
@@ -212,7 +209,7 @@ export function ChargersCard({
   return (
     <Card
       title="Carregadores"
-      sub="Cada carregador é um GoodWe HCA G2 (simulado) comandado pela tela da estação"
+      sub="Cada carregador é um GoodWe HCA G2 (simulado) comandado pela central da estação"
       id="connectors"
       action={
         target ? (
@@ -223,12 +220,12 @@ export function ChargersCard({
       }
     >
       <div className="stack" style={{ gap: 12 }}>
-        <StationHealth station={station} />
+        {stationScreenState(station) !== 'offline' ? <StationHealth station={station} /> : null}
         {addError ? <ErrorBanner error={addError} title="Carregador não adicionado" /> : null}
         {added && added.charger_address !== null && added.charger_address !== undefined ? (
           <Banner tone="ok" icon="check" title={`Carregador ${added.public_code} adicionado no endereço ${added.charger_address}`}>
             <span data-testid="added-charger">
-              Inativo por enquanto. {cgAddrHint(added.charger_address)}, mesma rede Wi-Fi da tela; publique quando ele ficar online.
+              Inativo por enquanto. {cgAddrHint(added.charger_address)}, mesma rede Wi-Fi da central; publique quando ele ficar online.
             </span>
           </Banner>
         ) : null}
@@ -236,7 +233,7 @@ export function ChargersCard({
           points.map((connector) => <ChargerCard key={connector.id} connector={connector} onSaved={onSaved} suggestedAddress={suggestedAddress} />)
         ) : (
           <EmptyState icon="plug" title="Nenhum carregador">
-            A estação aparece aqui depois de vincular a tela pelo QR de propriedade no app ChargeGrid.
+            A estação aparece aqui depois de vincular a central pelo QR de propriedade no app ChargeGrid.
           </EmptyState>
         )}
       </div>
@@ -258,10 +255,9 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
     () => (station.amenities ?? []).map((a) => ({ kind: a.kind, name: a.name ?? '', distance: a.distance_m === null || a.distance_m === undefined ? '' : String(a.distance_m) })),
     [station],
   )
-  const [rows, setRows] = useState(initial)
+  const [rows, setRows, formEvents] = useLiveDraft(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => setRows(initial), [initial])
 
   const problems = rows.map((row) => {
     if (row.name.length > 80) return 'Nome com até 80 caracteres'
@@ -298,7 +294,7 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
         </button>
       }
     >
-      <div className="stack" style={{ gap: 10 }}>
+      <div className="stack" style={{ gap: 10 }} {...formEvents}>
         {!rows.length ? (
           <p className="muted" style={{ margin: 0 }}>
             Nenhuma comodidade cadastrada.
@@ -343,13 +339,8 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
 /* ---------------------------------------------------------------------- page */
 export default function StationDetail() {
   const { id = '' } = useParams()
-  const { ep } = useAuth()
   const { replaceStation } = useFilters()
-  const { data, error, reload } = useApi((signal) => ep.station(id, signal), `station|${id}`)
-  const [station, setStation] = useState<Station | null>(null)
-  useEffect(() => {
-    if (data) setStation(data)
-  }, [data])
+  const { station, error, reload, update: acceptStation, lastRefresh } = useStationView(id)
   // Atalhos como /estacoes/:id#economics (do Resultado) rolam até o cartão.
   const { hash } = useLocation()
   const loaded = Boolean(station)
@@ -360,18 +351,18 @@ export default function StationDetail() {
   }, [loaded, hash])
 
   const update = (next: Station) => {
-    // A resposta do PATCH é a fonte da verdade (sem atualização otimista).
-    setStation(next)
+    acceptStation(next)
     replaceStation(next)
   }
   const updateConnector = (next: Connector) => {
-    if (!station) return
-    const merged = { ...station, connectors: station.connectors.map((c) => (c.id === next.id ? { ...c, ...next } : c)) }
-    update(merged)
+    acceptStation((previous) => ({ ...previous,
+      connectors: previous.connectors.map((c) => c.id === next.id ? { ...c, ...next } : c),
+    }))
   }
   const addConnector = (next: Connector) => {
-    if (!station) return
-    update({ ...station, connectors: [...station.connectors.filter((c) => c.id !== next.id), next] })
+    acceptStation((previous) => ({ ...previous,
+      connectors: [...previous.connectors.filter((c) => c.id !== next.id), next],
+    }))
   }
 
   const back = (
@@ -422,7 +413,7 @@ export default function StationDetail() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Badge tone={station.active ? 'green' : 'gray'}>{station.active ? 'Ativa' : 'Inativa'}</Badge>
             <Badge tone={screenMeta.tone}>{screenMeta.label}</Badge>
-            {stationChargerSummary(station)} · atualizado {formatRelative(new Date())}
+            {stationChargerSummary(station)} · atualizado {formatRelative(lastRefresh)}
           </span>
         }
         actions={
@@ -432,6 +423,7 @@ export default function StationDetail() {
         }
       />
       <div className="stack">
+        {error ? <ErrorBanner error={error} title="Falha ao atualizar carregadores" onRetry={reload} /> : null}
         <StationForm station={station} onSaved={update} />
         <ChargersCard station={station} onSaved={updateConnector} onAdded={addConnector} suggestedAddress={freeAddress} />
         <PowerCard station={station} />

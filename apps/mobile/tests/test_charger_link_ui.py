@@ -25,7 +25,7 @@ from chargegrid_app.ui.availability import point_status, station_map_record
 from chargegrid_core import receipt
 from chargegrid_core.chargers import link as charger_link
 from test_behavior import HandlerApp, click, descendants
-from test_seller_flow_fixes import fields, station_fixture, texts
+from test_seller_flow_fixes import central_maintenance, fields, station_fixture, texts
 
 ONLINE = {'model': 'goodwe_hca_g2', 'transport': 'modbus_tcp', 'address': 1, 'host': 'cg-hca-1.local',
           'label': 'GoodWe HCA G2', 'simulated': True, 'link': 'online',
@@ -66,8 +66,7 @@ def point(**extra):
 
 class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
     async def form(self, app, connector, *responses):
-        app.api.request.side_effect = [{'device_id': 'device', 'online': True}, {'status': 'not_requested'},
-                                       *responses]
+        app.api.request.side_effect = list(responses)
         return await operator.connector_form(app, 'station', connector)
 
     async def test_charger_card_shows_address_link_last_reading_and_measured_power(self):
@@ -78,8 +77,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(field.value, '2')
         copy = texts(screen)
         for expected in ('Editar carregador', 'Carregador 2', 'GoodWe HCA G2 (simulado) · Tipo 2 · 22 kW (limite 11 kW)',
-                         'publicado', 'Última leitura', 'Potência lida', '7,2 kW', 'CG_ADDR', 'Tela da estação',
-                         'Este ponto é a tela', 'Ponto da tela', 'CG-POINT', 'Voltar aos carregadores'):
+                         'publicado', 'Última leitura', 'Potência lida', '7,2 kW', 'CG_ADDR', 'CG-POINT', 'Voltar aos carregadores'):
             self.assertIn(expected, copy)
         for removed in ('Carregador externo', 'simulação da tela', 'Conexão do equipamento', 'Voltar aos conectores',
                         'Sem resposta do carregador'):
@@ -105,7 +103,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.assert_awaited_with('PATCH', 'connectors/point', {'charger_address': 4})
         card = next(item for item in descendants(screen) if getattr(item, 'data', None) == 'charger-card')
         self.assertIn('Carregador 4', texts(card))
-        self.assertIn('Aguardando a tela', texts(card))
+        self.assertIn('Aguardando a central', texts(card))
         self.assertIn('Sem leitura', texts(card))
         self.assertEqual((connector['charger_address'], fields(screen)[operator.CHARGER_FIELD].value), (4, '4'))
         self.assertIn('CG_ADDR = 4', app.notices[-1])
@@ -123,7 +121,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ApiError):
                 await click(screen, 'Salvar')(None)
             self.assertIn(message, field.error_text)
-        self.assertEqual(app.api.request.await_count, 2)  # só o dispositivo e o estado da restauração
+        app.api.request.assert_not_awaited()
 
     async def test_taken_address_from_the_api_is_shown_inline(self):
         app = HandlerApp()
@@ -141,16 +139,15 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
         extra = point(id='extra', public_code='CG-EXTRA', charger_address=2, charger_link={**ONLINE, 'address': 2},
                       screen={**SCREEN, 'role': 'charger'})
         screen = await self.form(app, extra)
-        self.assertIn('Carregador adicional desta tela', texts(screen))
-        self.assertIn('Abrir a tela (CG-POINT)', buttons(screen))
+        self.assertNotIn('Central da estação', texts(screen))
+        self.assertNotIn('Abrir a central', texts(screen))
         for action in ('Rotacionar', 'Revogar', 'Restaurar', 'Provisionar'):
             self.assertNotIn(action, visible_buttons(screen))
-        await click(screen, 'Abrir a tela (CG-POINT)')(None)
-        app.go.assert_awaited_with('operator', station_id='station', connector_id='point', nav=False)
 
     async def test_screen_point_keeps_credential_actions_in_the_screen_card(self):
         app = HandlerApp()
-        screen = await self.form(app, point(charger_address=1, charger_link=ONLINE, screen=SCREEN))
+        app.api.request.side_effect = [{'device_id':'device','online':True}, {'status':'not_requested'}]
+        screen = await central_maintenance(app, point(charger_address=1, charger_link=ONLINE, screen=SCREEN))
         shown = visible_buttons(screen)
         for action in ('Rotacionar', 'Revogar', 'Restaurar'):
             self.assertIn(action, shown)
@@ -164,7 +161,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(operator.charger_status(point()), '')  # payload de motorista
 
     def test_charger_pill_follows_the_link(self):
-        for link, label in (('online', 'Online'), ('offline', 'Offline'), ('pending', 'Aguardando a tela')):
+        for link, label in (('online', 'Online'), ('offline', 'Offline'), ('pending', 'Aguardando a central')):
             connector = point(active=True, charger_address=1, charger_link={**ONLINE, 'link': link})
             self.assertEqual(operator._point_status(connector)[0], label)
         self.assertEqual(operator._point_status(point(active=False, charger_link=ONLINE))[0], 'Desativado')
@@ -183,13 +180,14 @@ class ChargersPageTests(unittest.IsolatedAsyncioTestCase):
         station['connectors'][0]['charger_link'] = {**ONLINE, 'link': 'offline'}
         screen = station_admin._connectors_page(app, station)
         copy = texts(screen)
-        for expected in ('Carregadores', 'Tela da estação', 'CG-POINT · 1 carregador', 'Carregador 1 · Tipo 2 · 7,4 kW',
+        for expected in ('Carregadores', 'Carregador 1 · Tipo 2 · 7,4 kW',
                          chargers.ADD_LABEL, chargers.ADD_HINT):
             self.assertIn(expected, copy)
         self.assertNotIn('Conectores', copy)
         pills = [item.content.value for item in descendants(screen) if isinstance(item, ft.Container)
                  and isinstance(item.content, ft.Text) and item.content.value in ('Online', 'Offline')]
-        self.assertEqual(pills, ['Online', 'Offline'])  # tela online, carregador offline
+        self.assertEqual(pills, ['Offline'])  # só o carregador; central fica em Dados
+        self.assertNotIn('Central da estação', copy)
 
     async def test_add_charger_posts_to_the_screen_point_and_shows_the_new_address(self):
         app = HandlerApp()
@@ -203,10 +201,10 @@ class ChargersPageTests(unittest.IsolatedAsyncioTestCase):
         copy = texts(screen)
         self.assertIn('Carregador 2 criado (CG-NEW), inativo. Configure CG_ADDR = 2', copy)
         self.assertIn('CG-NEW', copy)
-        self.assertIn('Carregador 2 · Tipo 2 · 7,4 kW · aguardando a tela', copy)
+        self.assertIn('Carregador 2 · Tipo 2 · 7,4 kW · aguardando a central', copy)
 
     async def test_add_charger_conflicts_are_explained(self):
-        for code, expected in (('screen_required', 'ainda não tem tela vinculada'),
+        for code, expected in (('screen_required', 'ainda não tem central vinculada'),
                                ('charger_address_full', '1 a 247')):
             app = HandlerApp()
             app.api.request.side_effect = ApiError('x', 409, code)
@@ -228,13 +226,13 @@ class ChargersPageTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.back = lambda event=None: None
         screen = station_admin._main_page(app, self.station(), 'CG-001')
-        self.assertIn('Tela online', texts(screen))
+        self.assertIn('Central online', texts(screen))
         self.assertIn('Carregadores', texts(screen))
         self.assertIn('1 carregador · 1 publicado · 1 online', texts(screen))
         offline = station_admin._main_page(app, self.station(screen_online=False, screens=[]), 'CG-001')
-        self.assertIn('Tela offline', texts(offline))
+        self.assertIn('Central offline', texts(offline))
         legacy = station_fixture()  # API sem screen_online: sem a etiqueta da tela
-        self.assertNotIn('Tela ', texts(station_admin._main_page(app, legacy, 'CG-001')))
+        self.assertNotIn('Central online', texts(station_admin._main_page(app, legacy, 'CG-001')))
 
 
 class DriverChargerOfflineTests(unittest.TestCase):

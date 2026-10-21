@@ -318,7 +318,7 @@ async def build_vendor(app, empty=False, **_):
 
     profile, stations = await snapshot()
     app.profile = profile
-    # A referência esconde a barra inferior no estado vazio (primeira tela a configurar).
+    # A referência esconde a barra inferior no estado vazio (primeira central a configurar).
     app.hide_nav_for_route = 'home' if empty or not stations else None
     if empty or not stations:  # ``empty``: simula vendedor sem estações (captura/teste)
         return _vendor_empty(app, demo)
@@ -371,13 +371,13 @@ async def build_vendor(app, empty=False, **_):
 
 
 def _vendor_empty(app, demo):
-    """Vendedor sem estações: configurar a primeira tela escaneando o QR de vinculação."""
+    """Vendedor sem estações: configurar a primeira central escaneando o QR de vinculação."""
     scan = app.link('operator', claim=True)
     card = design.card_box(
         ft.Column([
             ft.Container(ft.Icon(ft.Icons.QR_CODE_SCANNER, size=62, color=theme.TEXT_COLOR),
                          alignment=ft.Alignment(0, 0)),
-            design.txt('A tela sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
+            design.txt('A central sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
                        11.5, 'bold', style=ft.TextStyle(height=1.8)),
             ft.Container(design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas '
                                     'quando você publicar.', 11.4, 'regular', style=ft.TextStyle(height=1.8)),
@@ -387,7 +387,7 @@ def _vendor_empty(app, demo):
     controls = [
         _spaced(_greeting(app, demo), top=0),
         _spaced(_totem_scene(app), top=9.5),
-        _spaced(design.txt('Configure sua primeira tela', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
+        _spaced(design.txt('Configure sua primeira central', 14.2, 'regular', text_align=ft.TextAlign.CENTER),
                 top=17, bottom=23),
         card,
         _spaced(design.primary_button('Escanear QR Code', scan, height=49, size=14.5, weight='regular'), top=0),

@@ -121,7 +121,7 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
                                     10, 'regular', theme.GRAY_TEXT)], spacing=2)] if demo else []
     if manage and not app.profile.get('operator_enabled'):
         return ft.Column(demo_controls+[
-            title('Histórico dos meus postos', 'Vincule sua primeira tela para começar a registrar recargas nos seus postos.'),
+            title('Histórico dos meus postos', 'Vincule sua primeira central para começar a registrar recargas nos seus postos.'),
             button('Ir para meus postos', app.link('operator')),
         ], spacing=15)
     if manage and not station_id and page == 'energy':

@@ -48,7 +48,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Gerenciar cupons', copy)
         self.assertIn('Adicionar nova estação', copy)
         self.assertIn(operator.ADD_STATION_DEMO, copy)
-        self.assertNotIn('Adicionar equipamento simulado', copy)  # sem a linha repetida em "Mais opções"
+        self.assertNotIn('Adicionar central simulada', copy)  # sem a linha repetida em "Mais opções"
         await press(screen, 'Marginal Pinheiros')(None)
         self.assertEqual(app.go.await_args.args[0], 'station_admin')
         await press(screen, 'Adicionar nova estação')(None)
@@ -71,10 +71,10 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         before = len((await app.api.request('GET', 'operator/stations'))['items'])
         await press(await operator.build(app), 'Adicionar nova estação')(None)
         self.assertEqual(app.go.await_args.kwargs, {'claim': True})
-        first = await operator.build(app, claim=True)  # primeiro passo: o vínculo que já existe (Vincular Tela)
-        self.assertIn('Vincular Tela', texts(first))
+        first = await operator.build(app, claim=True)  # primeiro passo: o vínculo que já existe (Vincular Central)
+        self.assertIn('Vincular Central', texts(first))
         self.assertIn('Será um novo local simulado', texts(first))
-        await press(first, 'Adicionar equipamento simulado')(None)
+        await press(first, 'Adicionar central simulada')(None)
         target = app.go.await_args.kwargs
         self.assertEqual((target['onboarding'], target['step']), (True, 1))
         location = await onboarding.build(app, target['station_id'], target['point_id'], step=1)
@@ -110,7 +110,9 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(removed, texts(screen) + texts(data))
         connectors = await station_admin.build(app, station_id=sid, page='connectors')
         self.assertIn('Adicionar carregador', texts(connectors))
-        self.assertIn('Adicionar tela simulada a este posto', texts(connectors))
+        self.assertNotIn('Adicionar central simulada a este posto', texts(connectors))
+        self.assertIn('Adicionar central simulada a este posto', texts(data))
+        self.assertIn('Manutenção da central', texts(data))
         self.assertIn('A tarifa fica em Tarifa.', texts(connectors))
         await app.api.close()
 

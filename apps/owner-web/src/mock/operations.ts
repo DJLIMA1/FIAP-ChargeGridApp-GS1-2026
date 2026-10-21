@@ -9,10 +9,10 @@
  * - Pagamento automático (Stripe · teste; simulado no totem em Modo apresentação): `payment` nas sessões;
  * - Totem 0.8.0: `kiosk_mode` (Villa Lobos ligado), CG-003 travado por um pedido do totem
  *   (`kiosk_in_use`) e `payment.channel` (app / QR do painel / totem, simulado ou Stripe) nas sessões;
- * - Estação = a tela; cada ponto É um carregador GoodWe HCA G2 (simulado): endereços 1..N por
- *   posto na ordem de criação, uma tela online por posto (no primeiro ponto) comandando todos,
+ * - Estação = a central; cada ponto É um carregador GoodWe HCA G2 (simulado): endereços 1..N por
+ *   posto na ordem de criação, uma central online por posto (no primeiro ponto) comandando todos,
  *   carregadores online para a demonstração, CG-007 offline (estação online × carregador offline)
- *   e CG-010 aguardando a tela; PATCH `charger_address` (1–247, nunca vazio, único no posto: 422/409)
+ *   e CG-010 aguardando a central; PATCH `charger_address` (1–247, nunca vazio, único no posto: 422/409)
  *   e `POST /connectors/{id}/chargers` (Adicionar carregador; 409 screen_required/charger_address_full);
  * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
  *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
@@ -53,12 +53,12 @@ const S = data.STATIONS
 /* Estado dos carregadores (declarado antes de decorar os postos, logo abaixo). */
 const SECOND = 1000
 const MOCK_HOUR = 3_600_000
-/** Firmware das telas do mock (multi-carregador). */
+/** Firmware das centrais do mock (multi-carregador). */
 export const SCREEN_FIRMWARE = '1.6.0'
 /**
  * Estado de cada carregador no mock (por id do ponto). Padrão `online` para a demonstração;
- * CG-007 sem resposta (tela online: estação online × carregador offline) e CG-010 ainda não
- * confirmado pela tela (`pending`). Carregador adicionado pelo dono nasce `pending`.
+ * CG-007 sem resposta (central online: estação online × carregador offline) e CG-010 ainda não
+ * confirmado pela central (`pending`). Carregador adicionado pelo dono nasce `pending`.
  */
 const LINK_STATE = new Map<string, ChargerLinkState>()
 const LINK_SEED: Record<string, ChargerLinkState> = { 'CG-007': 'offline', 'CG-010': 'pending' }
@@ -229,7 +229,7 @@ function decorateStation(station: Station) {
 }
 S.forEach(decorateStation)
 
-/* ------------------------------------------- estação (tela) × carregadores */
+/* ------------------------------------------- estação (central) × carregadores */
 
 export function linkStateOf(connector: Connector): ChargerLinkState {
   return LINK_STATE.get(connector.id) ?? LINK_SEED[connector.public_code] ?? 'online'
@@ -243,7 +243,7 @@ function screenDeviceId(station: Station): string {
   return `d0${String(S.indexOf(station) + 1).padStart(3, '0')}-6b1e-4c7a-9d2f-00000000a11e`
 }
 
-/** A tela do posto fica no primeiro ponto (o do QR); os outros são carregadores adicionais dela. */
+/** A central do posto fica no primeiro ponto (o do QR); os outros são carregadores adicionais dela. */
 function screenPoint(station: Station): Connector | undefined {
   return station.connectors.find((c) => !c.retired)
 }
@@ -251,7 +251,7 @@ function screenPoint(station: Station): Connector | undefined {
 /**
  * `charger_link` do dono (`chargegrid_core.chargers.link.owner_block`): online com última leitura
  * agora e a potência lida (a efetiva enquanto carrega, 0 parado); offline com a última leitura de
- * 3 h atrás; pending sem leitura (a tela ainda não confirmou o endereço).
+ * 3 h atrás; pending sem leitura (a central ainda não confirmou o endereço).
  */
 export function chargerLink(connector: Connector, now: number = Date.now()): ChargerLink | null {
   const address = connector.charger_address
@@ -344,14 +344,14 @@ export function setChargerAddress(connectorId: string, value: unknown): Connecto
     throw new MockFailure(409, 'charger_address_taken', `O carregador ${value} já está ligado ao ponto ${other.public_code} deste posto. Escolha outro endereço.`)
   }
   connector.charger_address = value
-  // Endereço novo: a tela ainda não confirmou o carregador nele.
+  // Endereço novo: a central ainda não confirmou o carregador nele.
   setLinkState(connector.id, 'pending')
   decorateChargers(station)
   return connector
 }
 
 /** Mensagens das recusas do POST "Adicionar carregador" (iguais à API). */
-export const SCREEN_REQUIRED_MESSAGE = 'Este ponto não tem tela vinculada'
+export const SCREEN_REQUIRED_MESSAGE = 'Este ponto não tem central vinculada'
 export const ADDRESS_FULL_MESSAGE = 'Posto sem endereço de carregador livre (1 a 247)'
 
 function nextPublicCode(): string {
@@ -360,9 +360,9 @@ function nextPublicCode(): string {
 }
 
 /**
- * `POST /connectors/{id}/chargers`: próximo carregador da tela do ponto (a do próprio ponto ou a
- * tela de quem ele é carregador adicional): próximo endereço livre, mesmo tipo/potência/preço/
- * duração do ponto da tela, inativo, aguardando a tela. 409 `screen_required`/`charger_address_full`.
+ * `POST /connectors/{id}/chargers`: próximo carregador da central do ponto (a do próprio ponto ou a
+ * central de quem ele é carregador adicional): próximo endereço livre, mesmo tipo/potência/preço/
+ * duração do ponto da central, inativo, aguardando a central. 409 `screen_required`/`charger_address_full`.
  */
 export function addCharger(connectorId: string): Connector {
   const station = S.find((s) => s.connectors.some((c) => c.id === connectorId))

@@ -1,8 +1,8 @@
 /**
- * Estação = a TELA (painel ESP32-S3); Carregadores = os pontos que ela comanda. Cada ponto (na API,
+ * Estação = a CENTRAL (painel ESP32-S3); Carregadores = os pontos que ela comanda. Cada ponto (na API,
  * `connector`) É um carregador GoodWe HCA G2 (simulado) com endereço Modbus (`charger_address`,
  * 1–247, único por posto, automático e editável; nunca vazio). Carregador offline só derruba aquele
- * ponto: a estação continua online enquanto a tela tiver contato. Mesmos textos do app e da API
+ * ponto: a estação continua online enquanto a central tiver contato. Mesmos textos do app e da API
  * (`chargegrid_core.chargers.link`).
  */
 import { ApiError } from '../api/client'
@@ -22,8 +22,8 @@ export const CHARGER_MAX_ADDRESS = 247
 export const CHARGER_ADDRESS_EMPTY = 'Endereço do carregador não pode ficar vazio: informe um número de 1 a 247'
 export const CHARGER_ADDRESS_INVALID = 'Endereço do carregador deve ser um número inteiro de 1 a 247'
 
-/** `pending` = a tela (online) ainda não confirmou este endereço. */
-export const CHARGER_WAITING_TEXT = 'aguardando a tela'
+/** `pending` = a central (online) ainda não confirmou este endereço. */
+export const CHARGER_WAITING_TEXT = 'aguardando a central'
 
 export const CHARGER_LINK_TEXT: Record<ChargerLinkState, string> = {
   online: 'online',
@@ -35,7 +35,7 @@ export const CHARGER_LINK_TEXT: Record<ChargerLinkState, string> = {
 export const CHARGER_STATE_META: Record<ChargerLinkState, { label: string; tone: Tone }> = {
   online: { label: 'Online', tone: 'green' },
   offline: { label: 'Offline', tone: 'red' },
-  pending: { label: 'Aguardando a tela', tone: 'amber' },
+  pending: { label: 'Aguardando a central', tone: 'amber' },
 }
 
 /** Tipos de conector oferecidos no cartão (o atual entra na lista se for outro). */
@@ -64,7 +64,7 @@ function isLinkState(value: unknown): value is ChargerLinkState {
   return value === 'online' || value === 'offline' || value === 'pending'
 }
 
-/** `Carregador 1 · GoodWe HCA G2 (simulado) · online` (`offline`, `aguardando a tela`); vazio sem bloco (= `status_text` do core). */
+/** `Carregador 1 · GoodWe HCA G2 (simulado) · online` (`offline`, `aguardando a central`); vazio sem bloco (= `status_text` do core). */
 export function chargerStatusText(link: ChargerLink | null | undefined): string {
   if (!link || link.address === null || link.address === undefined) return ''
   const state = isLinkState(link.link) ? CHARGER_LINK_TEXT[link.link] : CHARGER_WAITING_TEXT
@@ -91,7 +91,7 @@ export function formatMeasuredPower(watts: number | null | undefined): string | 
 
 /**
  * Leitura do carregador numa linha: `última leitura agora · lendo 7,2 kW`, `última leitura há 3 h`,
- * `sem leitura ainda`; aguardando a tela sem leitura: vazio (o estado já diz tudo).
+ * `sem leitura ainda`; aguardando a central sem leitura: vazio (o estado já diz tudo).
  */
 export function chargerReadingText(link: ChargerLink | null | undefined, now: Date = new Date()): string {
   if (!link) return ''
@@ -103,9 +103,9 @@ export function chargerReadingText(link: ChargerLink | null | undefined, now: Da
   return parts.join(' · ')
 }
 
-/** Papel do ponto na tela: o ponto da própria tela (QR) ou um carregador adicional. */
+/** Papel do ponto na central: o ponto da própria central (QR) ou um carregador adicional. */
 export function screenRoleText(screen: ChargerScreen): string {
-  return screen.role === 'screen' ? 'Este ponto é a tela' : `Carregador adicional da tela ${screen.public_code}`
+  return screen.role === 'screen' ? 'Este ponto é a central' : `Carregador adicional da central ${screen.public_code}`
 }
 
 /* ------------------------------------------------------------------ estação */
@@ -115,11 +115,11 @@ export type StationScreenState = 'online' | 'offline' | 'none'
 export const STATION_SCREEN_META: Record<StationScreenState, { label: string; tone: Tone }> = {
   online: { label: 'Estação online', tone: 'green' },
   offline: { label: 'Estação offline', tone: 'red' },
-  none: { label: 'Sem tela', tone: 'gray' },
+  none: { label: 'Sem central', tone: 'gray' },
 }
 
 /**
- * Status da estação = o da TELA (`station.screen_online`; `null` = posto sem tela). API antiga
+ * Status da estação = o da CENTRAL (`station.screen_online`; `null` = posto sem central). API antiga
  * (sem o campo): online se algum ponto responde.
  */
 export function stationScreenState(station: Pick<Station, 'screen_online' | 'connectors'>): StationScreenState {
@@ -132,8 +132,8 @@ export function stationScreenState(station: Pick<Station, 'screen_online' | 'con
 }
 
 /**
- * Carregadores publicados sem resposta com a tela online (só eles ficam indisponíveis). Inativos
- * (ex.: recém-adicionado, aguardando a tela) não entram: o motorista nem os vê.
+ * Carregadores publicados sem resposta com a central online (só eles ficam indisponíveis). Inativos
+ * (ex.: recém-adicionado, aguardando a central) não entram: o motorista nem os vê.
  */
 export function offlineChargers(station: Pick<Station, 'screen_online' | 'connectors'>): Connector[] {
   if (stationScreenState(station) !== 'online') return []
@@ -157,7 +157,7 @@ export function stationChargerSummary(station: Pick<Station, 'connectors'>): str
 }
 
 /**
- * Linha da estação: o status é o da TELA; carregador offline aparece à parte (não derruba a estação).
+ * Linha da estação: o status é o da CENTRAL; carregador offline aparece à parte (não derruba a estação).
  * `Estação online · 2 de 4 carregadores em uso · carregador CG-007 offline`.
  */
 export function stationSummary(station: Station): { line: string; tone: 'green' | 'amber' | 'red' | 'gray' } {
@@ -165,8 +165,8 @@ export function stationSummary(station: Station): { line: string; tone: 'green' 
   if (!station.active) return { line: 'Inativa · oculta para motoristas', tone: 'gray' }
   if (!points.length) return { line: 'Sem carregadores vinculados', tone: 'amber' }
   const screen = stationScreenState(station)
-  if (screen === 'offline') return { line: 'Estação offline · tela sem contato', tone: 'red' }
-  if (screen === 'none') return { line: 'Sem tela vinculada', tone: 'amber' }
+  if (screen === 'offline') return { line: 'Estação offline · central sem contato', tone: 'red' }
+  if (screen === 'none') return { line: 'Sem central vinculada', tone: 'amber' }
   const busy = points.filter((c) => ['charging', 'occupied', 'reserved'].includes(c.availability_status ?? '')).length
   const free = points.filter(
     (c) =>
@@ -187,15 +187,15 @@ export function stationSummary(station: Station): { line: string; tone: 'green' 
 }
 
 /**
- * Ponto usado no POST "Adicionar carregador": o da própria tela (`screen.role == 'screen'`), senão
- * qualquer ponto com tela; sem tela, o primeiro (a API responde 409 `screen_required`).
+ * Ponto usado no POST "Adicionar carregador": o da própria central (`screen.role == 'screen'`), senão
+ * qualquer ponto com central; sem central, o primeiro (a API responde 409 `screen_required`).
  */
 export function addChargerTarget(station: Pick<Station, 'connectors'>): Connector | null {
   const points = station.connectors.filter((c) => !c.retired)
   return points.find((c) => c.screen?.role === 'screen') ?? points.find((c) => c.screen) ?? points[0] ?? null
 }
 
-export const SCREEN_REQUIRED_TEXT = 'Esta estação não tem tela vinculada. Vincule a tela pelo QR no app ChargeGrid e tente de novo.'
+export const SCREEN_REQUIRED_TEXT = 'Esta estação não tem central vinculada. Vincule a central pelo QR no app ChargeGrid e tente de novo.'
 export const ADDRESS_FULL_TEXT = 'Todos os endereços de carregador (1 a 247) já estão em uso nesta estação.'
 
 /** Mensagem do erro do POST "Adicionar carregador" (409 `screen_required` / `charger_address_full`). */

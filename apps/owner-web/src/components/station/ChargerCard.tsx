@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
 import type { ConnectorPatch } from '../../api/endpoints'
 import type { Connector } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { CHARGER_STATE_META, CHARGER_STATUS_LABEL, CONNECTOR_TYPES, chargerState, screenRoleText } from '../../lib/charger'
+import { CHARGER_STATE_META, CHARGER_STATUS_LABEL, CONNECTOR_TYPES, chargerState } from '../../lib/charger'
 import { formatPower, formatTariff, toNumber } from '../../lib/format'
 import { availabilityMeta } from '../../lib/labels'
 import { toInputDecimal, validateDuration, validatePower, validatePowerLimit, validatePrice } from '../../lib/validate'
 import { Icon } from '../Icon'
 import { useToast } from '../Toast'
-import { Badge, ErrorBanner, Field, FieldGroup, Switch } from '../ui'
+import { Badge, ErrorBanner, Field, Switch } from '../ui'
 import { ChargerField, ChargerLinkLine } from './ChargerField'
+import { useLiveDraft } from '../../lib/useLiveDraft'
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -20,34 +21,9 @@ function errorText(error: unknown): string {
   return 'Não foi possível salvar. Tente novamente.'
 }
 
-/** Vínculo com a tela: selo online/offline + o papel do ponto. Some na API antiga (sem `screen`). */
-export function ScreenLink({ connector }: { connector: Connector }) {
-  if (connector.screen === undefined) return null
-  const screen = connector.screen
-  return (
-    <FieldGroup label="Tela">
-      <div data-testid="charger-screen" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 44 }}>
-        {screen ? (
-          <>
-            <Badge tone={screen.online ? 'green' : 'red'}>{screen.online ? 'Tela online' : 'Tela offline'}</Badge>
-            <span className="muted" style={{ fontSize: 13 }}>
-              {screenRoleText(screen)}
-            </span>
-          </>
-        ) : (
-          <span className="dim" style={{ fontSize: 13 }}>
-            Sem tela vinculada
-          </span>
-        )}
-      </div>
-    </FieldGroup>
-  )
-}
-
 /**
  * Cartão do carregador (um ponto da estação = um GoodWe HCA G2 simulado): cabeçalho com o status do
- * carregador (independente da tela), endereço/tipo/potência na primeira linha, tarifa/duração e o
- * vínculo com a tela na segunda. O endereço salva na hora; o resto em "Salvar carregador".
+ * carregador, endereço/tipo/potência/limite na primeira linha e tarifa/duração na segunda. O endereço salva na hora; o resto em "Salvar carregador".
  */
 export function ChargerCard({ connector, onSaved, suggestedAddress = null }: { connector: Connector; onSaved(next: Connector): void; suggestedAddress?: number | null }) {
   const { ep } = useAuth()
@@ -64,10 +40,9 @@ export function ChargerCard({ connector, onSaved, suggestedAddress = null }: { c
     // Só os campos do formulário: salvar o endereço (na hora) não descarta o que está sendo digitado.
     [connector.price_per_kwh, connector.power_kw, connector.power_limit_kw, connector.connector_type, connector.max_duration_minutes, connector.active],
   )
-  const [draft, setDraft] = useState(initial)
+  const [draft, setDraft, formEvents] = useLiveDraft(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => setDraft(initial), [initial])
 
   const price = validatePrice(draft.price)
   const power = validatePower(draft.power)
@@ -115,7 +90,7 @@ export function ChargerCard({ connector, onSaved, suggestedAddress = null }: { c
   }
 
   return (
-    <form className="connector-card" onSubmit={save} noValidate data-testid="charger-card">
+    <form className="connector-card" onSubmit={save} noValidate data-testid="charger-card" {...formEvents}>
       <div className="connector-head" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span className={`tile ${stateMeta?.tone === 'gray' ? '' : (stateMeta?.tone ?? '')}`} style={{ width: 40, height: 40 }}>
           <Icon name="zap" size={19} />
@@ -165,7 +140,7 @@ export function ChargerCard({ connector, onSaved, suggestedAddress = null }: { c
         <ChargerLinkLine connector={connector} />
       </div>
 
-      <div className="connector-fields fields-4">
+      <div className="connector-fields" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
         <Field label="Tarifa" error={price.error && draft.price !== initial.price ? price.error : null}>
           <div className="input-affix">
             <span className="lead">R$</span>
@@ -179,9 +154,6 @@ export function ChargerCard({ connector, onSaved, suggestedAddress = null }: { c
             <span className="affix">min</span>
           </div>
         </Field>
-        <div className="span-2">
-          <ScreenLink connector={connector} />
-        </div>
       </div>
 
       {error ? (

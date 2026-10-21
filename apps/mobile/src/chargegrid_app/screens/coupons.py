@@ -21,7 +21,7 @@ async def owned_stations(app):
 async def build(app, manage=False, coupon=None, create=False, station_id=None, offset=0):
     if (manage or create or coupon) and not app.profile.get('operator_enabled'):
         return ft.Column([
-            title('Cupons','Vincule sua primeira tela para criar cupons.'),
+            title('Cupons','Vincule sua primeira central para criar cupons.'),
             ft.Text('Depois de configurar seu posto, você poderá oferecer descontos para seus clientes.',
                     size=13,color=theme.GRAY_TEXT),
             button('Configurar meu primeiro ponto',app.link('operator')),

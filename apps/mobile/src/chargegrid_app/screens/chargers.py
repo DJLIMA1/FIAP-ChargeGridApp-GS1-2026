@@ -1,8 +1,8 @@
-"""Estação (a TELA) × Carregadores no app do vendedor.
+"""Estação (a CENTRAL) × Carregadores no app do vendedor.
 
-A estação é a tela (painel com chave, ``screen``/``screens`` da API); cada ponto do posto é um
+A estação é a central (painel com chave, ``screen``/``screens`` da API); cada ponto do posto é um
 carregador GoodWe HCA G2 (simulado) com endereço Modbus 1–247 (``charger_address``/``charger_link``).
-Aqui ficam os textos e blocos comuns da lista **Carregadores** (``station_admin``), do status da tela
+Aqui ficam os textos e blocos comuns da lista **Carregadores** (``station_admin``), do status da central
 e da seção do carregador no formulário (``operator.connector_form``), além da ação
 **Adicionar carregador** (``POST connectors/{id}/chargers``). A entidade da API continua ``connector``.
 """
@@ -21,11 +21,11 @@ from ..ui.components import date_time
 ADD_LABEL = 'Adicionar carregador'
 ADD_HINT = 'Nasce inativo no próximo endereço livre; o ESP do carregador precisa de CG_ADDR = esse endereço.'
 ADD_ERRORS = {
-    'screen_required': 'Este posto ainda não tem tela vinculada. Vincule uma tela antes de adicionar carregadores.',
+    'screen_required': 'Este posto ainda não tem central vinculada. Vincule uma central antes de adicionar carregadores.',
     'charger_address_full': 'Todos os endereços de carregador (1 a 247) já estão em uso neste posto.',
 }
-LINK_LABELS = {'online': 'Online', 'offline': 'Offline', 'pending': 'Aguardando a tela'}
-ROLE_LABELS = {'screen': 'Este ponto é a tela', 'charger': 'Carregador adicional desta tela'}
+LINK_LABELS = {'online': 'Online', 'offline': 'Offline', 'pending': 'Aguardando a central'}
+ROLE_LABELS = {'screen': 'Este ponto é a central', 'charger': 'Carregador adicional desta central'}
 
 
 def plural(count, one, many):
@@ -47,7 +47,7 @@ def link_state(connector):
 
 
 def link_status(connector):
-    """``(rótulo, cor)`` do carregador: Online, Offline ou Aguardando a tela."""
+    """``(rótulo, cor)`` do carregador: Online, Offline ou Aguardando a central."""
     state = link_state(connector)
     colors = {'online': theme.GREEN, 'offline': theme.SLATE, 'pending': theme.AMBER}
     return LINK_LABELS[state], colors[state]
@@ -62,7 +62,7 @@ def live_points(station):
 
 
 def station_screens(station):
-    """Telas do posto: ``station.screens`` (dono) ou, na API sem a lista, os ``screen`` dos pontos."""
+    """Centrais do posto: ``station.screens`` (dono) ou, na API sem a lista, os ``screen`` dos pontos."""
     screens = [screen for screen in station.get('screens') or [] if isinstance(screen, dict)]
     if screens:
         return screens
@@ -76,7 +76,7 @@ def station_screens(station):
 
 
 def screen_online(station):
-    """Tela da estação com contato (``True``/``False``) ou ``None`` quando a API não informa."""
+    """Central da estação com contato (``True``/``False``) ou ``None`` quando a API não informa."""
     value = station.get('screen_online')
     if value is not None:
         return bool(value)
@@ -85,7 +85,7 @@ def screen_online(station):
 
 
 def screen_connector_id(station):
-    """Ponto usado no ``POST connectors/{id}/chargers``: o da tela (de preferência online)."""
+    """Ponto usado no ``POST connectors/{id}/chargers``: o da central (de preferência online)."""
     screens = sorted(station_screens(station), key=lambda screen: not screen.get('online'))
     for screen in screens:
         if screen.get('connector_id'):
@@ -149,7 +149,7 @@ def charger_subtitle(connector, price_text=None):
 
 def screen_line(screen, count=None):
     """``DEMO-11 · 2 carregadores``."""
-    parts = [screen.get('public_code') or 'Tela']
+    parts = [screen.get('public_code') or 'Central']
     if count is not None:
         parts.append(plural(count, 'carregador', 'carregadores'))
     return ' · '.join(parts)
@@ -185,21 +185,21 @@ def card(title, *controls, trailing=None, subtitle=None, spacing=10):
 
 
 def screens_card(station):
-    """Status da TELA da estação (separado do status de cada carregador), ou ``None`` sem dados."""
+    """Status da CENTRAL da estação (separado do status de cada carregador), ou ``None`` sem dados."""
     screens = station_screens(station)
     online = screen_online(station)
     if not screens and online is None:
         return None
     if not screens:
         label, color = screen_status(online)
-        return card('Tela da estação', trailing=pill(label, color),
-                    subtitle='A estação fica online enquanto a tela tiver contato.')
+        return card('Central da estação', trailing=pill(label, color),
+                    subtitle='A estação fica online enquanto a central tiver contato.')
     rows = []
     for screen in screens:
         label, color = screen_status(screen.get('online'))
         count = len(screen.get('charger_ids') or []) or None
         rows.append(row(screen_line(screen, count), pill(label, color), contact_text(screen)))
-    title = 'Tela da estação' if len(screens) == 1 else f'Telas da estação ({len(screens)})'
+    title = 'Central da estação' if len(screens) == 1 else f'Centrais da estação ({len(screens)})'
     return card(title, *rows, subtitle='Um carregador offline não derruba a estação.')
 
 
@@ -208,7 +208,7 @@ def add_error_message(exc):
 
 
 async def add_charger(app, station):
-    """``POST connectors/{ponto da tela}/chargers`` → linha do novo carregador (com endereço)."""
+    """``POST connectors/{ponto da central}/chargers`` → linha do novo carregador (com endereço)."""
     target = screen_connector_id(station)
     if not target:
         raise ApiError(ADD_ERRORS['screen_required'], 409, 'screen_required')

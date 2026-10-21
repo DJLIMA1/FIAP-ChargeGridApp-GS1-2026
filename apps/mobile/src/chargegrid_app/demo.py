@@ -186,8 +186,8 @@ class DemoApi(OwnerApiMixin):
         # Todo ponto é um carregador GoodWe HCA G2: ``connectors.charger_address`` (1–247, único no posto,
         # próximo livre pela ordem de criação; só o dono vê).
         self._charger_addresses = {}
-        # Estação = a TELA (um dispositivo); cada ponto é um carregador. Carregador adicional de uma tela:
-        # ponto -> ponto da tela (sem dispositivo próprio). Carregadores simulados respondem (online), salvo
+        # Estação = a CENTRAL (um dispositivo); cada ponto é um carregador. Carregador adicional de uma central:
+        # ponto -> ponto da central (sem dispositivo próprio). Carregadores simulados respondem (online), salvo
         # os desligados por ``set_charger_online`` (testes do "Carregador offline").
         self._charger_screen = {}
         self._chargers_offline = set()
@@ -204,7 +204,7 @@ class DemoApi(OwnerApiMixin):
                 station['owner_id'] = 'demo-network'
             screen = None
             for number, (kind, power, price, online) in enumerate(_DEMO_POINTS[index]):
-                # Posto da conta demo: o 2º ponto é um carregador adicional da tela do 1º (2 carregadores, 1 tela).
+                # Posto da conta demo: o 2º ponto é um carregador adicional da central do 1º (2 carregadores, 1 central).
                 shared = screen if number == 1 and index in _DEMO_OWNED else None
                 point = self._make_point(station['id'], connector_type=kind, power_kw=power, price_per_kwh=price,
                                          online=online, screen=shared)
@@ -385,7 +385,7 @@ class DemoApi(OwnerApiMixin):
                     self._event(sid, 'ended', at=session['ended_at'])
                 continue
             if session['status'] == 'starting' and session['connector_id'] in self._chargers_offline:
-                # Como a tela: o carregador não respondeu no START -> falha, nada de simulação interna.
+                # Como a central: o carregador não respondeu no START -> falha, nada de simulação interna.
                 session.update(status='failed', ended_at=self._iso(), end_reason=charger_link.CHARGER_OFFLINE)
                 self._event(sid, 'ended', at=session['ended_at'])
                 continue
@@ -511,13 +511,13 @@ class DemoApi(OwnerApiMixin):
         self._points[pid] = point
         if screen is None:
             self._make_device(pid, online=online)
-        else:  # carregador adicional: usa a tela (dispositivo) do ponto ``screen``
+        else:  # carregador adicional: usa a central (dispositivo) do ponto ``screen``
             self._charger_screen[pid] = screen
             self._id('device')  # mantém os códigos públicos da demo (DEMO-15...) estáveis
         return point
 
     def set_charger_online(self, point_id, online=True):
-        """Só na demo (testes/capturas): o carregador do ponto para (ou volta a) responder à tela."""
+        """Só na demo (testes/capturas): o carregador do ponto para (ou volta a) responder à central."""
         self._get(self._points, point_id)
         (self._chargers_offline.discard if online else self._chargers_offline.add)(point_id)
 
@@ -534,7 +534,7 @@ class DemoApi(OwnerApiMixin):
         return result
 
     def _device_for(self, point_id):
-        """Dispositivo (tela) que comanda o ponto: o próprio ou o da tela de um carregador adicional."""
+        """Dispositivo (central) que comanda o ponto: o próprio ou o da central de um carregador adicional."""
         point_id = self._charger_screen.get(point_id, point_id)
         return next((d for d in self._devices.values() if d['connector_id'] == point_id and not d['revoked']), None)
 
@@ -583,9 +583,9 @@ class DemoApi(OwnerApiMixin):
         return int(Decimal(str(self._session_runtime[session['id']]['power_kw'])) * 1000)
 
     def _charger_fields(self, point_id, screen_online):
-        """Como a API (só o dono): endereço, link do carregador lido pela tela e a tela que o comanda.
+        """Como a API (só o dono): endereço, link do carregador lido pela central e a central que o comanda.
 
-        Os carregadores GoodWe HCA G2 da demo são simulados e respondem à tela (link ``online``, última
+        Os carregadores GoodWe HCA G2 da demo são simulados e respondem à central (link ``online``, última
         leitura agora e a potência da recarga), salvo os desligados por ``set_charger_online``."""
         address = self._charger_addresses.get(point_id)
         reported = None
@@ -599,7 +599,7 @@ class DemoApi(OwnerApiMixin):
                 'screen': self._screen_block(point_id)}
 
     def _screen_block(self, point_id):
-        """``screen`` do ponto (só o dono): a tela que comanda este carregador, ou ``None``."""
+        """``screen`` do ponto (só o dono): a central que comanda este carregador, ou ``None``."""
         device = self._device_for(point_id)
         if device is None:
             return None
@@ -610,7 +610,7 @@ class DemoApi(OwnerApiMixin):
                 'multi_charger': True}
 
     def _station_screens(self, station):
-        """``screens`` do posto (só o dono): cada tela com os carregadores que ela comanda."""
+        """``screens`` do posto (só o dono): cada central com os carregadores que ela comanda."""
         screens = {}
         for point in self._points.values():
             if point['station_id'] != station['id'] or point['retired']:
@@ -627,7 +627,7 @@ class DemoApi(OwnerApiMixin):
     def _availability_row(self, point):
         device = self._device_for(point['id'])
         screen_online = bool(device and device['online'])
-        # ``online`` = carregador online: tela com contato E carregador respondendo (contrato estação × carregador).
+        # ``online`` = carregador online: central com contato E carregador respondendo (contrato estação × carregador).
         online = screen_online and point['id'] not in self._chargers_offline
         reservation, session = self._current('reservation', point['id']), self._current('session', point['id'])
         state = 'charging' if session and session['status'] == 'charging' else 'reserved' if reservation else 'idle'
@@ -668,7 +668,7 @@ class DemoApi(OwnerApiMixin):
                                                         'reason', 'reason_label')},
                 # Como a API (``app.overstay.public_terms``): condições mostradas antes de aceitar a recarga.
                 'overstay': overstay_rules.public(self._overstay_terms(station)),
-                # Estação = a tela: online se alguma tela do posto tem contato (``None`` = sem tela).
+                # Estação = a central: online se alguma central do posto tem contato (``None`` = sem central).
                 'screen_online': (any(p['screen_online'] for p in connectors)
                                   if any(self._device_for(p['id']) for p in connectors) else None),
                 **({'screens': self._station_screens(station)} if station['owner_id'] == _USER else {}),
@@ -875,7 +875,7 @@ class DemoApi(OwnerApiMixin):
             return self._station_row(station)
         if parts[0] == 'stations' and len(parts) == 3 and parts[2] == 'connectors' and method == 'POST':
             self._owned(parts[1])
-            _fail('Use Adicionar equipamento simulado para criar um ponto.', 'claim_required', 409)
+            _fail('Use Adicionar central simulada para criar um ponto.', 'claim_required', 409)
         if parts[0] == 'connectors' and len(parts) == 2 and method == 'PATCH':
             return self._patch_point(parts[1], body)
         if parts[0] == 'connectors' and len(parts) == 3 and parts[2] == 'chargers' and method == 'POST':
@@ -989,7 +989,7 @@ class DemoApi(OwnerApiMixin):
         if set(body) - {'power_limit_kw'} and self._busy(identifier):
             _fail('Encerre reservas e recargas antes de editar o ponto.', 'point_busy', 409)
         if body.get('active') is True and (point['retired'] or any(r['status'] == 'pending' for did, r in self._resets.items() if self._devices[did]['connector_id'] == identifier)):
-            _fail('Este equipamento está sendo restaurado. Adicione outro equipamento simulado.', 'point_retired', 409)
+            _fail('Este equipamento está sendo restaurado. Adicione outra central simulada.', 'point_retired', 409)
         _fields(body, ('public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes', 'active',
                        'power_limit_kw', 'charger_address'))
         address = self._charger_address(point, body) if 'charger_address' in body else None
@@ -1043,12 +1043,12 @@ class DemoApi(OwnerApiMixin):
         return address
 
     def _add_charger(self, point_id):
-        """``POST connectors/{id}/chargers``: próximo carregador da tela do ponto (endereço livre, inativo)."""
+        """``POST connectors/{id}/chargers``: próximo carregador da central do ponto (endereço livre, inativo)."""
         point = self._get(self._points, point_id)
         station = self._owned(point['station_id'])
         screen_id = self._charger_screen.get(point_id, point_id)
         if point['retired'] or self._device_for(screen_id) is None:
-            _fail('Este ponto não tem tela vinculada', 'screen_required', 409)
+            _fail('Este ponto não tem central vinculada', 'screen_required', 409)
         used = [self._charger_addresses.get(p['id']) for p in self._points.values() if p['station_id'] == station['id']]
         try:
             charger_link.next_free_address(used)
@@ -1113,7 +1113,7 @@ class DemoApi(OwnerApiMixin):
         if self._busy(point_id):
             _fail('Encerre a operação antes de provisionar.', 'point_busy', 409)
         if point['retired']:
-            _fail('Adicione um equipamento simulado novo.', 'point_retired', 409)
+            _fail('Adicione uma central simulada novo.', 'point_retired', 409)
         if device:
             _fail('O ponto já tem um dispositivo simulado.', 'device_exists', 409)
         device = self._make_device(point_id)

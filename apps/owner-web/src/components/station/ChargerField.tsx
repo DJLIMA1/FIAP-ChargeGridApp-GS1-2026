@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { Connector } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { CHARGER_LINK_TEXT, cgAddrHint, chargerReadingText, chargerState, validateChargerAddress } from '../../lib/charger'
 import { useToast } from '../Toast'
 import { Field } from '../ui'
+import { useLiveDraft } from '../../lib/useLiveDraft'
 
 /**
  * Endereço Modbus do carregador (1–247, único no posto, nunca vazio), salvo na hora por
@@ -16,10 +17,9 @@ export function ChargerField({ connector, onSaved, suggested = null }: { connect
   const toast = useToast()
   const saved = connector.charger_address ?? null
   const fallback = saved ?? suggested
-  const [text, setText] = useState(fallback === null ? '' : String(fallback))
+  const [text, setText, formEvents] = useLiveDraft(fallback === null ? '' : String(fallback))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => setText(fallback === null ? '' : String(fallback)), [fallback])
   if (connector.charger_address === undefined) return null
 
   const parsed = validateChargerAddress(text)
@@ -44,7 +44,7 @@ export function ChargerField({ connector, onSaved, suggested = null }: { connect
   }
 
   return (
-    <div data-testid="charger-field">
+    <div data-testid="charger-field" {...formEvents}>
       <Field label="Endereço" hint={saved === null ? 'sem endereço · 1 a 247' : '1 a 247'} error={error}>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
@@ -77,7 +77,7 @@ export function ChargerField({ connector, onSaved, suggested = null }: { connect
 
 /**
  * Linha do carregador: `Carregador 1 · online · última leitura agora · lendo 53,6 kW`; fora do ar
- * ou aguardando a tela, também o `CG_ADDR` que o ESP do carregador precisa ter.
+ * ou aguardando a central, também o `CG_ADDR` que o ESP do carregador precisa ter.
  */
 export function ChargerLinkLine({ connector, now }: { connector: Connector; now?: Date }) {
   const state = chargerState(connector)

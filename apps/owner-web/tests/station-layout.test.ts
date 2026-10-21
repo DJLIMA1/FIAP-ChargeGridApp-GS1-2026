@@ -92,7 +92,7 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     expect(html).toContain('CG-002')
     expect(html).toMatch(/class="badge green ">Online</)
     expect(html).toContain('Carregador 2 · GoodWe HCA G2 (simulado) · Tipo 2 · 22 kW')
-    const order = ['Endereço', 'Tipo de conector', 'Potência nominal', 'Limite', 'Carregador 2 · online', 'Tarifa', 'Duração máxima', 'Tela online', 'Carregador adicional da tela CG-001', 'Salvar carregador']
+    const order = ['Endereço', 'Tipo de conector', 'Potência nominal', 'Limite', 'Carregador 2 · online', 'Tarifa', 'Duração máxima', 'Salvar carregador']
     const positions = order.map((text) => html.indexOf(text))
     positions.forEach((pos, i) => expect(pos, order[i]).toBeGreaterThan(i ? positions[i - 1] : -1))
     expect(html).toMatch(/data-testid="charger-address"[^>]*value="2"/)
@@ -101,7 +101,7 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     // Sem textos antigos/redundantes.
     expect(html).not.toMatch(/simulação da tela|Dispositivo online|Dispositivo offline|Conector|Modbus TCP na rede/)
     const screen = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-001'), onSaved: noop }))
-    expect(screen).toContain('Este ponto é a tela')
+    expect(screen).not.toContain('charger-screen')
     expect(screen).toContain('Carregando')
     expect(screen).toMatch(/lendo \d+(,\d)? kW/)
   })
@@ -113,10 +113,10 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     expect(html).toContain('Carregador 4 · offline')
     expect(html).toContain('última leitura há 3 h')
     expect(html).toContain('No ESP do carregador: CG_ADDR = 4')
-    expect(html).toContain('Tela online') // a tela (estação) continua online
+    expect(html).not.toContain('charger-screen') // status da central fica em Dados
     const pending = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-010', 2), onSaved: noop }))
-    expect(pending).toContain('Aguardando a tela')
-    expect(pending).toMatch(/Carregador 3 · aguardando a tela<\/span><span data-testid="charger-cgaddr"> · No ESP do carregador: CG_ADDR = 3/)
+    expect(pending).toContain('Aguardando a central')
+    expect(pending).toMatch(/Carregador 3 · aguardando a central<\/span><span data-testid="charger-cgaddr"> · No ESP do carregador: CG_ADDR = 3/)
     expect(pending).toContain('CG_ADDR = 3')
     expect(pending).toContain('Inativo')
     expect(pending).not.toContain('Desativado') // o interruptor já diz Inativo
@@ -131,9 +131,8 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     const legacy = { ...point('CG-003'), charger_address: undefined, charger_link: undefined, screen: undefined }
     expect(renderToStaticMarkup(createElement(ChargerField, { connector: legacy, onSaved: noop }))).toBe('')
     expect(renderToStaticMarkup(createElement(ChargerLinkLine, { connector: legacy }))).toBe('')
-    const { ScreenLink } = await import('../src/components/station/ChargerCard')
-    expect(renderToStaticMarkup(createElement(ScreenLink, { connector: legacy }))).toBe('')
-    expect(renderToStaticMarkup(createElement(ScreenLink, { connector: { ...legacy, screen: null } }))).toContain('Sem tela vinculada')
+    const { ChargerCard } = await import('../src/components/station/ChargerCard')
+    expect(renderToStaticMarkup(createElement(ChargerCard, { connector: legacy, onSaved: noop }))).not.toContain('charger-screen')
     const source = read('components/station/ChargerField.tsx')
     expect(source).not.toContain('charger_address: null')
     expect(source).toMatch(/if \(parsed\.error\) return setError\(parsed\.error\)[\s\S]*patchConnector/)
@@ -142,15 +141,15 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
   it('Dados da estação mostram a tela (status, ponto, carregadores, contato, firmware)', async () => {
     const { StationForm } = await import('../src/pages/StationDetail')
     const html = renderToStaticMarkup(createElement(StationForm, { station: st(1), onSaved: noop }))
-    expect(html).toContain('Tela online')
-    expect(html).toMatch(/Tela no ponto CG-004 · comanda 4 carregadores · contato agora · firmware 1\.6\.0/)
-    expect(html.indexOf('Tela online')).toBeLessThan(html.indexOf('Nome da estação'))
+    expect(html).toContain('Central online')
+    expect(html).toMatch(/Central no ponto CG-004 · comanda 4 carregadores · contato agora · firmware 1\.6\.0/)
+    expect(html.indexOf('Central online')).toBeLessThan(html.indexOf('Nome da estação'))
     const { ScreenStatus } = await import('../src/components/station/ScreenStatus')
     expect(renderToStaticMarkup(createElement(ScreenStatus, { station: { ...st(), screens: undefined } }))).toBe('')
-    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: { ...st(), screens: [], screen_online: null } }))).toContain('Sem tela')
+    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: { ...st(), screens: [], screen_online: null } }))).toContain('Sem central')
     const offline = st()
     offline.screens = offline.screens!.map((s) => ({ ...s, online: false }))
-    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: offline }))).toContain('Tela offline')
+    expect(renderToStaticMarkup(createElement(ScreenStatus, { station: offline }))).toContain('Central offline')
   })
 
   it('Carregadores: "Adicionar carregador", estação online × carregador offline e a estação offline', async () => {
@@ -158,7 +157,7 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     const marginal = renderToStaticMarkup(createElement(ChargersCard, { station: st(1), onSaved: noop, onAdded: noop }))
     expect(marginal).toContain('>Carregadores</h2>')
     expect(marginal).toMatch(/data-testid="add-charger"[^>]*>.*Adicionar carregador/)
-    expect(marginal).toContain('Estação online · carregador CG-007 offline')
+    expect(marginal).toContain('Carregador CG-007 offline')
     expect(marginal).toContain('Só esse ponto fica indisponível')
     expect(marginal.match(/data-testid="charger-card"/g)).toHaveLength(4)
     expect(marginal).not.toMatch(/Conectores|conector\(es\)/)

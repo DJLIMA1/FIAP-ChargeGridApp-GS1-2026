@@ -53,11 +53,11 @@ function client() {
 }
 
 describe('carregador: textos (iguais ao core `chargers.link`)', () => {
-  it('status_text: online, offline e aguardando a tela; sem "simulação da tela"', () => {
+  it('status_text: online, offline e aguardando a central; sem "simulação da tela"', () => {
     expect(chargerStatusText(API_LINK)).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · online')
     expect(chargerStatusText({ ...API_LINK, address: 3, link: 'offline' })).toBe('Carregador 3 · GoodWe HCA G2 (simulado) · offline')
-    expect(chargerStatusText({ ...API_LINK, link: 'pending', reported: null })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a tela')
-    expect(chargerStatusText({ ...API_LINK, link: 'desconhecido' })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a tela')
+    expect(chargerStatusText({ ...API_LINK, link: 'pending', reported: null })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a central')
+    expect(chargerStatusText({ ...API_LINK, link: 'desconhecido' })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a central')
     expect(chargerStatusText({ ...API_LINK, simulated: false })).toBe('Carregador 1 · GoodWe HCA G2 · online')
     expect(chargerStatusText(null)).toBe('')
     expect(chargerStatusText(undefined)).toBe('')
@@ -72,7 +72,7 @@ describe('carregador: textos (iguais ao core `chargers.link`)', () => {
     expect(chargerState(point())).toBeNull()
   })
 
-  it('leitura: última leitura + potência lida (só online); aguardando a tela sem leitura = vazio', () => {
+  it('leitura: última leitura + potência lida (só online); aguardando a central sem leitura = vazio', () => {
     const now = new Date('2026-10-21T12:00:03Z')
     expect(chargerReadingText(API_LINK, now)).toBe('última leitura agora · lendo 7,2 kW')
     expect(chargerReadingText({ ...API_LINK, link: 'offline', last_online_at: '2026-10-21T09:00:00Z', measured_power_w: null }, now)).toBe('última leitura há 3 h')
@@ -141,8 +141,8 @@ describe('estação = a tela; carregador offline não derruba a estação', () =
       line: 'Estação online · 1 carregador livre · carregador CG-002 offline', tone: 'amber',
     })
     expect(stationSummary(station({ screen_online: true, connectors: [online] })).tone).toBe('green')
-    expect(stationSummary(station({ screen_online: false, connectors: [online] }))).toEqual({ line: 'Estação offline · tela sem contato', tone: 'red' })
-    expect(stationSummary(station({ screen_online: null, connectors: [online] })).line).toBe('Sem tela vinculada')
+    expect(stationSummary(station({ screen_online: false, connectors: [online] }))).toEqual({ line: 'Estação offline · central sem contato', tone: 'red' })
+    expect(stationSummary(station({ screen_online: null, connectors: [online] })).line).toBe('Sem central vinculada')
     expect(stationSummary(station({ active: false, connectors: [online] })).line).toBe('Inativa · oculta para motoristas')
     expect(stationSummary(station()).line).toBe('Sem carregadores vinculados')
   })
@@ -184,7 +184,7 @@ describe('estação = a tela; carregador offline não derruba a estação', () =
   })
 
   it('erros do POST: 409 screen_required / charger_address_full com texto claro', () => {
-    expect(addChargerErrorText(new ApiError(409, 'screen_required', 'Este ponto não tem tela vinculada'))).toBe(SCREEN_REQUIRED_TEXT)
+    expect(addChargerErrorText(new ApiError(409, 'screen_required', 'Este ponto não tem central vinculada'))).toBe(SCREEN_REQUIRED_TEXT)
     expect(addChargerErrorText(new ApiError(409, 'charger_address_full', 'Posto sem endereço'))).toBe(ADDRESS_FULL_TEXT)
     expect(addChargerErrorText(new ApiError(404, 'not_found', 'Ponto não encontrado'))).toBe('Ponto não encontrado')
     expect(addChargerErrorText(new Error('x'))).toBe('Não foi possível adicionar o carregador. Tente novamente.')
@@ -240,7 +240,7 @@ describe('mock: estação (tela) × carregadores', () => {
     expect(online.length).toBeGreaterThanOrEqual(8)
   })
 
-  it('Marginal Pinheiros: estação online × carregador CG-007 offline; CG-010 aguardando a tela', () => {
+  it('Marginal Pinheiros: estação online × carregador CG-007 offline; CG-010 aguardando a central', () => {
     const marginal = data.STATIONS[1]
     expect(stationScreenState(marginal)).toBe('online')
     expect(offlineChargers(marginal).map((c) => c.public_code)).toEqual(['CG-007'])
@@ -248,7 +248,7 @@ describe('mock: estação (tela) × carregadores', () => {
     expect(code('CG-007').charger_link).toMatchObject({ link: 'offline', measured_power_w: null, reported: { model: 'esp32_bench', link: 'offline' } })
     expect(code('CG-010').charger_link).toMatchObject({ link: 'pending', last_online_at: null, reported: null })
     expect(stationSummary(marginal).line).toBe('Estação online · 2 de 4 carregadores em uso · 1 carregador livre · carregador CG-007 offline')
-    expect(stationSummary(data.STATIONS[2]).line).toBe('Estação online · 1 de 3 carregadores em uso · 0 carregadores livres · 1 com falha') // CG-010 inativo, aguardando a tela
+    expect(stationSummary(data.STATIONS[2]).line).toBe('Estação online · 1 de 3 carregadores em uso · 0 carregadores livres · 1 com falha') // CG-010 inativo, aguardando a central
   })
 
   it('ponto novo recebe o próximo endereço livre do posto', () => {
@@ -284,7 +284,7 @@ describe('mock: estação (tela) × carregadores', () => {
     expect(cg6.online).toBe(true)
   })
 
-  it('Adicionar carregador: próximo endereço, inativo, aguardando a tela, copiando o ponto da tela', () => {
+  it('Adicionar carregador: próximo endereço, inativo, aguardando a central, copiando o ponto da tela', () => {
     const st = data.STATIONS[0]
     const before = st.connectors.length
     const home = st.connectors[0]
@@ -309,7 +309,7 @@ describe('mock: estação (tela) × carregadores', () => {
     try {
       ops.decorateChargers(st)
       st.connectors[0].screen = null
-      expect(() => ops.addCharger(st.connectors[0].id)).toThrow(expect.objectContaining({ status: 409, code: 'screen_required', message: 'Este ponto não tem tela vinculada' }))
+      expect(() => ops.addCharger(st.connectors[0].id)).toThrow(expect.objectContaining({ status: 409, code: 'screen_required', message: 'Este ponto não tem central vinculada' }))
       ops.decorateChargers(st)
       st.connectors.forEach((c, i) => (c.charger_address = 245 + i))
       st.connectors.push(...Array.from({ length: 244 }, (_, i) => ({ ...structuredClone(st.connectors[0]), id: `fill-${i}`, charger_address: i + 1 })))

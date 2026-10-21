@@ -288,7 +288,7 @@ class VendorHomeTests(unittest.IsolatedAsyncioTestCase):
         app = self.vendor_app([])
         screen = await home.build_vendor(app)
         visible = text_values(screen, visible_only=True)
-        self.assertIn('Configure sua primeira tela', visible)
+        self.assertIn('Configure sua primeira central', visible)
         self.assertNotIn('SALDO A RECEBER', visible)
         await click(screen, 'Escanear QR Code')(None)
         app.go.assert_awaited_once_with('operator', claim=True)
