@@ -349,7 +349,7 @@ class OperatorDashboardTests(unittest.IsolatedAsyncioTestCase):
         copy = texts(screen)
         self.assertIn('Suas Estações', copy)
         self.assertIn('Marginal Pinheiros', copy)
-        self.assertIn('Online - Conectores livres', copy)
+        self.assertIn('Online - Carregadores livres', copy)
         self.assertNotIn('1 pontos', copy)
         await app.api.close()
 

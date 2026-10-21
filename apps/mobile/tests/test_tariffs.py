@@ -87,7 +87,7 @@ class TariffScreenTests(unittest.IsolatedAsyncioTestCase):
         screen = await tariffs.build(self.app, station_id=self.sid, page='demand')
         field = number_fields(screen)[0]
         self.assertEqual((field.value, field.prefix.value.strip(), field.suffix.value.strip()), ('50', 'até +', '%'))
-        self.assertIn('Simulação (4 conectores)', texts(screen))
+        self.assertIn('Simulação (4 carregadores)', texts(screen))
         self.assertIn('1,4×  R$ 2,65/kWh', texts(screen))  # lotado com procura em alta, teto de 50%
         self.assertNotIn('pico', texts(screen))
         field.value = '20'

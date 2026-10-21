@@ -72,16 +72,16 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.return_value = {'device_id':'known-device','online':True,'last_seen':None}
         screen = await operator.connector_form(app,'station',{'id':'connector'},device_id='stale-navigation-id')
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
-        self.assertTrue(device.read_only)
-        self.assertTrue(device.visible)
+        device = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.data == 'device-id')
+        row = next(item for item in descendants(screen) if isinstance(item,ft.Row) and device in item.controls)
+        self.assertTrue(row.visible)
         self.assertEqual(device.value,'known-device')
         self.assertEqual(app.api.request.await_args_list[0].args, ('GET','connectors/connector/device'))
         self.assertEqual(app.api.request.await_args_list[1].args, ('GET','devices/known-device/factory-reset'))
         provision = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Provisionar')
         self.assertFalse(provision.visible)
         await click(screen,'Revogar')(None)
-        self.assertFalse(device.visible)
+        self.assertFalse(row.visible)
         self.assertTrue(provision.visible)
 
     async def test_missing_device_can_be_provisioned_and_keeps_returned_id(self):
@@ -91,9 +91,9 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         with patch('chargegrid_app.screens.operator.show_key') as show_key:
             await click(screen,'Provisionar')(None)
             show_key.assert_called_once()
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
+        device = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.data == 'device-id')
         self.assertEqual(device.value,'new-device')
-        self.assertTrue(device.visible)
+        self.assertTrue(next(item for item in descendants(screen) if isinstance(item,ft.Row) and device in item.controls).visible)
         texts = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text))
         self.assertNotIn('test-only-secret',texts)
 

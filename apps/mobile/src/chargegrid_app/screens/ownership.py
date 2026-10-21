@@ -108,7 +108,7 @@ async def build(app, station_id=None, show_real=False, **_):
         app.profile = {**app.profile, 'operator_enabled': True}
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
-        app.notice('Ponto vinculado ao posto. Agora confira o conector e a tarifa.' if station_id else
+        app.notice('Ponto vinculado ao posto. Agora confira o carregador e a tarifa.' if station_id else
                    'Ponto vinculado. Vamos configurar seu novo posto antes de publicá-lo.')
         await app.go('operator', station_id=result['station_id'], point_id=result['connector_id'],
                      onboarding=True, step=2 if station_id else 1,

@@ -20,6 +20,7 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from chargegrid_core.pricing import multiplier_label
+from chargegrid_core.receipt import END_REASONS as RECEIPT_END_REASONS
 
 from ..api_client import ApiError
 from ..services import booking as rules
@@ -57,6 +58,9 @@ END_REASONS = {'user_stop':'Parada solicitada', 'stop_requested':'Parada solicit
 END_REASONS.update(requested='Parada solicitada', communication_lost='Conexão perdida com o servidor',
                    device_reboot='Equipamento reiniciado', command_timeout='Equipamento não confirmou a operação',
                    battery_full='Bateria cheia (100%)')
+# A tela não confirmou o carregador do ponto no START: rótulo do core (oriente outro ponto da estação).
+END_REASONS['charger_offline'] = RECEIPT_END_REASONS.get('charger_offline',
+                                                         'Carregador offline — use outro ponto desta estação')
 MODES = [('time','Por tempo'),('value','Por valor'),('autonomy','Por autonomia')]
 DEFAULT_CAR = {'name':'BYD Dolphin','usable_kwh':44.9,'consumption':14.0,'soc':vehicle_state.SOC_MIN,'source':'simulated'}
 

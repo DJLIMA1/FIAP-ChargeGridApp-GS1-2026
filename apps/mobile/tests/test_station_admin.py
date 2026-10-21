@@ -98,7 +98,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_admin.build(app, station_id=sid)
         self.assertIn('Estação CG-001', texts(screen))
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
-                                ('Conectores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
+                                ('Carregadores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
                                 ('Limite 75 kW (padrão)', ('station_admin', {'station_id': sid, 'page': 'power'})),
                                 ('Tarifa base, por horário', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
@@ -109,7 +109,8 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         for removed in ('Configurações adicionais', 'Pontos e equipamentos', 'Latitude'):
             self.assertNotIn(removed, texts(screen) + texts(data))
         connectors = await station_admin.build(app, station_id=sid, page='connectors')
-        self.assertIn('Adicionar ponto simulado a este posto', texts(connectors))
+        self.assertIn('Adicionar carregador', texts(connectors))
+        self.assertIn('Adicionar tela simulada a este posto', texts(connectors))
         self.assertIn('A tarifa fica em Tarifa.', texts(connectors))
         await app.api.close()
 

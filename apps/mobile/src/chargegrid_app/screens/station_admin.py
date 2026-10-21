@@ -2,8 +2,9 @@
 
 Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'; ``page='power'``
 aceita ``section``/``connector_id``, ver ``station_power``). A tela do posto leva a Dados da estação
-(nome, endereço, status e o totem de autoatendimento), Conectores (pontos, edição e vincular outra tela),
-Potência (limite contratado, rebalanceamento, loja SIMULADA e cada conector) e Tarifa (``tariffs``).
+(nome, endereço, status, a TELA e o totem de autoatendimento), Carregadores (pontos da tela: status de cada
+um, edição e Adicionar carregador), Potência (limite contratado, rebalanceamento, loja SIMULADA e cada
+carregador) e Tarifa (``tariffs``). Estação = a tela; carregador = cada ponto (``connector`` na API).
 Nome, endereço, status e totem usam ``PATCH stations``; a localização vem do endereço (sem
 latitude/longitude na tela). ``power_kw`` é a potência nominal do carregador e nunca é alterada aqui.
 """
@@ -19,7 +20,7 @@ from ..api_client import ApiError
 from ..services import site_power
 from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
-from . import station_ops
+from . import chargers, station_ops
 
 
 def _street(address):
@@ -50,7 +51,7 @@ def power_summary(station, points=None):
         f"{power_rules.kw_text(power_rules.requested_kw(point.get('power_kw'), point.get('power_limit_kw')))} kW"
         for point in points))
     if not parts:
-        return 'Nenhum conector vinculado'
+        return 'Nenhum carregador vinculado'
     cap = power_rules.to_kw(station.get('max_power_kw'))
     if cap is not None:
         parts.insert(0, f'Limite do posto: {power_rules.kw_text(cap)} kW')
@@ -131,31 +132,42 @@ async def build(app, station_id=None, page=None, section=None, connector_id=None
 
 def _connectors_line(points):
     if not points:
-        return 'Nenhum ponto vinculado · vincular uma tela'
+        return 'Nenhum carregador · vincular uma tela'
     live = sum(1 for point in points if point.get('active') is not False)
-    plural = 's' if len(points) != 1 else ''
-    return f"{len(points)} ponto{plural} · {live} publicado{'s' if live != 1 else ''} · editar e vincular outra tela"
+    parts = [chargers.plural(len(points), 'carregador', 'carregadores'),
+             chargers.plural(live, 'publicado', 'publicados')]
+    if any('charger_link' in point for point in points):
+        online = sum(1 for point in points if chargers.link_state(point) == 'online')
+        parts.append(f'{online} online')
+    return ' · '.join(parts)
 
 
 def _data_subtitle(station):
+    parts = ['Nome', 'endereço', 'status']
+    if chargers.screen_online(station) is not None:
+        parts.append('tela')  # a estação é a tela: o status online dela fica em Dados da estação
     if station_ops.has_kiosk(station):
-        return f"Nome, endereço, status e totem ({'ligado' if station.get('kiosk_mode') else 'desligado'})"
-    return 'Nome, endereço e status'
+        parts.append(f"totem ({'ligado' if station.get('kiosk_mode') else 'desligado'})")
+    return ', '.join(parts[:-1]) + ' e ' + parts[-1]
 
 
 def _main_page(app, station, code):
     sid = station['id']
     points = _live_points(station)
     go = lambda page: app.link('station_admin', station_id=sid, page=page)  # noqa: E731
+    title = [design.txt(f'Estação {code}', 16, 'bold', expand=True)]
+    online = chargers.screen_online(station)
+    if online is not None:  # status da TELA (a estação); cada carregador tem o seu em Carregadores
+        title.append(chargers.pill(f"Tela {'online' if online else 'offline'}", chargers.screen_status(online)[1]))
     return design.page(
         heading(app, station.get('name') or 'Estação'),
         ft.Container(height=11),
-        ft.Column([design.txt(f'Estação {code}', 16, 'bold'),
+        ft.Column([ft.Row(title, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                    design.txt(_street(station.get('address')), 11, 'regular', theme.GRAY_TEXT)], spacing=9),
         ft.Container(height=19),
         ft.Column([
             menu_row('Dados da estação', _data_subtitle(station), ft.Icons.EDIT_OUTLINED, go('data')),
-            menu_row('Conectores', _connectors_line(points), ft.Icons.EV_STATION_OUTLINED, go('connectors')),
+            menu_row('Carregadores', _connectors_line(points), ft.Icons.EV_STATION_OUTLINED, go('connectors')),
             menu_row('Potência', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
@@ -165,47 +177,62 @@ def _main_page(app, station, code):
 
 
 def _connectors_page(app, station):
-    """Pontos de recarga do posto: editar cada um (tipo, potência, tempo, equipamento) e vincular outra tela."""
-    from .operator import (  # evita import circular
-        _point_line,
-        _point_status,
-        _status_pill,
-        charger_status,
-    )
+    """Carregadores do posto: status da tela (a estação) e de cada carregador, editar e Adicionar carregador."""
+    from .operator import _point_status  # evita import circular
     from .setup_ui import cta
 
     sid = station['id']
     is_demo = bool(getattr(app.api, 'is_demo', False))
-    rows = []
-    for connector in station.get('connectors') or []:
+
+    def charger_row(connector):
         status, color = _point_status(connector)
         details = [design.list_row(
-            connector['public_code'], _point_line(connector), tile=44, dark_tile=True,
-            icon='/design/icon_station_charge.svg', trailing=_status_pill(status, color),
+            connector['public_code'], chargers.charger_subtitle(connector), tile=44, dark_tile=True,
+            icon='/design/icon_station_charge.svg', trailing=chargers.pill(status, color),
             on_click=app.link('operator', station_id=sid, connector_id=connector['id'],
                               connector={**connector, 'station_name': station.get('name')}, nav=False))]
-        charger = charger_status(connector)
-        if charger:
-            details.append(design.txt(charger, 11, 'regular', theme.GRAY_TEXT))
         if not connector.get('active') and not connector.get('retired'):
             shared = bool(station.get('active') or len(station.get('connectors') or []) > 1)
-            details.append(cta('Revisar e ativar ponto', app.link(
+            details.append(cta('Revisar e ativar carregador', app.link(
                 'operator', station_id=sid, point_id=connector['id'], onboarding=True, step=2 if shared else 1,
                 **({'existing_station': True} if shared else {})), weight='semibold'))
-        rows.append(ft.Column(details, spacing=8))
+        return ft.Column(details, spacing=8)
+
+    rows = ft.Column([charger_row(connector) for connector in station.get('connectors') or []], spacing=16,
+                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    if not rows.controls:
+        rows.controls.append(design.txt('Nenhum carregador neste posto.', 12.5, 'regular', theme.GRAY_TEXT))
+    result = design.txt('', 11.5, 'semibold', visible=False, data='charger-added')
+
+    async def add():
+        try:
+            created = await chargers.add_charger(app, station)
+        except ApiError as exc:
+            result.value, result.color, result.visible = str(exc), theme.RED, True
+            app.page.update()
+            raise
+        station.setdefault('connectors', []).append(created)
+        if len(rows.controls) == 1 and isinstance(rows.controls[0], ft.Text):
+            rows.controls.clear()
+        rows.controls.append(charger_row(created))
+        result.value, result.color, result.visible = chargers.added_text(created), theme.TEXT_COLOR, True
+        if hasattr(app, 'mark_saved'):
+            app.mark_saved()
+        app.page.update()
+
+    screens = chargers.screens_card(station)
+    body = [heading(app, 'Carregadores', app.link('station_admin', station_id=sid)), *([screens] if screens else []),
+            design.txt('Toque em um carregador para editar tipo, potência e endereço. A tarifa fica em Tarifa.',
+                       11.5, 'regular', theme.GRAY_TEXT),
+            rows, result,
+            cta(chargers.ADD_LABEL, app.action(add), weight='semibold'),
+            design.txt(chargers.ADD_HINT, 11, 'regular', theme.GRAY_TEXT)]
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
-        rows.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
-    if not rows:
-        rows.append(design.txt('Nenhum ponto vinculado a este posto.', 12.5, 'regular', theme.GRAY_TEXT))
-    return design.page(
-        heading(app, 'Conectores', app.link('station_admin', station_id=sid)),
-        design.txt('Toque em um ponto para editar tipo, potência, tempo por recarga e o equipamento. '
-                   'A tarifa fica em Tarifa.', 12, 'regular', theme.GRAY_TEXT),
-        *rows,
-        cta('Adicionar ponto simulado a este posto' if is_demo else 'Vincular outra tela a este posto',
-            app.link('operator', station_id=sid, claim=True), primary=False, weight='semibold'),
-        gap=16, gutter=3)
+        body.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
+    body.append(cta('Adicionar tela simulada a este posto' if is_demo else 'Vincular outra tela a este posto',
+                    app.link('operator', station_id=sid, claim=True), primary=False, weight='semibold'))
+    return design.page(*body, gap=16, gutter=3)
 
 
 def _data_page(app, station, code, payments_config=None):
@@ -276,6 +303,7 @@ def _data_page(app, station, code, payments_config=None):
                                           'on' if state['active'] else 'off', choose, height=37.5)
     draw()
     kiosk, redraw_kiosk = station_ops.kiosk_control(app, station, payments_config)
+    screens = chargers.screens_card(station)  # a estação é a tela: status online dela
     name.on_blur = app.action(blur)
     address.on_blur = app.action(blur)
     name.on_submit = app.action(blur)
@@ -288,6 +316,7 @@ def _data_page(app, station, code, payments_config=None):
                                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH), gap=14),
             design.labeled('Identificador', _round(ident), gap=14),
             ft.Container(design.labeled('Status', holder, gap=5, strong=False), margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
+            *([screens] if screens else []),
             *([kiosk] if kiosk else []),
         ], spacing=15), margin=ft.Margin(left=0, top=16, right=0, bottom=0)),
         gap=16, gutter=3)

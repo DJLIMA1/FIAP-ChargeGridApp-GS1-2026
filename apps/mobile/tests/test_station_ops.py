@@ -118,7 +118,7 @@ class SitePowerRulesTests(unittest.TestCase):
         self.assertEqual(sp.connector_line(c, station, view), 'Inativo: fica fora da divisão do posto')
         self.assertEqual(sp.cap_subtitle({'max_power_kw': None}), 'Sem teto · aviso desligado')
         self.assertEqual(sp.cap_subtitle({'max_power_kw': '80', 'power_limit_notify': True}), '80 kW · aviso ligado')
-        self.assertEqual(sp.point_name({'connector_type': 'CCS2'}, 1), 'CCS2 · Conector 01')
+        self.assertEqual(sp.point_name({'connector_type': 'CCS2'}, 1), 'CCS2 · Carregador 1')
 
 
 class OwnerSessionTextTests(unittest.TestCase):
@@ -303,7 +303,7 @@ class StationMenuTests(unittest.IsolatedAsyncioTestCase):
         for removed in REMOVED:
             self.assertNotIn(removed, copy)
         routes = []
-        for label in ('Dados da estação', 'Conectores', 'Limite 75 kW', 'Tarifa base'):
+        for label in ('Dados da estação', 'Carregadores', 'Limite 75 kW', 'Tarifa base'):
             await press(screen, label)(None)
             routes.append((app.go.await_args.args[0], app.go.await_args.kwargs.get('page')))
         self.assertEqual(routes, [('station_admin', 'data'), ('station_admin', 'connectors'),
@@ -344,7 +344,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         copy = texts(screen)
         for expected in ('Potência', 'Disponível para os carregadores', 'Limite contratado', '75 kW',
                          'Padrão para o tipo de estabelecimento', 'Loja agora', 'SIMULADO', 'Carros agora',
-                         'Rebalanceamento', sp.REBALANCE_HELP, 'Por conector', 'CCS2 · Conector 01',
+                         'Rebalanceamento', sp.REBALANCE_HELP, 'Por carregador', 'CCS2 · Carregador 1',
                          '60 kW configurados', 'Ajustes', 'Teto dos carregadores', 'Sem teto · aviso desligado',
                          '75 kW (padrão) · Loja de conveniência',
                          'Simular carros no posto (demo)'):
@@ -415,10 +415,10 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         app, station, screen = await self._screen(section='cap')
         slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
         self.assertEqual(slider.data, 'station_power')
-        self.assertIn('Sem teto: cada conector usa a própria potência.', texts(screen))
+        self.assertIn('Sem teto: cada carregador usa a própria potência.', texts(screen))
         slider.value = 80.0
         await slider.on_change(SimpleNamespace(control=slider))
-        self.assertIn('Dividido entre os conectores ativos.', texts(screen))
+        self.assertIn('Dividido entre os carregadores ativos.', texts(screen))
         await segment(screen, None, 'Ligado', within=screen)(None)
         await press(screen, 'Salvar teto')(None)
         saved = await app.api.request('GET', f"stations/{station['id']}")
@@ -437,7 +437,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
                                            connector_id=point['id'])
         copy = texts(screen)
-        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('CCS2 · Carregador 1', copy)
         self.assertIn('Máximo do carregador: 60 kW', copy)
         self.assertIn('60 kW configurados · até', by_data(screen, 'connector-effective').value)
         slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
@@ -447,7 +447,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         saved = await app.api.request('GET', f"stations/{station['id']}")
         self.assertEqual(float(saved['connectors'][0]['power_limit_kw']), 40.0)
         self.assertEqual(float(saved['connectors'][0]['power_kw']), 60.0)  # nominal intocada
-        self.assertEqual(app.notices[-1], 'Potência do conector salva.')
+        self.assertEqual(app.notices[-1], 'Potência do carregador salva.')
         screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
                                            connector_id=point['id'])
         await press(screen, 'Usar o máximo')(None)
@@ -469,7 +469,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_power.build(app, station)
         copy = texts(screen)
         self.assertNotIn('Disponível para os carregadores', copy)
-        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('CCS2 · Carregador 1', copy)
         self.assertIn('Teto dos carregadores', copy)
 
     def test_navigation_back_from_a_power_subpage(self):
