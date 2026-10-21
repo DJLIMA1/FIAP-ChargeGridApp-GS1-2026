@@ -442,3 +442,69 @@ def test_totem_blocks_are_read_and_shown_like_the_panel():
     older["kiosk_order"] = {"id": "order", "status": "unknown"}
     device.response(older)
     assert device.totem is None and device.kiosk_order is None and device.session_origin is None
+
+
+def _idle(link="absent"):
+    body = response()
+    body["authorized"]["session"] = None
+    body["commands"] = []
+    if link != "absent":
+        body["connector"] = {"charger_link": link}
+    return body
+
+
+HCA_LINK = {"model": "goodwe_hca_g2", "transport": "modbus_tcp", "address": 1, "host": "cg-hca-1.local"}
+
+
+def test_hca_link_screen_follows_the_api_link_and_reports_address_and_link():
+    device = Device(hca_link=True)
+    assert device.payload()["charger"]["model"] == "simulated_bench"  # sem link: relé interno
+    device.response(_idle(HCA_LINK))
+    charger = device.payload()["charger"]
+    assert charger["model"] == "goodwe_hca_g2" and charger["transport"] == "modbus_tcp"
+    assert charger["address"] == 1 and charger["link"] == "online"
+    assert (charger["min_power_w"], charger["max_power_w"], charger["step_w"]) == (1400, 7000, 100)
+    device.link_online = False
+    assert device.payload()["charger"]["link"] == "offline"
+    device.response(_idle(None))  # dono removeu o carregador
+    assert device.payload()["charger"]["model"] == "simulated_bench"
+    assert "address" not in device.payload()["charger"]
+
+
+def test_hca_link_ignores_invalid_links_and_keeps_address_with_old_api():
+    device = Device(hca_link=True, hca_address=5)
+    device.response(_idle())  # API antiga: sem charger_link, mantém o endereço da linha de comando
+    assert device.payload()["charger"]["address"] == 5
+    for bad in ({**HCA_LINK, "address": 0}, {**HCA_LINK, "address": True}, {**HCA_LINK, "model": "x"}, "1"):
+        device.response(_idle(bad))
+        assert device.link_address is None
+
+
+def test_without_hca_link_the_screen_ignores_charger_link_and_legacy_never_reports_it():
+    device = Device()
+    device.response(_idle(HCA_LINK))
+    assert device.link_address is None and device.payload()["charger"]["model"] == "simulated_bench"
+    assert "charger" not in Device(legacy=True, hca_link=True, hca_address=1).payload()
+
+
+def test_hca_start_drives_registers_and_unreachable_charger_stops_the_session():
+    now = [0]
+    device = Device(clock=lambda: now[0], hca_link=True, hca_address=1)
+    start = response()
+    start["commands"][0]["parameters"] = {"power_limit_w": 6000}
+    device.response(start)
+    assert device.state == "charging" and device.power_w == 6000
+    assert device.transport.read(10029) == [60] and device.transport.read(10060) == [2]
+    device.link_online = False
+    now[0] = 5
+    body = device.payload()
+    assert body["physical_state"] == "stopped" and body["end_reason"] == "charger_unreachable"
+    assert body["charger"]["link"] == "offline"
+
+
+def test_hca_start_fails_when_the_charger_is_unreachable():
+    device = Device(hca_link=True, hca_address=1)
+    device.link_online = False
+    device.response(response())
+    assert device.state != "charging"
+    assert device.acks[0]["status"] == "failed" and device.acks[0]["error"] == "charger_unreachable"
