@@ -411,6 +411,8 @@ def test_owner_can_rediscover_device_without_secrets_after_provisioning(factory,
             "connected",
             "reconciled",
             "retired",
+            "charger",
+            "charger_address",
         }
         assert "test-key" not in first.text and "key_hash" not in first.text
         assert first.json()["online"] is True

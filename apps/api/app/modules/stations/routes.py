@@ -159,6 +159,8 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     owned(db, user, obj.station_id)
     if data.active is True and reset_blocks_point(db, obj.id):
         fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
+    if "charger_address" in data.model_fields_set and data.charger_address == obj.charger_address:
+        data.model_fields_set.discard("charger_address")  # mesmo carregador: nada muda (nem com recarga)
     limit_only = data.model_fields_set <= {"power_limit_kw"}
     # A power limit only affects the next start (a running charge keeps the power it
     # started with), so it may change while the point is busy; other edits may not.
@@ -184,6 +186,15 @@ def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_u
     ):
         # Was a generic IntegrityError 409 ("Operação conflita com registro existente").
         fail("public_code_taken", "Já existe um ponto com este código público. Escolha outro.", 409)
+    if "charger_address" in data.model_fields_set and data.charger_address is not None:
+        # Endereço único por posto: dois pontos no mesmo carregador disputariam o mesmo relé.
+        taken = db.scalar(select(Connector).where(
+            Connector.station_id == obj.station_id, Connector.charger_address == data.charger_address,
+            Connector.id != obj.id))
+        if taken:
+            fail("charger_address_taken",
+                 f"O carregador {data.charger_address} já está ligado ao ponto {taken.public_code} deste posto. "
+                 "Escolha outro endereço.", 409)
     update(obj, data)
     db.flush()
     db.refresh(obj)

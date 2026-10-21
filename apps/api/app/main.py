@@ -140,8 +140,11 @@ async def validation_error(request: Request, error: RequestValidationError):
                 if any(item["type"] == "missing" for item in presence_errors)
                 else "O código temporário deve ter #F e cinco números. Confira a tela do posto."
             )
+    code = "validation_error"
+    if request.method == "PATCH" and any("charger_address" in item["loc"] for item in error.errors()):
+        code, message = "invalid_charger_address", "Endereço do carregador deve ser um número inteiro de 1 a 247"
     return JSONResponse(
-        {"error": {"code": "validation_error", "message": message, "fields": fields}},
+        {"error": {"code": code, "message": message, "fields": fields}},
         status_code=422,
     )
 

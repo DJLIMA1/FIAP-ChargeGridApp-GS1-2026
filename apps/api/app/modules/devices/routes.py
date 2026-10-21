@@ -59,6 +59,10 @@ def connector_device(connector_id: UUID, user=Depends(current_user), db=Depends(
         "connected": device.connected,
         "reconciled": device.reconciled,
         "retired": device.revoked,
+        # Carregador declarado pela tela no último sync (model, transport, limites; address/link
+        # quando há um GoodWe HCA G2 externo) e o endereço configurado pelo dono.
+        "charger": device.charger,
+        "charger_address": point.charger_address,
     }
 
 
