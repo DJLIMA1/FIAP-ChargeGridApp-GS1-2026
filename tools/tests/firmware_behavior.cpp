@@ -79,6 +79,8 @@ bool chargegridPanelHardwareSetup() { return true; }
 
 #include "../../firmware/esp32/src/sensors.cpp"
 #include "../../firmware/esp32/src/charging_controller.cpp"
+#include "../../firmware/esp32/src/charger_link.cpp"
+#include "fake_charger_client.h"
 #include "../../firmware/esp32/src/kiosk_flow.cpp"
 #include "../../firmware/esp32/src/panel_ui.cpp"
 #include "../../firmware/esp32/src/ui/widgets.cpp"
@@ -458,6 +460,194 @@ static void runKioskScreens(const char* out) {
   claimStorage = savedClaim; panelOwned = savedOwned; connectorOwnershipKnown = savedOwnershipKnown;
   panelClaimToken = savedClaimToken;
   printf("PASS: 0.8.0 totem screens (T0-T8/TE, simulated + Stripe), real router/views, %u label glyph checks, panel restored pixel-identical\n", glyphChecks);
+}
+
+
+// Carregador externo HCA G2 (connector.charger_link) pelo controlador real: START/SET_POWER/
+// STOP viram escritas Modbus e o ACK só sai depois da releitura; perda do carregador para a
+// sessão com segurança; sem charger_link tudo continua igual (cliente nunca chamado).
+static JsonDocument linkedResponse(const char* type, const char* id, uint32_t commandVersion, const char* session,
+                                   bool linked = true) {
+  JsonDocument doc;
+  doc["server_time"] = "2026-09-21T12:00:00Z";
+  doc["control_version"] = commandVersion;
+  doc["connector"]["public_code"] = "CG-01";
+  doc["connector"]["owned"] = true;
+  doc["connector"]["active"] = true;
+  if (linked) {
+    doc["connector"]["charger_link"]["model"] = "goodwe_hca_g2";
+    doc["connector"]["charger_link"]["transport"] = "modbus_tcp";
+    doc["connector"]["charger_link"]["address"] = 1;
+    doc["connector"]["charger_link"]["host"] = "cg-hca-1.local";
+  } else doc["connector"]["charger_link"] = nullptr;
+  doc["authorized"]["reservation"] = nullptr;
+  if (session) {
+    doc["authorized"]["session"]["id"] = session;
+    doc["authorized"]["session"]["max_duration_minutes"] = 60;
+    doc["authorized"]["session"]["price_per_kwh"] = 2;
+  } else doc["authorized"]["session"] = nullptr;
+  JsonArray commands = doc["commands"].to<JsonArray>();
+  if (type) {
+    JsonObject command = commands.add<JsonObject>();
+    command["id"] = id; command["type"] = type; command["version"] = commandVersion;
+    if (session) command["session_id"] = session;
+    command["expires_at"] = "2026-09-21T13:00:00Z";
+  }
+  return doc;
+}
+static void runChargerLinkScenarios() {
+  FakeChargerClient client(&testMillis);
+  chargerLink.setClient(&client);
+  auto reset = [] {
+    sessionId = ""; lastCommand = ""; version = 0; state = "idle"; endReason = "";
+    socSource = ""; socStartPercent = -1; batteryKwh = 0; phoneSocPercent = -1;
+    reading = {20, 0, 0, false}; overstayEnabled = false; chargePowerW = kBenchPowerW;
+    maxCost = -1; lastContact = testMillis; panelOwned = true; connectorOwnershipKnown = true; connectorActive = true;
+  };
+  auto service = [](int seconds) {
+    for (int i = 0; i < seconds; ++i) { testMillis += 1000; lastContact = testMillis; tick(); chargerLinkService(); }
+  };
+  reset();
+  // Sem charger_link: START igual a antes (bancada interna); o cliente Modbus nunca é chamado.
+  auto plain = linkedResponse("START", "plain-start", 1, "plain-session", false);
+  plain["commands"][0]["parameters"]["power_limit_w"] = 3650;
+  apply(plain);
+  assert(!chargerLink.configured() && state == "charging" && chargePowerW == 3600 && client.log.empty());
+  JsonDocument body; fillSyncBody(body, true);
+  assert(body["charger"]["model"] == "esp32_bench" && body["charger"]["address"].isNull());
+  testMillis += 3600; tick();
+  assert(std::abs(reading.energyWh - 3.6) < 0.01 && client.log.empty());
+  // Mudança de link durante a recarga não vale até ela terminar.
+  auto midSession = linkedResponse(nullptr, nullptr, 1, "plain-session");
+  apply(midSession);
+  assert(!chargerLink.configured() && state == "charging");
+  reset();
+
+  // Link: sync com connector.charger_link → START 3,65 kW.
+  auto start = linkedResponse("START", "hca-start-1", 1, "hca-session-1");
+  start["commands"][0]["parameters"]["power_limit_w"] = 3650;
+  apply(start);
+  assert(chargerLink.active() && std::string(chargerLink.config().host) == "cg-hca-1.local");
+  assert(acknowledgements[0]["status"] == "applied" && state == "charging" && sessionId == "hca-session-1");
+  assert(client.writes() == "W 10032=0|W 10029=36|W 10060=2" && client.device.relayClosed());
+  assert(chargePowerW == 3600 && reading.powerW == 3600);
+  body.clear(); fillSyncBody(body, true);
+  assert(body["charger"]["model"] == "goodwe_hca_g2" && body["charger"]["transport"] == "modbus_tcp");
+  assert(body["charger"]["address"] == 1 && body["charger"]["link"] == "online");
+  assert(body["charger"]["min_power_w"] == 1400 && body["charger"]["max_power_w"] == 7000 && body["charger"]["step_w"] == 100);
+  assert(body["charger"]["variant"] == "GW7K-HCA-20" && body["applied_power_w"] == 3600 && body["source"] == "simulated");
+  // Leitura ~1 s: potência/energia vêm do 10015; o carregador também integra (SIMULADO).
+  service(60);
+  assert(std::abs(reading.energyWh - 60) < 0.05 && reading.powerW == 3600 && state == "charging");
+  assert(client.device.energyWh() == 60 && client.device.relayClosed());
+  // SET_POWER 2,0 kW / pausa / teto 7,0 kW, cada um com ACK depois da releitura.
+  auto power = linkedResponse("SET_POWER", "hca-power-1", 2, "hca-session-1");
+  power["commands"][0]["parameters"]["power_limit_w"] = 2049;
+  client.log.clear();
+  apply(power);
+  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 2000);
+  assert(client.writes() == "W 10029=20|W 10060=2" && chargePowerW == 2000 && reading.powerW == 2000);
+  power = linkedResponse("SET_POWER", "hca-power-2", 3, "hca-session-1");
+  power["commands"][0]["parameters"]["power_limit_w"] = 900;
+  client.log.clear();
+  apply(power);
+  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 0);
+  assert(client.writes() == "W 10060=1" && !client.device.relayClosed() && state == "charging");
+  const float pausedEnergy = reading.energyWh;
+  service(10);
+  assert(reading.energyWh == pausedEnergy && reading.powerW == 0 && state == "charging");
+  power = linkedResponse("SET_POWER", "hca-power-3", 4, "hca-session-1");
+  power["commands"][0]["parameters"]["power_limit_w"] = 7200;
+  apply(power);
+  assert(acknowledgements[0]["applied_power_w"] == 7000 && client.device.relayClosed() && reading.powerW == 7000);
+  // Escrita perdida no SET_POWER: ACK failed e o limite anterior continua.
+  power = linkedResponse("SET_POWER", "hca-power-4", 5, "hca-session-1");
+  power["commands"][0]["parameters"]["power_limit_w"] = 3000;
+  client.dropWrites = 1;
+  apply(power);
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_readback_mismatch");
+  assert(chargePowerW == 7000 && lastCommand == "hca-power-3");
+  // Carregador some durante a recarga: em 5 s a tela para (device_fault) e sincroniza já.
+  client.offline = true;
+  service(4);
+  assert(state == "charging");
+  body.clear(); fillSyncBody(body, true);
+  assert(body["charger"]["link"] == "offline");
+  service(1);
+  assert(state == "stopped" && endReason == "device_fault" && reading.powerW == 0 && nextSync == testMillis);
+  assert(chargerLink.pendingStop());
+  // O carregador volta (o watchdog dele já abriu o relé): a parada pendente é enviada.
+  client.offline = false;
+  client.log.clear();
+  service(1);
+  assert(client.writes() == "W 10060=1" && !client.device.relayClosed() && chargerLink.online());
+  // STOP da API para a sessão já parada localmente: mantém o motivo; carregador já parado.
+  auto stopAfterFault = linkedResponse("STOP", "hca-stop-0", 6, "hca-session-1");
+  apply(stopAfterFault);
+  assert(acknowledgements[0]["status"] == "applied" && endReason == "device_fault");
+  reset();
+
+  // START com o carregador fora do ar: ACK failed charger_offline, nenhuma sessão local.
+  client.offline = true;
+  start = linkedResponse("START", "hca-start-2", 7, "hca-session-2");
+  apply(start);
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_offline");
+  assert(state == "idle" && sessionId.empty() && !client.device.relayClosed());
+  // A API manda STOP (start_failed) sem sessão em andamento: não falha por causa do carregador.
+  auto stopFailed = linkedResponse("STOP", "hca-stop-1", 8, "hca-session-2");
+  apply(stopFailed);
+  assert(acknowledgements[0]["status"] == "applied");
+  client.offline = false;
+  reset();
+
+  // STOP normal: ACK applied só com 10060 = 1 e 10015 = 0 relidos.
+  start = linkedResponse("START", "hca-start-3", 9, "hca-session-3");
+  apply(start);
+  assert(acknowledgements[0]["status"] == "applied" && client.device.relayClosed());
+  service(5);
+  client.log.clear();
+  auto stop = linkedResponse("STOP", "hca-stop-2", 10, "hca-session-3");
+  apply(stop);
+  assert(acknowledgements[0]["status"] == "applied" && state == "stopped" && endReason == "requested");
+  assert(client.writes() == "W 10060=1" && !client.device.relayClosed());
+  reset();
+  // STOP perdido: a sessão termina (stopped) mas sem ACK applied; a parada sai na leitura.
+  start = linkedResponse("START", "hca-start-4", 11, "hca-session-4");
+  apply(start);
+  client.dropWrites = 1;
+  stop = linkedResponse("STOP", "hca-stop-3", 12, "hca-session-4");
+  apply(stop);
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_readback_mismatch");
+  assert(state == "stopped" && client.device.relayClosed());
+  service(1);
+  assert(!client.device.relayClosed() && !chargerLink.pendingStop());
+  reset();
+  // Parada local (toque/CG_STOP) também desliga o carregador.
+  start = linkedResponse("START", "hca-start-5", 13, "hca-session-5");
+  apply(start);
+  assert(client.device.relayClosed());
+  requestLocalSafeStop();
+  assert(state == "stopped" && !client.device.relayClosed());
+  reset();
+  // Carregador reiniciou no meio da recarga (boot seguro): falha em 3 leituras.
+  start = linkedResponse("START", "hca-start-6", 14, "hca-session-6");
+  apply(start);
+  client.device.boot(testMillis, 70, 0);
+  service(3);
+  assert(state == "stopped" && endReason == "device_fault");
+  reset();
+
+  // Link removido (charger_address = null): volta exatamente ao corpo da bancada.
+  auto unlinked = linkedResponse(nullptr, nullptr, 14, nullptr, false);
+  apply(unlinked);
+  assert(!chargerLink.configured());
+  body.clear(); fillSyncBody(body, true);
+  assert(body["charger"]["model"] == "esp32_bench" && body["charger"]["transport"] == "simulated");
+  assert(body["charger"]["max_power_w"] == 7200 && body["charger"]["link"].isNull() && body["charger"]["address"].isNull());
+  chargerLink.setClient(nullptr);
+  reset();
+  puts("PASS: carregador HCA G2 externo pelo controlador real (charger_link, START/SET_POWER/STOP com ACK após releitura, "
+       "perda → device_fault, STOP pendente, reboot do carregador, sem link = bancada de sempre)");
 }
 
 int main(int argc, char** argv) {
@@ -1133,6 +1323,7 @@ int main(int argc, char** argv) {
   apply(factoryReset);
   assert(acknowledgements[0]["status"] == "failed");
   assert(acknowledgements[0]["new_device_key_hash"].isNull());
+  runChargerLinkScenarios();
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
   puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");

@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include "sensors.h"
 #include "kiosk_flow.h"
+#include "charger_link.h"
 // Versão única do firmware (sync, CG_STATUS e pacote).
 #define CHARGEGRID_FIRMWARE_VERSION "0.8.0"
 extern Preferences store;
@@ -100,3 +101,11 @@ void kioskPersistOrder(const char* orderId);
 void kioskApiService();
 // Pedido salvo na NVS no boot (retomada pelo sync).
 void kioskResume(const char* orderId, uint32_t seed);
+
+// ---- Carregador externo GoodWe HCA G2 (aditivo; sem connector.charger_link = igual a antes) ----
+// Link Modbus TCP com o carregador (firmware/goodwe-hca-sim). Configurado pelo sync.
+extern charger::Link chargerLink;
+// Limite que o carregador instala para um pedido em W (0,1 kW para baixo, 1,4..7,0 kW; 0 = pausa).
+float chargerLinkLimitW(float requestedW);
+// Leitura periódica (~1 s) e parada segura se o carregador sumir durante a recarga (laço principal).
+void chargerLinkService();
