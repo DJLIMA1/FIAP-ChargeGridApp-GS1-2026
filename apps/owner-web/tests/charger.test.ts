@@ -112,7 +112,7 @@ describe('carregador: textos (iguais ao core `chargers.link`)', () => {
 })
 
 describe('estação = a tela; carregador offline não derruba a estação', () => {
-  const online = point({ id: 'c1', public_code: 'CG-001', charger_link: API_LINK, online: true, screen: SCREEN })
+  const online = point({ id: 'c1', public_code: 'CG-001', charger_link: API_LINK, online: true, available: true, availability_status: 'available', screen: SCREEN })
   const offline = point({
     id: 'c2', public_code: 'CG-002', online: false, unavailable_reason: 'charger_offline', availability_status: 'offline',
     charger_link: { ...API_LINK, address: 2, link: 'offline' }, screen: { ...SCREEN, role: 'charger' },
@@ -138,13 +138,41 @@ describe('estação = a tela; carregador offline não derruba a estação', () =
 
   it('linha da lista de estações: estação online × carregador offline', () => {
     expect(stationSummary(station({ screen_online: true, connectors: [online, offline] }))).toEqual({
-      line: 'Estação online · 2 carregadores livre(s) · carregador CG-002 offline', tone: 'amber',
+      line: 'Estação online · 1 carregador livre · carregador CG-002 offline', tone: 'amber',
     })
     expect(stationSummary(station({ screen_online: true, connectors: [online] })).tone).toBe('green')
     expect(stationSummary(station({ screen_online: false, connectors: [online] }))).toEqual({ line: 'Estação offline · tela sem contato', tone: 'red' })
     expect(stationSummary(station({ screen_online: null, connectors: [online] })).line).toBe('Sem tela vinculada')
     expect(stationSummary(station({ active: false, connectors: [online] })).line).toBe('Inativa · oculta para motoristas')
     expect(stationSummary(station()).line).toBe('Sem carregadores vinculados')
+  })
+
+  it('tela online com todos os carregadores offline não anuncia pontos livres', () => {
+    const st = station({ screen_online: true, connectors: [offline, { ...offline, id: 'c3', public_code: 'CG-003' }] })
+    expect(stationSummary(st)).toEqual({
+      line: 'Estação online · 0 carregadores livres · 2 carregadores offline', tone: 'amber',
+    })
+  })
+
+  it('conta os livres reais sem incluir ocupado, inativo, offline ou restaurado', () => {
+    const available = { ...online, availability_status: 'available', available: true }
+    const st = station({ screen_online: true, connectors: [
+      available,
+      { ...online, id: 'busy', availability_status: 'occupied', available: false },
+      { ...available, id: 'inactive', active: false },
+      { ...available, id: 'down', online: false },
+      { ...available, id: 'retired', retired: true },
+    ] })
+    expect(stationSummary(st)).toEqual({
+      line: 'Estação online · 1 de 4 carregadores em uso · 1 carregador livre', tone: 'green',
+    })
+  })
+
+  it('API antiga só conta livre quando available é true', () => {
+    const legacy = { ...online, availability_status: undefined, available: true }
+    const unknown = { ...online, availability_status: undefined, available: undefined }
+    expect(stationSummary(station({ screen_online: true, connectors: [legacy, unknown] })).line)
+      .toBe('Estação online · 1 carregador livre')
   })
 
   it('Adicionar carregador usa o ponto da tela; senão qualquer ponto com tela; sem tela, o primeiro', () => {
@@ -219,8 +247,8 @@ describe('mock: estação (tela) × carregadores', () => {
     expect(code('CG-007')).toMatchObject({ online: false, screen_online: true, unavailable_reason: 'charger_offline', availability_status: 'offline', available: false })
     expect(code('CG-007').charger_link).toMatchObject({ link: 'offline', measured_power_w: null, reported: { model: 'esp32_bench', link: 'offline' } })
     expect(code('CG-010').charger_link).toMatchObject({ link: 'pending', last_online_at: null, reported: null })
-    expect(stationSummary(marginal).line).toBe('Estação online · 2 de 4 carregadores em uso · carregador CG-007 offline')
-    expect(stationSummary(data.STATIONS[2]).line).toBe('Estação online · 1 de 3 carregadores em uso · 1 com falha') // CG-010 inativo, aguardando a tela
+    expect(stationSummary(marginal).line).toBe('Estação online · 2 de 4 carregadores em uso · 1 carregador livre · carregador CG-007 offline')
+    expect(stationSummary(data.STATIONS[2]).line).toBe('Estação online · 1 de 3 carregadores em uso · 0 carregadores livres · 1 com falha') // CG-010 inativo, aguardando a tela
   })
 
   it('ponto novo recebe o próximo endereço livre do posto', () => {
