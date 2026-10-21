@@ -1,7 +1,8 @@
 """Previsão de ocupação: agregados duráveis, rollup, rotas do dono e melhor horário do motorista."""
+import sys
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -19,6 +20,7 @@ from app.models import (
     now,
 )
 from app.modules.forecast import rollup as rollup_module
+from app.modules.forecast import service as service_module
 from app.modules.forecast.rollup import rollup
 from chargegrid_core.forecast import synthetic
 from chargegrid_core.forecast.aggregate import floor_hour
@@ -31,15 +33,23 @@ def _clear():
     clear_overrides()
 
 
-def evening_sessions(db, seed, days=21, connector=None):
-    """Uma recarga por dia das 17h às 19h (horário de São Paulo) nos últimos ``days`` dias."""
-    today = floor_hour(to_local(now())).replace(hour=0)
-    for day in range(1, days + 1):
+def evening_sessions(db, seed, days=21, connector=None, current=None):
+    """Uma recarga por dia das 17h às 19h (horário de São Paulo) nos últimos ``days`` dias.
+
+    Com ``current`` fixo, a de hoje também entra quando já terminou e fechou (``closed_until``): sem ela, as
+    células das 17h/18h de hoje, já dentro da janela do histórico, contariam como 0% e derrubariam a média.
+    Devolve quantas recargas foram criadas.
+    """
+    today = floor_hour(to_local(current or now())).replace(hour=0)
+    first_day = 0 if current is not None and to_utc(today + timedelta(hours=19)) <= rollup_module.closed_until(
+        current) else 1
+    for day in range(first_day, days + 1):
         began = to_utc(today - timedelta(days=day) + timedelta(hours=17))
         db.add(ChargingSession(user_id=seed["a"], connector_id=connector or seed["point"], status="completed",
                                created_at=began, started_at=began, ended_at=began + timedelta(hours=2),
                                max_duration_minutes=120, price_per_kwh=Decimal(2), energy_wh=Decimal(2000),
                                source="simulated"))
+    return days + 1 - first_day
 
 
 def test_owner_forecast_requires_ownership(factory, seed):
@@ -137,17 +147,27 @@ def test_rollup_counts_overstay_as_occupied_until_unplug_or_last_confirmed_sync(
         assert [(r["hour_start"], r["busy_seconds"]) for r in rows] == [(hour + timedelta(hours=4), 900)]
 
 
-def test_history_reads_live_hours_after_the_watermark(factory, seed):
+# Instantes (UTC) fixos: 00:10, 12:00, 17:30 e 23:30 de 14/10/2026 em São Paulo (UTC-3). O relógio real nunca entra:
+# antes, rodar a suíte após ~18:15 locais fechava a hora das 17h de hoje (sem recarga) e a média caía para 50%.
+CLOCKS = ["2026-10-14T03:10:00+00:00", "2026-10-14T15:00:00+00:00", "2026-10-14T20:30:00+00:00",
+          "2026-10-15T02:30:00+00:00"]
+
+
+@pytest.mark.parametrize("instant", CLOCKS)
+def test_history_reads_live_hours_after_the_watermark(factory, seed, monkeypatch, instant):
+    moment = datetime.fromisoformat(instant)
+    for module in (service_module, rollup_module, sys.modules[__name__]):
+        monkeypatch.setattr(module, "now", lambda: moment)
     with factory.begin() as db:
-        evening_sessions(db, seed, days=10)
+        created = evening_sessions(db, seed, days=10, current=moment)
     with factory.begin() as db:
-        rollup(db, now() - timedelta(days=3))  # marca d'água atrasada: os últimos dias vêm calculados na hora
+        rollup(db, moment - timedelta(days=3))  # marca d'água atrasada: os últimos dias vêm calculados na hora
     client, _ = client_for(factory, seed["owner"])
     body = client.get("/v1/owner/occupancy-history", params={"station_id": str(seed["station"]), "weeks": 2}).json()
     cells = [value for row in body["occupancy_percent"] for value in [row[17], row[18]] if value is not None]
     assert cells and all(Decimal(value) > 50 for value in cells)
     # O histórico começa na primeira recarga; os 3 dias depois da marca d'água entram calculados na hora.
-    assert sum(body["samples"][d][17] for d in range(7)) == 10
+    assert sum(body["samples"][d][17] for d in range(7)) == created
     assert body["includes_synthetic"] is False
 
 
