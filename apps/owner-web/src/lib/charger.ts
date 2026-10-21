@@ -168,9 +168,18 @@ export function stationSummary(station: Station): { line: string; tone: 'green' 
   if (screen === 'offline') return { line: 'Estação offline · tela sem contato', tone: 'red' }
   if (screen === 'none') return { line: 'Sem tela vinculada', tone: 'amber' }
   const busy = points.filter((c) => ['charging', 'occupied', 'reserved'].includes(c.availability_status ?? '')).length
+  const free = points.filter(
+    (c) =>
+      c.active !== false &&
+      c.online !== false &&
+      !c.unavailable_reason &&
+      (c.availability_status == null ? c.available === true : c.availability_status === 'available'),
+  ).length
   const offline = offlineChargers(station)
   const faults = points.filter((c) => c.availability_status === 'fault').length
-  const parts = [`Estação online · ${busy ? `${busy} de ${points.length} carregadores em uso` : `${chargersLabel(points.length)} livre(s)`}`]
+  const parts = ['Estação online']
+  if (busy) parts.push(`${busy} de ${points.length} carregadores em uso`)
+  parts.push(`${chargersLabel(free)} ${free === 1 ? 'livre' : 'livres'}`)
   if (offline.length === 1) parts.push(`carregador ${offline[0].public_code} offline`)
   else if (offline.length) parts.push(`${offline.length} carregadores offline`)
   if (faults) parts.push(`${faults} com falha`)
