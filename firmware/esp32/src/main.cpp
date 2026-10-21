@@ -9,6 +9,7 @@
 #include <time.h>
 #include "runtime.h"
 #include "panel_ui.h"
+#include "charger_modbus_esp32.h"
 #ifdef CHARGEGRID_PANEL_ENABLED
 #include "panel_service_config.h"
 #include "panel_hardware.h"
@@ -203,6 +204,46 @@ bool savePanelConnection(const char* ssid, const char* password, const char* dev
 }
 
 #ifdef CHARGEGRID_PANEL_ENABLED
+// Carregador externo (teste manual): CG_CHARGER lê agora e mostra o estado; CG_CHARGER_IP
+// <ip> fixa o IP (fallback ao mDNS cg-hca-<endereço>.local) e CG_CHARGER_IP clear volta ao host.
+void handleChargerCommand(const String& line) {
+  if (line.startsWith("CG_CHARGER_IP")) {
+    String ip = line.length() > 14 ? line.substring(14) : String();
+    ip.trim();
+    IPAddress parsed;
+    if (ip == "clear") ip = "";
+    else if (!parsed.fromString(ip)) { Serial.println("[charger] use CG_CHARGER_IP <a.b.c.d> | CG_CHARGER_IP clear"); return; }
+    if (ip.length()) configStore.putString("chg_ip", ip);
+    else if (configStore.isKey("chg_ip")) configStore.remove("chg_ip");
+    espChargerSetFixedIp(ip);
+    Serial.printf("[charger] ip_fixo=%s\n", ip.length() ? ip.c_str() : "-");
+    return;
+  }
+  if (!chargerLink.configured()) {
+    Serial.printf("[charger] sem carregador externo (connector.charger_link ausente): rele/simulacao interna; %s\n",
+                  espChargerDescribe().c_str());
+    return;
+  }
+  uint16_t live[3]{}, limit = 0, run = 0, mode = 0, spec = 0, type = 0;
+  uint8_t exception = 0;
+  const charger::LinkConfig& link = chargerLink.config();
+  charger::ModbusClient& client = espChargerClient();
+  const bool ok = client.readHolding(link, hca::kChargingPower, 3, live, &exception) &&
+      client.readHolding(link, hca::kMaxChargingPower, 1, &limit, &exception) &&
+      client.readHolding(link, hca::kChargeMode, 1, &mode, &exception) &&
+      client.readHolding(link, hca::kPowerSpec, 1, &spec, &exception) &&
+      client.readHolding(link, hca::kChargerType, 1, &type, &exception) &&
+      client.readHolding(link, hca::kStartStop, 1, &run, &exception);
+  Serial.printf("[charger] goodwe_hca_g2 host=%s porta=%u endereco=%u link=%s falhas=%u ultimo_erro=%s espera_ligado=%s parada_pendente=%s %s\n",
+                link.host, link.port, link.address, chargerLink.online() ? "online" : "offline", chargerLink.failures(),
+                charger::errorCode(chargerLink.lastError()) ? charger::errorCode(chargerLink.lastError()) : "-",
+                chargerLink.expectRunning() ? "sim" : "nao", chargerLink.pendingStop() ? "sim" : "nao",
+                espChargerDescribe().c_str());
+  if (ok) Serial.printf("[charger] leitura agora: 10015=%u (%.1f kW) 10017=%u 10029=%u (%.1f kW) 10032=%u 10058=%u 10059=%u 10060=%u\n",
+                        live[0], live[0] / 10.0f, live[2], limit, limit / 10.0f, mode, spec, type, run);
+  else Serial.printf("[charger] leitura agora falhou%s\n", exception ? " (excecao Modbus)" : "");
+}
+
 void handleSerialMaintenance() {
   static uint8_t step = 0;
   static String pendingSsid;
@@ -321,6 +362,10 @@ void handleSerialMaintenance() {
         store.isKey("kord") ? "present" : "none", CHARGEGRID_FIRMWARE_VERSION);
       return;
     }
+    if (line == "CG_CHARGER" || line.startsWith("CG_CHARGER_IP")) {
+      handleChargerCommand(line);
+      return;
+    }
     if (line == "CG_STOP") {
       requestLocalSafeStop();
       Serial.printf("[stop] state=%s power_w=%.0f\n", state.c_str(), reading.powerW);
@@ -414,6 +459,10 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 #endif
   configTime(0, 0, "pool.ntp.org", "time.google.com");
+  chargerLink.setClient(&espChargerClient());
+#ifdef CHARGEGRID_PANEL_ENABLED
+  espChargerSetFixedIp(configStore.getString("chg_ip", ""));
+#endif
   panelSetup();
 #ifdef CHARGEGRID_KIOSK
   kioskResume(store.getString("kord", "").c_str(), esp_random());
@@ -428,6 +477,7 @@ void loop() {
   }
 #endif
   tick();
+  chargerLinkService(); // Só com connector.charger_link; sem ele retorna na hora.
   panelTick();
 #ifdef CHARGEGRID_PANEL_ENABLED
   handleSerialMaintenance();

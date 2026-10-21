@@ -13,6 +13,10 @@ O adaptador traduz a potência que o ChargeGrid decide para cada ponto em regist
 
 A API serverless não alcança Modbus numa rede local, então a decisão sai da API em W (protocolo neutro, `SET_POWER`) e a tradução acontece na borda (simulador hoje; um gateway local no futuro). A escolha é da borda: o equipamento declara no sync `charger: {model: "goodwe_hca_g2", variant, transport: "simulated", min_power_w, max_power_w, step_w, phases}`. A API guarda em `devices.charger`, usa o piso e o máximo na divisão (4,2 kW num modelo trifásico) e mostra no painel do vendedor (`GET /v1/stations/{id}/power` → `points[].charger`). O vendedor não troca o modelo: a verdade vem do equipamento.
 
+## Carregador simulado no ESP32 (bancada)
+
+Além do transporte simulado em Python, existe um **carregador HCA G2 simulado em hardware**: um ESP32 DevKit com relé na GPIO 13 (`firmware/goodwe-hca-sim`) que responde por Modbus TCP com este mesmo mapa (endereços, escalas, faixa 14–70 do GW7K-HCA-20, 1 = desliga / 2 = liga). A tela do ponto vira o mestre quando a API manda `connector.charger_link` e traduz START/STOP/SET_POWER com as mesmas regras do adaptador: 10032 uma vez, 10029 só quando muda, pausa por 10060 = 1 abaixo do mínimo, ACK só depois da releitura. Mapa e Modbus TCP ficam em `firmware/shared/hca_g2` (C++), conferidos contra este adaptador em `tools/tests/test_hca_sim_e2e.py`. Diferenças do simulado: unit id = endereço configurado (padrão 1, não 247), 10029 abaixo de 14 é aceito como pausa, a potência (10015) é a configurada e não a medida, e a energia fica numa extensão fora do mapa (19001/19002). Guia completo: `docs/carregador-hca-simulado.md`. Continua **sem validação num HCA G2 real**, e o `ModbusTcpTransport` do Python segue desabilitado.
+
 ## Registradores usados
 
 | Endereço | Nome | Uso | Escala | Grava flash |

@@ -17,6 +17,12 @@ float overstayFeeDue = -1, overstayMaxFee = -1, overstayAmount = -1;
 long overstayIntervalMinutes = 0;
 // 0.8.0: blocos do totem no sync (definidos aqui para os testes de host).
 kiosk::SyncFacts kioskSync;
+// Carregador externo HCA G2 (connector.charger_link). Sem link: nada abaixo é chamado.
+charger::Link chargerLink;
+static charger::Error chargerStopResult = charger::Error::None;
+float chargerLinkLimitW(float requestedW) {
+  return (float)hca::powerWForRegister(hca::registerForPowerW(lroundf(requestedW)));
+}
 // A API serializa Decimal como texto ("42.50"); aceita número ou texto numérico.
 static float jsonNumber(JsonVariantConst value, float fallback) {
   if (value.is<const char*>()) {
@@ -157,6 +163,9 @@ void stop(const char* reason) {
   reading.connected = overstayEnabled;
   endReason = reason;
   persist();
+  // Carregador externo: 10060 = 1 confirmado por leitura (sem resposta, tenta de novo na
+  // leitura periódica e o watchdog de 15 s do carregador abre o relé).
+  chargerStopResult = chargerLink.active() ? chargerLink.stop(millis()) : charger::Error::None;
 }
 // Reboot: saída desenergizada, carro tratado como desconectado (conservador) e sessão
 // anterior apenas relatada para reconciliação, nunca retomada.
@@ -192,6 +201,8 @@ void tick() {
   unsigned long elapsed = now - lastTick;
   lastTick = now;
   if (state == "charging") {
+    // Carregador externo: integra a potência lida no 10015 (SIMULADA no simulador).
+    const float powerW = chargerLink.active() ? (float)chargerLink.measuredPowerW() : chargePowerW;
     // O relógio local limita a energia, mesmo durante falha HTTP.
     unsigned long overdueContact = now - lastContact > 45000 ? now - lastContact - 45000 : 0;
     unsigned long overdueDuration = now - started > maxDurationMs ? now - started - maxDurationMs : 0;
@@ -200,19 +211,19 @@ void tick() {
     const float effectivePrice = price * (1 - discount / 100);
     bool costCapped = false, fullCapped = false;
     // Pausado (0 W): nenhum limite de tempo derivado da potência (sem divisão por zero).
-    if (maxCost >= 0 && effectivePrice > 0 && chargePowerW > 0) {
+    if (maxCost >= 0 && effectivePrice > 0 && powerW > 0) {
       const float remainingWh = max(0.0f, maxCost * 1000 / effectivePrice - reading.energyWh);
-      const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
+      const unsigned long costElapsed = (unsigned long)(remainingWh * 3600000 / powerW);
       if (costElapsed < permittedElapsed) { permittedElapsed = costElapsed; costCapped = true; }
     }
     // Bateria simulada: não entrega energia além dos 100 %, mesmo com a rede bloqueada.
     const float fullWh = batteryFullWh();
-    if (fullWh >= 0 && chargePowerW > 0) {
+    if (fullWh >= 0 && powerW > 0) {
       const float remainingWh = max(0.0f, fullWh - reading.energyWh);
-      const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / chargePowerW);
+      const unsigned long fullElapsed = (unsigned long)(remainingWh * 3600000 / powerW);
       if (fullElapsed < permittedElapsed) { permittedElapsed = fullElapsed; fullCapped = true; }
     }
-    reading = sensors.read(true, permittedElapsed, chargePowerW);
+    reading = sensors.read(true, permittedElapsed, powerW);
     reading.socPercent = currentSessionSoc(reading.energyWh);
     if (now - lastSaved >= 30000) { persist(); lastSaved = now; }
     if (now - lastContact >= 45000) stop("communication_lost");
@@ -275,9 +286,44 @@ void fillSyncBody(JsonDocument& body, bool extensions) {
   // Limite instalado agora: 0 fora de recarga ou pausado (resolve ACK perdido na API).
   body["applied_power_w"] = state == "charging" ? lroundf(chargePowerW) : 0L;
   JsonObject charger = body["charger"].to<JsonObject>();
+  if (chargerLink.active()) {
+    // Carregador GoodWe HCA G2 (simulado no ESP32 DevKit) por Modbus TCP na rede local.
+    charger["model"] = "goodwe_hca_g2"; charger["variant"] = hca::kGw7k.name;
+    charger["transport"] = "modbus_tcp"; charger["address"] = chargerLink.config().address;
+    charger["link"] = chargerLink.online() ? "online" : "offline";
+    charger["min_power_w"] = hca::powerWForRegister(hca::kGw7k.minTenths);
+    charger["max_power_w"] = hca::powerWForRegister(hca::kGw7k.maxTenths);
+    charger["step_w"] = 100; charger["phases"] = hca::kGw7k.phases;
+    return;
+  }
   charger["model"] = "esp32_bench"; charger["transport"] = "simulated";
   charger["min_power_w"] = kChargerMinPowerW; charger["max_power_w"] = kChargerMaxPowerW;
   charger["step_w"] = kChargerStepW; charger["phases"] = 1;
+}
+// connector.charger_link (aditivo): ausente/null/inválido = sem carregador externo. A troca
+// só vale fora de recarga; uma recarga em andamento termina com o carregador que a iniciou.
+static void readChargerLink(JsonObjectConst connector) {
+  charger::LinkConfig config;
+  JsonObjectConst link = connector["charger_link"].as<JsonObjectConst>();
+  if (!link.isNull())
+    charger::makeConfig(link["model"].as<const char*>(), link["transport"].as<const char*>(),
+                        link["address"].is<long>() ? link["address"].as<long>() : 0L,
+                        link["host"].as<const char*>(),
+                        link["port"].is<long>() ? link["port"].as<long>() : (long)hca::kDefaultPort, config);
+  if (state != "charging") chargerLink.configure(config);
+}
+void chargerLinkService() {
+  if (!chargerLink.active()) return;
+  const unsigned long now = millis();
+  chargerLink.poll(now);
+  if (state == "charging" && chargerLink.faulted(now, true)) {
+    tick(); // Integra a energia até a perda.
+    if (state == "charging") {
+      // Mesma parada segura local; o motivo vai no próximo sync (imediato).
+      stop("device_fault");
+      nextSync = millis();
+    }
+  }
 }
 static bool extensionField(const char* field) {
   if (!field) return false;
@@ -307,6 +353,7 @@ bool apply(JsonDocument& response) {
   connectorPublicCode = response["connector"]["public_code"] | "--";
   JsonObjectConst connector = response["connector"].as<JsonObjectConst>();
   readKiosk(connector);
+  readChargerLink(connector);
   readOverstay(response["overstay"].as<JsonObjectConst>());
   // Totem 0.8.0: leitura aditiva; sem os blocos (API antiga ou totem desligado) = desligado.
   kiosk::readSync(response.as<JsonObjectConst>(), kioskSync);
@@ -398,13 +445,24 @@ bool apply(JsonDocument& response) {
         readStartSoc(session);
         readStartSoc(command["parameters"].as<JsonObjectConst>()); // parameters prevalecem.
         chargePowerW = readStartPower(command["parameters"].as<JsonObjectConst>(), session);
+        if (chargerLink.active()) chargePowerW = chargerLinkLimitW(chargePowerW);
         overstayEnabled = command["parameters"]["overstay"].is<JsonObjectConst>();
         if (socStartPercent >= 0 && !socSource.length()) socSource = "simulated";
         if (socSource == "phone") phoneSocPercent = socStartPercent;
         reading.energyWh = 0; persistSessionSoc(); persist(); // Sessão salva antes de autorizar a bancada.
-        sensors.start(); reading = sensors.read(true, 0, chargePowerW);
-        reading.socPercent = currentSessionSoc(reading.energyWh);
-        started = lastTick = millis(); state = "charging"; endReason = "";
+        // Carregador externo: liga e confirma pela leitura antes de aceitar a sessão.
+        const charger::Error linkError = chargerLink.active()
+            ? chargerLink.start(lroundf(chargePowerW), millis(), nullptr) : charger::Error::None;
+        if (linkError != charger::Error::None) {
+          error = charger::errorCode(linkError);
+          sessionId = ""; sessionPricingKnown = false; overstayEnabled = false; chargePowerW = kBenchPowerW;
+          resetSessionSoc(); persistSessionSoc(); persist();
+        } else {
+          sensors.start(); reading = sensors.read(true, 0, chargePowerW);
+          if (chargerLink.active()) reading.powerW = chargerLink.measuredPowerW();
+          reading.socPercent = currentSessionSoc(reading.energyWh);
+          started = lastTick = millis(); state = "charging"; endReason = "";
+        }
       }
     } else if (type == "RESERVE") {
       JsonObject reservation = response["authorized"]["reservation"].as<JsonObject>();
@@ -420,8 +478,15 @@ bool apply(JsonDocument& response) {
         const char* reason = command["parameters"]["reason"].as<const char*>();
         const bool full = (reason && strcmp(reason, "battery_full") == 0) ||
             (socSource == "phone" && phoneSocPercent >= 100);
+        const bool wasCharging = state == "charging";
         // Uma parada local já reportada (ex.: battery_full) mantém o motivo original.
         if (!(state == "stopped" && endReason.length())) stop(full ? "battery_full" : "requested");
+        else if (chargerLink.active()) chargerStopResult = chargerLink.stop(millis());
+        // Carregador externo: parar uma recarga só tem ACK applied com 10060 = 1 e 10015 = 0
+        // relidos. A sessão termina de qualquer forma (o sync reporta stopped); sem recarga
+        // em andamento a parada do carregador é só um reforço e não falha o comando.
+        if (wasCharging && chargerLink.active() && chargerStopResult != charger::Error::None)
+          error = charger::errorCode(chargerStopResult);
       }
     } else if (type == "SET_POWER") {
       const float requested = jsonNumber(command["parameters"]["power_limit_w"], -1);
@@ -430,7 +495,13 @@ bool apply(JsonDocument& response) {
       else {
         tick(); // Integra a potência antiga até o instante da troca.
         if (state != "charging") error = "no_active_session";
-        else {
+        else if (chargerLink.active()) {
+          // Carregador externo: 10029 (só se mudou) ou pausa por 10060 = 1, confirmado por leitura.
+          const float limit = chargerLinkLimitW(requested);
+          const charger::Error linkError = chargerLink.setPower(lroundf(limit), millis(), nullptr);
+          if (linkError != charger::Error::None) error = charger::errorCode(linkError);
+          else { chargePowerW = limit; reading.powerW = chargerLink.measuredPowerW(); }
+        } else {
           chargePowerW = chargerLimitW(requested); // 0 pausa: continua charging, sem energia.
           reading.powerW = chargePowerW;
         }

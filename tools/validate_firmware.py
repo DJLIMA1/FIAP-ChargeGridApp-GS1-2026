@@ -2,6 +2,11 @@
 
 Requires clang/clang++, and libraries installed by `pio run -d firmware/esp32
 -e waveshare_panel_ui`. Never opens a serial port or touches hardware.
+
+Also runs the pure host tests of the simulated GoodWe HCA G2 charger
+(firmware/goodwe-hca-sim) and of the panel's Modbus link to it, and builds the host
+Modbus TCP server used by tools/tests/test_hca_sim_e2e.py. `--hca-only` runs just those
+(no LVGL/PlatformIO libraries needed).
 """
 import argparse
 import subprocess
@@ -15,9 +20,16 @@ def main():
     parser.add_argument("--decode-qr", action="store_true", help="Decode rendered QR frames with Pillow and zxing-cpp")
     parser.add_argument("--compare-panel", type=Path, help="Directory with panel-*.ppm frames from a previous firmware; "
                         "every current panel frame (totem off) must be byte-identical")
+    parser.add_argument("--hca-only", action="store_true",
+                        help="Only the HCA G2 charger simulator and panel link host tests (no LVGL needed)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     firmware = root / "firmware/esp32"
+    if args.hca_only:
+        output = args.output.resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        run_hca_tests(root, output)
+        return
     libraries = firmware / ".pio/libdeps/waveshare_panel_ui"
     lvgl = libraries / "lvgl"
     if not (lvgl / "lvgl.h").is_file():
@@ -30,6 +42,7 @@ def main():
     flags = ["-DCHARGEGRID_PANEL_ENABLED", "-DCHARGEGRID_KIOSK", "-DLV_CONF_SKIP", "-DLV_COLOR_DEPTH=16",
              "-DLV_FONT_MONTSERRAT_14=1", "-DLV_FONT_MONTSERRAT_28=1", "-DLV_USE_QRCODE=1", "-DLV_MEM_SIZE=65536U",
              "-I" + str(lvgl), "-I" + str(firmware / "include")]
+    run_hca_tests(root, output)
     sources = sorted((lvgl / "src").rglob("*.c"))
     sources += sorted((firmware / "src").glob("panel_font*.c"))
     sources += [firmware / "src/chargegrid_logo.c"]
@@ -51,10 +64,11 @@ def main():
                     "-o", str(flow_test)], check=True)
     subprocess.run([str(flow_test)], check=True)
     executable = output / "firmware_behavior"
+    hca = hca_paths(root)
     subprocess.run(["clang++", "-std=c++17", "-DCHARGEGRID_PANEL_ENABLED", *flags,
                     "-I" + str(root / "tools/tests/firmware_stubs"),
-                    "-I" + str(libraries / "ArduinoJson/src"),
-                    str(root / "tools/tests/firmware_behavior.cpp"), *compiled,
+                    "-I" + str(libraries / "ArduinoJson/src"), *hca["includes"],
+                    str(root / "tools/tests/firmware_behavior.cpp"), *compiled, *hca["sources"],
                     "-o", str(executable)], check=True)
     subprocess.run([str(executable), str(output)], check=True)
     if args.decode_qr:
@@ -96,6 +110,31 @@ def main():
         assert compared, "No panel frames to compare"
         print(f"PASS: {compared} panel frames byte-identical to {previous} (totem off)")
     print(f"Actual firmware LVGL frames: {output}")
+
+
+def hca_paths(root):
+    shared = root / "firmware/shared/hca_g2/src"
+    core = root / "firmware/goodwe-hca-sim/lib/hca_sim_core/src"
+    return {"includes": ["-I" + str(shared), "-I" + str(core), "-I" + str(root / "firmware/esp32/include")],
+            "sources": [str(core / "hca_sim_core.cpp"), str(shared / "modbus_tcp.cpp")]}
+
+
+def run_hca_tests(root, output):
+    """Carregador HCA G2 simulado + link da tela: C++ puro com sanitizers, e o servidor de host."""
+    hca = hca_paths(root)
+    strict = ["clang++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-g", "-fsanitize=address,undefined",
+              *hca["includes"]]
+    tests = {"hca_sim_test": [], "charger_link_test": [str(root / "firmware/esp32/src/charger_link.cpp")]}
+    for name, extra in tests.items():
+        binary = output / name
+        subprocess.run([*strict, str(root / "tools/tests" / (name + ".cpp")), *extra, *hca["sources"],
+                        "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+    server = output / "hca_sim_host"
+    subprocess.run(["clang++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", *hca["includes"],
+                    str(root / "firmware/goodwe-hca-sim/host/hca_sim_host.cpp"), *hca["sources"],
+                    "-o", str(server)], check=True)
+    print(f"PASS: HCA G2 host Modbus TCP server built: {server}")
 
 
 if __name__ == "__main__":
