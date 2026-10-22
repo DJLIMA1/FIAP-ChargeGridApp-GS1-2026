@@ -431,7 +431,8 @@ def rescue_removed_screen(db, connector, device, data):
             factory_point(db, connector, ack)
             cmd.status = "applied"
             db.flush()
-            return response(db, connector, device)
+            # O firmware só troca para a identidade nova com esta confirmação (como no Restaurar).
+            return response(db, connector, device) | {"factory_reset_confirmed": str(cmd.id)}
     pending = db.scalar(select(Command.id).where(
         Command.device_id == device.id, Command.type == "FACTORY_RESET",
         Command.status.in_(("pending", "received")), Command.expires_at > now()).limit(1))

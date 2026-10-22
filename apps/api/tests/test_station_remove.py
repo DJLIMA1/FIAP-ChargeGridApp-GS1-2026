@@ -181,6 +181,7 @@ def test_central_of_a_removed_station_gets_back_to_the_claim_qr(owner, factory):
            "new_device_key_hash": digest("new-key"), "new_claim_token_hash": digest("new-claim")}
     applied = client.post("/v1/devices/sync", headers=device, json=sync_payload(2, acks=[ack]))
     assert applied.status_code == 200 and applied.json()["commands"] == []
+    assert applied.json()["factory_reset_confirmed"] == commands[0]["id"]
     with factory() as db:
         fresh = db.query(Device).filter(Device.key_hash == digest("new-key")).one()
         point = db.get(Connector, fresh.connector_id)
