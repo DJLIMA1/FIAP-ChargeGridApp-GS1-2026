@@ -2,7 +2,7 @@
 
 Rota ``station_admin`` (``station_id``, ``page`` = None | 'data' | 'connectors' | 'power'; ``page='power'``
 aceita ``section``/``connector_id``, ver ``station_power``). A tela do posto leva a Dados da estação
-(nome, endereço, status, a central e o totem de autoatendimento), Carregadores (pontos da central: status de cada
+(nome, endereço, status, totem de autoatendimento e, abaixo, as centrais), Carregadores (pontos da central: status de cada
 um, edição e Adicionar carregador), Potência (limite contratado, rebalanceamento, loja SIMULADA e cada
 carregador) e Tarifa (``tariffs``). Estação = a central; carregador = cada ponto (``connector`` na API).
 Nome, endereço, status e totem usam ``PATCH stations``; a localização vem do endereço (sem
@@ -88,7 +88,7 @@ def _round(field):
 
 
 def chatbot_button(app, height=40):
-    """Botão branco "Fale com o ChatBot" (ícone de balão redondo, texto regular)."""
+    """Botão branco "Fale com o ChatBot" (ícone de balão redondo, texto regular); hoje só na lista Suas Estações."""
     content = ft.Row([ft.Image(src='/design/nav_chat.svg', width=20, height=20, color=theme.BTN_PRIMARY_FG,
                                exclude_from_semantics=True),
                       design.txt('Fale com o ChatBot', 15, 'regular', theme.BTN_PRIMARY_FG)],
@@ -174,9 +174,7 @@ def _main_page(app, station, code):
             menu_row('Potência', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
-        ], spacing=29),
-        ft.Container(height=18),
-        chatbot_button(app, 38), gap=14)
+        ], spacing=29), gap=14)
 
 
 def _connectors_page(app, station):
@@ -334,7 +332,7 @@ def _data_page(app, station, code, payments_config=None, central=None):
                                                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH), gap=14),
             design.labeled('Identificador', _round(ident), gap=14),
             ft.Container(design.labeled('Status', holder, gap=5, strong=False), margin=ft.Margin(left=0, top=1, right=0, bottom=0)),
-            *([central] if central else []),
-            *([kiosk] if kiosk else []),
+            *([kiosk] if kiosk else []),  # chave do posto, como o Status
+            *([central] if central else []),  # Centrais da estação: cartões e vincular outra central por último
         ], spacing=15), margin=ft.Margin(left=0, top=16, right=0, bottom=0)),
         gap=16, gutter=3)

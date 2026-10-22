@@ -197,23 +197,40 @@ def card(title, *controls, trailing=None, subtitle=None, spacing=10, head=None):
                            padding=ft.Padding(left=15, right=15, top=14, bottom=15), radius=18)
 
 
+def central_head(name, badge, meta=None):
+    """Cabeçalho de cartão de central: ``Central CODE`` + etiqueta Online/Offline e a linha cinza de contato.
+
+    Mesmo desenho no cartão de manutenção (``central_admin``) e no de status sem manutenção."""
+    head = [ft.Row([name, badge], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+    if meta is not None:
+        head.append(meta)
+    return head
+
+
 def screens_card(station):
-    """Status da CENTRAL da estação (separado do status de cada carregador), ou ``None`` sem dados."""
+    """Status da CENTRAL da estação (separado do status de cada carregador), ou ``None`` sem dados.
+
+    Um cartão por central com o mesmo cabeçalho do cartão de manutenção (``central_head``)."""
     screens = station_screens(station)
     online = screen_online(station)
     if not screens and online is None:
         return None
     if not screens:
         label, color = screen_status(online)
-        return card('Central da estação', trailing=pill(label, color),
-                    subtitle='A estação fica online enquanto a central tiver contato.')
-    rows = []
+        return card('', head=central_head(design.txt('Central', 13.5, 'bold', expand=True), pill(label, color),
+                                          design.txt('A estação fica online enquanto a central tiver contato.',
+                                                     11, 'regular', theme.GRAY_TEXT)))
+    cards = []
     for screen in screens:
         label, color = screen_status(screen.get('online'))
-        count = len(screen.get('charger_ids') or []) or None
-        rows.append(row(screen_line(screen, count), pill(label, color), contact_text(screen)))
-    title = 'Central da estação' if len(screens) == 1 else f'Centrais da estação ({len(screens)})'
-    return card(title, *rows, subtitle='Um carregador offline não derruba a estação.')
+        count = len(screen.get('charger_ids') or [])
+        meta = [contact_text(screen)] + ([plural(count, 'carregador', 'carregadores')] if count else [])
+        cards.append(card('', head=central_head(
+            design.txt(f"Central {screen.get('public_code') or ''}".strip(), 13.5, 'bold', expand=True),
+            pill(label, color), design.txt(' · '.join(meta), 11, 'regular', theme.GRAY_TEXT))))
+    if len(cards) == 1:
+        return cards[0]
+    return ft.Column(cards, spacing=15, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 
 def add_error_message(exc):
