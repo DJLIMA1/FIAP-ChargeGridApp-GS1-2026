@@ -59,3 +59,18 @@ def current_device(authorization: str = Header(default=""), db=Depends(db_sessio
     if not device:
         fail("unauthorized", "Chave inválida", 401)
     return device
+
+
+def syncing_device(authorization: str = Header(default=""), db=Depends(db_session)):
+    """Só para ``/devices/sync``: aceita também a tela revogada junto com o posto removido. O sync
+    confere a regra (``removed_with_station``) e só entrega a restauração de fábrica a ela."""
+    if not authorization.startswith("Device "):
+        fail("unauthorized", "Chave necessária", 401)
+    device = db.scalar(
+        select(Device).where(Device.key_hash == digest(authorization[7:]))
+        .order_by(Device.revoked)  # a chave viva primeiro
+        .limit(1)
+    )
+    if not device or (device.revoked and device.parent_device_id is not None):
+        fail("unauthorized", "Chave inválida", 401)
+    return device

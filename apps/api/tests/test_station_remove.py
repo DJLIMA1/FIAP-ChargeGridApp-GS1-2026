@@ -159,3 +159,44 @@ def test_only_the_owner_operator_can_remove(owner, factory):
     assert client.delete(f"/v1/stations/{uuid.uuid4()}").status_code == 404
     with factory() as db:
         assert db.get(Station, seed["station"]).removed_at is None
+
+
+def test_central_of_a_removed_station_gets_back_to_the_claim_qr(owner, factory):
+    """Posto removido com a central offline: a central ainda usa a chave antiga. Em vez de ficar
+    presa em "Chave inválida", ela recebe só a restauração de fábrica e volta ao QR de vínculo."""
+    from test_http import sync_payload
+
+    from app.models import DeviceClaim
+
+    client, _, seed = owner
+    _offline(factory, seed)
+    assert client.delete(f"/v1/stations/{seed['station']}").status_code == 204
+    device = {"Authorization": "Device test-key"}
+    first = client.post("/v1/devices/sync", headers=device, json=sync_payload(1))
+    assert first.status_code == 200
+    commands = first.json()["commands"]
+    assert [command["type"] for command in commands] == ["FACTORY_RESET"]
+    assert first.json()["connector"]["active"] is False
+    ack = {"command_id": commands[0]["id"], "status": "applied",
+           "new_device_key_hash": digest("new-key"), "new_claim_token_hash": digest("new-claim")}
+    applied = client.post("/v1/devices/sync", headers=device, json=sync_payload(2, acks=[ack]))
+    assert applied.status_code == 200 and applied.json()["commands"] == []
+    with factory() as db:
+        fresh = db.query(Device).filter(Device.key_hash == digest("new-key")).one()
+        point = db.get(Connector, fresh.connector_id)
+        assert point.station_id != seed["station"] and point.active is False
+        assert db.get(Station, point.station_id).owner_id is None
+        assert db.get(DeviceClaim, point.id).token_hash == digest("new-claim")
+    # Restaurada: a chave antiga não serve mais; a nova sincroniza o ponto de fábrica.
+    assert client.post("/v1/devices/sync", headers=device, json=sync_payload(3)).status_code == 401
+    renewed = client.post("/v1/devices/sync", headers={"Authorization": "Device new-key"}, json=sync_payload(1))
+    assert renewed.status_code == 200 and renewed.json()["connector"]["owned"] is False
+
+
+def test_other_revoked_keys_stay_rejected(owner, factory):
+    client, _, seed = owner
+    with factory.begin() as db:
+        db.get(Device, seed["device"]).revoked = True  # revogada com o posto ainda ativo
+    from test_http import sync_payload
+    assert client.post("/v1/devices/sync", headers={"Authorization": "Device test-key"},
+                       json=sync_payload(1)).status_code == 401

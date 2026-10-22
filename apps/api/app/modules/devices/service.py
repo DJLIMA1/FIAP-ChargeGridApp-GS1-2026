@@ -98,6 +98,8 @@ def sync(db, authenticated_device, data, *, screen=None):
         if device.revoked:
             fail("charger_not_linked", "Carregador desligado desta central", 409)
     elif device.revoked or device.key_hash != authenticated_key_hash:
+        if device.key_hash == authenticated_key_hash and removed_with_station(db, connector, device):
+            return rescue_removed_screen(db, connector, device, data)
         fail("unauthorized", "Chave revogada ou alterada", 401)
     was_offline = not online(device)
     completed_reset_id = None
@@ -220,25 +222,7 @@ def sync(db, authenticated_device, data, *, screen=None):
                 cmd.status = "failed"
                 cmd.error = "unsafe_or_missing_factory_credentials"
                 continue
-            factory_station = Station(
-                owner_id=None, name="Novo ponto ChargeGrid", address="Configure o endereço",
-                latitude=0, longitude=0, active=False,
-            )
-            db.add(factory_station)
-            db.flush()
-            factory_point = Connector(
-                station_id=factory_station.id,
-                public_code=new_public_code(db),
-                connector_type=connector.connector_type,
-                power_kw=connector.power_kw,
-                price_per_kwh=0,
-                max_duration_minutes=connector.max_duration_minutes,
-                active=False,
-            )
-            db.add(factory_point)
-            db.flush()
-            db.add(Device(connector_id=factory_point.id, key_hash=ack.new_device_key_hash))
-            db.add(DeviceClaim(connector_id=factory_point.id, token_hash=ack.new_claim_token_hash))
+            factory_point(db, connector, ack)
             cmd.status = "applied"
             device.revoked = True
             device.reconciled = False
@@ -390,6 +374,72 @@ def sync(db, authenticated_device, data, *, screen=None):
     if completed_reset_id:
         result["factory_reset_confirmed"] = completed_reset_id
     return result
+
+
+def factory_point(db, connector, ack):
+    """Ponto de fábrica (sem dono) da central restaurada: nova chave e novo QR privado de vínculo."""
+    factory_station = Station(
+        owner_id=None, name="Novo ponto ChargeGrid", address="Configure o endereço",
+        latitude=0, longitude=0, active=False,
+    )
+    db.add(factory_station)
+    db.flush()
+    point = Connector(
+        station_id=factory_station.id,
+        public_code=new_public_code(db),
+        connector_type=connector.connector_type,
+        power_kw=connector.power_kw,
+        price_per_kwh=0,
+        max_duration_minutes=connector.max_duration_minutes,
+        active=False,
+    )
+    db.add(point)
+    db.flush()
+    db.add(Device(connector_id=point.id, key_hash=ack.new_device_key_hash))
+    db.add(DeviceClaim(connector_id=point.id, token_hash=ack.new_claim_token_hash))
+    return point
+
+
+def removed_with_station(db, connector, device):
+    """Central revogada porque o posto foi removido com ela offline (nunca restaurada)."""
+    station = db.get(Station, connector.station_id)
+    return bool(
+        device.revoked and device.parent_device_id is None
+        and connector.removed_at is not None and station is not None and station.removed_at is not None
+        and not db.scalar(select(Command.id).where(
+            Command.device_id == device.id, Command.type == "FACTORY_RESET", Command.status == "applied").limit(1))
+    )
+
+
+def rescue_removed_screen(db, connector, device, data):
+    """A central do posto removido ainda usa a chave antiga: ela só recebe a restauração de fábrica
+    (volta ao QR de vínculo e pode ir para outro posto). Nada do ponto removido é processado."""
+    for ack in data.acks:
+        cmd = db.get(Command, ack.command_id)
+        if (cmd.type != "FACTORY_RESET" or cmd.status in ("applied", "superseded", "failed")
+                or cmd.expires_at <= now()):
+            continue
+        if ack.status == "received":
+            cmd.status = "received"
+        elif ack.status == "failed":
+            cmd.status, cmd.error = "failed", ack.error
+        elif (data.physical_state != "idle" or data.connected or data.session_id
+              or not ack.new_device_key_hash or not ack.new_claim_token_hash
+              or ack.new_device_key_hash == device.key_hash):
+            cmd.status, cmd.error = "failed", "unsafe_or_missing_factory_credentials"
+        else:
+            factory_point(db, connector, ack)
+            cmd.status = "applied"
+            db.flush()
+            return response(db, connector, device)
+    pending = db.scalar(select(Command.id).where(
+        Command.device_id == device.id, Command.type == "FACTORY_RESET",
+        Command.status.in_(("pending", "received")), Command.expires_at > now()).limit(1))
+    if not pending:
+        command = issue(db, connector, device, "FACTORY_RESET")
+        command.expires_at = now() + timedelta(minutes=2)
+    db.flush()
+    return response(db, connector, device)
 
 
 def _current_soc(session, reported_soc, energy_wh):

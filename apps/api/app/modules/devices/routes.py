@@ -12,7 +12,7 @@ from ...models import Command, Connector, Device, now
 from ...schemas import (
     SyncInput,
 )
-from ...security import current_device, current_user, digest
+from ...security import current_user, digest, syncing_device
 from ...service import (
     active_res,
     active_session,
@@ -194,7 +194,7 @@ def factory_reset(device_id: UUID, user=Depends(current_user), db=Depends(db_ses
 
 
 @router.post("/devices/sync")
-def device_sync(data: SyncInput, device=Depends(current_device), db=Depends(db_session)):
+def device_sync(data: SyncInput, device=Depends(syncing_device), db=Depends(db_session)):
     # Sync de 1 s em recarga + sync imediato após aplicar comando: 120/min (antes 40/min
     # derrubava cerca de 1/3 dos syncs com 429 e atrasava os ACKs).
     # Tela com vários carregadores: ``charger_address`` endereça o sync a um carregador adicional
