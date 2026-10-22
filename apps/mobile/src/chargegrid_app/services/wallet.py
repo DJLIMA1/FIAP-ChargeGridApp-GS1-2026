@@ -153,7 +153,7 @@ async def refresh(app):
         legacy = balance(app)
         if not remote.get('legacy_imported'):
             remote = await app.api.request('POST', 'me/wallet/simulate',
-                {'kind': 'import', 'amount': str(max(Decimal('0'), legacy)), 'title': 'Saldo simulado do app'},
+                {'kind': 'import', 'amount': str(max(Decimal('0'), legacy)), 'title': 'Saldo do app'},
                 key='wallet-legacy-import')
         app.shared_wallet = {**remote, 'user_id': _user_id(app)}
         return True

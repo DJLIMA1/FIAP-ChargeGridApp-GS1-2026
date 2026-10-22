@@ -16,7 +16,7 @@ from ..api_client import ApiError
 from ..ui import design, theme
 
 KIOSK_TITLE = 'Totem de autoatendimento'
-KIOSK_TEXTS = {'stripe': 'Pagamento: Stripe (teste)', 'simulated': 'Pagamento simulado (Modo apresentação)'}
+KIOSK_TEXTS = {'stripe': 'Pagamento: Stripe', 'simulated': 'Pagamento: sem cobrança'}
 KIOSK_REASONS = {
     'payments_unavailable': 'Indisponível: pagamentos Stripe não configurados no servidor',
     'point_disabled': 'Indisponível: estação inativa',

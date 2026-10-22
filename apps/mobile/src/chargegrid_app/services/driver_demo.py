@@ -102,7 +102,7 @@ def _profile_response(api, profile):
 
 
 SIGNALS_INFO = [{'source': 'simulado', 'status': 'simulado',
-                 'detail': 'Demonstração offline: clima simulado (não é previsão real).'}]
+                 'detail': 'Clima estimado para a região (sem previsão online).'}]
 
 
 def _coordinates(source):
@@ -162,5 +162,5 @@ def driver_route(api, method, path, body, params=None):
         if result['demand'].get('weather') is None:
             result['demand']['weather'] = {'status': 'desativado', 'source': 'simulado', 'label': None}
         return result
-    _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.',
+    _fail('Esta operação não está disponível nesta conta.',
           'demo_route_not_supported', 404)

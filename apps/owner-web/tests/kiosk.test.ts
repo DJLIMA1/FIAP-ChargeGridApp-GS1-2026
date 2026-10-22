@@ -35,8 +35,8 @@ describe('totem de autoatendimento: status do posto', () => {
   })
 
   it('status numa linha com os mesmos textos do app', () => {
-    expect(kioskStatus({ active: true }, false, true).text).toBe('Pagamento: Stripe (teste)')
-    expect(kioskStatus({ active: true }, true).text).toBe('Pagamento simulado (Modo apresentação)')
+    expect(kioskStatus({ active: true }, false, true).text).toBe('Pagamento: Stripe')
+    expect(kioskStatus({ active: true }, true).text).toBe('Pagamento: sem cobrança')
   })
 
   it('usa o kiosk_status da API e cai no cálculo se o modo da conta mudou depois', () => {
@@ -69,13 +69,13 @@ describe('canal e método das sessões', () => {
     expect(paymentChannel(null)).toBe('app')
     expect(paymentChannel({ ...simulated, channel: undefined })).toBe('kiosk_totem') // simulado só existe no totem
     expect(paymentChannel({ ...simulated, channel: undefined, provider: 'stripe', method: 'card' })).toBe('kiosk')
-    expect(paymentMethodLabel(simulated)).toBe('Simulado')
-    expect(paymentMethodLabel({ ...simulated, provider: 'stripe', method: 'pix' })).toBe('Stripe (teste)')
+    expect(paymentMethodLabel(simulated)).toBe('Sem cobrança')
+    expect(paymentMethodLabel({ ...simulated, provider: 'stripe', method: 'pix' })).toBe('Stripe')
     expect(paymentMethodLabel(null)).toBe('—')
   })
 
   it('selo do simulado não leva "teste"', () => {
-    expect(paymentBadge(simulated)).toMatchObject({ label: 'Cobrado R$ 5,00 (simulado)', test: false })
+    expect(paymentBadge(simulated)).toMatchObject({ label: 'Cobrado R$ 5,00', test: false })
     expect(paymentBadge({ ...simulated, provider: 'stripe', method: 'card', status_label: 'Pago' })).toMatchObject({ test: true })
   })
 
@@ -83,7 +83,7 @@ describe('canal e método das sessões', () => {
     expect(sessionsCsv([session]).split('\r\n')[0].endsWith('Motivo de término')).toBe(true)
     const [header, totem, app] = sessionsCsv([{ ...session, payment: simulated }, { ...session, id: 'e2', payment: null }]).split('\r\n')
     expect(header.endsWith('Motivo de término,Canal,Pagamento')).toBe(true)
-    expect(totem.endsWith(`requested,${CHANNEL_LABELS.kiosk_totem},Simulado`)).toBe(true)
+    expect(totem.endsWith(`requested,${CHANNEL_LABELS.kiosk_totem},Sem cobrança`)).toBe(true)
     expect(app.endsWith('requested,App,—')).toBe(true)
   })
 })

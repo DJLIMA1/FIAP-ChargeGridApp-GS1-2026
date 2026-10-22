@@ -77,7 +77,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
     if point is None:
         raise ApiError('O ponto vinculado não foi encontrado neste posto.')
     if point.get('retired'):
-        raise ApiError('Este ponto simulado foi desvinculado. Adicione outro equipamento na gestão.' if is_demo else
+        raise ApiError('Este ponto foi desvinculado. Adicione outro equipamento na gestão.' if is_demo else
                        'Este ponto foi desvinculado. Escaneie o novo QR da central para configurar outro ponto.')
 
     point_id = point['id']
@@ -96,9 +96,9 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
         tail.append(status_card(
-            design.txt('PONTO SIMULADO', 11, 'bold', theme.ACCENT),
-            _note('Nome, endereço, tarifa e recargas são exemplos locais. Nenhum equipamento físico será acionado.'),
-            _summary_line('Código para testar uma recarga após publicar', DEMO_PRESENCE_CODE), padding=16))
+            design.txt('NOVO PONTO', 11, 'bold', theme.ACCENT),
+            _note('Confira nome, endereço e tarifa antes de publicar.'),
+            _summary_line('Código para a primeira recarga após publicar', DEMO_PRESENCE_CODE), padding=16))
 
     if existing_station:
         controls.append(_group(
@@ -148,7 +148,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
             await app.go('operator', station_id=station_id, point_id=point_id,
                          onboarding=True, step=2, **context)
 
-        tail.insert(0, _note('Use um nome e endereço fictícios. A conta demo sugere endereços de exemplo.' if is_demo else
+        tail.insert(0, _note('Use um nome reconhecível. A busca sugere endereços de exemplo.' if is_demo else
                              'Use um nome reconhecível e o endereço da instalação, não o seu endereço pessoal.'))
         controls += [
             _form([name_box, address_box, ident_box,
@@ -184,7 +184,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
 
         controls += [
             design.txt('Ponto ' + point['public_code'], 13, 'semibold'),
-            _note('O código público identifica este ponto simulado. Para testar a recarga, '
+            _note('O código público identifica este ponto. Para fazer uma recarga, '
                   f'use {DEMO_PRESENCE_CODE} no modo motorista.' if is_demo else
                   'O código público identifica este ponto. Para iniciar a recarga, o cliente também '
                   'informa o código temporário #F exibido pela central.'),
@@ -196,7 +196,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         ]
 
     else:
-        connection = ('Online simulado' if point.get('online') else 'Offline simulado') if is_demo else (
+        connection = ('Online agora' if point.get('online') else 'Offline agora') if is_demo else (
             'Online agora' if point.get('online') else 'Offline agora')
         controls += [
             _group(design.section_label('Posto'),
@@ -212,7 +212,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
                    design.txt(connection, 12, 'semibold', theme.SUCCESS if point.get('online') else theme.GRAY_TEXT)),
         ]
         if not point.get('online'):
-            controls.append(_note('Este equipamento está offline na simulação. Nenhum equipamento físico precisa estar conectado.' if is_demo else
+            controls.append(_note('Este equipamento está offline agora. Você pode publicar e conectar depois.' if is_demo else
                                   'O equipamento ainda não está conectado. Você pode publicar agora, mas o ponto só ficará disponível após a conexão.',
                                   theme.WARNING))
         if existing_station and not station.get('active'):
@@ -233,7 +233,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
                 await app.api.request('PATCH', f'stations/{station_id}', {'active': True})
             app.notice('Ponto configurado. O posto continua desativado; reative-o na gestão quando estiver pronto.'
                        if existing_station and not station.get('active') else
-                       f'Ponto simulado publicado! Teste uma recarga no modo motorista com {DEMO_PRESENCE_CODE}.' if is_demo else
+                       f'Ponto publicado! Faça uma recarga no modo motorista com {DEMO_PRESENCE_CODE}.' if is_demo else
                        'Ponto publicado! Ele estará disponível para recarga quando estiver online e livre.')
             await app.go('operator')
 

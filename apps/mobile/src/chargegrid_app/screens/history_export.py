@@ -17,7 +17,7 @@ from ..ui import theme
 from ..ui.design import card_box, secondary_button, txt
 
 PERIODS = ((30, 'Últimos 30 dias'), (90, 'Últimos 90 dias'), (365, 'Últimos 12 meses'))
-PDF_DEMO_NOTE = 'PDF disponível só na conta real; na conta demo exporte o CSV.'
+PDF_DEMO_NOTE = 'PDF indisponível nesta conta; exporte o CSV.'
 
 
 def window(days, now=None):

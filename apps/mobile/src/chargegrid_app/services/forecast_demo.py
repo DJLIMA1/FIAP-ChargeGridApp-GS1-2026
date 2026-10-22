@@ -54,7 +54,7 @@ def history(api, station_id, weeks=4):
 
 
 def best_times(api, station_id, hours=12):
-    station = api._get(api._stations, station_id, 'Posto demonstrativo não encontrado.')
+    station = api._get(api._stations, station_id, 'Posto não encontrado.')
     series, local_now, connectors = station_series(api, station_id, 5)
     status = api._demand(station)
     now_price = min((pricing.connector_price(status, c['id'], c['price_per_kwh'])[1] for c in connectors), default=None)

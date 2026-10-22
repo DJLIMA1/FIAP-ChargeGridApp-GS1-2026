@@ -131,7 +131,7 @@ export default function Forecast() {
         ) : null}
         {data?.includes_synthetic || history.data?.includes_synthetic ? (
           <Banner tone="info" icon="alert" title="Inclui histórico sintético">
-            Parte do histórico desta estação é sintética (rotulada) e serve para demonstração. Os números de receita e recargas do painel não usam esses dados.
+            Parte do histórico desta estação é sintética (rotulada). Os números de receita e recargas do painel não usam esses dados.
           </Banner>
         ) : null}
         {forecast.error ? <ErrorBanner error={forecast.error} onRetry={forecast.reload} /> : null}
@@ -199,12 +199,12 @@ export default function Forecast() {
             ) : null}
             {data && !accuracy ? <p className="dim">Sem histórico para medir.</p> : null}
           </Card>
-          <Card title="Como o modelo foi testado" sub={data?.model ? data.model.trained_on : 'Teste offline'}>
+          <Card title="Como o modelo foi validado" sub={data?.model ? data.model.trained_on : 'Validação offline'}>
             {data?.model ? (
               <>
                 <p style={{ margin: 0 }}>
                   {data.model.library}, treinado só com histórico sintético rotulado e testado em semanas e estações que ele não viu ({data.model.offline_test.period}).
-                  {' '}No teste, o resultado foi: <strong>{data.model.selected === 'gbm' ? 'modelo venceu a média' : 'média venceu o modelo'}</strong>
+                  {' '}Na validação, o resultado foi: <strong>{data.model.selected === 'gbm' ? 'modelo venceu a média' : 'média venceu o modelo'}</strong>
                   {comparison(data.model.offline_test.gbm, data.model.offline_test.baseline) ? ` (${comparison(data.model.offline_test.gbm, data.model.offline_test.baseline)})` : ''}.
                 </p>
                 <MetricsTable base={data.model.offline_test.baseline} model={data.model.offline_test.gbm} daily={data.model.offline_test.daily} />

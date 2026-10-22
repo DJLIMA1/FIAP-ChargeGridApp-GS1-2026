@@ -180,10 +180,6 @@ class DesignKitTests(unittest.TestCase):
         avatar = design.avatar(FakeApp(demo=False), 25)
         self.assertEqual(texts(avatar), ['A'])
 
-    def test_demo_note_only_in_demo(self):
-        self.assertEqual(len(texts(design.demo_note(FakeApp(demo=True)))), 1)
-        self.assertFalse(design.demo_note(FakeApp(demo=False)).visible)
-
 
 class CaptureHookTests(unittest.TestCase):
     def test_params_are_typed(self):

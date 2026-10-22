@@ -87,16 +87,6 @@ def _round(field):
     return ft.Container(field, border_radius=14, bgcolor=theme.INPUT_BG, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
 
 
-def chatbot_button(app, height=40):
-    """Botão branco "Fale com o ChatBot" (ícone de balão redondo, texto regular); hoje só na lista Suas Estações."""
-    content = ft.Row([ft.Image(src='/design/nav_chat.svg', width=20, height=20, color=theme.BTN_PRIMARY_FG,
-                               exclude_from_semantics=True),
-                      design.txt('Fale com o ChatBot', 15, 'regular', theme.BTN_PRIMARY_FG)],
-                     spacing=10, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    return ft.Container(content, height=height, bgcolor=theme.BTN_PRIMARY, border_radius=design.RADIUS_BTN,
-                        alignment=ft.Alignment(0, 0), on_click=app.link('chat'), ink=True)
-
-
 async def _load(app, station_id):
     import asyncio
     station, listing = await asyncio.gather(
@@ -247,7 +237,7 @@ def _connectors_page(app, station):
             design.txt(chargers.ADD_HINT, 11, 'regular', theme.GRAY_TEXT)]
     if is_demo:
         from ..demo import DEMO_PRESENCE_CODE
-        body.append(design.txt(f'Teste no modo motorista com {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
+        body.append(design.txt(f'Experimente no modo motorista com o código {DEMO_PRESENCE_CODE}.', 11, 'regular', theme.GRAY_TEXT))
     return design.page(*body, gap=16, gutter=3)
 
 

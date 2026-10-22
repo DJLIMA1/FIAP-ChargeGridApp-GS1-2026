@@ -19,7 +19,7 @@ from ..services import wallet
 from ..ui import design, theme
 from ..ui.components import money
 
-PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-demo-simulado5204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
+PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-pix-recarga015204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
 
 
 def parse_amount(value):
@@ -45,7 +45,7 @@ def _date(value):
 
 def balance_card(app):
     return ft.Container(
-        ft.Column([ft.Text('SALDO SIMULADO', size=11, color=theme.TEXT_COLOR, font_family=design.FONT,
+        ft.Column([ft.Text('SALDO DISPONÍVEL', size=11, color=theme.TEXT_COLOR, font_family=design.FONT,
                            style=ft.TextStyle(letter_spacing=1.4)),
                    design.money_text(wallet.balance(app), 28)], spacing=1),
         bgcolor=theme.CARD, border_radius=design.RADIUS_CARD, padding=ft.Padding(left=16, right=16, top=15, bottom=13),
@@ -169,7 +169,7 @@ def _method_card(title, icon, selected, on_click):
 
 async def _confirm(app, amount):
     try:
-        await wallet.shared_credit(app, amount, 'Pix Recebido (simulado)')
+        await wallet.shared_credit(app, amount, 'Pix Recebido')
     except ApiError as error:
         app.notice(str(error))
         return

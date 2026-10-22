@@ -194,14 +194,14 @@ async def build(app, station_id=None, show_real=False, scan=False, **_):
         return design.page(
             setup_title(app, 'Vincular Central'),
             _intro_card(destination, [
-                'Adicione uma central simulada a esta conta de demonstração.',
+                'Adicione uma central a esta conta.',
                 'Depois informe nome, endereço e tarifa. ' + (
                     'O posto reúne os pontos no mesmo endereço. ' if station else
-                    'Será um novo local simulado, publicado só quando você quiser. ') +
-                'Esta central é inteiramente fictícia: nenhuma câmera, QR físico ou carregador real é necessário.']),
-            cta('Adicionar central simulada', app.action(add_demo_equipment)),
-            design.txt('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma '
-                       'recarga simulada.', 12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER),
+                    'Será um novo local, publicado só quando você quiser. ') +
+                'Nenhuma câmera ou QR é necessário nesta etapa.']),
+            cta('Adicionar central', app.action(add_demo_equipment)),
+            design.txt('Depois do vínculo você poderá editar, publicar e fazer uma recarga pelo modo motorista.',
+                       12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER),
             cta('Voltar', back, primary=False),
             gap=16)
     intro = _intro_card(destination, [

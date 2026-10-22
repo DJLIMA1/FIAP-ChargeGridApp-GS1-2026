@@ -38,12 +38,13 @@ from ..ui.design import (
     section_label,
     txt,
 )
+from ..ui.wording import clean_receipt
 from ..ui.states import SESSION_TONES, empty_state, status_chip
 from .history_owner import BLUE, BLUE_FILL, line_chart
 
 TITLE = 'Detalhes da recarga'
 EXPORT_LABEL = 'Exportar recibo'
-EXPORT_DEMO_NOTE = 'Conta demo: PDF de exemplo gerado no aparelho, sem valor fiscal.'
+EXPORT_DEMO_NOTE = 'PDF gerado no aparelho, sem valor fiscal.'
 NOT_FOUND = 'Recarga não encontrada'
 SELLER_PAGE = 100
 PAYMENT_STATUS = {
@@ -57,14 +58,12 @@ OVERSTAY_PHASES = {'grace': 'Em tolerância (carro conectado)', 'billing': 'Em c
 REFUND_STATUS = {'refunded': 'Valor devolvido', 'released': 'Sobra da pré-autorização liberada',
                  'pending': 'Acerto pendente', 'none': 'Sem devolução'}
 PAYMENT_METHODS = {'card': 'Cartão', 'pix': 'Pix', 'wallet': 'Saldo', 'balance': 'Saldo'}
-PAYMENT_ENVIRONMENTS = {'mock': 'Pagamento simulado (nenhum dinheiro real)',
-                        'sandbox': 'Pagamento de teste (sandbox)', 'production': 'Pagamento real'}
+# Ambiente do pagamento: só a produção ganha uma linha; ``mock``/``sandbox`` não recebem selo nem aviso.
+PAYMENT_ENVIRONMENTS = {'production': 'Pagamento confirmado pelo provedor'}
 POWER_STATUS = {'applied': 'Aplicada', 'requested': 'Pedida, sem confirmação', 'failed': 'Não aplicada'}
-TEST_BADGES = {'mock': 'SIMULADO', 'sandbox': 'TESTE'}
 SPEEDS = {'reduced': 'Reduzida · mais econômica', 'max': 'Máxima · mais rápida'}
 SECTION_STATES = ('available', 'pending', 'not_applicable', 'unavailable')
 BADGE_AMBER = '#F5B73A'  # selo fixo (preto sobre âmbar é legível nos temas claro e escuro)
-BADGE_DEMO = '#FF858A'
 
 
 # ----------------------------------------------------------------- formatação
@@ -231,7 +230,7 @@ def _metric(label, value):
 def hero(receipt):
     """Resumo: posto, status, energia/total/tempo e data, número e selos."""
     station, times, point = receipt.get('station') or {}, receipt.get('times') or {}, receipt.get('point') or {}
-    energy, charges, labels = receipt.get('energy') or {}, receipt.get('charges') or {}, receipt.get('labels') or {}
+    energy, charges = receipt.get('energy') or {}, receipt.get('charges') or {}
     place = area(station.get('address')) or ' · '.join(
         str(value) for value in (point.get('public_code'), point.get('connector_type')) if value)
     head = ft.Row([icon_tile(None, size=46),
@@ -252,14 +251,7 @@ def hero(receipt):
     when = [txt(period, 11.5, 'regular', expand=True)]
     if receipt.get('number'):
         when.append(txt(f"Nº {receipt['number']}", 11, 'semibold', theme.GRAY_TEXT))
-    badges = []
-    if labels.get('demo'):
-        badges.append(badge('CONTA DEMO', bgcolor=BADGE_DEMO))
-    if labels.get('simulated') or labels.get('measurement') == 'simulated':
-        badges.append(badge('SIMULADO'))
     controls = [head, _divider(), metrics, ft.Row(when, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
-    if badges:
-        controls.append(ft.Row(badges, spacing=6, wrap=True))
     return card_box(ft.Column(controls, spacing=14, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                     padding=ft.Padding(left=16, right=16, top=16, bottom=16), data='detail-hero')
 
@@ -307,11 +299,11 @@ def costs_section(price, charges, *, seller=False, paid=None):
     return _section('Custos', rows, key='costs')
 
 
-def _battery(energy, session, *, demo):
+def _battery(energy, session):
     start, end = _dec(energy.get('soc_start')), _dec(energy.get('soc_end'))
     if end is None and start is None:
         return []
-    label = 'Bateria simulada' if demo else 'Bateria'
+    label = 'Bateria'
     value = f'{_pct(start)} → {_pct(end)}' if start is not None and end is not None else _pct(end if end is not None
                                                                                               else start)
     capacity = _dec((session or {}).get('battery_kwh'))
@@ -350,7 +342,7 @@ def _power(power):
     return rows
 
 
-def session_section(receipt, session=None, *, demo=False, seller=False):
+def session_section(receipt, session=None, *, seller=False):
     """Horários, término, bateria, velocidade/limites, origem da energia e potência."""
     times, energy = receipt.get('times') or {}, receipt.get('energy') or {}
     price, session = receipt.get('price') or {}, session or {}
@@ -360,7 +352,7 @@ def session_section(receipt, session=None, *, demo=False, seller=False):
             _row('Duração', duration(minutes) if minutes is not None else '—')]
     if times.get('end_reason_label'):
         rows.append(_row('Término', times['end_reason_label']))
-    rows.extend(_battery(energy, session, demo=demo))
+    rows.extend(_battery(energy, session))
     # Velocidade só quando registrada (sessão ou termos travados); recargas antigas não ganham "Máxima".
     tier = session.get('power_tier') or (price.get('power_tier') if price.get('recorded') else None)
     if tier in SPEEDS:
@@ -440,7 +432,6 @@ def _overstay_rows(overstay):
 def payment_section(payment, overstay=None):
     """Pagamento do motorista (seção ``payment`` do recibo) e, se houve, a permanência."""
     payment, overstay = payment or {'status': 'not_applicable'}, overstay or {'status': 'not_applicable'}
-    badges = []
     if not has_payment(payment):
         rows = [_note(payment.get('note') or 'Sem pagamento registrado: nenhum valor foi cobrado.')]
     else:
@@ -468,13 +459,11 @@ def payment_section(payment, overstay=None):
                              caption=payment.get('provider') and f"Provedor: {payment['provider']}"))
         if payment.get('confirmed_at'):
             rows.append(_row('Confirmado em', _stamp(payment['confirmed_at'])))
-        rows.append(txt(PAYMENT_ENVIRONMENTS.get(environment, environment or 'Ambiente não informado'), 10.5,
-                        'regular', theme.WARNING if environment in TEST_BADGES else theme.GRAY_TEXT))
-        if environment in TEST_BADGES:
-            badges.append(badge(TEST_BADGES[environment]))
+        if environment in PAYMENT_ENVIRONMENTS:
+            rows.append(txt(PAYMENT_ENVIRONMENTS[environment], 10.5, 'regular', theme.GRAY_TEXT))
     if has_overstay(overstay):
         rows.extend(_overstay_rows(overstay))
-    return _section('Pagamento', rows, key='payment', badges=badges)
+    return _section('Pagamento', rows, key='payment')
 
 
 def seller_payment_section(session):
@@ -558,11 +547,11 @@ def export_control(app, receipt):
 
 def detail_controls(app, receipt, session=None, *, seller=False):
     """Seções da tela na ordem (também usadas pelos testes)."""
-    demo = is_demo(app)
+    receipt = clean_receipt(receipt)
     paid = bool((session or {}).get('payment'))
     controls = [hero(receipt),
                 costs_section(receipt.get('price') or {}, receipt.get('charges') or {}, seller=seller, paid=paid),
-                session_section(receipt, session, demo=demo, seller=seller)]
+                session_section(receipt, session, seller=seller)]
     if seller:
         controls.append(seller_payment_section(session or {}))
     else:
@@ -596,7 +585,7 @@ def seller_receipt(session, *, demo=False):
         'demo': demo,
     })
     if demo:  # mesmo número legível do recibo demo do motorista (``demo_receipt.receipt``)
-        receipt['number'] = 'DEMO' + str(session.get('id')).rsplit('-', 1)[-1].zfill(4)[-4:]
+        receipt['number'] = 'CG' + str(session.get('id')).rsplit('-', 1)[-1].zfill(4)[-4:]
     return receipt
 
 

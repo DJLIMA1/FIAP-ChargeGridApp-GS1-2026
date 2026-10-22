@@ -13,7 +13,7 @@ def journey_summary(record, *, reservation=False, demo=False):
     status = record.get('status')
     controls = [ft.Text('CONFIRMAÇÃO DA RESERVA' if reservation else 'JORNADA DA RECARGA',
                         size=11, weight=ft.FontWeight.BOLD, color=theme.GRAY_TEXT)]
-    source = 'simulador' if demo else 'ponto'
+    source = 'ponto'
     requested = 'Pedido registrado'
     if record.get('created_at'):
         requested += ' · ' + date_time(record['created_at'])
@@ -36,7 +36,7 @@ def journey_summary(record, *, reservation=False, demo=False):
                                     size=13, color=theme.TEXT_COLOR))
         explanation = {
             'starting': f'Início solicitado; aguardando confirmação do {source}.',
-            'charging': ('Recarga simulada em andamento.' if demo else 'Recarga em andamento, confirmada pelo ponto.'),
+            'charging': 'Recarga em andamento, confirmada pelo ponto.',
             'stopping': f'Parada solicitada; aguardando confirmação do {source}.',
             'completed': 'Sessão encerrada.',
             'failed': 'Sessão encerrada com falha.',

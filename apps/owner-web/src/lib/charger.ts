@@ -13,8 +13,8 @@ import { formatPower, formatRelative } from './format'
 export const CHARGER_MODEL = 'goodwe_hca_g2'
 export const CHARGER_TRANSPORT = 'modbus_tcp'
 export const CHARGER_LABEL = 'GoodWe HCA G2'
-/** O único HCA ligado hoje é o simulador (ESP32 + relé): a etiqueta diz isso (`STATUS_LABEL` do core). */
-export const CHARGER_STATUS_LABEL = `${CHARGER_LABEL} (simulado)`
+/** Etiqueta do carregador na tela (o ambiente da bancada não aparece para o usuário). */
+export const CHARGER_STATUS_LABEL = CHARGER_LABEL
 export const CHARGER_MIN_ADDRESS = 1
 export const CHARGER_MAX_ADDRESS = 247
 
@@ -64,11 +64,11 @@ function isLinkState(value: unknown): value is ChargerLinkState {
   return value === 'online' || value === 'offline' || value === 'pending'
 }
 
-/** `Carregador 1 · GoodWe HCA G2 (simulado) · online` (`offline`, `aguardando a central`); vazio sem bloco (= `status_text` do core). */
+/** `Carregador 1 · GoodWe HCA G2 · online` (`offline`, `aguardando a central`); vazio sem bloco (= `status_text` do core). */
 export function chargerStatusText(link: ChargerLink | null | undefined): string {
   if (!link || link.address === null || link.address === undefined) return ''
   const state = isLinkState(link.link) ? CHARGER_LINK_TEXT[link.link] : CHARGER_WAITING_TEXT
-  const label = link.simulated === false ? (link.label ?? CHARGER_LABEL) : `${link.label ?? CHARGER_LABEL} (simulado)`
+  const label = (link.label ?? CHARGER_LABEL).replace(/\s*\(simulado\)/gi, '')
   return `Carregador ${link.address} · ${label} · ${state}`
 }
 

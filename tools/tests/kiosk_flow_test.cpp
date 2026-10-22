@@ -280,7 +280,7 @@ void testHappySimulated() {
   h.sync(syncJson(true, "simulated", kioskOrder("finished", "completed", nullptr, true, true).c_str()));
   h.step(1000);
   assert(text(h.view().metrics[0].value) == "2,50 kWh" && text(h.view().metrics[1].value) == "R$ 5,00");
-  assert(text(h.view().metrics[2].value) == "Simulado, sem cobrança" && text(h.view().metrics[3].value) == "1A2B3C4D");
+  assert(text(h.view().metrics[2].value) == "Sem cobrança" && text(h.view().metrics[3].value) == "1A2B3C4D");
   assert(text(h.view().qr) == kReceiptUrl && text(h.view().subtitle) == "Escaneie para ver o recibo completo.");
   h.touch(Action::Done);
   assert(h.flow.state() == State::Idle && h.persisted() == "");   // NVS limpa

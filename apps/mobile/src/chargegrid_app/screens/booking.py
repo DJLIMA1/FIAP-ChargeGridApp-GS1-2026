@@ -54,8 +54,8 @@ PAY_ICONS = {'balance': ft.Icons.WALLET, 'stripe': ft.Icons.CREDIT_CARD, 'pix': 
              'card': ft.Icons.CREDIT_CARD}
 # Modo apresentação: as opções e o Pix simulados da 0.6.x (nada é cobrado nem enviado).
 SIMULATED_OPTIONS = ['balance', 'pix', 'card']
-PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-demo-simulado5204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
-STRIPE_SUBTITLE = 'Página segura da Stripe · ambiente de teste'
+PIX_CODE = '00020126580014br.gov.bcb.pix0136chargegrid-pix-recarga015204000053039865802BR5909ChargeGrid6009SAO PAULO6304ABCD'
+STRIPE_SUBTITLE = 'Página segura da Stripe'
 POLL_SECONDS = 2
 LAST_STEP = 8
 
@@ -101,7 +101,7 @@ def _fee_box(free=False):
     return ft.Container(
         ft.Row([ft.Icon(ft.Icons.INFO_OUTLINE, size=20, color=AMBER),
                 ft.Text(spans=[ft.TextSpan('Taxa de reserva: ', ft.TextStyle(font_family=design.FONT, size=11.6)),
-                               ft.TextSpan('sem cobrança no pagamento de teste' if free else
+                               ft.TextSpan('sem cobrança no pagamento pela Stripe' if free else
                                            rules.money(rules.RESERVATION_FEE),
                                            ft.TextStyle(font_family=design.FONT_BOLD, size=11.6))],
                         color=theme.TEXT_COLOR)],
@@ -267,7 +267,7 @@ def prepay_note(stripe_enabled, presentation=False):
     """Aviso do posto que exige pagamento antecipado (``prepay_required``)."""
     if presentation:
         return ft.Container(design.warning_box(payments.PRESENTATION_PREPAY), data='prepay-presentation')
-    text = ('Este posto exige pagamento antecipado pelo app (Stripe · teste): a recarga só começa depois da '
+    text = ('Este posto exige pagamento antecipado pelo app (Stripe): a recarga só começa depois da '
             'confirmação.' if stripe_enabled else
             'Este posto exige pagamento antecipado, mas o pagamento pelo app está indisponível agora: '
             'a recarga não poderá começar.')
@@ -806,9 +806,9 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         elif coupon and state['by'] == 'value':
             total_lines.append(design.txt(_coupon_value_note(estimate, coupon), 11, 'semibold', data='total-coupon'))
         if stripe:
-            note = 'Pré-autorização na Stripe (teste): cobramos só a energia confirmada pelo equipamento.'
+            note = 'Pré-autorização na Stripe: cobramos só a energia confirmada pelo equipamento.'
             if reserving:
-                note += ' Sem taxa de reserva no pagamento de teste.'
+                note += ' Sem taxa de reserva no pagamento pela Stripe.'
             if overstay and overstay.get('max_amount') is not None:
                 # A API reserva também o teto da permanência (``overstay_reserve``) no valor autorizado.
                 note += (f" A pré-autorização inclui até {rules.money(overstay['max_amount'])} da taxa de "
@@ -866,7 +866,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                 try:
                     await payments.cancel(app, result['payment_id'])
                 except ApiError:
-                    app.notice('Reserva cancelada. O pagamento de teste é liberado no fim do prazo de início.')
+                    app.notice('Reserva cancelada. A pré-autorização é liberada no fim do prazo de início.')
             if result['pay'] == 'balance':
                 await wallet.shared_credit(app, result['paid'], f"Estorno de reserva {result['station']}".strip())
             prepaid.cancel_reservation(app, result['id'])
@@ -926,7 +926,7 @@ def _simulated_payment(app, state, amount, finish, failing, blocked=False):
 
     async def copy_code():
         await ft.Clipboard().set(PIX_CODE)
-        app.notice('Código Pix copiado (demonstração).')
+        app.notice('Código Pix copiado.')
     if state['pay'] == 'card':
         def card_field(text, hint, **kwargs):
             field = design.input_field('', hint, **kwargs)
@@ -943,7 +943,7 @@ def _simulated_payment(app, state, amount, finish, failing, blocked=False):
         async def pay_card():
             # Os campos são apenas ilustrativos: valores nunca são guardados nem enviados.
             if not all((item.controls[1].value or '').strip() for item in fields.values()):
-                raise failing('Preencha os dados do cartão (demonstração: nada é enviado ou guardado).')
+                raise failing('Preencha os dados do cartão.')
             for item in fields.values():
                 item.controls[1].value = ''
             await pay()
@@ -983,11 +983,11 @@ def _simulated_payment(app, state, amount, finish, failing, blocked=False):
 
 # ---------------------------------------------------------------------- 7: aguardando pagamento
 AWAIT_TEXTS = {
-    'awaiting_payment': 'Aguardando a confirmação da Stripe (teste)…',
-    'declined': 'Pagamento recusado. Tente de novo com outro cartão de teste na mesma página.',
+    'awaiting_payment': 'Aguardando a confirmação da Stripe…',
+    'declined': 'Pagamento recusado. Tente de novo com outro cartão na mesma página.',
     'expired': 'O prazo do pagamento acabou. Nada foi cobrado.',
     'canceled': 'Pagamento cancelado. Nada foi cobrado.',
-    'funded': 'Pagamento confirmado (teste). Continuando…',
+    'funded': 'Pagamento confirmado. Continuando…',
 }
 
 
@@ -1008,9 +1008,9 @@ def _awaiting_payment(app, state, station_id, finish, open_payment, config, nav)
     test_card = config.get('test_card') or payments.TEST_CARD
     hint = ft.Container(
         ft.Row([ft.Icon(ft.Icons.CREDIT_CARD, size=20, color=theme.TEXT_COLOR),
-                ft.Column([design.txt(f'Cartão de teste: {test_card}', 12.2, 'bold'),
-                           design.txt('Use qualquer validade futura e qualquer CVC. Ambiente de teste: nenhum valor '
-                                      'real é cobrado.', 11, 'regular', theme.GRAY_TEXT)], spacing=2, expand=True)],
+                ft.Column([design.txt(f'Cartão: {test_card}', 12.2, 'bold'),
+                           design.txt('Use qualquer validade futura e qualquer CVC.', 11, 'regular',
+                                      theme.GRAY_TEXT)], spacing=2, expand=True)],
                spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='test-card-hint',
         padding=ft.Padding(left=13, right=13, top=10, bottom=10))
@@ -1069,7 +1069,7 @@ def _awaiting_payment(app, state, station_id, finish, open_payment, config, nav)
             except ApiError as exc:
                 # Ex.: o ponto ficou indisponível ao reservar. O pagamento segue confirmado (e é liberado no
                 # prazo de início); o motorista pode cancelar agora. A próxima consulta tenta de novo.
-                status.value, status.color = f'Pagamento confirmado (teste), mas: {exc}', theme.ERROR
+                status.value, status.color = f'Pagamento confirmado, mas: {exc}', theme.ERROR
                 cancel_button.visible = True
                 app.page.update()
             return

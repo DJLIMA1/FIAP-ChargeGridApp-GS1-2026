@@ -50,8 +50,8 @@ def button(text, action, secondary=False):
     return btn(text, action, 'secondary' if secondary else 'primary', height=55)
 
 LABELS = {'starting':'Aguardando equipamento iniciar','charging':'Recarga confirmada','stopping':'Parada pendente no equipamento','completed':'Recarga concluída','failed':'Falha confirmada','interrupted':'Recarga interrompida'}
-DEMO_LABELS = {'starting':'Aguardando início simulado','charging':'Recarga simulada em andamento','stopping':'Finalizando recarga simulada','completed':'Recarga simulada concluída','failed':'Falha simulada','interrupted':'Recarga simulada interrompida'}
-SOURCE = {'simulated':'Simulada pelo equipamento','measured':'Medida','estimated':'Estimada'}
+DEMO_LABELS = LABELS  # a conta de exemplo usa os mesmos rótulos (nada de "simulada" na tela)
+SOURCE = {'simulated':'Calculada pelo equipamento','measured':'Medida','estimated':'Estimada'}
 ACTIVE = {'starting','charging','stopping'}
 END_REASONS = {'user_stop':'Parada solicitada', 'stop_requested':'Parada solicitada', 'duration_limit':'Limite de duração atingido', 'max_duration':'Limite de duração atingido', 'cost_limit':'Limite de custo atingido', 'max_cost':'Limite de custo atingido', 'disconnected':'Cabo desconectado', 'device_fault':'Falha no equipamento', 'reboot':'Equipamento reiniciado'}
 END_REASONS.update(requested='Parada solicitada', communication_lost='Conexão perdida com o servidor',
@@ -226,17 +226,17 @@ def info_card(title, detail, data, icon=ft.Icons.TIMER_OUTLINED, color=None):
 
 
 def settlement_card(payment):
-    """Acerto do pagamento: "Cobrado R$ X · Devolvido R$ Y (teste)" ou "acertando"."""
+    """Acerto do pagamento: "Cobrado R$ X · Devolvido R$ Y" ou "acertando"."""
     if not payment:
         return None
     text = payments.settlement_text(payment)
     if text:
         return info_card(text,payments.settlement_note(payment),'payment-settlement',ft.Icons.CHECK_CIRCLE,theme.SUCCESS)
     if (payment.get('settlement') or {}).get('status') == 'failed':
-        return info_card('Pagamento em revisão (teste)',payments.settlement_note(payment),'payment-settlement',
+        return info_card('Pagamento em revisão',payments.settlement_note(payment),'payment-settlement',
                          ft.Icons.INFO_OUTLINE)
     if payments.pending_settlement(payment):
-        return info_card('Acertando o valor com a Stripe (teste)…',
+        return info_card('Acertando o valor com a Stripe…',
                          'Cobramos só a energia confirmada pelo equipamento; o restante é liberado ou devolvido.',
                          'payment-settlement',ft.Icons.HOURGLASS_EMPTY)
     return payment_badge(payment)
@@ -262,9 +262,7 @@ def _metrics(session):
 
 def session_card(session, *, demo=False):
     progress, progress_label = _progress(session)
-    if demo and progress_label.startswith('Bateria:'):
-        progress_label = progress_label.replace('Bateria:','Bateria simulada:',1)
-    labels = DEMO_LABELS if demo else LABELS
+    labels = LABELS
     controls = [ft.Text(labels.get(session['status'],session['status']),size=20,weight=ft.FontWeight.BOLD,color=theme.TEXT_COLOR),
                 ft.Text(progress_label,size=28 if progress is not None else 13,
                         weight=ft.FontWeight.BOLD if progress is not None else ft.FontWeight.NORMAL,
@@ -273,14 +271,14 @@ def session_card(session, *, demo=False):
         controls.append(ft.ProgressBar(value=progress,color=theme.RED,bgcolor=theme.LIGHT_GRAY,bar_height=8))
     if progress_label.startswith('Tempo estimado:'):
         controls.append(ft.Text('Baseado nos horários recebidos, não no nível da bateria.',size=12,color=theme.GRAY_TEXT))
-    controls += [ft.Text('Dados simulados nesta conta' if demo else SOURCE.get(session.get('source'),'Origem não informada'),size=12,color=theme.GRAY_TEXT),
+    controls += [ft.Text(SOURCE.get(session.get('source'),'Origem não informada'),size=12,color=theme.GRAY_TEXT),
                  ft.Divider(color=theme.LIGHT_GRAY),
                  ft.Text(f"Energia: {float(session.get('energy_wh') or 0)/1000:.3f} kWh".replace('.', ','),size=17,color=theme.TEXT_COLOR),
                  ft.Text('Custo estimado: '+money(session.get('cost_estimate')),size=17,color=theme.TEXT_COLOR),
                  ft.Text('Última medida: '+date_time(session.get('last_measurement_at')),size=12,color=theme.GRAY_TEXT)]
     if session['status'] in ACTIVE and not session.get('online'):
-        controls.append(ft.Text('Equipamento simulado offline. Nenhum equipamento real é acionado.' if demo else
-                                'Equipamento offline. Últimos dados mantidos; parada física não confirmada.',color=theme.ERROR))
+        controls.append(ft.Text('Equipamento offline. Últimos dados mantidos; parada física não confirmada.',
+                                color=theme.ERROR))
     if session.get('end_reason'):
         controls.append(ft.Text('Encerramento: '+END_REASONS.get(session['end_reason'],session['end_reason']),size=12,color=theme.GRAY_TEXT))
     details = [ft.Text('Limite de duração: '+str(session['max_duration_minutes'])+' min',color=theme.GRAY_TEXT)]
@@ -297,8 +295,7 @@ def offline_alert(session, *, demo=False):
     """Aviso de segurança: equipamento offline durante a recarga (vazio quando está tudo certo)."""
     if session['status'] not in ACTIVE or session.get('online'):
         return None
-    text = ('Equipamento simulado offline. Nenhum equipamento real é acionado.' if demo else
-            'Equipamento offline. Últimos dados mantidos; parada física não confirmada.')
+    text = 'Equipamento offline. Últimos dados mantidos; parada física não confirmada.'
     return ft.Container(ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,size=20,color=theme.ERROR),
                                 d.txt(text,12.5,'semibold',expand=True)],
                                spacing=10,vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -334,8 +331,6 @@ def details_card(session, *, demo=False):
     if session.get('end_reason'):
         rows.append(_detail_row('Encerramento',END_REASONS.get(session['end_reason'],session['end_reason'])))
     controls = [d.txt('Detalhes',13,'bold'),*rows]
-    if demo:
-        controls.append(d.txt('Dados simulados nesta conta',11,'regular',theme.GRAY_TEXT))
     return d.card_box(ft.Column(controls,spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),padding=16)
 
 
@@ -561,8 +556,8 @@ def _review(draft):
             ('Velocidade','Reduzida · mais econômica' if draft.get('power_tier') == 'reduced' else 'Máxima · mais rápida'),
             ('Tarifa',f"{money(_tariff(draft))}/kWh" if point.get('price_per_kwh') is not None else None),
             ('Cupom',body.get('coupon_code')),
-            ('Pagamento',f"Stripe (teste) · {payments.money((draft.get('payment') or {}).get('amount'))} pré-autorizado"
-             if (draft.get('payment') or {}).get('amount') else 'Stripe (teste) · confirmado'
+            ('Pagamento',f"Stripe · {payments.money((draft.get('payment') or {}).get('amount'))} pré-autorizado"
+             if (draft.get('payment') or {}).get('amount') else 'Stripe · confirmado'
              if draft.get('payment') else None),
             ('Permanência',(draft.get('overstay') or {}).get('summary'))]
     controls = [d.txt('RESUMO DA RECARGA',11,'bold',theme.GRAY_TEXT)]
@@ -838,7 +833,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             draft['furthest'] = 2
             await navigate(2)
         controls += [point_summary(context,'Ponto reservado' if reservation_id else 'Ponto selecionado'),
-                     ft.Text('Use #F12345 na conta demo; não é necessário um equipamento real.' if demo else
+                     ft.Text('Use o código #F12345 para confirmar este ponto.' if demo else
                              'No local, leia os cinco números atuais após #F na central. O código muda periodicamente e é conferido pela API ao solicitar o início.',
                              size=13,color=theme.GRAY_TEXT),presence,button('Continuar',app.action(continue_code))]
         if not context:
@@ -1171,7 +1166,6 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         submit.on_click = app.action(start)
         sync_pending()
         controls += [_review(draft),ft.Text(_estimate(draft),size=13,color=theme.GRAY_TEXT),pending_message,
-                     ft.Text('O simulador confirmará o início. Nenhum equipamento ou pagamento real.' if demo else
-                             'O equipamento ainda não foi acionado. O início depende da confirmação dele. Nenhuma cobrança real.',size=12,color=theme.GRAY_TEXT),
+                     ft.Text('O equipamento ainda não foi acionado. O início depende da confirmação dele.',size=12,color=theme.GRAY_TEXT),
                      submit,verify,edit_limits,edit_code]
     return ft.Column(controls,spacing=15,scroll=ft.ScrollMode.AUTO,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)

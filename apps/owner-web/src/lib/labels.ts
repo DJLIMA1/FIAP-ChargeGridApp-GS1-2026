@@ -30,7 +30,7 @@ export function availabilityMeta(point: { availability_status?: string | null; k
   return AVAILABILITY[point.availability_status ?? ''] ?? null
 }
 
-export const SOURCE_LABELS: Record<string, string> = { simulated: 'Simulada', measured: 'Medida', estimated: 'Estimada' }
+export const SOURCE_LABELS: Record<string, string> = { simulated: 'Calculada', measured: 'Medida', estimated: 'Estimada' }
 
 export const END_REASON_LABELS: Record<string, string> = {
   duration_limit: 'Limite de tempo',

@@ -19,7 +19,7 @@ from ..ui.components import date_time
 from ..ui.point_summary import journey_summary, point_summary
 
 LABELS = {'pending_device':'Aguardando confirmação do posto','confirmed':'Reserva confirmada pelo equipamento','cancelling':'Liberação pendente no equipamento','cancelled':'Reserva cancelada','expired':'Reserva expirada','consumed':'Reserva usada na recarga'}
-DEMO_LABELS = {'pending_device':'Aguardando confirmação simulada','confirmed':'Reserva simulada confirmada','cancelling':'Liberação simulada pendente','cancelled':'Reserva simulada cancelada','expired':'Reserva simulada expirada','consumed':'Reserva usada na recarga simulada'}
+DEMO_LABELS = {**LABELS, 'confirmed': 'Reserva confirmada'}
 UPCOMING = ('pending_device', 'confirmed', 'cancelling')
 RUNNING = ('starting', 'charging', 'stopping')
 DIVIDER = '|'
@@ -288,7 +288,7 @@ async def _detail(app, demo):
             title=ft.Text('Sobre esta confirmação', size=13, color=theme.GRAY_TEXT),
             controls=[journey_summary(reservation, reservation=True, demo=demo)]))
     if demo:
-        extra.append(d.txt('Reserva simulada. Ao chegar ao ponto de exemplo, use #F12345 para testar.', 12, 'regular',
+        extra.append(d.txt('Ao chegar ao ponto, use o código #F12345 para iniciar.', 12, 'regular',
                            theme.GRAY_TEXT))
     if reservation.get('station_id'):
         extra.append(btn('Ver posto e endereço', app.link('stations', station_id=reservation['station_id']), 'secondary', height=48))

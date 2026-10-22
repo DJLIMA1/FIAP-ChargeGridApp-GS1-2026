@@ -13,6 +13,8 @@ from chargegrid_core import billing, pricing
 from chargegrid_core import overstay as overstay_rules
 from chargegrid_core import power as power_rules
 
+from .ui.wording import visible
+
 CHECKOUT_MINUTES = 31
 START_WINDOW_MINUTES = 15
 CONFIRM_SECONDS = 2
@@ -44,8 +46,8 @@ def _label(payment):
         label = billing.status_label('completed', charge_cents=charged, return_cents=returned)
     else:
         label = billing.status_label(payment['status'])
-    # Como a API: o simulado do totem (dono em Modo apresentação) diz "(simulado)", nunca "(teste)".
-    return label.replace('(teste)', '(simulado)') if payment.get('provider') == 'simulated' else label
+    # O rótulo do núcleo traz "(teste)"; o app mostra o texto neutro (``ui.wording``) nos dois provedores.
+    return visible(label)
 
 
 def row(api, payment):
@@ -98,7 +100,7 @@ def overstay_terms(api, station):
 def create(api, body):
     allowed = ('connector_id', 'mode', 'minutes', 'max_cost', 'energy_kwh', 'max_power_kw', 'coupon_code','power_tier')
     if set(body) - set(allowed):
-        _fail('Campo não aceito pelo pagamento de demonstração.', 'validation_error', 422)
+        _fail('Campo não aceito pelo pagamento.', 'validation_error', 422)
     point = api._get(api._points, body.get('connector_id'), 'Ponto não encontrado')
     for payment in _mine(api):
         _advance(api, payment)
@@ -209,7 +211,7 @@ def claim_for_start(api, point, payment_id):
     if payment['session_id'] is not None or payment['status'] in ('in_use', 'completed'):
         _fail('Este pagamento já foi usado em uma recarga', 'payment_used', 409)
     if payment['status'] in ('awaiting_payment', 'declined'):
-        _fail('Pagamento ainda não confirmado pela Stripe (teste)', 'payment_not_ready', 409)
+        _fail('Pagamento ainda não confirmado pela Stripe', 'payment_not_ready', 409)
     if payment['status'] not in ('authorized', 'paid'):
         _fail('Pagamento expirado ou cancelado; faça um novo pagamento', 'payment_expired', 409)
     return payment
@@ -262,7 +264,7 @@ def route(api, method, parts, body):
         if payment['status'] == 'awaiting_payment' and payment['confirm_at'] is None:
             payment['confirm_at'] = api._elapsed + CONFIRM_SECONDS
         return row(api, payment)
-    _fail('Operação de pagamento não disponível na demonstração.', 'demo_route_not_supported', 404)
+    _fail('Operação de pagamento não disponível nesta conta.', 'demo_route_not_supported', 404)
 
 
 def visitor_payment(api, point, session, totem=False):

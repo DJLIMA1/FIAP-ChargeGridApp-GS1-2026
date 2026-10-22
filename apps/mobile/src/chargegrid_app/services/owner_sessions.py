@@ -4,13 +4,14 @@ Mesmas regras do painel web (``apps/owner-web/src/lib/overstay.ts``):
 
 * bloco ``overstay`` das sessões (``/operator/charging-sessions``) ou as colunas ``overstay_minutes`` /
   ``overstay_fee`` de ``/owner/sessions``;
-* ``payment`` das sessões: rótulo da API (sempre "teste") e o acerto (capturado e devolvido/liberado).
+* ``payment`` das sessões: rótulo da API (sem as marcas "(teste)") e o acerto (capturado e devolvido/liberado).
 
 Tudo devolve ``None`` quando a API não manda os campos (API antiga): a tela esconde a linha.
 """
 
 from decimal import Decimal, InvalidOperation
 
+from ..ui.wording import visible
 from .payments import money
 
 # Fase da permanência: rótulo e tom (``theme``).
@@ -84,20 +85,17 @@ def payment_source(payment):
     if not channel:
         channel = ('kiosk_totem' if is_simulated(payment) else 'kiosk' if payment.get('origin') == 'kiosk'
                    else 'app')
-    method = 'Simulado' if is_simulated(payment) else 'Stripe'
+    method = 'Sem cobrança' if is_simulated(payment) else 'Stripe'
     return method if channel == 'app' else f'{CHANNEL_LABELS.get(channel, channel)} · {method}'
 
 
 def payment_summary(payment):
     """``(rótulo, detalhe)`` do pagamento da sessão ou ``None`` sem pagamento.
 
-    Rótulo da API com "teste"; detalhe com o acerto: ``Capturado R$ 21,83 · liberado R$ 18,17``."""
+    Rótulo da API sem "(teste)"; detalhe com o acerto: ``Capturado R$ 21,83 · liberado R$ 18,17``."""
     if not isinstance(payment, dict):
         return None
-    label = str(payment.get('status_label') or payment.get('status') or 'Pagamento')
-    if (payment.get('environment', 'test') == 'test' and 'teste' not in label.lower()
-            and not is_simulated(payment) and 'simulado' not in label.lower()):
-        label += ' (teste)'
+    label = visible(str(payment.get('status_label') or payment.get('status') or 'Pagamento')) or 'Pagamento'
     settlement = payment.get('settlement') or {}
     detail = None
     if settlement.get('status') == 'done':

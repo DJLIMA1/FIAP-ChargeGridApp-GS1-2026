@@ -1,7 +1,7 @@
 """PDF do recibo na conta demo, gerado no aparelho com Pillow (sem ReportLab no app).
 
-Lê o mesmo recibo ``chargegrid.receipt`` que a tela mostra e desenha uma página A4 simples, marcada
-"CONTA DEMO · SIMULADO · sem valor fiscal". Como na tela do motorista, mostra só o preço travado por
+Lê o mesmo recibo ``chargegrid.receipt`` que a tela mostra (com os textos neutros de ``ui.wording``) e
+desenha uma página A4 simples, marcada só "Documento sem valor fiscal". Como na tela do motorista, mostra só o preço travado por
 kWh (sem tarifa base nem ajuste por demanda, que são dados do vendedor).
 """
 
@@ -12,10 +12,12 @@ from pathlib import Path
 
 from chargegrid_core.formatting import brl, duration, kwh
 
-MARK = 'CONTA DEMO · SIMULADO · sem valor fiscal'
+from .ui.wording import clean_receipt
+
+MARK = 'Documento sem valor fiscal'
 WIDTH, HEIGHT, MARGIN = 1240, 1754, 96  # A4 a 150 dpi
 FONT_DIR = Path(__file__).resolve().parents[2] / 'assets'
-INK, MUTED, LINE, ACCENT = (20, 20, 20), (105, 105, 105), (215, 215, 215), (200, 60, 60)
+INK, MUTED, LINE = (20, 20, 20), (105, 105, 105), (215, 215, 215)
 PAYMENT_METHODS = {'card': 'Cartão', 'pix': 'Pix', 'wallet': 'Saldo', 'balance': 'Saldo'}
 
 
@@ -58,6 +60,7 @@ def _price(value):
 
 def rows(receipt):
     """Seções do PDF: ``[(título, [(rótulo, valor), ...]), ...]`` (também usadas pelos testes)."""
+    receipt = clean_receipt(receipt)
     station, point, times = receipt.get('station') or {}, receipt.get('point') or {}, receipt.get('times') or {}
     energy, charges, price = receipt.get('energy') or {}, receipt.get('charges') or {}, receipt.get('price') or {}
     payment = receipt.get('payment') or {}
@@ -74,7 +77,7 @@ def rows(receipt):
     session.append(('Energia', kwh(_dec(energy.get('kwh')) or 0, 2)))
     if energy.get('soc_end'):
         start = f"{_dec(energy['soc_start']):.0f}% → " if energy.get('soc_start') else ''
-        session.append(('Bateria (simulada)', f"{start}{_dec(energy['soc_end']):.0f}%"))
+        session.append(('Bateria', f"{start}{_dec(energy['soc_end']):.0f}%"))
     costs = [('Preço travado', _price(price.get('price_per_kwh')))]
     discount = _dec(charges.get('discount')) or Decimal(0)
     if discount:
@@ -96,7 +99,6 @@ def rows(receipt):
             paid.append(('Devolvido', _money(payment['refunded_amount'])))
         if payment.get('provider_reference'):
             paid.append(('Referência', str(payment['provider_reference'])))
-        paid.append(('Ambiente', 'Pagamento simulado (nenhum dinheiro real)'))
     else:
         paid = [('Pagamento', 'Sem pagamento registrado: nenhum valor foi cobrado.')]
     return [('Estação e carregador', place), ('Sessão', session), ('Custos', costs), ('Pagamento', paid)]
@@ -118,6 +120,8 @@ def receipt_pdf(receipt):
     """Bytes do PDF (uma página A4) do recibo da conta demo."""
     from PIL import Image, ImageDraw
 
+    receipt = clean_receipt(receipt)
+
     page = Image.new('RGB', (WIDTH, HEIGHT), 'white')
     draw = ImageDraw.Draw(page)
     title, bold, regular, small = _font('Bold', 40), _font('Bold', 24), _font('Regular', 24), _font('Regular', 20)
@@ -126,7 +130,7 @@ def receipt_pdf(receipt):
     y += 48
     draw.text((MARGIN, y), f"Recibo de recarga nº {receipt.get('number') or '—'}", font=title, fill=INK)
     y += 62
-    draw.text((MARGIN, y), MARK, font=bold, fill=ACCENT)
+    draw.text((MARGIN, y), MARK, font=regular, fill=MUTED)
     y += 52
     column = WIDTH - 2 * MARGIN
     for heading, items in rows(receipt):
@@ -144,7 +148,8 @@ def receipt_pdf(receipt):
                           fill=INK)
             y += 32 * len(lines) + 8
         y += 16
-    notes = [*(receipt.get('labels') or {}).get('notes', []), f"Sessão {receipt.get('session_id') or '—'}."]
+    notes = [note for note in (receipt.get('labels') or {}).get('notes', []) if note.rstrip('.') != MARK]
+    notes.append(f"Sessão {receipt.get('session_id') or '—'}.")
     for note in notes:
         for line in _wrap(draw, note, small, column):
             if y > HEIGHT - MARGIN:
@@ -153,5 +158,5 @@ def receipt_pdf(receipt):
             y += 28
     buffer = io.BytesIO()
     page.save(buffer, 'PDF', resolution=150.0, title=f"Recibo {receipt.get('number') or ''}".strip(),
-              author='ChargeGrid (conta demo)', subject=MARK)
+              author='ChargeGrid', subject=MARK)
     return buffer.getvalue()

@@ -56,10 +56,10 @@ enum Role { TITLE, BODY };
   X(kMetricReceipt, BODY, "RECIBO")                                                          \
   X(kPayTitle, TITLE, "Pagamento")                                                           \
   X(kPayStripeHint, BODY, "Escaneie o QR com a câmera do celular e pague na página segura.")  \
-  X(kPayStripeCaption, BODY, "Pagamento em modo teste")                                       \
+  X(kPayStripeCaption, BODY, "Pagamento seguro pelo QR")                                      \
   X(kPayWaiting, BODY, "Aguardando a confirmação do pagamento")                               \
   X(kPayDeclined, BODY, "Pagamento recusado. Tente de novo pelo QR.")                         \
-  X(kPaySimHint, BODY, "Modo apresentação: nenhum valor é cobrado.")                          \
+  X(kPaySimHint, BODY, "Confirme o pagamento para iniciar a recarga.")                        \
   X(kPayCreating, BODY, "Gerando o pagamento")                                               \
   X(kStartingTitle, TITLE, "Pagamento confirmado")                                           \
   X(kStartingDetail, BODY, "Iniciando a recarga. Mantenha o cabo conectado.")                \
@@ -81,7 +81,7 @@ enum Role { TITLE, BODY };
   X(kReceiptPending, BODY, "Calculando o recibo")                                             \
   X(kReceiptFinal, BODY, "Escaneie para ver o recibo completo.")                             \
   X(kReceiptQrCaption, BODY, "Recibo completo")                                               \
-  X(kSimulatedNoCharge, BODY, "Simulado, sem cobrança")                                       \
+  X(kSimulatedNoCharge, BODY, "Sem cobrança")                                                 \
   X(kVerifyingTitle, TITLE, "Verificando pagamento")                                         \
   X(kVerifyingDetail, BODY, "Aguarde. O servidor confirma o seu pedido.")                     \
   X(kVerifyingOffline, BODY, "Sem conexão. Seu pedido está guardado no servidor.")            \
@@ -102,9 +102,7 @@ enum Role { TITLE, BODY };
   X(kOrderError, BODY, "Não foi possível criar o pedido. Tente de novo.")                     \
   X(kQuoteChanged, BODY, "O preço mudou. Confira o novo valor.")                              \
   X(kOutOfRange, BODY, "Valor fora do limite: ")                                              \
-  X(kLoading, BODY, "Um instante")                                                           \
-  X(kLabelSimulated, TITLE, "SIMULADO")                                                      \
-  X(kLabelTest, TITLE, "TESTE")
+  X(kLoading, BODY, "Um instante")
 
 #define CG_KIOSK_STRING_CONST(name, role, text) constexpr const char* name = text;
 CG_KIOSK_STRINGS(CG_KIOSK_STRING_CONST)

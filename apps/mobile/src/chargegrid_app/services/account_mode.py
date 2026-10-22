@@ -18,8 +18,8 @@ Regra (a mais simples que mantém uma única verdade para o totem):
 from ..api_client import ApiError
 from . import vehicle_state
 
-TOTEM_SIMULATED = 'Totem: pagamento simulado'
-TOTEM_STRIPE = 'Totem: Stripe (teste)'
+TOTEM_SIMULATED = 'Totem: sem cobrança'
+TOTEM_STRIPE = 'Totem: Stripe'
 SAVE_FAILED = ('Não foi possível salvar o Modo apresentação na sua conta. Nada mudou; '
                'o totem continua no modo anterior.')
 

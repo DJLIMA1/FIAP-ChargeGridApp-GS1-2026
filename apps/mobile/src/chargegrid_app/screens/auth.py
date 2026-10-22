@@ -163,7 +163,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         address = email.value.strip()
         from ..demo import DEMO_EMAIL
         if demo_enabled() and mode != 'login' and address.casefold() == DEMO_EMAIL:
-            show_feedback('A conta demo já está pronta. Volte para entrar com a senha demo1234; ela não recebe e-mails.', theme.GRAY_TEXT)
+            show_feedback('A conta de exemplo já está pronta. Volte e entre com a senha demo1234; ela não recebe e-mails.', theme.GRAY_TEXT)
             return
         full_name = name.value.strip()
         password_value = password.value or ''
@@ -279,7 +279,7 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         address = email.value.strip()
         from ..demo import DEMO_EMAIL
         if demo_enabled() and address.casefold() == DEMO_EMAIL:
-            show_feedback('A conta demo já está pronta e não precisa confirmar e-mail.', theme.GRAY_TEXT)
+            show_feedback('A conta de exemplo já está pronta e não precisa confirmar e-mail.', theme.GRAY_TEXT)
             return
         if '@' not in address or '.' not in address.rpartition('@')[2]:
             show_feedback('Informe um e-mail válido.')
@@ -308,8 +308,8 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
         if demo_enabled():
             controls.extend([
                 ft.Divider(color=theme.LIGHT_GRAY),
-                auth_button('Entrar na conta demo', app.action(lambda: app.enter_demo()), secondary=True),
-                ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas simulados.',
+                auth_button('Entrar na conta de exemplo', app.action(lambda: app.enter_demo()), secondary=True),
+                ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas de exemplo.',
                         size=12,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
             ])
         spacing = 20

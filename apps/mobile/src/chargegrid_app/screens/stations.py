@@ -171,8 +171,8 @@ async def _locate(demo, text):
         from ..services.driver_demo import DEMO_DRIVER_NETWORK
         coordinates = geocode_demo_address(text,(*DEMO_LOCATIONS,*DEMO_DRIVER_NETWORK))
         if not coordinates:
-            raise ApiError('Na conta demo, busque um local de exemplo (Villa Lobos, Marginal Pinheiros, Av. Paulista, '
-                           'Congonhas). A busca não acessa a internet.')
+            raise ApiError('Busque um destes locais: Villa Lobos, Marginal Pinheiros, Av. Paulista ou '
+                           'Congonhas.')
         return coordinates
     try:
         coordinates = await geocode_address(text)

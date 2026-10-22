@@ -32,7 +32,8 @@ _RESERVATION_LABELS = {
     'cancelling': 'Cancelamento pendente de confirmação', 'cancelled': 'Cancelada',
     'expired': 'Expirada', 'consumed': 'Usada para iniciar uma recarga',
 }
-_SOURCE_LABELS = {'simulated': 'simulada', 'measured': 'medida pelo equipamento', 'estimated': 'estimada'}
+_ACTIVE_SESSION = ('starting', 'charging', 'stopping')
+_SOURCE_LABELS = {'simulated': 'calculada pelo equipamento', 'measured': 'medida pelo equipamento', 'estimated': 'estimada'}
 
 
 def _normalized(value):
@@ -122,8 +123,6 @@ def _session_text(record, heading, demo=False):
         lines.append('Última medição: ' + date_time(record['last_measurement_at']))
     if record.get('status') in ('starting', 'charging', 'stopping') and record.get('online') is False:
         lines.append('Equipamento offline: estes são os últimos dados recebidos; parada física não confirmada.')
-    if demo:
-        lines.append('Dados da demonstração desta conta; nenhum equipamento real está envolvido.')
     lines.append('Os valores são estimativas, não comprovantes de pagamento.')
     return '\n'.join(lines)
 
@@ -142,26 +141,25 @@ def _local_answer(question, demo):
         from ..demo import DEMO_PRESENCE_CODE
         overrides = {
             'Iniciar uma recarga': (
-                'Escolha um ponto demonstrativo disponível. Em Confirmar ponto, use ' + DEMO_PRESENCE_CODE +
+                'Escolha um ponto disponível. Em Confirmar ponto, use ' + DEMO_PRESENCE_CODE +
                 ' (digite 12345). Continue para Definir limites, escolha tempo ou valor estimado e confira '
-                'Revisar recarga. Somente Solicitar início cria a sessão simulada. A confirmação e a energia '
-                'evoluem nesta conta; nenhum equipamento real é acionado.'),
+                'Revisar recarga. Somente Solicitar início cria a sessão. A confirmação e a energia '
+                'aparecem nesta conta conforme o equipamento responde.'),
             'Reservar para chegar depois': (
-                'Escolha um ponto demonstrativo disponível e toque em Reservar. Aguarde a confirmação '
-                'simulada e confira o prazo de 10 minutos em Minha reserva. Para iniciar, abra a reserva '
-                'e use #F12345. Cancelar libera o ponto depois da confirmação simulada.'),
+                'Escolha um ponto disponível e toque em Reservar. Aguarde a confirmação '
+                'e confira o prazo de 10 minutos em Minha reserva. Para iniciar, abra a reserva '
+                'e use #F12345. Cancelar libera o ponto depois da confirmação.'),
             'Parar ou resolver uma falha': (
-                'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação da sessão simulada. '
-                'Você pode continuar navegando; sair da conta encerra esta demonstração e apaga seus dados locais. '
-                'Nenhum equipamento real está conectado.'),
+                'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação da sessão. '
+                'Você pode continuar navegando; sair da conta apaga os dados locais desta conta.'),
             'Criar posto e vincular ponto': (
-                'No modo operador, abra Postos e escolha Adicionar equipamento simulado. Não é necessário '
-                'QR real nem câmera. Posto é o endereço; ponto é o equipamento. Informe a localização e a tarifa, '
+                'No modo operador, abra Postos e escolha Adicionar central. Nesta conta não é necessário '
+                'QR nem câmera. Posto é o endereço; ponto é o equipamento. Informe a localização e a tarifa, '
                 'revise e publique. Você também pode adicionar outro ponto a um posto existente. Tudo fica nesta conta.'),
             'Conta, senha e histórico': (
-                'A conta de demonstração permite alternar entre motorista e operador. Dados editados '
-                'e histórico ficam somente nesta sessão. As credenciais públicas permanecem iguais. '
-                'Ao sair e entrar novamente, a demonstração recomeça.'),
+                'Esta conta permite alternar entre motorista e operador. Dados editados '
+                'e histórico ficam somente nesta sessão. As credenciais permanecem iguais. '
+                'Ao sair e entrar novamente, a conta recomeça do início.'),
         }
         content = overrides.get(heading, content)
     if heading not in actions:
@@ -199,7 +197,12 @@ async def answer(app, question):
         heading = 'Última recarga dos seus postos' if seller else 'Sua última recarga como motorista'
         if not isinstance(items[0], dict) or not items[0].get('id'):
             raise ApiError('Resposta inválida ao consultar histórico.')
-        action = _action('Ver histórico dos postos', 'history', manage=True) if seller else _action('Ver detalhes da recarga', 'charging', session_id=items[0]['id'])
+        if seller:
+            action = _action('Ver histórico dos postos', 'history', manage=True)
+        elif items[0].get('status') in _ACTIVE_SESSION:  # em andamento: a tela de recarga ao vivo
+            action = _action('Ver detalhes da recarga', 'charging', session_id=items[0]['id'])
+        else:  # encerrada: o detalhe unificado da recarga (``history?session=``)
+            action = _action('Ver detalhes da recarga', 'history', session=items[0]['id'])
         return {'content': _session_text(items[0], heading, demo), 'actions': [action]}
     instructional = any(word in normalized for word in ('iniciar', 'comecar', 'parar', 'cancelar', 'reservar', 'definir'))
     if any(word in normalized for word in ('minha reserva', 'reserva atual', 'status da reserva')) and not instructional:
@@ -215,7 +218,7 @@ async def answer(app, question):
             lines.append('Prazo para chegar: ' + date_time(reservation['expires_at']))
         elif reservation.get('status') == 'pending_device':
             lines.append('O prazo de chegada começa depois da confirmação do equipamento.')
-        lines.append('Reserva simulada nesta conta.' if demo else 'No local, use o código #F do visor para iniciar.')
+        lines.append('No local, use o código #F12345 para iniciar.' if demo else 'No local, use o código #F do visor para iniciar.')
         return {'content': '\n'.join(lines), 'actions': [_action('Abrir minha reserva', 'reservations', detail=True)]}
     if any(word in normalized for word in ('minha recarga', 'recarga atual', 'em andamento', 'esta carregando', 'quanto carregou', 'bateria')) and not instructional:
         session = await app.api.request('GET', 'charging-sessions/current')

@@ -517,7 +517,7 @@ def demand_page(app, sid, data):
             'Reservas aguardando com o posto lotado.',
             'O acréscimo vale sobre a tarifa base do horário.',
             'O preço sobe em passos de 0,05× e nunca passa do seu limite.')], spacing=6)
-    simulation = _card('Simulação (4 carregadores)', rows)
+    simulation = _card('Exemplo com 4 carregadores', rows)
 
     def collect(enabled):
         percent = svc.parse_int(increase.value, minimum=0, maximum=100)

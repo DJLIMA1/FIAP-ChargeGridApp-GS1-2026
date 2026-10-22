@@ -22,6 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
+from ..ui.wording import visible
 from . import vehicle_state
 
 AWAITING = ('awaiting_payment',)
@@ -29,11 +30,11 @@ DECLINED = ('declined',)
 FUNDED = ('authorized', 'paid')
 CLOSED = ('expired', 'canceled')
 SETTLING = ('due', 'settling')
-METHOD_LABEL = 'Cartão ou Pix · Stripe (teste)'
+METHOD_LABEL = 'Cartão ou Pix · Stripe'
 TEST_CARD = '4242 4242 4242 4242'
 _CENT = Decimal('0.01')
-PRESENTATION_PREPAY = ('Este posto exige pagamento pela Stripe; desligue o Modo apresentação ou desative a '
-                       'exigência no painel.')
+PRESENTATION_PREPAY = ('Este posto exige pagamento pela Stripe. Ajuste a forma de pagamento em Conta ou '
+                       'desative a exigência no painel.')
 
 
 def enabled(app):
@@ -148,23 +149,23 @@ def clock(seconds):
 
 
 def settlement_text(payment):
-    """``Cobrado R$ X · Devolvido R$ Y (teste)`` quando o acerto terminou; senão ``None``."""
+    """``Cobrado R$ X · Devolvido R$ Y`` quando o acerto terminou; senão ``None``."""
     settlement = (payment or {}).get('settlement') or {}
     if settlement.get('status') != 'done':
         return None
     charged, returned = Decimal(str(settlement.get('charged') or 0)), Decimal(str(settlement.get('returned') or 0))
     if charged <= 0:
-        return f'Nada cobrado · Devolvido {money(returned)} (teste)'
+        return f'Nada cobrado · Devolvido {money(returned)}'
     if returned <= 0:
-        return f'Cobrado {money(charged)} (teste)'
-    return f'Cobrado {money(charged)} · Devolvido {money(returned)} (teste)'
+        return f'Cobrado {money(charged)}'
+    return f'Cobrado {money(charged)} · Devolvido {money(returned)}'
 
 
 def settlement_note(payment):
     """Linha secundária do acerto: como volta a diferença e o que não foi cobrado."""
     settlement = (payment or {}).get('settlement') or {}
     if settlement.get('status') == 'failed':
-        return 'Acerto em revisão (teste). Nenhum valor acima do autorizado é cobrado.'
+        return 'Acerto em revisão. Nenhum valor acima do autorizado é cobrado.'
     if settlement.get('status') != 'done':
         return None
     parts = []
@@ -175,8 +176,7 @@ def settlement_note(payment):
         parts.append('Valor abaixo do mínimo da Stripe perdoado.')
     if Decimal(str(settlement.get('overstay_amount') or 0)) > 0:
         parts.append(f"Inclui {money(settlement['overstay_amount'])} de taxa de permanência.")
-    parts.append('Ambiente de teste: nenhum valor real.')
-    return ' '.join(parts)
+    return ' '.join(parts) or None
 
 
 def pending_settlement(payment):
@@ -190,10 +190,8 @@ def pending_settlement(payment):
 
 
 def badge_text(payment):
-    """Selo curto do pagamento (rótulo da API, sempre com "teste")."""
+    """Selo curto do pagamento (rótulo da API, sem as marcas "(teste)")."""
     if not payment:
         return None
-    label = str(payment.get('status_label') or 'Pagamento (teste)')
-    if 'teste' not in label.lower():
-        label += ' (teste)'
+    label = visible(str(payment.get('status_label') or 'Pagamento')) or 'Pagamento'
     return f"Stripe · {label}"

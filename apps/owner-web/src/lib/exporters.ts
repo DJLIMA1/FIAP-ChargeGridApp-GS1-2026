@@ -71,7 +71,7 @@ export function sessionsJson(rows: SessionItem[], filters: Record<string, unknow
     units: { energy: 'kWh', duration: 'min' },
     filters: Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== null && value !== undefined && value !== '')),
     total: rows.length,
-    notes: 'Valores estimados; energia pode ser simulada, medida ou estimada (coluna source).',
+    notes: 'Valores estimados; energia pode ser calculada, medida ou estimada (coluna source).',
     items: rows,
   }
   return JSON.stringify(envelope, null, 2)

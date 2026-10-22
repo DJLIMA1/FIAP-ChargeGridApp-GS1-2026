@@ -34,7 +34,7 @@ from ..ui.vehicle import VehiclePicker
 
 DEMO_REGION = 'Villa Lobos'
 RESULTS_KEY = 'driver-results'
-DEMAND_SOURCES = {'heuristica': 'horários típicos', 'open-meteo': 'clima', 'simulado': 'clima simulado',
+DEMAND_SOURCES = {'heuristica': 'horários típicos', 'open-meteo': 'clima', 'simulado': 'clima estimado',
                   'informado': 'informado por você'}
 DISCLAIMER = 'Estimativa — sem dados oficiais da Uber/99.'
 CONTEXT_TIMEOUT = 4.0

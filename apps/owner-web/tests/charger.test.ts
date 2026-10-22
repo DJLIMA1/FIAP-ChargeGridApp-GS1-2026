@@ -60,14 +60,15 @@ function client() {
 
 describe('carregador: textos (iguais ao core `chargers.link`)', () => {
   it('status_text: online, offline e aguardando a central; sem "simulação da tela"', () => {
-    expect(chargerStatusText(API_LINK)).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · online')
-    expect(chargerStatusText({ ...API_LINK, address: 3, link: 'offline' })).toBe('Carregador 3 · GoodWe HCA G2 (simulado) · offline')
-    expect(chargerStatusText({ ...API_LINK, link: 'pending', reported: null })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a central')
-    expect(chargerStatusText({ ...API_LINK, link: 'desconhecido' })).toBe('Carregador 1 · GoodWe HCA G2 (simulado) · aguardando a central')
+    expect(chargerStatusText(API_LINK)).toBe('Carregador 1 · GoodWe HCA G2 · online')
+    expect(chargerStatusText({ ...API_LINK, address: 3, link: 'offline' })).toBe('Carregador 3 · GoodWe HCA G2 · offline')
+    expect(chargerStatusText({ ...API_LINK, link: 'pending', reported: null })).toBe('Carregador 1 · GoodWe HCA G2 · aguardando a central')
+    expect(chargerStatusText({ ...API_LINK, link: 'desconhecido' })).toBe('Carregador 1 · GoodWe HCA G2 · aguardando a central')
     expect(chargerStatusText({ ...API_LINK, simulated: false })).toBe('Carregador 1 · GoodWe HCA G2 · online')
     expect(chargerStatusText(null)).toBe('')
     expect(chargerStatusText(undefined)).toBe('')
     expect(chargerStatusText({ ...API_LINK, link: 'offline' })).not.toMatch(/simulação da tela/)
+    expect(chargerStatusText({ ...API_LINK, label: 'GoodWe HCA G2 (simulado)' })).toBe('Carregador 1 · GoodWe HCA G2 · online')
   })
 
   it('estado do carregador: charger_link; sem bloco, o online do ponto; API antiga sem nada → null', () => {

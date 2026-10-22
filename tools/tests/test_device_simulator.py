@@ -374,8 +374,8 @@ def test_payload_reports_the_panel_firmware_version():
     from pathlib import Path
 
     runtime = (Path(__file__).resolve().parents[2] / "firmware/esp32/include/runtime.h").read_text()
-    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.9.4"' in runtime
-    assert Device().payload()["firmware_version"] == "0.9.4"
+    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.9.5"' in runtime
+    assert Device().payload()["firmware_version"] == "0.9.5"
     assert Device(legacy=True).payload()["firmware_version"] == "0.4.0"
 
 
@@ -411,13 +411,13 @@ def test_kiosk_fields_from_the_real_sync_are_read_like_the_panel():
     url = "https://api.chargegrid.test/pay/k/CG-01?c=62600"
     device.response(_kiosk({"kiosk_url": url, "payment": None}))
     assert device.kiosk_url == url and device.payment is None
-    assert kiosk_text(device) == f" | Sem o app? Pague aqui · TESTE: {url}"
+    assert kiosk_text(device) == f" | Sem o app? Pague aqui: {url}"
     device.response(_kiosk({"kiosk_url": url, "payment": {
         "status": "awaiting_payment", "status_label": "Aguardando pagamento", "amount": "20.00", "environment": "test"}}))
     assert device.payment == {"status": "awaiting_payment", "amount": "20.00", "environment": "test"}
-    assert kiosk_text(device) == " | Aguardando pagamento (teste) · R$ 20,00"
+    assert kiosk_text(device) == " | Aguardando pagamento · R$ 20,00"
     device.response(_kiosk({"kiosk_url": None, "payment": {"status": "paid", "amount": "20.00", "environment": "test"}}))
-    assert device.kiosk_url is None and kiosk_text(device) == " | Pagamento confirmado (teste) · R$ 20,00"
+    assert device.kiosk_url is None and kiosk_text(device) == " | Pagamento confirmado · R$ 20,00"
     # Not https, unknown status or an older API without the fields: no QR, no payment line.
     device.response(_kiosk({"kiosk_url": "http://api/pay/k/CG-01?c=1", "payment": {"status": "in_use"}}))
     assert device.kiosk_url is None and device.payment is None and kiosk_text(device) == ""

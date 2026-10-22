@@ -49,7 +49,7 @@ def synthetic_note(payload):
     if not payload.get('includes_synthetic'):
         return []
     return [ft.Row([ft.Icon(ft.Icons.SCIENCE_OUTLINED, size=15, color=theme.WARNING),
-                    D.txt(SYNTHETIC_LABEL + ' (rotulado, para demonstração).', 11, 'regular', theme.WARNING,
+                    D.txt(SYNTHETIC_LABEL + ' (rotulado).', 11, 'regular', theme.WARNING,
                           expand=True)], spacing=6)]
 
 

@@ -21,8 +21,8 @@ from chargegrid_core import receipt as receipts
 from .api_client import ApiError
 
 SAMPLE_SECONDS = 60
-DEMO_PROVIDER = 'Conta demo (simulado)'
-PDF_ONLY_REAL = 'O PDF do histórico só é gerado na conta real. Na demo, use o CSV ou exporte o recibo de cada recarga.'
+DEMO_PROVIDER = 'Saldo ChargeGrid'
+PDF_ONLY_REAL = 'O PDF do histórico não está disponível nesta conta. Use o CSV ou exporte o recibo de cada recarga.'
 
 
 def _fail(message, code='not_found', status=404):
@@ -159,7 +159,7 @@ def _payment(api, session):
     settled = row.get('status') == 'settled'
     credited = economics.cents(row.get('credited')) or Decimal('0.00')
     return {
-        'environment': 'mock', 'provider': DEMO_PROVIDER, 'provider_reference': 'DEMO-' + str(row.get('id', ''))[:8].upper(),
+        'environment': 'mock', 'provider': DEMO_PROVIDER, 'provider_reference': 'CG-' + str(row.get('id', ''))[:8].upper(),
         'method': row.get('method'), 'status': 'settled' if settled else 'paid',
         'authorized_amount': str(amount), 'captured_amount': str(amount),
         'refunded_amount': str(credited) if settled else None,
@@ -188,13 +188,13 @@ def receipt(api, session_id):
         'now': api._now(), 'demo': True,
     })
     # Número legível na demo (o real usa os 8 primeiros caracteres do UUID da sessão).
-    result['number'] = 'DEMO' + str(session_id).rsplit('-', 1)[-1].zfill(4)[-4:]
+    result['number'] = 'CG' + str(session_id).rsplit('-', 1)[-1].zfill(4)[-4:]
     ended = next((event for event in events if event.get('kind') == 'ended'), None)
     energy = result['energy']
     if result['final'] and ended and session.get('last_measurement_at'):
         # O "equipamento" da demo é o simulador: confirma o encerramento, sem fingir medidor.
         energy.update(confirmed_by_device=True, confirmed_at=receipts._iso(ended['observed_at']),
-                      note='Energia confirmada pelo equipamento simulado ao encerrar a recarga (conta demo).')
+                      note='Energia confirmada pelo equipamento ao encerrar a recarga.')
     return result
 
 
@@ -228,7 +228,7 @@ def history_rows(api, params=None):
 def download(api, path, params=None):
     """``me/charging-sessions/export.csv`` e o PDF do recibo (Pillow) locais; o PDF do histórico só na conta real."""
     if not api.session.access_token:
-        _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+        _fail('Entre na sua conta para continuar.', 'unauthorized', 401)
     name = path.strip('/').removeprefix('v1/')
     parts = name.split('/')
     if len(parts) == 3 and parts[0] == 'charging-sessions' and parts[2] == 'receipt.pdf':
@@ -237,6 +237,6 @@ def download(api, path, params=None):
     if name.endswith('.pdf'):
         _fail(PDF_ONLY_REAL, 'demo_pdf_unavailable', 404)
     if name != 'me/charging-sessions/export.csv':
-        _fail('Exportação não disponível na demonstração.', 'demo_route_not_supported', 404)
+        _fail('Exportação não disponível nesta conta.', 'demo_route_not_supported', 404)
     rows = history_rows(api, params)
     return analytics.to_csv(rows, receipts.HISTORY_EXPORT_COLUMNS).encode('utf-8')

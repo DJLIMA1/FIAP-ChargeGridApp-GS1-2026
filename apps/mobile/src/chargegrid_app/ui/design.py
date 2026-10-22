@@ -101,7 +101,6 @@ Mídia
   logo()                                               # marca do cabeçalho
 Shell (usado por app.py)
   app_header(app), bottom_nav(app, entries, active)
-  demo_note(app)                                       # linha discreta "DEMONSTRAÇÃO..." p/ a tela Conta
 Imagens ficam em ``assets/design/`` (``/design/<nome>``): avatar_joao.jpg, car_byd_dolphin.png,
 car_hatch.svg / car_sedan.svg / car_suv.svg / car_compact.svg (silhuetas por carroceria),
 totem_goodwe.png, map_villa_lobos.jpg, qr_pix_demo.png, icon_station_pin.svg, nav_*.svg.
@@ -550,11 +549,3 @@ def bottom_nav(app, entries, active):
         items.append(ft.Semantics(content=tab, selected=on, expand=True))
     return ft.Container(ft.Row(items, spacing=0), bgcolor=theme.NAV_BG, height=81,
                         padding=ft.Padding(left=15, right=15, top=21.5, bottom=0), alignment=ft.Alignment(0, -1))
-
-
-def demo_note(app):
-    """Indicação discreta de demonstração (para a tela Conta); lista vazia fora do demo."""
-    if not getattr(getattr(app, 'api', None), 'is_demo', False):
-        return ft.Container(visible=False)
-    return txt('Demonstração · dados e equipamentos simulados', 11, 'regular', theme.GRAY_TEXT,
-               text_align=ft.TextAlign.CENTER)

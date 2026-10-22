@@ -19,7 +19,7 @@ from ..ui.components import (
 from . import chargers, ownership
 from . import onboarding as onboarding_screen
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title
-from .station_admin import chatbot_button, menu_row
+from .station_admin import menu_row
 
 
 def _plural(count, one, many):
@@ -49,16 +49,16 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         return design.page(
             design.card_box(ft.Column([
                 ft.Icon(ft.Icons.QR_CODE_SCANNER, size=44, color=theme.TEXT_COLOR),
-                design.txt('Adicione uma central simulada para criar seu posto. Todo o processo acontece nesta demonstração.'
+                design.txt('Adicione uma central para criar seu posto. Você acompanha cada etapa por aqui.'
                            if is_demo else 'A central sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
                            13, 'semibold'),
                 design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.',
                            11, 'regular', theme.GRAY_TEXT),
                 design.txt('Posto é o local com endereço. Cada ponto é um equipamento de recarga nesse local.',
                            11, 'regular', theme.GRAY_TEXT)], spacing=10)),
-            text_button('Adicionar central simulada' if is_demo else 'Escanear QR da central',
+            text_button('Adicionar central' if is_demo else 'Escanear QR da central',
                         app.link('operator', claim=True)),
-            title='Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira central',
+            title='Configure seu primeiro ponto' if is_demo else 'Configure sua primeira central',
             title_size=20)
     if connector_id:
         if connector_id == 'new':
@@ -109,7 +109,7 @@ def text_button(text, on_click, *, primary=True, height=48):
 
 ADD_STATION = 'Adicionar nova estação'
 ADD_STATION_HINT = 'Pelo QR de uma central sem dono'
-ADD_STATION_DEMO = 'Com uma central simulada'
+ADD_STATION_DEMO = 'Com uma nova central'
 MANAGE_COUPONS = 'Gerenciar cupons'
 MANAGE_COUPONS_HINT = 'Criar e acompanhar descontos'
 
@@ -120,7 +120,7 @@ async def station_list(app, offset, is_demo):
     stations = result['items']
     from .stations import _seed_details
     _seed_details(app, stations, 'operator/stations', params)
-    add_label = 'Adicionar central simulada' if is_demo else 'Escanear QR da central'
+    add_label = 'Adicionar central' if is_demo else 'Escanear QR da central'
     rows = [menu_row(station['name'], _station_state(station), '/design/icon_station_charge.svg',
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
     coupons_row = menu_row(MANAGE_COUPONS, MANAGE_COUPONS_HINT, ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
@@ -135,12 +135,12 @@ async def station_list(app, offset, is_demo):
         body.append(ft.Column(rows, spacing=22))
     else:
         body.append(design.card_box(ft.Column([
-            design.txt('Seu primeiro ponto começa adicionando um equipamento simulado.' if is_demo else
+            design.txt('Seu primeiro ponto começa adicionando uma central.' if is_demo else
                        'Seu primeiro ponto começa no QR do equipamento.', 13, 'semibold'),
-            design.txt('Adicione um equipamento fictício para experimentar a gestão.' if is_demo else
+            design.txt('Adicione uma central para experimentar a gestão.' if is_demo else
                        'O QR é exibido pela central ainda sem dono.', 11, 'regular', theme.GRAY_TEXT),
-            design.txt('1. Adicione uma central simulada.\n2. Configure nome, endereço de exemplo e tarifa.\n'
-                       '3. Revise, publique e teste a recarga simulada.' if is_demo else
+            design.txt('1. Adicione uma central.\n2. Configure nome, endereço e tarifa.\n'
+                       '3. Revise, publique e faça uma recarga pelo modo motorista.' if is_demo else
                        '1. Ligue a central e configure o Wi-Fi, se necessário.\n2. Escaneie o QR com sua conta de operador.\n'
                        '3. Defina nome, local e tarifa; revise e publique.', 11, 'regular', theme.GRAY_TEXT)], spacing=8)))
         body.append(text_button(add_label, app.link('operator', claim=True)))
@@ -149,9 +149,8 @@ async def station_list(app, offset, is_demo):
         body.append(text_button('Mais postos', app.link('operator', offset=offset + 100), primary=False))
     if offset:
         body.append(text_button('Postos anteriores', app.link('operator', offset=max(0, offset - 100)), primary=False))
-    body += [ft.Container(height=16), chatbot_button(app, 38)]
     if ai_supported(app):
-        body += [ft.Container(height=560),  # opções extras: abaixo da 1ª tela
+        body += [ft.Container(height=576),  # opções extras: abaixo da 1ª tela
                  design.section_label('Mais opções'), owner_insights_control(app)]
     return design.page(*body, title='Suas Estações', title_size=22, gap=16)
 
@@ -493,7 +492,7 @@ def charger_card(app, connector):
              chargers.row('Última leitura', reading), chargers.row('Potência lida', measured)]
     if getattr(app.api, 'is_demo', False):
         from ..demo import DEMO_PRESENCE_CODE
-        lines.append(design.txt(f'Carregador simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
+        lines.append(design.txt(f'Experimente no modo motorista com o código {DEMO_PRESENCE_CODE}.',
                                 10.5, 'regular', theme.GRAY_TEXT))
     holder = ft.Container(design.card_box(
         ft.Column(lines, spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
@@ -541,5 +540,5 @@ def show_key(app, result):
     async def dismiss(e):
         secret.value = ''
         app.page.pop_dialog()
-    dialog = ft.AlertDialog(modal=True,title=ft.Text('Chave fictícia de demonstração' if is_demo else 'Chave exibida uma vez'),content=ft.Column([identifier,secret,ft.Text('Esta chave é simulada. Não a instale em um equipamento real.' if is_demo else 'Copie para a configuração do equipamento agora. Não compartilhe. Ao fechar, a chave não será armazenada no app.')],tight=True),actions=[ft.TextButton('Fechar' if is_demo else 'Copiei, fechar',on_click=dismiss)])
+    dialog = ft.AlertDialog(modal=True,title=ft.Text('Chave da central' if is_demo else 'Chave exibida uma vez'),content=ft.Column([identifier,secret,ft.Text('Chave gerada para este ponto. Nada precisa ser instalado.' if is_demo else 'Copie para a configuração do equipamento agora. Não compartilhe. Ao fechar, a chave não será armazenada no app.')],tight=True),actions=[ft.TextButton('Fechar' if is_demo else 'Copiei, fechar',on_click=dismiss)])
     app.page.show_dialog(dialog)

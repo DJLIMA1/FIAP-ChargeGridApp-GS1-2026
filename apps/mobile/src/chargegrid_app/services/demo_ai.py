@@ -262,7 +262,7 @@ def _messages(body):
 
 async def handle(api, method, path, body):
     if method != 'POST' or path not in ('ai/chat', 'ai/search', 'ai/session-insight', 'ai/owner-insights'):
-        raise ApiError('Esta operação não está disponível na demonstração.', 404, 'demo_route_not_supported')
+        raise ApiError('Esta operação não está disponível nesta conta.', 404, 'demo_route_not_supported')
     _limit()
     llm = complete if available() else None
     now = api._now()
@@ -270,7 +270,7 @@ async def handle(api, method, path, body):
     if path == 'ai/chat':
         history = _messages(body)
         if llm is None:
-            raise ApiError('Assistente de IA indisponível na demonstração sem chave.', 503, 'ai_unavailable')
+            raise ApiError('Assistente de IA indisponível no momento.', 503, 'ai_unavailable')
         context = body.get('context') if isinstance(body.get('context'), dict) else {}
         owner = bool(api._profile.get('operator_enabled'))
         role = 'owner' if owner and context.get('mode') == 'owner' else 'driver'
@@ -279,7 +279,7 @@ async def handle(api, method, path, body):
                                    client={'soc_percent': context.get('soc_percent'),
                                            'soc_source': context.get('soc_source')})
         toolbox = Toolbox(source, owner=owner, now=now, origin=origin, role=role, context=card)
-        system = system_prompt(role=role, demo=True, now=now, user_name='Demo', context=card,
+        system = system_prompt(role=role, demo=True, now=now, user_name=api._profile.get('name') or None, context=card,
                                location_label='localização atual do aparelho' if origin else None)
         try:
             outcome = await run_chat(llm, toolbox, history, system=system)

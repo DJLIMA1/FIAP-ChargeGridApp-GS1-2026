@@ -241,7 +241,7 @@ export function ChargersCard({
   return (
     <Card
       title="Carregadores"
-      sub="Cada carregador é um GoodWe HCA G2 (simulado) comandado pela central da estação"
+      sub="Cada carregador é um GoodWe HCA G2 comandado pela central da estação"
       id="connectors"
       action={
         target ? (

@@ -68,15 +68,11 @@ def _summary(app, session, *, seller, scope):
 
 async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, receipt=None,
                 session=None, **_):
-    demo = getattr(app.api,'is_demo',False) is True
     if session or receipt:
         return await charge_detail.build(app, session or receipt, manage=bool(manage), station_id=station_id,
                                          offset=offset)
-    demo_controls = [ft.Column([txt('CONTA DEMO · HISTÓRICO SIMULADO', 10, 'bold', theme.ACCENT),
-                                txt('Sessões de exemplo e testes feitos nesta conta. Estes valores não são cobranças ou medições reais.',
-                                    10, 'regular', theme.GRAY_TEXT)], spacing=2)] if demo else []
     if manage and not app.profile.get('operator_enabled'):
-        return ft.Column(demo_controls+[
+        return ft.Column([
             title('Histórico dos meus postos', 'Vincule sua primeira central para começar a registrar recargas nos seus postos.'),
             button('Ir para meus postos', app.link('operator')),
         ], spacing=15)
@@ -129,14 +125,12 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
     if manage and not station_id:
         return layout(ft.Container(page_title('Histórico', size=22.6), margin=ft.Margin(left=0, top=2, right=0, bottom=0)),
                       ft.Container(height=29), ft.Column(dashboard, spacing=0),
-                      ft.Container(ft.Column([*controls, *demo_controls], spacing=30),
+                      ft.Container(ft.Column(controls, spacing=30),
                                    margin=ft.Margin(left=0, top=36 if chart not in (False, 0, 'false') else 240, right=0, bottom=0)),
                       gap=0)
     if not station_id and not offset and result['items']:
         controls.append(history_export.history_card(app))
     heading = [] if station_id else [ft.Container(page_title('Histórico', size=14.7), margin=ft.Margin(left=0, top=4, right=0, bottom=0))]
-    # A conta demo avisa que os dados são simulados, mas abaixo da dobra (a referência não mostra o aviso).
-    notice = [ft.Container(height=500), *demo_controls] if demo_controls and not station_id else demo_controls
     return layout(*heading, ft.Container(height=0 if station_id else 34.5),
-                  ft.Column([*controls, *notice], spacing=36.5 if not station_id else 20),
+                  ft.Column(controls, spacing=36.5 if not station_id else 20),
                   gap=0)

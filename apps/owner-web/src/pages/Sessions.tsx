@@ -21,17 +21,16 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge tone={meta.tone}>{meta.label}</Badge>
 }
 
-/** Selo do pagamento (Stripe em modo teste): rótulo da API, capturado/devolvido e "teste". */
+/** Selo do pagamento: rótulo da API (sem a marca de ambiente) e capturado/devolvido. */
 function PaymentBadge({ session, detail }: { session: SessionItem; detail?: boolean }) {
   const badge = paymentBadge(session.payment)
   if (!badge) return <span className="dim">—</span>
-  // "Cobrado R$ 32,10 (teste) · Devolvido R$ 7,90": o selo leva a primeira parte e o resto vai abaixo.
+  // "Cobrado R$ 32,10 · Devolvido R$ 7,90": o selo leva a primeira parte e o resto vai abaixo.
   const [head, ...rest] = badge.label.split(' · ')
   return (
     <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
       <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         <Badge tone={badge.tone}>{head}</Badge>
-        {badge.test && !/teste/i.test(badge.label) ? <Badge tone="gray">teste</Badge> : null}
       </span>
       {rest.length && !(detail && badge.detail) ? <span className="dim" style={{ fontSize: 11.5 }}>{rest.join(' · ')}</span> : null}
       {detail && badge.detail ? <span className="dim" style={{ fontSize: 11.5 }}>{badge.detail}</span> : null}
@@ -39,13 +38,13 @@ function PaymentBadge({ session, detail }: { session: SessionItem; detail?: bool
   )
 }
 
-/** Selo do canal (App / QR do painel / Totem) e o método (Simulado / Stripe). */
+/** Selo do canal (App / QR do painel / Totem) e o método (Sem cobrança / Stripe). */
 function ChannelBadge({ session }: { session: SessionItem }) {
   const channel = paymentChannel(session.payment)
   return (
     <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
       <Badge tone={channelTone(channel)}>{CHANNEL_LABELS[channel]}</Badge>
-      {session.payment ? <span className="dim" style={{ fontSize: 11.5 }}>{isSimulated(session.payment) ? 'Simulado' : 'Stripe'}</span> : null}
+      {session.payment ? <span className="dim" style={{ fontSize: 11.5 }}>{paymentMethodLabel(session.payment)}</span> : null}
     </span>
   )
 }
@@ -114,14 +113,14 @@ function SessionDrawer({ session, onClose }: { session: SessionItem; onClose(): 
         </div>
         {'payment' in session ? (
           <div className="full">
-            <dt>{isSimulated(session.payment) ? 'Pagamento (simulado)' : 'Pagamento (Stripe · teste)'}</dt>
+            <dt>{isSimulated(session.payment) ? 'Pagamento' : 'Pagamento (Stripe)'}</dt>
             <dd>
               <PaymentBadge session={session} detail />
               {session.payment ? (
                 <div className="dim" style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
                   Teto autorizado {formatCurrency(session.payment.amount)}
                   {` · ${CHANNEL_LABELS[paymentChannel(session.payment)]}`}
-                  {isSimulated(session.payment) ? ' · simulado (sem cobrança real)' : session.payment.method ? ` · ${session.payment.method === 'pix' ? 'Pix' : 'cartão'}` : ''}
+                  {isSimulated(session.payment) ? ' · sem cobrança' : session.payment.method ? ` · ${session.payment.method === 'pix' ? 'Pix' : 'cartão'}` : ''}
                 </div>
               ) : null}
             </dd>

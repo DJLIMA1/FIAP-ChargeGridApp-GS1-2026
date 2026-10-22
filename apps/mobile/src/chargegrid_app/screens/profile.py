@@ -188,7 +188,7 @@ async def build(app, mode=None, **_):
             elif not saved:
                 app.notice('Modo apresentação aplicado nesta sessão. Não foi possível salvar no dispositivo.')
             app.page.update()
-        rows.append(_row('Modo apresentação', 'Bateria do celular como a do carro e pagamento simulado (sem Stripe)',
+        rows.append(_row('Modo apresentação', 'Bateria do celular como a do carro e pagamento sem Stripe',
                          ft.Icons.BATTERY_CHARGING_FULL, None, chevron=False,
                          trailing=ft.Switch(value=vehicle_state.presentation_mode(app), on_change=presentation,
                                             data='presentation', active_color=theme.RED)))
@@ -201,9 +201,9 @@ async def build(app, mode=None, **_):
         # Versão instalada + checagem na hora (o aviso automático roda ao abrir e ao voltar ao app).
         rows.append(_row(f'Versão {version}', 'Verificar atualização', ft.Icons.SYSTEM_UPDATE_OUTLINED,
                          app.action(lambda: app.offer_update(version, delay=0, manual=True))))
-    notes = [design.demo_note(app)]
+    notes = []
     if demo:
-        notes.append(design.txt('Senha pública: demo1234 · os dados simulados reiniciam ao sair', 10,
+        notes.append(design.txt('Os dados desta conta reiniciam ao sair', 10,
                                 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER))
     else:
         notes.append(design.txt('Sair não interrompe uma recarga em andamento.', 11, 'regular', theme.GRAY_TEXT,

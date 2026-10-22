@@ -66,7 +66,7 @@ async def build(app, station):
 
     from .setup_ui import cta
     is_demo = bool(getattr(app.api, 'is_demo', False))
-    sections.append(cta('Adicionar central simulada a este posto' if is_demo else 'Vincular outra central a este posto',
+    sections.append(cta('Adicionar central a este posto' if is_demo else 'Vincular outra central a este posto',
                         app.link('operator', station_id=station['id'], claim=True), primary=False, weight='semibold'))
     return ft.Column(sections, spacing=15, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
@@ -93,7 +93,7 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     # Mensagens de estado/ações; o último contato fica no subtítulo do cartão (não se repete aqui).
     device_status = design.txt(
         ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else '')
-        if linked_device else 'Nenhuma central simulada vinculada.' if is_demo else
+        if linked_device else 'Nenhuma central vinculada.' if is_demo else
         'Nenhuma central vinculada. Provisione uma credencial abaixo.', 11.5, 'regular', theme.TEXT_COLOR)
     device_status.visible = bool(device_status.value)
 
@@ -117,7 +117,7 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
         app.page.update()
     async def provision():
         result = await app.api.request('POST',f"connectors/{connector['id']}/device")
-        update_device(result['device_id'],'Credencial simulada criada. Nada precisa ser instalado.' if is_demo else
+        update_device(result['device_id'],'Credencial criada. Nada precisa ser instalado.' if is_demo else
                       'Credencial criada. Configure a chave na central para conectar.')
         operator.show_key(app,result)
         await updated()
@@ -125,7 +125,7 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
         if not device.value.strip():
             raise ApiError('Informe o ID do dispositivo.')
         result = await app.api.request('POST',f'devices/{device.value.strip()}/rotate-key')
-        say('Chave fictícia renovada nesta demonstração.' if is_demo else 'Chave renovada. Atualize a configuração da central para reconectar.')
+        say('Chave renovada.' if is_demo else 'Chave renovada. Atualize a configuração da central para reconectar.')
         app.page.update()
         operator.show_key(app,result)
         await updated()
@@ -133,9 +133,9 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
         if not device.value.strip():
             raise ApiError('Informe o ID do dispositivo.')
         await app.api.request('POST',f'devices/{device.value.strip()}/revoke')
-        update_device('','Credencial simulada revogada. Simule outra quando quiser.' if is_demo else
+        update_device('','Credencial revogada. Gere outra quando quiser.' if is_demo else
                       'Credencial revogada. Provisione outra para reconectar a central.')
-        app.notice('Revogação simulada concluída.' if is_demo else 'Central revogada; chave anterior recusada.')
+        app.notice('Revogação concluída.' if is_demo else 'Central revogada; chave anterior recusada.')
         await updated()
     reset_messages = {
         'not_requested': 'Remove o vínculo e preserva o Wi-Fi. Os carregadores sairão de operação; o histórico fica.',
@@ -147,12 +147,12 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     }
     if is_demo:
         reset_messages.update({
-            'not_requested':'Desativa este ponto fictício e mantém o histórico da demonstração.',
-            'pending':'Aguardando a confirmação simulada da restauração.',
-            'received':'A central fictícia recebeu o comando simulado.',
-            'applied':'Restauração simulada confirmada. Adicione outra central simulada para criar um novo vínculo.',
-            'failed':'A restauração simulada falhou. Encerre reservas e recargas simuladas e tente novamente.',
-            'expired':'O comando simulado expirou. Tente novamente nesta demonstração.',
+            'not_requested':'Desativa este ponto e mantém o histórico.',
+            'pending':'Aguardando a confirmação da restauração.',
+            'received':'A central recebeu o comando.',
+            'applied':'Restauração confirmada. Adicione outra central para criar um novo vínculo.',
+            'failed':'A restauração falhou. Encerre reservas e recargas e tente novamente.',
+            'expired':'O comando expirou. Tente novamente.',
         })
     initial_status = reset_state.get('status', 'not_requested')
     reset_info = design.txt(reset_messages.get(initial_status, reset_messages['not_requested']), 11.5, 'regular',
@@ -195,11 +195,11 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
                 ensure_poll()
         app.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('Simular restauração da central?' if is_demo else 'Restaurar central de fábrica?'),
-            content=ft.Text('Esta ação altera apenas o ponto fictício desta demonstração. Ele será desativado e o histórico simulado será mantido. Nenhum dispositivo físico ou Wi-Fi será alterado.' if is_demo else
+            title=ft.Text('Restaurar central?' if is_demo else 'Restaurar central de fábrica?'),
+            content=ft.Text('Este ponto será desativado e o histórico será mantido. O Wi-Fi não será alterado.' if is_demo else
                             'O vínculo desta central será removido e o Wi-Fi será preservado. Os carregadores desta central sairão de operação, mas seu histórico será mantido. Faça isso somente com a central online e sem reserva ou recarga. Depois, escaneie o novo QR para vincular a central novamente.'),
             actions=[ft.TextButton('Cancelar', on_click=cancel),
-                     ft.TextButton('Simular restauração' if is_demo else 'Restaurar', on_click=app.action(confirm),
+                     ft.TextButton('Restaurar', on_click=app.action(confirm),
                                    style=ft.ButtonStyle(color=theme.RED))],
         ))
 
@@ -210,7 +210,7 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     for button in (rotate_button, revoke_button):
         button.expand = True
     provision_row = ft.Row([design.txt('Sem credencial. Gere uma para a central conectar.' if not is_demo else
-                                       'Sem credencial simulada.', 11, 'regular', theme.GRAY_TEXT, expand=True),
+                                       'Sem credencial.', 11, 'regular', theme.GRAY_TEXT, expand=True),
                             provision_button], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     key_row = ft.Row([rotate_button, revoke_button], spacing=10)
     reset_box = ft.Container(
@@ -252,7 +252,7 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     # Identificação → mensagem → credencial → restauração (ação destrutiva e o status dela por último).
     content = chargers.card('', device_row, device_status, provision_row, key_row, reset_info, reset_box,
                             head=chargers.central_head(name, badge, contact),
-                            subtitle='Credencial e restauração simuladas' if is_demo else None)
+                            subtitle=None)
     content.data = 'central-maintenance'
     if reset_state.get('status') in ('pending', 'received'):
         ensure_poll()

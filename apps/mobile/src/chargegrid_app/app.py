@@ -710,7 +710,7 @@ class ChargeGridApp:
 
     async def enter_demo(self):
         if not demo_enabled():
-            raise ApiError('Demonstração indisponível neste aplicativo.')
+            raise ApiError('Conta de exemplo indisponível neste aplicativo.')
         from .demo import DEMO_EMAIL, DEMO_PASSWORD
         await self.login(DEMO_EMAIL, DEMO_PASSWORD)
         await self.signed_in()

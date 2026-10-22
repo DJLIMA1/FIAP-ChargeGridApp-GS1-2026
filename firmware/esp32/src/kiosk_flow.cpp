@@ -61,10 +61,12 @@ Method methodFrom(const char* text) {
   if (same(text, "stripe")) return Method::Stripe;
   return Method::Unknown;
 }
-// Rótulo exibido: só os dois que o contrato define (o servidor decide; nada inventado aqui).
+// Rótulo do contrato (só os dois que o servidor define; nada inventado aqui). Não aparece na
+// tela: o selo de método do cabeçalho foi removido; fica no modelo para os testes e o log.
+constexpr const char* kProtocolLabelSimulated = "SIMULADO";
 void labelFrom(char* out, size_t size, const char* text, Method method) {
   if (same(text, "SIMULADO") || same(text, "TESTE")) copy(out, size, text);
-  else if (text == nullptr || !*text) copy(out, size, method == Method::Simulated ? str::kLabelSimulated : "");
+  else if (text == nullptr || !*text) copy(out, size, method == Method::Simulated ? kProtocolLabelSimulated : "");
   else copy(out, size, "");
 }
 float number(JsonVariantConst value, float fallback) {
@@ -1197,8 +1199,8 @@ void Flow::render() {
         snprintf(text, sizeof(text), "Saldo do app - %s", a);
         setButton(next.options[2], text, Action::PayBalance, offer_.balanceAvailable && offer_.balanceCents >= quote_.amountCents);
       }
-      copy(next.context, sizeof(next.context), offer_.method == Method::Simulated ? "Modo apresentação: Pix, cartão e saldo são simulados, sem cobrança real." : "Pagamento seguro pelo QR. A confirmação vem do servidor.");
-      if (offer_.loggedIn && !offer_.balanceAvailable) copy(next.notice, sizeof(next.notice), "Saldo simulado disponível apenas em postos de apresentação.");
+      copy(next.context, sizeof(next.context), offer_.method == Method::Simulated ? "Escolha como pagar. A confirmação vem do servidor." : "Pagamento seguro pelo QR. A confirmação vem do servidor.");
+      if (offer_.loggedIn && !offer_.balanceAvailable) copy(next.notice, sizeof(next.notice), "Saldo do app indisponível neste ponto.");
       setButton(next.secondary, str::kBack, Action::Back);
       copy(next.label, sizeof(next.label), label);
       break;

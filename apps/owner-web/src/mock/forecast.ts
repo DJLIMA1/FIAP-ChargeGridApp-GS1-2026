@@ -53,7 +53,7 @@ export function forecast(stationId: string): OwnerForecast {
     },
     coverage: { days_measured: 6, days_synthetic: 50, first_hour: null },
     includes_synthetic: true,
-    notes: ['Inclui histórico sintético (rotulado), usado para demonstração.'],
+    notes: ['Inclui histórico sintético (rotulado).'],
     accuracy: {
       window_days: 14, origins: 14, status: 'ok',
       baseline: { mae_pp: 12.4, wape: 0.41, accuracy_percent: 59 }, gbm: { mae_pp: 10.9, wape: 0.36, accuracy_percent: 64 },
@@ -91,6 +91,6 @@ export function history(stationId: string, weeks: number): OccupancyHistory {
     energy_kwh: occupancy.map((row) => row.map((v) => ((Number(v) / 100) * 4 * 15.6).toFixed(3))),
     samples: DAYS.map(() => CURVE.map(() => weeks)), max_occupancy_percent: '100.0',
     coverage: { days_measured: 6, days_synthetic: weeks * 7 - 6, first_hour: null }, includes_synthetic: true,
-    notes: ['Inclui histórico sintético (rotulado), usado para demonstração.'],
+    notes: ['Inclui histórico sintético (rotulado).'],
   }
 }

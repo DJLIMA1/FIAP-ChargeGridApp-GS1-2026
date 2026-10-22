@@ -189,7 +189,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
       if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)
       throw error
     }
-    return fail(405, 'method_not_allowed', 'Método não suportado na demonstração')
+    return fail(405, 'method_not_allowed', 'Método não suportado')
   }
   const stationMatch = /^\/stations\/([^/]+)$/.exec(path)
   if (stationMatch) {
@@ -261,7 +261,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     Object.assign(coupon, patch)
     return json(coupon)
   }
-  return fail(404, 'not_found', 'Rota de demonstração inexistente')
+  return fail(404, 'not_found', 'Rota inexistente')
 }
 
 export function installMock(): void {

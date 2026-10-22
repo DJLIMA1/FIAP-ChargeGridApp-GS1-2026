@@ -238,8 +238,8 @@ async def build(app, **_):
 
     def describe_state(reservation, session):
         if session:
-            source = 'Simulação local' if demo else SOURCE.get(session.get('source'), 'origem não informada')
-            battery_label = 'Bateria simulada' if demo else 'Bateria'
+            source = SOURCE.get(session.get('source'), 'origem não informada')
+            battery_label = 'Bateria'
             battery = '' if session.get('soc_percent') is None else f" · {battery_label} {float(session['soc_percent']):.0f}%"
             labels = DEMO_CHARGING_LABELS if demo else CHARGING_LABELS
             state_text = f"{labels.get(session['status'], session['status'])}{battery} · {source}"
@@ -349,21 +349,12 @@ async def build_vendor(app, empty=False, **_):
 
     rows = ft.Column(_station_rows(app, stations[:3], carded=False), spacing=16,
                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
-    chat = ft.Container(
-        ft.Row([ft.Image(src='/design/nav_chat.svg', width=22, height=22, color=theme.BTN_PRIMARY_FG,
-                         exclude_from_semantics=True),
-                design.txt('Fale com o ChatBot', 15.6, 'regular', theme.BTN_PRIMARY_FG)],
-               spacing=14, alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        padding=ft.Padding(left=0, right=20, top=0, bottom=0),
-        bgcolor=theme.BTN_PRIMARY, border_radius=design.RADIUS_BTN, height=39, on_click=app.link('chat'), ink=True,
-        alignment=ft.Alignment(0, 0))
     controls = [
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance, top=7.5),
         _spaced(_totem_scene(app), top=28),
         _spaced(design.txt('Suas estações', 15, 'bold'), top=-7, bottom=14),
         rows,
-        _spaced(chat, top=14),
     ]
 
     async def update():
@@ -386,7 +377,7 @@ async def build_vendor(app, empty=False, **_):
 
 def _vendor_empty(app, demo):
     """Vendedor sem estações: configurar a primeira central escaneando o QR de vinculação."""
-    scan = app.link('operator', claim=True)
+    scan = app.link('operator', claim=True, scan=True)  # abre a câmera direto
     card = design.card_box(
         ft.Column([
             ft.Container(ft.Icon(ft.Icons.QR_CODE_SCANNER, size=62, color=theme.TEXT_COLOR),

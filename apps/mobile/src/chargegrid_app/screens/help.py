@@ -15,8 +15,7 @@ TOPICS = {
     ),
     'Tempo e valor da recarga': (
         'Por tempo define a duração máxima. Por valor define um teto de custo estimado, sempre com '
-        'um limite de duração de segurança. A recarga pode terminar antes ao atingir um dos limites. '
-        'Saldo, Pix e cartão no app são simulados: nenhuma cobrança real é feita.'
+        'um limite de duração de segurança. A recarga pode terminar antes ao atingir um dos limites.'
     ),
     'Parar ou resolver uma falha': (
         'Abra Recarga e toque em Encerrar recarga. Aguarde a confirmação do equipamento; '
@@ -34,7 +33,7 @@ TOPICS = {
         'Em Conta você pode editar seus dados, alterar a senha e escolher o tema. Contas de operador '
         'podem alternar para motorista sem outro cadastro. Histórico mostra suas recargas no modo '
         'motorista e as dos seus postos no modo operador. Bateria e energia vêm do equipamento, '
-        'identificadas como simuladas, medidas ou estimadas; o app não inventa progresso.'
+        'identificadas como calculadas, medidas ou estimadas; o app não inventa progresso.'
     ),
 }
 

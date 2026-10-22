@@ -59,14 +59,14 @@ describe('totem em Dados da estação', () => {
     expect(kiosk).toBeGreaterThan(card)
     expect(html.indexOf('Salvar alterações')).toBeGreaterThan(kiosk)
     expect(html).toMatch(/data-testid="kiosk-mode"[^>]*>.*aria-pressed="true"[^>]*>Ligado/)
-    expect(html).toContain('<div data-testid="kiosk-status" class="dim" style="font-size:12.5px">Pagamento: Stripe (teste)</div>')
+    expect(html).toContain('<div data-testid="kiosk-status" class="dim" style="font-size:12.5px">Pagamento: Stripe</div>')
   })
 
   it('Modo apresentação e estação inativa mudam a linha de status', async () => {
     const { KioskField } = await import('../src/components/station/KioskField')
     profile.presentation_mode = true
     const simulated = renderToStaticMarkup(createElement(KioskField, { station: station({ kiosk_mode: false }), onSaved: () => undefined }))
-    expect(simulated).toContain('Pagamento simulado (Modo apresentação)')
+    expect(simulated).toContain('Pagamento: sem cobrança')
     expect(simulated).toMatch(/aria-pressed="true"[^>]*>Desligado/)
     profile.presentation_mode = false
     const inactive = renderToStaticMarkup(createElement(KioskField, { station: station({ active: false, kiosk_mode: false }), onSaved: () => undefined }))
@@ -91,7 +91,7 @@ describe('estação (tela) × carregadores no detalhe do posto', () => {
     const html = renderToStaticMarkup(createElement(ChargerCard, { connector: point('CG-002'), onSaved: noop }))
     expect(html).toContain('CG-002')
     expect(html).toMatch(/class="badge green ">Online</)
-    expect(html).toContain('Carregador 2 · GoodWe HCA G2 (simulado) · Tipo 2 · 22 kW')
+    expect(html).toContain('Carregador 2 · GoodWe HCA G2 · Tipo 2 · 22 kW')
     const order = ['Endereço', 'Tipo de conector', 'Potência nominal', 'Limite', 'última leitura agora', 'Tarifa', 'Duração máxima', 'Salvar carregador']
     const positions = order.map((text) => html.indexOf(text))
     positions.forEach((pos, i) => expect(pos, order[i]).toBeGreaterThan(i ? positions[i - 1] : -1))

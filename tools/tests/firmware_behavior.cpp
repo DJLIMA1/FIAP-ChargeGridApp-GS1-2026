@@ -381,7 +381,7 @@ static void runKioskScreens(const char* out) {
   assert(state == "stopped" && endReason == "requested");     // requestLocalSafeStop()
   kioskApply(kioskSyncJson(simulatedBlock, syncOrder("finished", (std::string(R"({"number":"1A2B3C4D","energy_kwh":"1.200","total":"2.76","returned":"47.24","return_kind":"simulated","final":true,"end_reason":"requested","url":")") + kKioskReceiptUrl + "\"}").c_str()).c_str()));
   kioskShot(out, "kiosk-receipt");
-  assert(ui::routerScreen() == kiosk::Screen::Receipt && hasLabel(ui::routerRoot(), "1A2B3C4D") && hasLabel(ui::routerRoot(), "Simulado, sem cobrança"));
+  assert(ui::routerScreen() == kiosk::Screen::Receipt && hasLabel(ui::routerRoot(), "1A2B3C4D") && hasLabel(ui::routerRoot(), "Sem cobrança"));
   reading.connected = true;
   testMillis += 30000; lastContact = testMillis;
   kioskShot(out, "kiosk-receipt-expired-connected");
@@ -1648,18 +1648,18 @@ int main(int argc, char** argv) {
   paymentStatus = ""; paymentAmount = -1; paymentTest = false;
   screenshot(argv[1], "panel-kiosk-qr");
   assert(!hidden(kioskCard) && !hidden(kioskQrBox) && hidden(stepsCard) && !hidden(codeCard));
-  assert(std::string(lastKioskQr) == kioskUrl && text(kioskTitle) == "Sem o app? Pague aqui \u00B7 TESTE");
+  assert(std::string(lastKioskQr) == kioskUrl && text(kioskTitle) == "Sem o app? Pague aqui");
   assert(text(kioskDetail) == "Escaneie com a câmera do celular e escolha o valor.");
   assert(text(instructionLabel).find("pague pelo QR") != std::string::npos);
   assert(lv_obj_get_width(rowLineTop) == 531 && lv_obj_get_y(codeCard) == 118);
   paymentStatus = "awaiting_payment"; paymentAmount = 20; paymentTest = true;
   screenshot(argv[1], "panel-kiosk-awaiting");
-  assert(text(kioskDetail) == "Aguardando pagamento (teste) \u00B7 R$ 20,00");
+  assert(text(kioskDetail) == "Aguardando pagamento \u00B7 R$ 20,00");
   paymentStatus = "paid"; panelTick(); refresh();
-  assert(text(kioskDetail) == "Pagamento confirmado (teste) \u00B7 iniciando");
+  assert(text(kioskDetail) == "Pagamento confirmado \u00B7 iniciando");
   kioskUrl = ""; panelTick(); refresh(); // QR gone (e.g. START on its way): status stays visible.
   assert(hidden(kioskCard) && hidden(kioskQrBox) && !hidden(stepsCard));
-  assert(text(instructionLabel) == "Pagamento confirmado (teste) \u00B7 iniciando");
+  assert(text(instructionLabel) == "Pagamento confirmado \u00B7 iniciando");
   lv_obj_update_layout(lv_scr_act());
   assert(lv_obj_get_width(rowLineTop) == 711 && lv_obj_get_y(codeCard) == 130);
   paymentStatus = ""; paymentAmount = -1; paymentTest = false; panelTick(); refresh();

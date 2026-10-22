@@ -83,7 +83,7 @@ def demo_address_suggestions(query):
                         'postcode': postcode, 'latitude': lat, 'longitude': lng}
                 item['label'] = f'{street}, {number}, {district}, São Paulo - SP'
                 items.append(item)
-    return {'items': items[:6], 'available': True, 'attribution': 'Endereços de demonstração (sem consulta externa)'}
+    return {'items': items[:6], 'available': True, 'attribution': 'Endereços sugeridos'}
 
 
 def _fail(message, code='validation_error', status=422, reason=None, alternatives=None):
@@ -144,7 +144,7 @@ def _amenities(value):
 
 def _fields(body, allowed):
     if set(body) - set(allowed):
-        _fail('Este formulário contém campos não reconhecidos na demonstração.')
+        _fail('Este formulário contém campos não reconhecidos.')
 
 
 class _PointStore(dict):
@@ -216,7 +216,7 @@ class DemoApi(OwnerApiMixin):
         self.charging_operation_sessions.clear()
         self.last_session_id = self.last_reservation_id = None
         self._profile = {'id': _USER, 'name': 'João Pedro Sousa', 'account_type': 'vendor',
-                         'operator_enabled': True, 'phone': '(11) 91234-5678', 'vehicle_description': 'Veículo simulado',
+                         'operator_enabled': True, 'phone': '(11) 91234-5678', 'vehicle_description': 'Veículo elétrico',
                          # Modo apresentação da conta (como a API): decide o pagamento do totem dos postos.
                          'presentation_mode': False, 'created_at': self._iso()}
         for index, location in enumerate(DEMO_LOCATIONS):
@@ -288,7 +288,7 @@ class DemoApi(OwnerApiMixin):
 
     async def refresh(self, old_token=None):
         if not self.session.access_token:
-            _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+            _fail('Entre na sua conta para continuar.', 'unauthorized', 401)
         self.session.update(self._tokens())
 
     async def close(self):
@@ -338,21 +338,21 @@ class DemoApi(OwnerApiMixin):
         data, params = deepcopy(body or {}), dict(params or {})
         if (method, path) == ('POST', 'auth/login'):
             if str(data.get('email', '')).strip().casefold() != DEMO_EMAIL or data.get('password') != DEMO_PASSWORD:
-                _fail('Use as credenciais públicas da conta de demonstração.', 'auth_rejected', 401)
+                _fail('Use as credenciais da conta de exemplo.', 'auth_rejected', 401)
             self._reset_state()
             return self._tokens()
         if not self.session.access_token:
-            _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+            _fail('Entre na sua conta para continuar.', 'unauthorized', 401)
         if (method, path) == ('POST', 'auth/logout'):
             await self.close()
-            return {'message': 'Demonstração encerrada; dados locais descartados.'}
+            return {'message': 'Sessão encerrada; dados locais descartados.'}
         if (method, path) == ('POST', 'auth/refresh'):
             return self._tokens()
         if (method, path) == ('POST', 'auth/password/update'):
             _text(data.get('password'), 'a senha', 128)
             if len(data['password']) < 8:
                 _fail('A senha deve ter pelo menos oito caracteres.')
-            return {'message': 'Simulação concluída. As credenciais públicas da demonstração não mudam.'}
+            return {'message': 'Pedido concluído. As credenciais desta conta não mudam.'}
         self._advance()
         if path.startswith('ai/'):
             from .services import demo_ai_bridge
@@ -548,7 +548,7 @@ class DemoApi(OwnerApiMixin):
         self._devices[did] = device
         return device
 
-    def _get(self, store, identifier, message='Registro de demonstração não encontrado.'):
+    def _get(self, store, identifier, message='Registro não encontrado.'):
         result = store.get(identifier)
         if result is None:
             _fail(message, 'not_found', 404)
@@ -570,7 +570,7 @@ class DemoApi(OwnerApiMixin):
     def _user_free(self, reservation_id=None):
         reservation = self._current('reservation')
         if self._current('session') or (reservation and reservation['id'] != reservation_id):
-            _fail('Você já tem uma reserva ou recarga ativa na demonstração.', 'user_busy', 409)
+            _fail('Você já tem uma reserva ou recarga ativa.', 'user_busy', 409)
 
     def _power(self, station):
         """Same allocation as the API (``chargegrid_core.power``)."""
@@ -777,9 +777,9 @@ class DemoApi(OwnerApiMixin):
         return {'items': records[offset:offset + limit], 'total': len(records), 'limit': limit, 'offset': offset}
 
     def _owned(self, station_id):
-        station = self._get(self._stations, station_id, 'Posto demonstrativo não encontrado.')
+        station = self._get(self._stations, station_id, 'Posto não encontrado.')
         if station['owner_id'] != _USER:
-            _fail('Posto demonstrativo não encontrado.', 'not_found', 404)
+            _fail('Posto não encontrado.', 'not_found', 404)
         return station
 
     def _dispatch(self, method, path, body, params):
@@ -898,7 +898,7 @@ class DemoApi(OwnerApiMixin):
             return self._station_row(station)
         if parts[0] == 'stations' and len(parts) == 3 and parts[2] == 'connectors' and method == 'POST':
             self._owned(parts[1])
-            _fail('Use Adicionar central simulada para criar um ponto.', 'claim_required', 409)
+            _fail('Use Adicionar central para criar um ponto.', 'claim_required', 409)
         if parts[0] == 'connectors' and len(parts) == 2 and method == 'PATCH':
             return self._patch_point(parts[1], body)
         if parts[0] == 'connectors' and len(parts) == 2 and method == 'DELETE':
@@ -970,7 +970,7 @@ class DemoApi(OwnerApiMixin):
                 _fail('O Modo motorista foi descontinuado.', 'driver_mode_discontinued', 410)
             from .services.driver_demo import driver_route
             return driver_route(self, method, path, body, params)
-        _fail('Esta operação não está disponível na demonstração. Nenhum servidor real foi consultado.', 'demo_route_not_supported', 404)
+        _fail('Esta operação não está disponível nesta conta.', 'demo_route_not_supported', 404)
 
     def _station_fields(self, body, creating=False):
         allowed = ('name', 'address', 'latitude', 'longitude') + (
@@ -1014,7 +1014,7 @@ class DemoApi(OwnerApiMixin):
         if set(body) - {'power_limit_kw'} and self._busy(identifier):
             _fail('Encerre reservas e recargas antes de editar o ponto.', 'point_busy', 409)
         if body.get('active') is True and (point['retired'] or any(r['status'] == 'pending' for did, r in self._resets.items() if self._devices[did]['connector_id'] == identifier)):
-            _fail('Este equipamento está sendo restaurado. Adicione outra central simulada.', 'point_retired', 409)
+            _fail('Este equipamento está sendo restaurado. Adicione outra central.', 'point_retired', 409)
         _fields(body, ('public_code', 'connector_type', 'power_kw', 'price_per_kwh', 'max_duration_minutes', 'active',
                        'power_limit_kw', 'charger_address'))
         address = self._charger_address(point, body) if 'charger_address' in body else None
@@ -1039,7 +1039,7 @@ class DemoApi(OwnerApiMixin):
             else:
                 _fail('Informe se o ponto está ativo.')
         if 'public_code' in changes and any(p['id'] != identifier and p['public_code'] == changes['public_code'] for p in self._points.values()):
-            _fail('Código público já usado na demonstração.', 'conflict', 409)
+            _fail('Código público já usado.', 'conflict', 409)
         rating = changes.get('power_kw', point['power_kw'])
         if 'power_limit_kw' in body:
             try:
@@ -1117,21 +1117,21 @@ class DemoApi(OwnerApiMixin):
         _fields(body, ('token', 'station_id'))
         token = body.get('token')
         if not isinstance(token, str) or token not in self._claims:
-            _fail('Use somente o equipamento simulado deste formulário.', 'invalid_claim', 404)
+            _fail('Use somente o equipamento deste formulário.', 'invalid_claim', 404)
         target = self._owned(body['station_id']) if body.get('station_id') else None
         existing = self._claims[token]
         if existing:
             point = self._points[existing]
             if target and target['id'] != point['station_id']:
-                _fail('Este código simulado já foi vinculado a outro posto.', 'already_claimed', 409)
+                _fail('Este código já foi vinculado a outro posto.', 'already_claimed', 409)
         else:
             if target is None:
-                target = self._make_station({'name': 'Novo posto demonstrativo', 'address': 'Configure o endereço simulado',
+                target = self._make_station({'name': 'Novo posto', 'address': 'Configure o endereço',
                                             'latitude': -23.5505, 'longitude': -46.6333}, active=False)
             point = self._make_point(target['id'], active=False)
             self._claims[token] = point['id']
         return {'station_id': point['station_id'], 'connector_id': point['id'], 'already_claimed': bool(existing),
-                'message': 'Equipamento simulado vinculado. Revise os dados antes de publicar.'}
+                'message': 'Equipamento vinculado. Revise os dados antes de publicar.'}
 
     def _device_row(self, device):
         point = self._point_row(self._points[device['connector_id']])
@@ -1150,14 +1150,14 @@ class DemoApi(OwnerApiMixin):
                 device = next((d for d in self._devices.values() if d['connector_id'] == point_id
                                and self._resets.get(d['id'], {}).get('status') == 'applied'), None)
             if not device:
-                _fail('Ponto simulado sem dispositivo ativo.', 'not_found', 404)
+                _fail('Ponto sem dispositivo ativo.', 'not_found', 404)
             return self._device_row(device)
         if self._busy(point_id):
             _fail('Encerre a operação antes de provisionar.', 'point_busy', 409)
         if point['retired']:
-            _fail('Adicione uma central simulada novo.', 'point_retired', 409)
+            _fail('Adicione uma nova central.', 'point_retired', 409)
         if device:
-            _fail('O ponto já tem um dispositivo simulado.', 'device_exists', 409)
+            _fail('O ponto já tem um dispositivo.', 'device_exists', 409)
         device = self._make_device(point_id)
         return {'device_id': device['id'], 'device_key': self._id('FAKE-DEVICE-KEY-NOT-REAL')}
 
@@ -1169,22 +1169,22 @@ class DemoApi(OwnerApiMixin):
         if method == 'GET' and action == 'factory-reset':
             return {k: reset[k] for k in ('status', 'command_id')} if reset else {'status': 'not_requested'}
         if method != 'POST' or action not in ('factory-reset', 'rotate-key', 'revoke'):
-            _fail('Operação de dispositivo não disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Operação de dispositivo não disponível nesta conta.', 'demo_route_not_supported', 404)
         if self._busy(point['id']):
-            _fail('Encerre reservas e recargas antes da manutenção simulada.', 'point_busy', 409)
+            _fail('Encerre reservas e recargas antes da manutenção.', 'point_busy', 409)
         if reset and reset['status'] == 'pending':
             if action == 'factory-reset':
                 return {k: reset[k] for k in ('status', 'command_id')}
-            _fail('Aguarde a restauração simulada.', 'reset_pending', 409)
+            _fail('Aguarde a restauração.', 'reset_pending', 409)
         if device['revoked']:
-            _fail('Dispositivo simulado revogado.', 'device_revoked', 409)
+            _fail('Dispositivo revogado.', 'device_revoked', 409)
         if action == 'revoke':
             device['revoked'] = True
             return {'revoked': True}
         if action == 'rotate-key':
             return {'device_id': device_id, 'device_key': self._id('FAKE-DEVICE-KEY-NOT-REAL')}
         if not device['online']:
-            _fail('O dispositivo simulado precisa estar online.', 'device_not_idle', 409)
+            _fail('O dispositivo precisa estar online.', 'device_not_idle', 409)
         point['active'] = False
         reset = {'status': 'pending', 'command_id': self._id('reset'), 'due': self._elapsed + 2}
         self._resets[device_id] = reset
@@ -1237,7 +1237,7 @@ class DemoApi(OwnerApiMixin):
             return page
         creating = len(parts) == 1 and method == 'POST'
         if not creating and not (len(parts) == 2 and method == 'PATCH'):
-            _fail('Operação de cupom não disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Operação de cupom não disponível nesta conta.', 'demo_route_not_supported', 404)
         allowed = ('code', 'description', 'discount_percent', 'station_id', 'valid_until') if creating else ('description', 'discount_percent', 'valid_until', 'active')
         _fields(body, allowed)
         coupon = {'active': True, 'station_id': None, 'operator_id': _USER} if creating else self._get(self._coupons, parts[1])
@@ -1246,7 +1246,7 @@ class DemoApi(OwnerApiMixin):
             # Codes are typed by drivers; match the API's case-insensitive contract.
             changes['code'] = _text(body.get('code'), 'código do cupom', 50).upper()
             if any(c['code'].upper() == changes['code'] for c in self._coupons.values()):
-                _fail('Já existe um cupom simulado com este código.', 'conflict', 409)
+                _fail('Já existe um cupom com este código.', 'conflict', 409)
         for name in ('description', 'discount_percent', 'valid_until'):
             if name not in body and not creating:
                 continue
@@ -1283,7 +1283,7 @@ class DemoApi(OwnerApiMixin):
         self._refuse_kiosk_hold(point)
         self._refuse_offline_charger(point)
         if not self._point_row(point)['available']:
-            _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
+            _fail('Ponto indisponível.', 'point_unavailable', 409)
         status = self._demand(self._stations[point['station_id']])
         base, price = pricing.connector_price(status,point['id'],point['price_per_kwh'],tier)
         rid = self._id('reservation')
@@ -1312,29 +1312,29 @@ class DemoApi(OwnerApiMixin):
             _fail('Confira a origem do nível da bateria.')
         soc_source = body.get('soc_source') or ('simulated' if start_soc is not None else None)
         if str(body.get('presence_code', '')).strip().upper() != DEMO_PRESENCE_CODE:
-            _fail('Na demonstração, use o código #F12345.', 'invalid_presence_code')
+            _fail('Use o código #F12345.', 'invalid_presence_code')
         reservation_id = body.get('reservation_id')
         reservation = self._get(self._reservations, reservation_id) if reservation_id else None
         if reservation:
             point = self._points[reservation['connector_id']]
             if reservation['status'] != 'confirmed' or (body.get('public_code') and body['public_code'] != point['public_code']):
-                _fail('Confira a reserva e o ponto simulados.', 'invalid_reservation', 409)
+                _fail('Confira a reserva e o ponto.', 'invalid_reservation', 409)
         elif body.get('public_code'):
             point = next((p for p in self._points.values() if p['public_code'] == body['public_code']), None)
             if point is None:
-                _fail('Ponto demonstrativo não encontrado.', 'not_found', 404)
+                _fail('Ponto não encontrado.', 'not_found', 404)
         else:
             matches = [p for p in self._points.values() if p['active'] and self._stations[p['station_id']]['active'] and not p['retired']]
             available = [p for p in matches if self._point_row(p)['available']]
             if len({p['station_id'] for p in matches}) > 1 or len(available) != 1:
-                _fail('Escolha um ponto na lista para usar este código de demonstração.', 'ambiguous_presence_code')
+                _fail('Escolha um ponto na lista para usar este código.', 'ambiguous_presence_code')
             point = available[0]
         self._user_free(reservation_id)
         if not reservation:
             self._refuse_kiosk_hold(point)
         self._refuse_offline_charger(point)
         if not reservation and not self._point_row(point)['available']:
-            _fail('Ponto simulado indisponível.', 'point_unavailable', 409)
+            _fail('Ponto indisponível.', 'point_unavailable', 409)
         if reservation and (not point['active'] or not self._stations[point['station_id']]['active'] or not self._point_row(point)['online']):
             _fail('O ponto reservado não está disponível.', 'point_unavailable', 409)
         from . import demo_payments
@@ -1343,7 +1343,7 @@ class DemoApi(OwnerApiMixin):
         payable_price = (Decimal(reservation['price_per_kwh']) if reservation and reservation.get('price_per_kwh') is not None
                          else pricing.connector_price(self._demand(station),point['id'],point['price_per_kwh'],requested_tier)[1])
         if not body.get('payment_id') and station.get('prepay_required') and payable_price > 0:
-            _fail('Este posto exige pagamento antes de iniciar. Pague pelo app (teste) e tente de novo.',
+            _fail('Este posto exige pagamento antes de iniciar. Pague pelo app e tente de novo.',
                   'payment_required', 402)
         demo_site.start_check(self, station, point)
         payment = demo_payments.claim_for_start(self, point, body['payment_id']) if body.get('payment_id') else None

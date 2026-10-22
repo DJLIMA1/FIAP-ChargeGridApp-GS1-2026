@@ -55,7 +55,7 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: 'ticket', title: 'Cupons e alertas', text: 'Campanhas de desconto e alertas de falha, ociosidade e não comparecimento.' },
 ]
 
-const TECH = ['React', 'TypeScript', 'Flet', 'FastAPI', 'PostgreSQL', 'Supabase Auth', 'ESP32-S3', 'LVGL', 'OpenRouter', 'Stripe (teste)', 'Vercel']
+const TECH = ['React', 'TypeScript', 'Flet', 'FastAPI', 'PostgreSQL', 'Supabase Auth', 'ESP32-S3', 'LVGL', 'OpenRouter', 'Stripe', 'Vercel']
 
 export default function Landing() {
   useEffect(() => {
@@ -227,11 +227,11 @@ export default function Landing() {
           <div className="lp-wrap lp-scope">
             <div>
               <p className="lp-kicker">Escopo do protótipo</p>
-              <h2>O que é real e o que é simulado</h2>
+              <h2>Como o protótipo funciona</h2>
               <p className="lp-section-lead">
                 Reservas, comandos, confirmações e histórico passam pelo sistema integrado e pelo totem físico. Potência,
-                energia e estado da bateria são gerados por sensores simulados: o protótipo não mede um veículo nem aciona um
-                carregador real, e os pagamentos usam o modo de teste.
+                energia e estado da bateria vêm da bancada do protótipo, que não mede um veículo nem aciona um carregador de
+                potência.
               </p>
             </div>
             <ul className="lp-tech" aria-label="Tecnologias">

@@ -92,6 +92,11 @@ export function overstayCell(item: { overstay_fee?: string | null; overstay_minu
 
 /* -------------------------------------------------------- selo de pagamento */
 
+/** Rótulo de pagamento sem as marcas de ambiente "(teste)"/"(simulado)" que a API possa enviar. */
+export function visibleLabel(label: string | null | undefined): string {
+  return (label ?? '').replace(/\s*\((?:teste|simulado)\)/gi, '').trim()
+}
+
 export function paymentBadge(payment: SessionPayment | null | undefined): { label: string; tone: Tone; test: boolean; detail: string | null } | null {
   if (!payment) return null
   const status = payment.status
@@ -111,6 +116,6 @@ export function paymentBadge(payment: SessionPayment | null | undefined): { labe
     const returned = toNumber(s.returned) ?? 0
     detail = `Capturado ${formatCurrency(s.charged)}${returned > 0 ? ` · ${s.return_kind === 'refunded' ? 'devolvido' : 'liberado'} ${formatCurrency(s.returned)}` : ''}`
   }
-  // O simulado do totem (Modo apresentação) diz "(simulado)", nunca "teste".
-  return { label: payment.status_label || status, tone, test: payment.environment === 'test' && payment.provider !== 'simulated' && payment.method !== 'simulated', detail }
+  // O rótulo da API pode trazer "(teste)"/"(simulado)": o ambiente não aparece na tela (`test` fica no modelo).
+  return { label: visibleLabel(payment.status_label) || status, tone, test: payment.environment === 'test' && payment.provider !== 'simulated' && payment.method !== 'simulated', detail }
 }

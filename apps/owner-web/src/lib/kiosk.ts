@@ -21,8 +21,8 @@ export interface KioskStatus {
 
 /** Status numa linha, como o app (`station_ops.KIOSK_TEXTS`/`KIOSK_REASONS`). */
 export const KIOSK_TEXTS: Record<KioskMethod, string> = {
-  stripe: 'Pagamento: Stripe (teste)',
-  simulated: 'Pagamento simulado (Modo apresentação)',
+  stripe: 'Pagamento: Stripe',
+  simulated: 'Pagamento: sem cobrança',
 }
 
 export const KIOSK_REASON_TEXT: Record<KioskReason, string> = {
@@ -100,10 +100,10 @@ export function paymentChannel(payment: SessionPayment | null | undefined): Paym
   return payment.origin === 'kiosk' ? 'kiosk' : 'app'
 }
 
-/** Método do pagamento: "Simulado" (totem em Modo apresentação), "Stripe (teste)" ou "—" sem pagamento. */
+/** Método do pagamento: "Sem cobrança" (totem em Modo apresentação), "Stripe" ou "—" sem pagamento. */
 export function paymentMethodLabel(payment: SessionPayment | null | undefined): string {
   if (!payment) return '—'
-  return isSimulated(payment) ? 'Simulado' : 'Stripe (teste)'
+  return isSimulated(payment) ? 'Sem cobrança' : 'Stripe'
 }
 
 export function channelTone(channel: PaymentChannel): Tone {

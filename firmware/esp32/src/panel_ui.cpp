@@ -644,7 +644,7 @@ void buildDark(lv_obj_t* screen) {
 
   // Pagamento sem app (modo teste): legenda na linha inferior, QR à direita dela.
   kioskCard = plain(darkRoot, 39, 341, 531, 90);
-  kioskTitle = label(kioskCard, "Sem o app? Pague aqui · TESTE", &chargegrid_body_22, COLOR_TEXT);
+  kioskTitle = label(kioskCard, "Sem o app? Pague aqui", &chargegrid_body_22, COLOR_TEXT);
   lv_obj_set_pos(kioskTitle, 8, 18);
   kioskDetail = label(kioskCard, "", &chargegrid_body_17, COLOR_MUTED);
   lv_obj_set_pos(kioskDetail, 8, 50); lv_obj_set_width(kioskDetail, 515);
@@ -1087,18 +1087,17 @@ void panelTick() {
     else
       snprintf(next.instruction, sizeof(next.instruction), "Potência %s kW. Para parar, toque em Encerrar.", kw);
   }
-  // Pagamento pelo QR do painel (sempre modo teste na API atual).
-  const char* testMark = paymentTest ? " (teste)" : "";
+  // Pagamento pelo QR do painel. O ambiente (paymentTest) não aparece na tela.
   char amount[24] = "";
   if (paymentAmount > 0) { char value[20]; brl(value, sizeof(value), paymentAmount); snprintf(amount, sizeof(amount), " · %s", value); }
   if (paymentStatus == "awaiting_payment") {
-    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Aguardando pagamento%s%s", testMark, amount);
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Aguardando pagamento%s", amount);
     next.kioskTone = 1;
   } else if (paymentStatus == "authorized" || paymentStatus == "paid") {
-    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento confirmado%s · iniciando", testMark);
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento confirmado · iniciando");
     next.kioskTone = 2;
   } else if (paymentStatus == "declined") {
-    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento recusado%s. Tente de novo.", testMark);
+    snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Pagamento recusado. Tente de novo.");
     next.kioskTone = 3;
   } else {
     snprintf(next.kioskDetail, sizeof(next.kioskDetail), "Escaneie com a câmera do celular e escolha o valor.");

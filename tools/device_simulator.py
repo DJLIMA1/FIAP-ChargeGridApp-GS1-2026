@@ -29,7 +29,7 @@ def number(value, low, high):
 
 SOC_SOURCES = ("simulated", "phone")
 # Mesma versão do firmware do painel cujo protocolo a bancada reproduz (runtime.h).
-FIRMWARE_VERSION = "0.9.4"
+FIRMWARE_VERSION = "0.9.5"
 LEGACY_FIRMWARE_VERSION = "0.4.0"
 # Pagamento pelo QR do painel (connector.payment): estados que o painel mostra; outros são ignorados.
 PAYMENT_STATUSES = ("awaiting_payment", "authorized", "paid", "declined")
@@ -544,18 +544,17 @@ def charger_text(device):
 
 
 def kiosk_text(device):
-    """Linha do terminal igual ao painel: QR de pagamento (teste), o último pagamento e o totem."""
+    """Linha do terminal igual ao painel: QR de pagamento, o último pagamento e o totem."""
     order = device.kiosk_order
     if order:
         return f" | Totem: {order.get('status_label') or order['status']}"
     payment = device.payment
     if payment:
-        test = " (teste)" if payment["environment"] == "test" else ""
         amount = f" · R$ {payment['amount'].replace('.', ',')}" if payment["amount"] else ""
         label = {"awaiting_payment": "Aguardando pagamento", "authorized": "Pagamento confirmado",
                  "paid": "Pagamento confirmado", "declined": "Pagamento recusado"}[payment["status"]]
-        return f" | {label}{test}{amount}"
-    return f" | Sem o app? Pague aqui · TESTE: {device.kiosk_url}" if device.kiosk_url else ""
+        return f" | {label}{amount}"
+    return f" | Sem o app? Pague aqui: {device.kiosk_url}" if device.kiosk_url else ""
 
 
 def overstay_text(block):
