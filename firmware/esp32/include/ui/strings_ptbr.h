@@ -42,7 +42,6 @@ enum Role { TITLE, BODY };
   X(kStillThereTitle, TITLE, "Ainda está aí?")                                               \
   X(kStillThereDetail, BODY, "Toque em Continuar para não perder o que escolheu.")            \
   X(kMetricPrice, BODY, "PREÇO TRAVADO")                                                     \
-  X(kMetricDemand, BODY, "DEMANDA")                                                          \
   X(kMetricCap, BODY, "VALOR MÁXIMO")                                                        \
   X(kMetricEnergyEst, BODY, "ESTIMATIVA")                                                    \
   X(kMetricTimeEst, BODY, "TEMPO MÁXIMO")                                                    \

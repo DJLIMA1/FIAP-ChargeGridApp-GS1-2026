@@ -196,15 +196,25 @@ class ChargingWizardBatteryTests(StorageCase):
         self.assertEqual((body['max_duration_minutes'], body['max_cost']), (70, '14.00'))
         self.assertEqual(body['soc_percent'], 20)
 
-    async def test_autonomy_is_capped_with_gentle_note(self):
+    async def test_autonomy_shows_the_battery_maximum_and_blocks_more_before_review(self):
         app = WizardApp()
+        app.station['connectors'][0].update(max_duration_minutes=600)
+        context = {**CONTEXT, 'connector': {**CONTEXT['connector'], 'max_duration_minutes': 600}}
         vehicle_state.set_simulated_soc(app, 90)
-        screen = await limits_screen(app)
+        screen = await limits_screen(app, point_context=context)
         await click(screen, 'Por autonomia')(None)
-        fields(screen)['Autonomia desejada (km)'].value = '300'
-        await fields(screen)['Autonomia desejada (km)'].on_change(None)
-        self.assertIn('A bateria comporta cerca de 32 km agora', texts(screen))
+        # 10% livres de 44,9 kWh = 4,49 kWh / 14 kWh por 100 km = 32 km (o SoC nunca aparece).
+        self.assertIn('Máx.: 32 km · o que cabe na bateria do seu carro', texts(screen))
+        field = fields(screen)['Autonomia desejada (km)']
+        field.value = '300'
+        await field.on_change(None)
+        self.assertEqual(field.error, 'Acima do máximo (32 km). Toque em Máx. ou diminua.')
         self.assertNotIn('90', texts(screen))
+        from chargegrid_app.api_client import ApiError
+        with self.assertRaisesRegex(ApiError, 'Acima do máximo'):
+            await click(screen, 'Continuar')(None)
+        await click(screen, 'Máx. 32 km')(None)
+        self.assertEqual((field.value, field.error), ('32', None))
 
 
 class DemoChargingTests(StorageCase):

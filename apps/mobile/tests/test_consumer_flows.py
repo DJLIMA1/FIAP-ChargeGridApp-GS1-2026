@@ -123,9 +123,11 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         inputs = fields(screen)
         inputs['Duração máxima (min)'].value = '11'
         app.api.request.reset_mock()
-        with self.assertRaisesRegex(ApiError,'1 a 10 minutos'):
+        with self.assertRaisesRegex(ApiError,r'Acima do máximo \(10 min\)'):
             await click(screen,'Continuar')(None)
         app.api.request.assert_not_called()
+        self.assertIn('Máx.: 10 min',texts(screen))  # o limite aparece antes de tentar
+        self.assertIn('Acima do máximo (10 min)',inputs['Duração máxima (min)'].error)
 
     async def test_by_value_requires_cost_and_sends_both_safety_limits(self):
         app = charging_app()

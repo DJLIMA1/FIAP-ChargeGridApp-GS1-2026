@@ -160,9 +160,8 @@ def point_summary(data, heading='Ponto selecionado'):
     elif connector.get('price_per_kwh') is not None:
         adjusted = connector.get('base_price_per_kwh') is not None
         note = ''
-        if adjusted and _surge(data.get('demand_multiplier')):
-            note = f" (demanda {str(data['demand_multiplier']).rstrip('0').rstrip('.').replace('.', ',')}×)"
-        elif adjusted:
+        # O motorista vê só o preço final: o acréscimo por demanda (multiplicador) é do vendedor.
+        if adjusted and not _surge(data.get('demand_multiplier')):
             note = ' (tarifa do horário)'  # tarifação por horário do posto, sem acréscimo de demanda
         terms.append(f"{money(connector['price_per_kwh'])}/kWh{note}")
     if session_terms and data.get('max_duration_minutes') is not None:
