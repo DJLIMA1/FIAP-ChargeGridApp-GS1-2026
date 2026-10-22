@@ -31,19 +31,16 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    async def test_pix_key_is_kept_on_the_device_and_balance_row_follows_the_mode(self):
+    async def test_profile_has_no_pix_key_and_balance_row_follows_the_mode(self):
         app = HandlerApp()
         app.profile = app_profile = {**PROFILE,'id':'user-pix'}
         app.api.request.return_value = app_profile
         screen = profile.edit_form(app,app_profile)
         fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
         self.assertTrue(fields[1].read_only)  # e-mail is not editable through PATCH me
-        fields[3].value = ' pix@example.com '
+        self.assertFalse(any('Pix' in str(getattr(c,'value','')) for c in descendants(screen) if isinstance(c,ft.Text)))
+        self.assertFalse(hasattr(profile,'PixKeyStore'))
         await row(screen,'Salvar informações')(None)
-        self.assertEqual(profile.PixKeyStore().load('user-pix'),'pix@example.com')
-        self.assertEqual(profile.load_pix_key(app,app_profile),'pix@example.com')
-        app.api.is_demo = True
-        self.assertEqual(profile.load_pix_key(app,app_profile),profile.DEMO_PIX_KEY)
         for mode,title,route in (('consumer','Meu saldo','wallet'),('vendor','Minha Carteira','payout')):
             app = HandlerApp()
             app.browsing_mode = mode
@@ -129,9 +126,9 @@ class AccountUxTests(unittest.IsolatedAsyncioTestCase):
         screen = profile.edit_form(app,PROFILE)
         model = next(c for c in descendants(screen) if isinstance(c,ft.Dropdown))
         model.value = 'custom'
-        # Rótulos acima dos campos: Nome, E-mail, Telefone, Chave Pix, nome do carro, bateria, consumo.
+        # Rótulos acima dos campos: Nome, E-mail, Telefone, nome do carro, bateria, consumo.
         fields = [c for c in descendants(screen) if isinstance(c,ft.TextField)]
-        fields[5].value = '900'
+        fields[4].value = '900'
         with self.assertRaises(ApiError):
             await row(screen,'Salvar informações')(None)
         app.api.request.assert_not_called()

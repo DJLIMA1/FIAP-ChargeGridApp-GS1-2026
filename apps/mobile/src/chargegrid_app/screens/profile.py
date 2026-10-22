@@ -1,8 +1,5 @@
 import asyncio
 import inspect
-import json
-import os
-from pathlib import Path
 
 import flet as ft
 
@@ -32,56 +29,6 @@ def saved_vehicle(driver):
 def vehicle_text(profile, driver):
     vehicle = saved_vehicle(driver)
     return helpers.vehicle_headline(vehicle) if vehicle else profile.get('vehicle_description')
-
-
-DEMO_PIX_KEY = '000.000.000-00'
-MAX_PIX_LENGTH = 77
-
-
-class PixKeyStore:
-    """Chave Pix de repasse, guardada só neste aparelho (a API não tem o campo).
-
-    Demonstração: fica em memória (``app``); conta real: JSON em ``FLET_APP_STORAGE_DATA``.
-    """
-
-    def __init__(self, path=None):
-        storage = Path(os.environ.get('FLET_APP_STORAGE_DATA') or Path.home() / '.chargegrid')
-        self.path = Path(path or storage / 'pix_key.json')
-
-    def load(self, account_id):
-        try:
-            data = json.loads(self.path.read_text())
-            value = data.get(str(account_id)) if isinstance(data, dict) else None
-            return value if isinstance(value, str) else ''
-        except (OSError, ValueError, TypeError):
-            return ''
-
-    def save(self, account_id, value):
-        try:
-            try:
-                data = json.loads(self.path.read_text())
-            except (OSError, ValueError):
-                data = {}
-            data = data if isinstance(data, dict) else {}
-            data[str(account_id)] = value
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(json.dumps(data))
-            return True
-        except OSError:
-            return False
-
-
-def load_pix_key(app, profile):
-    if getattr(app.api, 'is_demo', False):
-        return getattr(app, 'demo_pix_key', DEMO_PIX_KEY)
-    return PixKeyStore().load(profile.get('id') or '')
-
-
-def save_pix_key(app, profile, value):
-    if getattr(app.api, 'is_demo', False):
-        app.demo_pix_key = value
-        return True
-    return PixKeyStore().save(profile.get('id') or '', value)
 
 
 async def balance_text(app, vendor):
@@ -220,8 +167,7 @@ def edit_form(app, profile, driver=None):
     name = design.input_field(profile.get('name') or '', max_length=100)
     mail = design.input_field(email, read_only=True)
     phone = design.input_field(profile.get('phone') or '', max_length=30, keyboard=ft.KeyboardType.PHONE)
-    pix = design.input_field(load_pix_key(app, profile), DEMO_PIX_KEY, max_length=MAX_PIX_LENGTH)
-    for control in (name, mail, phone, pix):
+    for control in (name, mail, phone):
         control.counter = ''
         control.border = ft.OutlineInputBorder(border_radius=design.RADIUS_BTN + 2,
                                                side=ft.BorderSide(0, ft.Colors.TRANSPARENT))
@@ -237,8 +183,6 @@ def edit_form(app, profile, driver=None):
             raise ApiError('Informe seu nome.')
         if len(name.value.strip()) > 100 or len(phone.value.strip()) > 30:
             raise ApiError('Confira o tamanho dos campos informados.')
-        if len((pix.value or '').strip()) > MAX_PIX_LENGTH:
-            raise ApiError('Confira o tamanho da chave Pix.')
         chosen = picker.read(strict=True)
         description = helpers.vehicle_name(chosen) if chosen else profile.get('vehicle_description')
         account = app.api.request('PATCH','me',{'name':name.value.strip(),'phone':phone.value.strip() or None,
@@ -249,16 +193,14 @@ def edit_form(app, profile, driver=None):
             app.profile, _ = await asyncio.gather(account, save_vehicle(app.api, chosen, driver))
         else:
             app.profile = await account
-        pix_saved = save_pix_key(app, profile, (pix.value or '').strip())
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
-        app.notice('Perfil atualizado.' if pix_saved else
-                   'Perfil atualizado. Não foi possível guardar a chave Pix neste aparelho.')
+        app.notice('Perfil atualizado.')
         await app.go('profile')
     return design.page(
         *[ft.Container(design.labeled(text, control, 14), padding=ft.Padding(left=0, right=8, top=0, bottom=0),
                        margin=ft.Margin(left=0, top=13 if text == 'Nome' else 0, right=0, bottom=0))
-          for text, control in (('Nome', name), ('E-mail', mail), ('Telefone', phone), ('Chave Pix', pix))],
+          for text, control in (('Nome', name), ('E-mail', mail), ('Telefone', phone))],
         ft.Container(picker.control, padding=ft.Padding(left=0, right=8, top=0, bottom=0)),
         design.primary_button('Salvar informações', app.action(save), height=48, size=16),
         ft.Container(height=8),
