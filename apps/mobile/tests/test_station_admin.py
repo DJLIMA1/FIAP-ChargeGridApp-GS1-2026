@@ -130,6 +130,40 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((await app.api.request('GET', f'stations/{sid}'))['active'])
         await app.api.close()
 
+    async def test_data_page_order_below_status(self):
+        """Status → Totem → Centrais da estação (cartões, restauração por último) → vincular outra central."""
+        app = await demo_app()
+        sid = (await app.api.request('GET', 'operator/stations'))['items'][0]['id']
+        copy = texts(await station_admin.build(app, station_id=sid, page='data'))
+        order = ['Status', 'Totem de autoatendimento', 'Centrais da estação',
+                 'Um carregador offline não derruba a estação.', 'Central DEMO-11', 'ID da central', 'Rotacionar',
+                 'Restaurar', 'Adicionar central simulada a este posto']
+        positions = [copy.index(label) for label in order]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn('Central da estação', copy)
+        self.assertNotIn('Fale com o ChatBot', copy)
+        await app.api.close()
+
+    async def test_station_page_has_no_chatbot_shortcut(self):
+        app = await demo_app()
+        sid = (await app.api.request('GET', 'operator/stations'))['items'][0]['id']
+        self.assertNotIn('Fale com o ChatBot', texts(await station_admin.build(app, station_id=sid)))
+        self.assertIn('Fale com o ChatBot', texts(await operator.build(app)))  # a lista ainda tem o atalho
+        await app.api.close()
+
+    def test_status_only_central_card_uses_the_maintenance_header(self):
+        from chargegrid_app.screens import chargers
+        station = {'screens': [{'public_code': 'CG-9', 'online': True, 'charger_ids': ['a', 'b'],
+                                'last_seen': None}]}
+        copy = texts(chargers.screens_card(station))
+        for expected in ('Central CG-9', 'Online', 'Sem contato · 2 carregadores'):
+            self.assertIn(expected, copy)
+        self.assertNotIn('Central da estação', copy)
+        two = texts(chargers.screens_card({'screens': [*station['screens'], {'public_code': 'CG-8', 'online': False}]}))
+        self.assertIn('Central CG-8', two)
+        self.assertIn('Offline', two)
+        self.assertIn('Central', texts(chargers.screens_card({'screen_online': False})))
+
     def test_battery_rule_validation(self):
         app = HandlerApp()
         app.api.is_demo = True
