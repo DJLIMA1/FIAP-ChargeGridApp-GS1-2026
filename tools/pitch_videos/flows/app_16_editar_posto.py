@@ -9,6 +9,7 @@ with AppSession(port=9010, route='operator', mode='vendor') as s:
     s.hold(PACE.intro)
     s.tap_text('Marginal Pinheiros', wait=PACE.after_tap)
     s.tap_text('Dados da estação', wait=PACE.after_tap)
+    s.pause(); s.hold(2.5); s.resume()  # deixa a operação de abertura acabar fora de câmera
     s.tap(300, 211, wait=0.4)           # campo Nome da estação (cursor no fim)
     s.key('End', 'End', 35)
     s.type(' Premium')

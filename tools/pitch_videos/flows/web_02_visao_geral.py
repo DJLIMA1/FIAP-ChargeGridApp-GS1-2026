@@ -5,9 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, WebSession  # noqa: E402
 
-SCRATCH = Path('/private/tmp/claude-501/-Users-djmurillo-Desktop-Aulas-FIAP-ChargeGridApp/fb852e86-52d3-4198-9af2-ada7797c0750/scratchpad')
+SCRATCH = Path(__file__).resolve().parents[3] / 'tmp' / 'w02'
 
-with WebSession(url='http://localhost:5179/dashboard/', port=9110) as s:
+with WebSession(url='http://localhost:5181/dashboard/', port=9110) as s:
     # Login fora de câmera
     s.pause()
     for _ in range(4):
@@ -21,9 +21,8 @@ with WebSession(url='http://localhost:5179/dashboard/', port=9110) as s:
     s.hold(3.0)
     s.cdp.js('window.scrollTo(0,0)')
     s.navigated()
-    s.cdp.frames.clear()
     s.shot(SCRATCH / 'w02-a.png')
-    s.resume()
+    s.resume(clear=True)
     s.hold(PACE.intro)
     # KPIs: cursor passeia pelos cartões
     s.move(420, 250); s.hold(0.5)

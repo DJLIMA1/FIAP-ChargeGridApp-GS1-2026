@@ -217,8 +217,9 @@ class CDP:
             pass
 
 
-SLOTS = int(os.environ.get('CG_PITCH_SLOTS', '3'))   # recordings allowed at once on this machine
+SLOTS = int(os.environ.get('CG_PITCH_SLOTS', '2'))   # recordings allowed at once on this machine
 SLOT_DIR = Path(tempfile.gettempdir()) / 'cg-pitch-slots'
+WATCHDOG = int(os.environ.get('CG_PITCH_WATCHDOG', '600'))   # seconds one take may hold its slot
 
 
 def _acquire_slot():
@@ -244,6 +245,11 @@ class _Session:
 
     def __init__(self, port):
         self.slot = _acquire_slot()
+        # Watchdog: a take that hangs (page never ready, a wait that never ends) must not keep its recording
+        # slot forever while every other flow queues behind it.
+        self.watchdog = threading.Timer(WATCHDOG, self._abort)
+        self.watchdog.daemon = True
+        self.watchdog.start()
         self.port = port
         self.workdir = Path(tempfile.mkdtemp(prefix=f'cg_pitch_{port}_'))
         self.chrome = None
@@ -371,11 +377,7 @@ class _Session:
         folder = self.workdir / 'frames'
         shutil.rmtree(folder, ignore_errors=True)
         folder.mkdir()
-        sources = []
-        for index, (_, data) in enumerate(frames):
-            source = folder / f'src{index:06d}.jpg'
-            source.write_bytes(data)
-            sources.append(source)
+        frames, sources = self._clean_frames(frames, folder)
         # Constant frame rate: each output tick shows the latest real frame at that instant.
         start, current = frames[0][0], 0
         for tick in range(int((end - start) * FPS) + 1):
@@ -385,13 +387,42 @@ class _Session:
             os.link(sources[current], folder / f'{tick:06d}.jpg')
         out = ROOT / out if not Path(out).is_absolute() else Path(out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        width, height = self.out_size
-        filters = (f'{crop},' if crop else '') + f'scale={width}:{height}:flags=lanczos,format=yuv420p'
+        filters = (f'{crop},' if crop else '') + 'format=yuv420p'
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(FPS), '-i', str(folder / '%06d.jpg'),
                         '-vf', filters, '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-profile:v', 'high',
                         '-movflags', '+faststart', '-an', str(out)], check=True)
         print(f'{out}  ({len(frames)} frames, {end - frames[0][0]:.1f}s)')
         return out
+
+    def _clean_frames(self, frames, folder):
+        """Anti-flicker: every frame is resized to exactly out_size (a screenshot and a screencast frame of
+        different sizes used to show up as a one-frame zoomed jump), and blank/half-painted frames (a flat
+        colour, e.g. the page between two renders) are dropped so the previous frame simply holds."""
+        import io
+
+        from PIL import Image, ImageStat
+        kept, sources = [], []
+        for stamp, data in frames:
+            image = Image.open(io.BytesIO(data)).convert('RGB')
+            thumb = image.resize((40, 80)).convert('L')
+            if ImageStat.Stat(thumb).stddev[0] < 3.0 and kept:   # flat frame: not a real screen
+                continue
+            if image.size != self.out_size:
+                image = image.resize(self.out_size, Image.LANCZOS)
+            source = folder / f'src{len(sources):06d}.jpg'
+            image.save(source, quality=95, subsampling=0)
+            kept.append((stamp, data))
+            sources.append(source)
+        return kept, sources
+
+    def _abort(self):
+        print(f'watchdog: take over {WATCHDOG}s, aborting', file=sys.stderr, flush=True)
+        for process in (self.chrome, getattr(self, 'server', None)):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (AttributeError, OSError):
+                pass
+        os._exit(124)
 
     def close(self):
         if self.cdp:
@@ -407,6 +438,8 @@ class _Session:
             except subprocess.TimeoutExpired:
                 self.chrome.kill()
         shutil.rmtree(self.workdir, ignore_errors=True)
+        if getattr(self, 'watchdog', None):
+            self.watchdog.cancel()
         if self.slot:
             self.slot.close()
             self.slot = None
@@ -467,6 +500,9 @@ class AppSession(_Session):
                 raise RuntimeError('demo server did not start:\n' + (self.workdir / 'server.log').read_text()[-2000:])
             self._start_chrome()
             self._start_screencast()
+            # Reduced motion: route changes cut instead of fading. A fade caught by the software-rendered
+            # screencast at a low frame rate showed the new screen dim for a few frames: a visible blink.
+            self.cdp.call('Emulation.setEmulatedMedia', features=[{'name': 'prefers-reduced-motion', 'value': 'reduce'}])
             self.cdp.call('Page.navigate', url=f'http://127.0.0.1:{port}/')
             self._wait_rendered()
             self.labels()   # enables the semantics tree once

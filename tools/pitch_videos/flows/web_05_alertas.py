@@ -11,12 +11,12 @@ def wait(s, expr):
         s.hold(0.3)
 
 
-with WebSession(url='http://localhost:5179/dashboard/', port=9140) as s:
+with WebSession(url='http://localhost:5181/dashboard/', port=9140) as s:
     s.pause()  # login fora de câmera
     s.type_into('input[type="email"]', 'joao@postosilva.com.br')
     s.type_into('input[type="password"]', 'chargegrid2026')
     s.click_text('Entrar', exact=True, wait=0.3)
-    wait(s, "document.body.innerText.includes('Bom dia') && document.body.innerText.includes('R$ 8.')")
+    wait(s, "document.body.innerText.includes('R$ 8.')")
     s.hold(1.0)
     s.resume(clear=True)
     s.hold(PACE.intro)

@@ -8,8 +8,8 @@ from totem import Step, build  # noqa: E402
 
 F = 'tmp/pitch-totem-frames/kiosk-{}.ppm'.format
 build([
-    Step(F('live'), hold=PACE.intro, tap=(584, 420)),             # Encerrar
-    Step(F('confirm-stop'), hold=PACE.read, tap=(642, 420)),      # Sim, encerrar
+    Step(F('live'), hold=PACE.intro, tap=(594, 220)),             # Encerrar
+    Step(F('confirm-stop'), hold=PACE.read, tap=(594, 296)),      # Sim, encerrar
     Step(F('receipt'), hold=PACE.read, tap=(584, 420)),           # Concluir
     Step(F('back-to-ready'), hold=PACE.read),
 ], 'output/pitch-videos/totem/02-encerrar-e-recibo.mp4')

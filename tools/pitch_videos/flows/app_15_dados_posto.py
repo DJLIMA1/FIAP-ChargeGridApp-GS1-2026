@@ -39,11 +39,10 @@ def press(s, text, wait=None):
 
 
 with AppSession(port=9005, route='operator', mode='vendor', params={'claim': True}) as s:
-    # Fora de câmera: vincular o ponto simulado (outro vídeo); os avisos somem antes de gravar.
+    # Fora de câmera: vincular a central (outro vídeo); os avisos somem antes de gravar.
     s.pause()
-    s.tap_text('Adicionar central simulada', wait=5.5)
-    s.resume()
-    s.cdp.frames[:] = s.cdp.frames[-1:]   # sem o quadro anterior à preparação
+    s.tap_text('Adicionar central', exact=True, wait=5.5)
+    s.resume(clear=True)
     s.hold(PACE.intro)
 
     # Etapa 1 · Localização: nome e endereço

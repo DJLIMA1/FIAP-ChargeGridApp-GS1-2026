@@ -22,11 +22,9 @@ with AppSession(port=9015, route='home', mode='vendor') as s:
     s.tap_text('Tarifa base, por', wait=2.5)
     s.hold(PACE.read)                      # preço atual
     s.tap_text('Tarifa base R$', wait=2.2)
-    replace(s, 250, 329, ',99')            # máxima DEMO-11
-    replace(s, 250, 409, ',59')            # reduzida DEMO-11
-    s.shot('/private/tmp/claude-501/-Users-djmurillo-Desktop-Aulas-FIAP-ChargeGridApp/fb852e86-52d3-4198-9af2-ada7797c0750/scratchpad/f_form.png')
+    replace(s, 250, 329, ',99', erase=14)   # máxima CG-11: 1,89 -> 1,99
+    replace(s, 250, 578, ',99', erase=14)   # máxima CG-13
     s.tap_text('Salvar tarifa base', wait=2.5)
     s.hold(PACE.read)
     s.hold(PACE.outro)
-    s.shot('/private/tmp/claude-501/-Users-djmurillo-Desktop-Aulas-FIAP-ChargeGridApp/fb852e86-52d3-4198-9af2-ada7797c0750/scratchpad/f_end.png')
     s.render('output/pitch-videos/app/17-tarifas.mp4')

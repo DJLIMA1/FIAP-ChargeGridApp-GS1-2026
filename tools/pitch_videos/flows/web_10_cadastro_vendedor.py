@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, WebSession  # noqa: E402
 
-with WebSession(url='http://localhost:5179/dashboard/', port=9190) as s:
+with WebSession(url='http://localhost:5181/dashboard/', port=9190) as s:
     s.hold(PACE.intro)
     s.click_text('Criar conta de vendedor', wait=0.6)
     s.hold(0.8)

@@ -1,4 +1,4 @@
-"""App · Histórico do motorista: lista de recargas -> rolar -> Ver recibo -> recibo detalhado."""
+"""App · Histórico do motorista: lista de recargas -> abrir uma recarga -> detalhes da recarga (tela única)."""
 import sys
 from pathlib import Path
 
@@ -12,9 +12,9 @@ with AppSession(port=8975, route='home', mode='consumer') as s:
     s.hold(PACE.after_tap)
     s.scroll(-260, y=500)
     s.hold(0.6)
-    s.tap_text('Ver recibo', index=0, wait=PACE.read)
-    s.scroll(500, y=500, seconds=0.9)
+    s.tap_text('Detalhes da recarga Villa Lobos', wait=PACE.read)
+    s.scroll(450, y=500, seconds=0.9)
     s.hold(PACE.read)
-    s.scroll(500, y=500, seconds=0.9)
+    s.scroll(450, y=500, seconds=0.9)
     s.hold(PACE.outro)
     s.render('output/pitch-videos/app/09-historico-e-recibo.mp4')

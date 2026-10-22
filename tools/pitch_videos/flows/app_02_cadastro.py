@@ -1,5 +1,5 @@
 """App · Criar conta: login -> Criar conta -> preenche nome, e-mail e senha (motorista).
-O envio não é gravado: na conta demo o cadastro real devolve erro, então o vídeo termina com o formulário preenchido."""
+O envio não é gravado: na conta de exemplo o cadastro real ainda devolve erro, então o vídeo termina com o formulário preenchido."""
 import sys
 from pathlib import Path
 
@@ -17,6 +17,7 @@ with AppSession(port=8940) as s:
     s.hold(0.4)
     s.tap_text('••••••••', wait=0.3)
     s.type('ChargeGrid2026')
+    s.tap_text('Nome completo', exact=True, wait=0.3)  # tira o foco da senha, sem erro
     s.hold(PACE.read)
     s.hold(PACE.outro)
     s.render('output/pitch-videos/app/02-criar-conta.mp4')

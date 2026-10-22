@@ -4,8 +4,26 @@
     {
       "name": "painel-mock",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "apps/owner-web", "run", "dev:mock", "--", "--port", "5179", "--strictPort"],
+      "runtimeArgs": [
+        "--prefix",
+        "apps/owner-web",
+        "run",
+        "dev:mock",
+        "--",
+        "--port",
+        "5179",
+        "--strictPort"
+      ],
       "port": 5179
+    },
+    {
+      "name": "painel-pitch",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/owner-web && VITE_MOCK=1 npx vite --config ../../tools/pitch_videos/vite.pitch.config.ts --port 5181 --strictPort"
+      ],
+      "port": 5181
     }
   ]
 }

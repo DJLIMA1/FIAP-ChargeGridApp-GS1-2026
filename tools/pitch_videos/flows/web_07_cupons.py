@@ -5,12 +5,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, WebSession  # noqa: E402
 
-with WebSession(url='http://localhost:5179/dashboard/', port=9160) as s:
+with WebSession(url='http://localhost:5181/dashboard/', port=9160) as s:
     s.pause()  # login fora de câmera
     s.type_into('input[type="email"]', 'joao@postosilva.com.br')
     s.type_into('input[type="password"]', 'chargegrid2026')
     s.click_text('Entrar', exact=True, wait=0.5)
-    while not s.cdp.js("document.body.innerText.includes('Bom dia') && document.body.innerText.includes('R$ 8.')"):
+    while not s.cdp.js("document.body.innerText.includes('R$ 8.')"):
         s.hold(0.3)
     s.hold(1.5)
     s.navigated()

@@ -1,11 +1,11 @@
-"""App · Encerrar recarga: recarga ao vivo -> Encerrar -> resumo/recibo."""
+"""App · Encerrar recarga: recarga ao vivo -> Encerrar -> concluída -> detalhe da recarga."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, AppSession  # noqa: E402
 
-START = ['POST', 'charging-sessions', {'public_code': 'DEMO-2', 'presence_code': '#F12345',
+START = ['POST', 'charging-sessions', {'public_code': 'CG-2', 'presence_code': '#F12345',
                                         'max_duration_minutes': 30, 'soc_percent': 30, 'battery_kwh': 60}]
 SCR = '/private/tmp/claude-501/s6'
 
@@ -19,7 +19,8 @@ with AppSession(port=8960, route='charging', setup=[START]) as s:
     s.tap_text('Encerrar recarga', exact=True, wait=PACE.after_tap)
     s.hold(PACE.after_tap + 0.5)  # "Encerrando..." -> "Recarga concluída"
     s.hold(PACE.read)
-    s.tap_text('Ver recibo', exact=True, wait=PACE.after_tap)
+    s.tap_text('Ver detalhes da recarga', exact=True, wait=PACE.after_tap)
+    s.hold(1.0)
     s.shot(f'{SCR}/receipt.png')
     s.hold(PACE.read)
     s.scroll(450, x=200, y=500)

@@ -9,7 +9,7 @@ from totem import Step, build  # noqa: E402
 F = 'tmp/pitch-totem-frames/kiosk-{}.ppm'.format
 build([
     Step(F('notice-app-started'), hold=PACE.intro + PACE.read, tap=(584, 420)),   # Concluir
-    Step(F('shared-app-live'), hold=PACE.read, tap=(584, 420)),                   # Encerrar
-    Step(F('confirm-app-stop'), hold=PACE.read, tap=(643, 420)),                  # Sim, encerrar
+    Step(F('shared-app-live'), hold=PACE.read, tap=(594, 298)),                   # Encerrar
+    Step(F('confirm-app-stop'), hold=PACE.read, tap=(594, 296)),                  # Sim, encerrar
     Step(F('shared-app-receipt'), hold=PACE.read),
 ], 'output/pitch-videos/totem/04-recarga-do-app-no-totem.mp4')

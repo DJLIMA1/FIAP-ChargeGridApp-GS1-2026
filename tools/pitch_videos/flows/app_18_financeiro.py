@@ -16,9 +16,8 @@ with AppSession(port=9020, route='home', mode='vendor', setup=SETUP) as s:
     s.hold(PACE.read)
     s.scroll(900, x=200, y=500)                                # recargas recentes
     s.hold(PACE.read)
-    s.scroll(-2600, x=200, y=500, seconds=0.8)                 # volta ao topo
-    s.scroll(420, x=200, y=500)
-    s.hold(0.4)
+    s.scroll(-1500, x=200, y=500, steps=30, seconds=1.6)       # volta ao resultado do período
+    s.hold(0.6)
     card = next(l for l in s.labels() if l['role'] == 'button' and l['label'].startswith('Resultado do período'))
     s.tap(card['x'] + card['w'] / 2, card['y'] + 60, wait=PACE.read)   # detalhe financeiro (cascata)
     s.scroll(400, x=200, y=500)

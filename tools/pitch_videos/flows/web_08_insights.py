@@ -5,19 +5,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, WebSession  # noqa: E402
 
-SCRATCH = Path('/private/tmp/claude-501/-Users-djmurillo-Desktop-Aulas-FIAP-ChargeGridApp/fb852e86-52d3-4198-9af2-ada7797c0750/scratchpad')
+SCRATCH = Path(__file__).resolve().parents[3] / 'tmp' / 'web08'
 
-with WebSession(url='http://localhost:5179/dashboard/', port=9170) as s:
+with WebSession(url='http://localhost:5181/dashboard/', port=9170) as s:
     s.pause()
     s.type_into('input[type="email"]', 'joao@postosilva.com.br')
     s.type_into('input[type="password"]', 'chargegrid2026')
     s.click_text('Entrar', exact=True, wait=0.5)
-    while not s.cdp.js("document.body.innerText.includes('Bom dia') && document.body.innerText.includes('R$ 8.')"):
+    while not s.cdp.js("document.body.innerText.includes('Receita bruta')"):
         s.hold(0.3)
     s.hold(1.5)
     s.cdp.js('window.scrollTo(0,0)')
-    s.cdp.frames.clear()
-    s.resume()
+    s.resume(clear=True)
     s.hold(PACE.intro)
     s.move(700, 300); s.hold(0.6)
     s.click_text('Insights', exact=False, wait=PACE.read)
