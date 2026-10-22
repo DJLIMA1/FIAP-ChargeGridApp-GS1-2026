@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from ..api_client import ApiError
+from ..services import showcase_stations as showcase
 from ..services.booking import charger_offline_text
 from ..services.discovery import discover, point_price
 from ..services.location import geocode_address, geocode_demo_address
@@ -45,6 +46,9 @@ def _map_records(items):
         matching = metadata.get('matching_connector_ids')
         shown = {**station,'connectors':[p for p in station['connectors'] if matching is None or p['id'] in matching]}
         record = station_map_record(shown,_available)
+        if showcase.is_demo(station):
+            # Modo apresentação: pino branco, "Indisponível no momento", tarifa como a de qualquer posto.
+            record.update(status=showcase.LABEL,free_points=0,price=showcase.price(station),demo=True)
         if metadata.get('point'):
             record['price'] = float(point_price(metadata['point']))
         if metadata.get('distance_km') is not None:
@@ -61,7 +65,7 @@ def _seed_details(app, items, path, params):
         return
     seed, at = app.api.seed, app.api.cached_at(path,params)
     for item in items:
-        if isinstance(item,dict) and item.get('id'):
+        if isinstance(item,dict) and item.get('id') and not showcase.is_demo(item):
             seed(f"stations/{item['id']}",{key:value for key,value in item.items() if key != 'discovery'},at=at)
 
 
@@ -114,6 +118,8 @@ def _connector_groups(station):
             sub = f"{free} de {total} conectores livre{'' if free == 1 else 's'}"
         if down and down != total:
             sub += f' · {charger_offline_text(down, total)}'
+        if showcase.is_demo(station):
+            sub = showcase.GROUP_NOTE
         rows.append((f'{kind} - {power} kW', sub))
     return rows
 
@@ -348,8 +354,12 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
         active_box.controls = active_recharge_cards(app,reservation,session,demo)
         active_box.visible = bool(active_box.controls)
         return True
+    demo_station = showcase.get(station_id)  # posto de demonstração: montado aqui, nunca pela API
+    demo_extra = 0  # postos de demonstração acrescentados à página (não contam na paginação da API)
+    search_filters = dict(connector_type=connector_type,available_only=available_only,
+                          max_price_per_kwh=max_price_per_kwh,sort=sort,lat=lat,lng=lng)
     if station_id:
-        stations = [deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
+        stations = [demo_station or deepcopy(await app.api.request('GET',f'stations/{station_id}'))]
         total = 1
     else:
         params = {'limit':20,'offset':offset,'sort':sort,'available_only':available_only}
@@ -368,6 +378,7 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             result = await app.api.request('GET','stations',params=params)
         stations, total = deepcopy(result['items']), result['total']
         _seed_details(app,result['items'],'stations',params)
+        stations, demo_extra = showcase.inject(app,stations,offset=offset,**search_filters)
     if not show_active:
         active_box.visible = False
     if station_id:
@@ -391,12 +402,13 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
                     ft.Container(height=6.5),route_row,
                     # Layout da referência (estacao_3). O segundo botão, "Carregar agora", foi pedido pelo usuário
                     # (dois fluxos: reservar segura o ponto por 15 min; carregar agora começa no ponto).
-                    ft.Row([D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1,kind='reserve',
+                    (ft.Container(D.warning_box(showcase.NOTICE),data='station-unavailable-notice') if demo_station else
+                     ft.Row([D.primary_button('Reservar estação',app.link('booking',station_id=station_id,step=1,kind='reserve',
+                                                                           **_booking_presets(intention)),
+                                              height=55,size=15,expand=True),
+                             D.secondary_button('Carregar agora',app.link('booking',station_id=station_id,step=1,kind='now',
                                                                           **_booking_presets(intention)),
-                                             height=55,size=15,expand=True),
-                            D.secondary_button('Carregar agora',app.link('booking',station_id=station_id,step=1,kind='now',
-                                                                         **_booking_presets(intention)),
-                                               height=55,size=15,expand=True)],spacing=10)]
+                                                height=55,size=15,expand=True)],spacing=10))]
         # The reference puts the map right under the title.
         map_slot_index = 2
     else:
@@ -586,8 +598,9 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
     def refresh_pagination():
         pagination.controls = []
         shown = len(current_stations)
+        found = total+demo_extra
         result_count.value = (f"{shown} {'posto' if shown == 1 else 'postos'} nesta página · "
-                              f"{total} {'encontrado' if total == 1 else 'encontrados'}")
+                              f"{found} {'encontrado' if found == 1 else 'encontrados'}")
         if station_id:
             return
         if offset:
@@ -644,18 +657,21 @@ async def build(app, lat=None, lng=None, radius=5, query='', station_id=None, of
             open_filters()
 
     async def update():
-        nonlocal current_stations,total
+        nonlocal current_stations,total,demo_extra
         # Só acompanha o cartão enquanto ele existe (some quando a reserva/recarga termina);
         # uma reserva nova chega pelo próprio fluxo de reserva, que reconstrói a tela.
         if show_active and active_box.visible and await refresh_active():
             layout_list()
             app.page.update()
         if station_id:
+            if demo_station:
+                return  # posto de demonstração: nada muda e nada é pedido à API
             fresh = [deepcopy(await app.api.request("GET",f"stations/{station_id}"))]
             fresh_total = 1
         else:
             result = await app.api.request("GET","stations",params=params)
             fresh, fresh_total = deepcopy(result['items']),result['total']
+            fresh, demo_extra = showcase.inject(app,fresh,offset=offset,**search_filters)
         if fresh == current_stations and total == fresh_total:
             return
         current_stations,total = fresh,fresh_total

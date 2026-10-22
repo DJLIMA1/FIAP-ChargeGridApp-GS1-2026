@@ -62,7 +62,7 @@ def btn(text, on_click=None, kind='primary', *, height=54, size=12.8):
                         ink=True, padding=ft.Padding(left=16, right=16, top=0, bottom=0))
 
 
-def _stage(percent, live=None, k=1.0):
+def _stage(percent, live=None, k=1.0, vehicle=None):
     """Carro com os dois arcos vermelhos + indicador circular (valor ``percent`` já formatado); ``k``: escala."""
     red = '#D72B32'
     arcs = cv.Canvas([
@@ -78,7 +78,7 @@ def _stage(percent, live=None, k=1.0):
         cv.Arc(1 * k, 76 * k, 360 * k, 123 * k, 0, 3.14159, False, ft.Paint(
             color=ft.Colors.with_opacity(0.78, red), stroke_width=2.4, style=ft.PaintingStyle.STROKE)),
     ], width=362 * k, height=200 * k)
-    car = ft.Container(d.car_image(width=236 * k), left=58.5 * k, top=19 * k)
+    car = ft.Container(d.car_image(width=236 * k, vehicle=vehicle), left=58.5 * k, top=19 * k)
     stage = ft.Container(d.centered(ft.Container(ft.Stack([arcs, car], width=362 * k, height=200 * k),
                                                  width=362 * k, height=200 * k)),
                          margin=ft.Margin(0, 0, 0, -3.5))
@@ -147,7 +147,7 @@ def recharge_detail(app, title, *, when, address, percent, cost, power, remainin
     notes = [d.txt(status, 11, 'regular', theme.GRAY_TEXT)] if status else []
     rows = ft.Column([_value_row('Custo estimado', cost, live, 'cost'), _value_row('Potência atual', power, live, 'power')],
                      spacing=16.5)
-    body = [head, *_stage(percent, live, d.scene_scale(app)), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
+    body = [head, *_stage(percent, live, d.scene_scale(app), getattr(app, 'vehicle_cache', None)), ft.Container(height=1.5), ft.Container(rows, margin=ft.Margin(0, -2, 0, 0)), ft.Container(height=7),
             track, *([_maps_row(app, address)] if maps else []),
             ft.Container(action, margin=ft.Margin(6, 0, 6, 0)),
             *[ft.Container(item, margin=ft.Margin(6, 0, 6, 0)) for item in secondary],
