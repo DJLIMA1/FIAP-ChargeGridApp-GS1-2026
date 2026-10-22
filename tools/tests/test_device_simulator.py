@@ -374,8 +374,8 @@ def test_payload_reports_the_panel_firmware_version():
     from pathlib import Path
 
     runtime = (Path(__file__).resolve().parents[2] / "firmware/esp32/include/runtime.h").read_text()
-    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.9.6"' in runtime
-    assert Device().payload()["firmware_version"] == "0.9.6"
+    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.9.7"' in runtime
+    assert Device().payload()["firmware_version"] == "0.9.7"
     assert Device(legacy=True).payload()["firmware_version"] == "0.4.0"
 
 

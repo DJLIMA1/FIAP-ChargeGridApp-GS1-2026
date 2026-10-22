@@ -7,7 +7,7 @@
 #include "charger_link.h"
 #include "sync_schedule.h"
 // Versão única do firmware (sync, CG_STATUS e pacote).
-#define CHARGEGRID_FIRMWARE_VERSION "0.9.6"
+#define CHARGEGRID_FIRMWARE_VERSION "0.9.7"
 extern Preferences store;
 extern SimulatedSensors sensors;
 extern Reading reading;

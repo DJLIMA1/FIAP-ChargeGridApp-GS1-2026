@@ -293,3 +293,24 @@ def test_relinking_a_restored_central_reuses_its_address_and_settings(factory, e
             assert leftover.removed_at is not None and leftover.charger_address is None
         off = db.get(Connector, off_id)  # desligado pelo dono, com central viva: não é sobra
         assert off.removed_at is None and off.charger_address == 3
+
+
+def test_presentation_mode_names_the_new_central_station(factory, equipment):
+    e = equipment
+    with factory.begin() as db:
+        db.get(Station, e["factory_station"]).name = "Novo ponto ChargeGrid"
+        db.get(Profile, e["b"]).presentation_mode = True
+    run_claim(factory, e["b"], e["token"])
+    with factory() as db:
+        station = db.get(Station, e["factory_station"])
+        assert (station.name, station.address) == ("Lab-ChargeGrid FIAP", "Av. Lins de Vasconcelos, 1222")
+        assert float(station.latitude) < -23
+
+
+def test_without_presentation_mode_the_factory_name_stays(factory, equipment):
+    e = equipment
+    with factory.begin() as db:
+        db.get(Station, e["factory_station"]).name = "Novo ponto ChargeGrid"
+    run_claim(factory, e["b"], e["token"])
+    with factory() as db:
+        assert db.get(Station, e["factory_station"]).name == "Novo ponto ChargeGrid"

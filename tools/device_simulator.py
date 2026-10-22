@@ -29,7 +29,7 @@ def number(value, low, high):
 
 SOC_SOURCES = ("simulated", "phone")
 # Mesma versão do firmware do painel cujo protocolo a bancada reproduz (runtime.h).
-FIRMWARE_VERSION = "0.9.6"
+FIRMWARE_VERSION = "0.9.7"
 LEGACY_FIRMWARE_VERSION = "0.4.0"
 # Pagamento pelo QR do painel (connector.payment): estados que o painel mostra; outros são ignorados.
 PAYMENT_STATUSES = ("awaiting_payment", "authorized", "paid", "declined")

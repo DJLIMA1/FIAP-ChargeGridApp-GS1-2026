@@ -513,7 +513,33 @@ void setup() {
   kioskResume(store.getString("kord", "").c_str(), esp_random(), static_cast<uint8_t>(store.getUInt("kadr", 0)));
 #endif
 }
+// Redes que bloqueiam NTP (UDP 123, ex.: roteador do celular) deixavam a central sem relógio:
+// sem hora válida o TLS da API não é verificado e o sync nunca acontecia ("offline"). Enquanto
+// o NTP não responde, a hora vem do cabeçalho Date de uma resposta HTTP simples (porta 80).
+void httpTimeFallback() {
+  static unsigned long nextTry = 15000;  // dá ~15 s ao NTP depois do boot
+  if (time(nullptr) > 1700000000 || WiFi.status() != WL_CONNECTED || millis() < nextTry) return;
+  nextTry = millis() + 20000;
+  WiFiClient plain;
+  HTTPClient http;
+  http.setTimeout(4000);
+  if (!http.begin(plain, "http://connectivitycheck.gstatic.com/generate_204")) return;
+  const char* headers[] = {"Date"};
+  http.collectHeaders(headers, 1);
+  const int code = http.GET();
+  const String date = code > 0 ? http.header("Date") : String();
+  http.end();
+  struct tm parsed = {};
+  if (!date.length() || !strptime(date.c_str(), "%a, %d %b %Y %H:%M:%S GMT", &parsed)) return;
+  const time_t utc = mktime(&parsed);  // configTime(0, 0): fuso UTC
+  if (utc < 1700000000) return;
+  timeval now = {utc, 0};
+  settimeofday(&now, nullptr);
+  Serial.printf("[time] NTP sem resposta; hora obtida por HTTP: %s\n", date.c_str());
+}
+
 void loop() {
+  httpTimeFallback();
 #ifdef CHARGEGRID_PANEL_ENABLED
   static unsigned long nextResetRetry = 0;
   if (configStore.getBool("reset_done", false) && millis() >= nextResetRetry) {

@@ -14,6 +14,11 @@ from ..auth.routes import limit
 
 router = APIRouter()
 
+FACTORY_NAME = "Novo ponto ChargeGrid"
+PRESENTATION_NAME = "Lab-ChargeGrid FIAP"
+PRESENTATION_ADDRESS = "Av. Lins de Vasconcelos, 1222"
+PRESENTATION_LATITUDE, PRESENTATION_LONGITUDE = -23.5739, -46.6233
+
 
 def claim_point(db, user_id, data):
     # Match operation lock order: profile -> connector -> dependent records.
@@ -81,6 +86,10 @@ def claim_point(db, user_id, data):
         point.station_id = target.id
     else:
         station.owner_id = user.id
+        if user.presentation_mode and station.name == FACTORY_NAME:
+            # Modo apresentação: a central nova já entra como o laboratório da FIAP.
+            station.name, station.address = PRESENTATION_NAME, PRESENTATION_ADDRESS
+            station.latitude, station.longitude = PRESENTATION_LATITUDE, PRESENTATION_LONGITUDE
     claim.claimed_by = user.id
     claim.claimed_at = now()
     user.operator_enabled = True
