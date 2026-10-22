@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 
@@ -13,6 +13,30 @@ from test_behavior import HandlerApp, click, descendants
 
 TOKEN = 'a' * 43
 URI = 'chargegrid://claim?token=' + TOKEN
+
+
+def shown_texts(control):
+    """Textos realmente exibidos: ignora controles ocultos e tudo dentro deles."""
+    if not getattr(control, 'visible', True):
+        return []
+    found = [str(control.value)] if isinstance(control, ft.Text) else []
+    content = getattr(control, 'content', None)
+    if content is not None and not isinstance(content, str):
+        found += shown_texts(content)
+    for child in getattr(control, 'controls', []) or []:
+        found += shown_texts(child)
+    return found
+
+
+def fake_scanner():
+    scanner = ft.Container()
+    scanner.active = True
+    constructor = Mock(return_value=scanner)
+    return scanner, constructor, patch.dict('sys.modules', {'chargegrid_scanner': SimpleNamespace(QRScanner=constructor)})
+
+
+def back_arrow(screen):
+    return next(item.on_click for item in descendants(screen) if getattr(item, 'tooltip', None) == 'Voltar')
 
 
 class OwnershipTests(unittest.IsolatedAsyncioTestCase):
@@ -94,9 +118,103 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.page.web = True
         screen = await ownership.build(app)
+        self.assertNotIn('Vincular ponto à minha conta', shown_texts(screen))
         with self.assertRaisesRegex(ApiError, 'APK Android'):
             await click(screen, 'Escanear QR Code')(None)
         app.api.request.assert_not_called()
+        # Sem câmera no navegador, colar o código vira o caminho (aberto sozinho).
+        self.assertIn('Vincular ponto à minha conta', shown_texts(screen))
+        credential = next(item for item in descendants(screen) if isinstance(item, ft.TextField))
+        self.assertTrue(credential.visible and credential.password)
+
+    async def test_idle_screen_has_one_action_and_paste_is_a_discreet_fallback(self):
+        app = HandlerApp()
+        screen = await ownership.build(app)
+        text = shown_texts(screen)
+        self.assertIn('Escanear QR Code', text)
+        self.assertIn('Não consegue escanear? Colar código do QR', text)
+        self.assertNotIn('Vincular ponto à minha conta', text)
+        self.assertNotIn('Inserir o Código Privado do QR', '\n'.join(str(c.value) for c in descendants(screen)
+                                                                    if isinstance(c, ft.Text)))
+        await click(screen, 'Não consegue escanear? Colar código do QR')(None)
+        text = shown_texts(screen)
+        self.assertIn('Vincular ponto à minha conta', text)
+        self.assertNotIn('Não consegue escanear? Colar código do QR', text)
+        app.api.request.assert_not_called()
+
+    async def test_camera_takes_the_place_of_the_content_and_cancel_restores_it(self):
+        app = HandlerApp()
+        app.back = AsyncMock()
+        scanner, constructor, modules = fake_scanner()
+        with modules:
+            screen = await ownership.build(app)
+            intro = 'Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.'
+            for close in (lambda: click(screen, 'Cancelar')(None), lambda: back_arrow(screen)(None)):
+                await click(screen, 'Escanear QR Code')(None)
+                text = shown_texts(screen)
+                self.assertIn('Aponte a câmera para o QR exibido na tela da central.', text)
+                self.assertIn('Cancelar', text)
+                self.assertNotIn(intro, text)
+                self.assertNotIn('Escanear QR Code', text)
+                self.assertTrue(any(item is scanner for item in descendants(screen)))
+                await close()
+                text = shown_texts(screen)
+                self.assertFalse(scanner.active)
+                self.assertIn(intro, text)
+                self.assertIn('Escanear QR Code', text)
+                self.assertNotIn('Cancelar', text)
+                scanner.active = True
+        app.back.assert_not_awaited()  # o "<" com a câmera aberta só fecha a câmera
+        await back_arrow(screen)(None)
+        app.back.assert_awaited_once()
+        app.api.request.assert_not_called()
+
+    async def test_camera_error_opens_the_paste_fallback(self):
+        app = HandlerApp()
+        scanner, constructor, modules = fake_scanner()
+        with modules:
+            screen = await ownership.build(app)
+            await click(screen, 'Escanear QR Code')(None)
+            await constructor.call_args.kwargs['on_error'](SimpleNamespace(data='permission_denied'))
+        self.assertFalse(scanner.active)
+        self.assertIn('Não foi possível abrir a câmera', app.notices[-1])
+        text = shown_texts(screen)
+        self.assertIn('Vincular ponto à minha conta', text)
+        self.assertNotIn('Aponte a câmera para o QR exibido na tela da central.', text)
+
+    async def test_missing_scanner_opens_the_paste_fallback(self):
+        app = HandlerApp()
+        with patch.dict('sys.modules', {'chargegrid_scanner': None}):
+            screen = await ownership.build(app)
+            with self.assertRaisesRegex(ApiError, 'Leitor não instalado'):
+                await click(screen, 'Escanear QR Code')(None)
+        self.assertIn('Vincular ponto à minha conta', shown_texts(screen))
+
+    async def test_scan_param_opens_camera_on_entry_or_fallback_without_camera(self):
+        app = HandlerApp()
+        scanner, constructor, modules = fake_scanner()
+        with modules:
+            screen = await ownership.build(app, scan=True)
+        constructor.assert_called_once()
+        text = shown_texts(screen)
+        self.assertIn('Aponte a câmera para o QR exibido na tela da central.', text)
+        self.assertNotIn('Escanear QR Code', text)
+        app.api.request.assert_not_called()
+
+        web = HandlerApp()
+        web.page.web = True
+        screen = await ownership.build(web, scan=True)
+        text = shown_texts(screen)
+        self.assertIn(ownership.WEB_CAMERA, text)  # motivo na própria tela, sem erro ao abrir
+        self.assertIn('Vincular ponto à minha conta', text)
+        self.assertNotIn('Aponte a câmera para o QR exibido na tela da central.', text)
+
+    async def test_operator_route_passes_scan_to_the_claim_screen(self):
+        app = HandlerApp()
+        app.api.request.return_value = {'account_type': 'vendor', 'operator_enabled': True}
+        with patch.object(ownership, 'build', AsyncMock(return_value='claim')) as build:
+            self.assertEqual(await operator.build(app, claim=True, scan=True), 'claim')
+        build.assert_awaited_once_with(app, station_id=None, show_real=False, scan=True)
 
     async def test_scan_stops_camera_then_requires_explicit_confirmation(self):
         app = HandlerApp()
@@ -112,6 +230,13 @@ class OwnershipTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.assert_not_called()
         credential = next(item for item in descendants(screen) if isinstance(item, ft.TextField))
         self.assertEqual(credential.value, TOKEN)
+        text = shown_texts(screen)
+        self.assertIn('Vincular ponto à minha conta', text)
+        self.assertIn('Escanear novamente', text)
+        self.assertTrue(any(line.startswith('QR reconhecido') for line in text))
+        self.assertNotIn('Aponte a câmera para o QR exibido na tela da central.', text)
+        await click(screen, 'Vincular ponto à minha conta')(None)
+        app.api.request.assert_awaited_once_with('POST', 'ownership/claim', {'token': TOKEN})
 
     def test_back_routes_keep_station_but_never_secret(self):
         self.assertEqual(parent_route('operator', {'claim': True}), ('operator', {}))

@@ -303,6 +303,31 @@ class ChargingPresetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields(screen)['Duração máxima (min)'].value, '10')
         self.assertEqual(app.charging_draft['duration_minutes'], '10')
 
+    async def test_value_and_autonomy_get_the_same_presets_maxima_and_units(self):
+        from chargegrid_app.services import vehicle_state
+        from test_behavior import click
+        from test_charging_wizard import WizardApp, fields, limits_screen, texts
+        app = WizardApp()  # 6 kW · R$2/kWh · 10 min: 1 kWh no máximo
+        vehicle_state.set_simulated_soc(app, 20)
+        screen = await limits_screen(app)
+        self.assertIn('Máx.: 10 min (limite deste carregador)', texts(screen))
+        inputs = fields(screen)
+        self.assertEqual(inputs['Duração máxima (min)'].suffix.value, ' min')
+        self.assertEqual(inputs['Limite de custo estimado (R$)'].prefix.value, 'R$ ')
+        self.assertEqual(inputs['Autonomia desejada (km)'].suffix.value, ' km')
+        await click(screen, 'Por valor')(None)
+        self.assertIn('Máx.: R$ 2,00 · o que cabe em 10 min a 6 kW', texts(screen))
+        self.assertNotIn('R$ 20', texts(screen))  # atalho acima do máximo não aparece
+        await click(screen, 'Máx. R$ 2,00')(None)
+        self.assertEqual(app.charging_draft['max_cost'], '2,00')
+        inputs['Limite de custo estimado (R$)'].value = '3'
+        await inputs['Limite de custo estimado (R$)'].on_change(None)
+        self.assertEqual(inputs['Limite de custo estimado (R$)'].error,
+                         'Acima do máximo (R$ 2,00). Toque em Máx. ou diminua.')
+        await click(screen, 'Por autonomia')(None)
+        self.assertIn('Máx.: 7 km · o que cabe em 10 min a 6 kW', texts(screen))
+        self.assertIn('Máx. 7 km', texts(screen))
+
 
 class CouponAndFilterUxTests(unittest.IsolatedAsyncioTestCase):
     async def test_coupon_form_uppercases_code_and_empty_list_explains_next_step(self):

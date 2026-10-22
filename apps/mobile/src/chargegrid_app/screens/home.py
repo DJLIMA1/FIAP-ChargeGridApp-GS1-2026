@@ -110,9 +110,21 @@ def _ring_scene(kind, content, height, k=1.0):
                                         width=362 * k, height=height * k))
 
 
-def _car_scene(app=None):
+def _car_scene(app=None, vehicle=None):
+    """Carro do perfil do motorista no anel (foto ou silhueta da carroceria) e, com o carro conhecido,
+    o nome dele numa legenda discreta logo abaixo."""
     k = design.scene_scale(app)
-    return _ring_scene('car', ft.Container(design.car_image(width=265 * k), left=39 * k, top=4 * k), 210, k)
+    scene = _ring_scene('car', ft.Container(design.car_image(width=265 * k, vehicle=vehicle), left=39 * k, top=4 * k),
+                        210, k)
+    from ..services.driver import vehicle_name
+    name = vehicle_name(vehicle) if isinstance(vehicle, dict) and vehicle else None
+    if not name:
+        return scene
+    caption = design.txt(name, 11, 'medium', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER, max_lines=1,
+                         overflow=ft.TextOverflow.ELLIPSIS)
+    return ft.Column([scene, ft.Container(caption, margin=ft.Margin(left=0, top=-4, right=0, bottom=0),
+                                          data='home-car-name')],
+                     spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 def _totem_scene(app=None):
@@ -207,7 +219,9 @@ async def build(app, **_):
             app.api.request('GET', 'stations', params={'limit': 3, 'offset': 0}),
         ))
 
-    previous = await snapshot()
+    from ..services import vehicle_state
+    # O carro do perfil (em cache depois da primeira leitura) sai junto com o resto do Início.
+    previous, car = await asyncio.gather(snapshot(), vehicle_state.vehicle(app))
     reservation, session, stations_result = previous
     stations = stations_result['items']
     balance = await _amount('wallet', 'balance', app)
@@ -267,7 +281,7 @@ async def build(app, **_):
     controls = [
         _spaced(_greeting(app, demo), top=1.5),
         _spaced(balance_card, top=-8.5),
-        _spaced(_car_scene(app), top=27.5),
+        _spaced(_car_scene(app, car), top=27.5),
         _spaced(design.txt('Perto de Você', 15, 'bold'), top=0, bottom=-1),
         rows,
         _spaced(find_button, top=0),

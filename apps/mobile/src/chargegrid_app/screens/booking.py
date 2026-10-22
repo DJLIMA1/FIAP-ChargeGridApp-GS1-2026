@@ -28,6 +28,13 @@ posto com ``prepay_required`` mostra o aviso para desligar o modo (a API recusar
 "Por autonomia": o motorista pede N km; a energia sai do carro do perfil (consumo) e é limitada ao espaço
 livre da bateria (SoC escondido de ``services.vehicle_state``, nunca exibido aqui). Todo pagamento feito
 aqui fica registrado em ``services.prepaid``: a sobra (ex.: bateria cheia) volta como crédito no saldo.
+
+Etapa 3 (cobrança): cada modo mostra o máximo ANTES de enviar ("Máx.: 120 min", "Máx.: R$ 57,30 · o que
+cabe na bateria do seu carro", "Máx.: 192 km …"; ``chargegrid_core.charge_plan.charge_maxima`` com o tempo
+do conector escolhido, a tarifa final da velocidade e a bateria do carro), atalhos até o máximo e unidade
+no campo. Acima do máximo, o erro aparece enquanto o motorista digita e bloqueia o avanço; a etapa 4
+confere de novo na velocidade escolhida. O acréscimo por demanda nunca aparece para o motorista (só o
+preço final por kWh): é informação do vendedor.
 """
 
 import flet as ft
@@ -332,8 +339,9 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         step = 1  # "Carregar agora" não tem etapa de reserva (voltar da cobrança leva ao conector)
     # Limite geral do motorista: potência máxima do carro do perfil (DC/AC) ∩ efetivo do conector.
     car_power = vehicle_state.car_specs(await vehicle_state.vehicle(app)) if step >= 3 and group else None
-    if state['by'] == 'autonomy' and step >= 3:
-        # Carro + SoC escondido (no modo apresentação, a bateria do celular) para converter km em energia.
+    if step >= 3 and group:
+        # Carro + SoC escondido (no modo apresentação, a bateria do celular): converte km em energia e
+        # limita os máximos de valor e autonomia ao espaço livre da bateria (o SoC nunca é exibido).
         state['car'] = await vehicle_state.snapshot(app)
 
     def nav(target):
@@ -364,6 +372,14 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         except (ValueError, ArithmeticError):
             return None
 
+    def limits(tier=None):
+        """Máximos de cada modo no conector escolhido (tempo do ponto, tarifa final, potência e bateria)."""
+        return rules.group_limits(group, tier or state['power'] or 'max', state['connector_id'], car_power,
+                                  state['car'])
+
+    def over_limit(tier=None):
+        return rules.amount_error(state['by'], state[_amount_key(state['by'])], limits(tier))
+
     if step > 3 and safe_quote() is None:
         state['minutes_text'] = state['minutes_text'] or '30'
         if state['by'] == 'value' and not state['value_text']:
@@ -372,6 +388,10 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             state['km_text'] = '100'
         if safe_quote() is None:  # ex.: bateria já cheia no modo autonomia
             state['by'] = 'time'
+    if step > 4 and over_limit():
+        # Abertura direta numa etapa posterior (atalhos/captura): o valor nunca passa do máximo.
+        key = _amount_key(state['by'])
+        state[key] = rules.clamp_text(state['by'], state[key], limits())
 
     demo = getattr(app.api, 'is_demo', False) is True
     simulated = not payments.enabled(app)  # modo apresentação: sem Stripe, pagamento simulado da 0.6.x
@@ -418,17 +438,6 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                   if ready else ft.Container(design.txt('Continuar', 16, 'bold', '#6C6C6C', text_align=ft.TextAlign.CENTER), height=55,
                                         bgcolor='#1C1C1C', border_radius=design.RADIUS_BTN,
                                         alignment=ft.Alignment(0, 0)))
-        demand = station.get('demand') or {}
-        if str(demand.get('multiplier') or '1.00') != '1.00':
-            # Tarifa dinâmica (calculada pela API): o motorista vê antes de escolher, como num app de corrida.
-            label = str(demand['multiplier']).rstrip('0').rstrip('.').replace('.', ',')
-            cards.insert(0, ft.Container(
-                ft.Row([ft.Icon(ft.Icons.TRENDING_UP, size=20, color=theme.TEXT_COLOR),
-                        design.txt(f"Demanda {demand.get('level_label', 'alta').lower()} agora: tarifa {label}× a base. "
-                                   'O preço fica travado ao reservar ou iniciar.', 12, 'regular', expand=True)],
-                       spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='demand-note',
-                padding=ft.Padding(left=13, right=13, top=10, bottom=10)))
         return _page(*cards, title='Qual conector deseja reservar?' if reserving else 'Qual conector deseja usar?',
                      on_back=app.back, steps=4, step=1, edge='c1',
                            footer=_footer(button), **wizard)
@@ -458,37 +467,68 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         key = _amount_key(state['by'])
         note = design.txt('', 11, 'regular', theme.GRAY_TEXT, visible=False)
 
+        maxima = limits()
+        error = design.txt('', 11, 'regular', theme.ERROR, visible=False, data='amount-error')
+
         def refresh_note():
             try:
                 text = rules.autonomy_note(autonomy()) if by_km else None
             except (ValueError, ArithmeticError):
                 text = None
             note.value, note.visible = text or '', bool(text)
+            problem = rules.amount_error(state['by'], state[key], maxima)
+            error.value, error.visible = problem or '', bool(problem)
+            if problem:
+                note.visible = False  # um aviso por vez: o erro já diz o que fazer
 
         def changed(event):
             state[key] = event.control.value or ''
-            if by_km:
-                refresh_note()
-                app.page.update()
+            refresh_note()
+            app.page.update()
         hint = 'Exemplo: 249,90' if by_value else 'Exemplo: 120' if by_km else 'Exemplo: 30'
         field = _white_field(hint, state[key], changed)
+        prefix, suffix = rules.UNITS[state['by']]
+        affix = ft.TextStyle(size=13, font_family=design.FONT, color='#6F6F6F')
+        if prefix:
+            field.prefix = ft.Text(f'{prefix} ', style=affix)
+        if suffix:
+            field.suffix = ft.Text(f' {suffix}', style=affix)
+        field.input_filter = ft.InputFilter(regex_string=r'[0-9,.]' if by_value else r'[0-9]', allow=True)
         refresh_note()
         label = ('Valor da recarga (R$)' if by_value else 'Autonomia desejada (km)' if by_km
                  else 'Tempo de recarga (minutos)')
+        max_text = rules.amount_hint(state['by'], maxima)
+        max_line = design.txt(max_text or '', 11, 'regular', theme.GRAY_TEXT, visible=bool(max_text),
+                              data='amount-max')
+
+        def choose(text):
+            async def handler(event=None):
+                field.value = state[key] = text
+                refresh_note()
+                app.page.update()
+            return handler
+        chips = ft.Row([design.chip_option(name, on_click=choose(text), width=rules.chip_width(name))
+                        for name, text in rules.amount_presets(state['by'], maxima)],
+                       wrap=True, spacing=8, run_spacing=8, data='amount-presets')
 
         async def next_step():
+            problem = rules.amount_error(state['by'], state[key], maxima)
+            if problem:
+                raise failing(problem)
             try:
                 result = quote()
             except (ValueError, ArithmeticError) as exc:
                 raise failing(str(exc) or 'Confira o valor informado.') from None
-            limit = int(group['connectors'][0].get('max_duration_minutes') or 0)
-            if limit and result['minutes'] > limit:
-                raise failing(f'Este conector permite recargas de até {limit} minutos.')
+            if result['minutes'] > maxima['minutes']:  # rede de segurança (o máximo já cabe no tempo)
+                raise failing(f"Este conector permite recargas de até {maxima['minutes']} minutos.")
             await app.go('booking', step=4, station_id=station_id)
         return _page(
             ft.Container(height=4), ft.Container(toggle, margin=ft.Margin(left=0, top=0, right=0 if by_value else 9,
                                                                            bottom=0)),
-            ft.Column([design.txt(label, 10.4), field, *([note] if by_km else [])], spacing=15,
+            ft.Column([design.txt(label, 10.4), field,
+                       ft.Column([error, *([note] if by_km else []), max_line], spacing=4,
+                                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                       chips], spacing=15,
                       horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
             title='Defina como será sua recarga', on_back=app.back, steps=4, step=2,
             edge='c3v' if by_value else 'c3t', footer=_footer(design.primary_button('Próximo Passo', app.action(next_step), height=55, size=16,
@@ -505,9 +545,18 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         cards = [_option(rules.power_title(group, key, car_power), rules.speed_subtitle(group, key, car_power, state['connector_id']),
                                      selected=state['power'] == key, on_click=choose_power(key),
                                      icon=ft.Icons.OFFLINE_BOLT_OUTLINED) for key in ('max', 'reduced')]
+
+        async def power_next():
+            # A velocidade muda potência e tarifa: o valor/autonomia da etapa anterior pode passar do
+            # máximo nesta velocidade. Nunca ajusta sozinho; explica e pede para voltar.
+            if over_limit():
+                speed = 'reduzida' if state['power'] == 'reduced' else 'máxima'
+                top = rules.amount_max_label(state['by'], limits())
+                raise failing(f'Na velocidade {speed} o máximo é {top}. Volte e ajuste a recarga.')
+            await app.go('booking', step=5, station_id=station_id)
         return _page(*cards, title='Potência e Velocidade', on_back=app.back, steps=4, step=3, edge='c4',
-                           footer=_footer(design.primary_button('Continuar', nav(5), height=55, size=16,
-                                                                weight='bold')), **wizard)
+                           footer=_footer(design.primary_button('Continuar', app.action(power_next), height=55,
+                                                                size=16, weight='bold')), **wizard)
 
     balance = wallet.balance(app)
     if step == 5:

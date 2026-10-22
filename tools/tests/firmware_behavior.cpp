@@ -341,7 +341,8 @@ static void runKioskScreens(const char* out) {
   kioskShot(out, "kiosk-payment-method");
   kioskTap("Cartão de crédito / débito");
   kioskShot(out, "kiosk-review");
-  assert(hasLabel(ui::routerRoot(), "R$ 2,00 x 1,15 Alta demanda") && hasLabel(ui::routerRoot(), "R$ 50,00"));
+  assert(!hasLabel(ui::routerRoot(), "R$ 2,00 x 1,15 Alta demanda") && !hasLabel(ui::routerRoot(), "DEMANDA"));
+  assert(hasLabel(ui::routerRoot(), "R$ 2,30/kWh") && hasLabel(ui::routerRoot(), "R$ 50,00"));
   kioskTap("Aceitar e pagar");
   kioskApi(201, orderJson("held", "simulated", "null"), kiosk::RequestKind::CreateOrder);
   assert(persistedOrder == kKioskOrderId);

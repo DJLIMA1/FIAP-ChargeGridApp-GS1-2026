@@ -119,6 +119,9 @@ def test_kiosk_payment_starts_once_and_guest_can_stop(http, factory, seed, strip
     with factory() as db:
         session = db.query(ChargingSession).one()
         assert session.user_id == payment.user_id and session.max_duration_minutes == 60
+        # Visitante do QR do painel: bateria simulada como no app (carro padrão, SoC sorteado).
+        assert (session.soc_source, session.battery_kwh) == ("simulated", Decimal("44.90"))
+        assert Decimal(15) <= session.start_soc_percent <= Decimal(60)
         assert db.query(Command).filter(Command.type == "START").count() == 1
         assert db.get(Payment, payment.id).status == "in_use"
     synced = _sync(http, 2)

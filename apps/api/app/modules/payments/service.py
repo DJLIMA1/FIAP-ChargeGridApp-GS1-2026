@@ -22,6 +22,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from chargegrid_core import billing, pricing
+from chargegrid_core.driver.vehicles import DEFAULT_PRESET, PRESETS
 
 from ...config import settings
 from ...errors import fail
@@ -58,6 +59,12 @@ MAX_SETTLE_ATTEMPTS = 5
 KIOSK_AMOUNTS_CENTS = (1000, 2000, 4000)
 # Pagamento simulado do totem (dono em Modo apresentação): confirmado e acertado sem provedor.
 SIMULATED = "simulated"
+# Bateria do carro numa recarga do painel/totem sem SoC conhecido: o mesmo sorteio escondido do app
+# (``apps/mobile/.../vehicle_state.py``: SOC_MIN/SOC_MAX) no carro padrão do app (BYD Dolphin).
+KIOSK_SOC_MIN, KIOSK_SOC_MAX = Decimal(15), Decimal(60)
+# SoC herdado da última recarga da conta a partir deste valor é sorteado de novo (o totem não começa
+# uma recarga que já pararia por bateria cheia).
+KIOSK_SOC_REDRAW = Decimal(95)
 # Erros de início que podem passar sozinhos (ponto reconciliando): o pagamento do painel espera
 # até o prazo de início em vez de ser devolvido na hora.
 TRANSIENT_START_ERRORS = ("point_unavailable", "user_busy", "invalid_presence_code")
@@ -499,6 +506,33 @@ def guest_profile(db, connector):
     return db.get(Profile, guest_id)
 
 
+def _decimal(value):
+    try:
+        number = Decimal(str(value)) if value is not None else None
+    except ArithmeticError:
+        return None
+    return number if number is not None and number.is_finite() else None
+
+
+def kiosk_battery(payment):
+    """Bateria simulada de toda recarga do painel/totem (com ou sem login), como no app.
+
+    Carro do orçamento (conta com carro salvo) ou o padrão do app; SoC da última recarga da conta
+    ou, se desconhecido ou >= ``KIOSK_SOC_REDRAW``, sorteado em 15–60 % a partir do ``payment.id``.
+    Determinístico: a repetição do START (mesma chave ``kiosk:{payment.id}``) manda o mesmo corpo.
+    """
+    vehicle = (payment.quote or {}).get("vehicle") or {}
+    battery = _decimal(vehicle.get("battery_kwh"))
+    if battery is None or not 5 <= battery <= 250:
+        battery = Decimal(str(PRESETS[DEFAULT_PRESET].usable_battery_kwh))
+    soc = _decimal(vehicle.get("soc_percent"))
+    if soc is None or not 0 <= soc < KIOSK_SOC_REDRAW:
+        steps = int((KIOSK_SOC_MAX - KIOSK_SOC_MIN) * 10) + 1
+        seed = int.from_bytes(hashlib.sha256(f"chargegrid:kiosk-soc:{payment.id}".encode()).digest()[:8], "big")
+        soc = KIOSK_SOC_MIN + Decimal(seed % steps) / 10
+    return {"battery_kwh": battery, "soc_percent": soc, "soc_source": "simulated"}
+
+
 def start_kiosk(db, payment_id):
     """Pagamento do painel confirmado: emite START uma vez (presença provada ao pagar no QR/totem).
 
@@ -525,11 +559,9 @@ def start_kiosk(db, payment_id):
     station = db.get(Station, connector.station_id)
     error = None
     for _ in range(2):  # o código #F pode virar entre gerar e conferir: tenta mais uma vez
-        vehicle = (payment.quote or {}).get("vehicle") or {}
         data = StartInput(public_code=connector.public_code, presence_code=current_code(station)[0],
                           max_duration_minutes=payment.max_duration_minutes, payment_id=payment.id,
-                          battery_kwh=vehicle.get("battery_kwh"), soc_percent=vehicle.get("soc_percent"),
-                          soc_source="simulated" if vehicle.get("soc_percent") is not None else None)
+                          **kiosk_battery(payment))
         try:
             with db.begin_nested():
                 session = start(db, guest, data, f"kiosk:{payment.id}")

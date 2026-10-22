@@ -8,8 +8,13 @@ from ..ui import design, theme
 from . import chargers
 
 
+SECTION_TITLE = 'Centrais da estação'
+SECTION_HINT = 'Um carregador offline não derruba a estação.'
+
+
 async def build(app, station):
-    """Uma seção por central: status (online, último contato, carregadores) e manutenção no mesmo cartão."""
+    """Seção "Centrais da estação" de Dados da estação, de cima para baixo: rótulo + dica, um cartão por
+    central (status e manutenção juntos, restauração por último) e, no fim, vincular outra central."""
     status = ft.Container(chargers.screens_card(station), data='central-status')
     painters = []
 
@@ -53,6 +58,11 @@ async def build(app, station):
         polls.append(poll)
     if not sections and status.content is not None:
         sections.append(status)  # sem central para manter: só o status
+
+    header = [design.label(SECTION_TITLE)]
+    if sections:
+        header.append(design.txt(SECTION_HINT, 11, 'regular', theme.GRAY_TEXT))
+    sections.insert(0, ft.Column(header, spacing=4, data='central-section'))
 
     from .setup_ui import cta
     is_demo = bool(getattr(app.api, 'is_demo', False))
@@ -145,8 +155,8 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
             'expired':'O comando simulado expirou. Tente novamente nesta demonstração.',
         })
     initial_status = reset_state.get('status', 'not_requested')
-    reset_info = ft.Text(reset_messages.get(initial_status, reset_messages['not_requested']),
-                         size=12, color=theme.WARNING, visible=bool(linked_device) and initial_status != 'not_requested')
+    reset_info = design.txt(reset_messages.get(initial_status, reset_messages['not_requested']), 11.5, 'regular',
+                            theme.WARNING, visible=bool(linked_device) and initial_status != 'not_requested')
     def paint_reset(state):
         reset_state.clear()
         reset_state.update(state)
@@ -200,11 +210,11 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     for button in (rotate_button, revoke_button):
         button.expand = True
     provision_row = ft.Row([design.txt('Sem credencial. Gere uma para a central conectar.' if not is_demo else
-                                       'Sem credencial simulada.', 11.5, 'regular', theme.GRAY_TEXT, expand=True),
+                                       'Sem credencial simulada.', 11, 'regular', theme.GRAY_TEXT, expand=True),
                             provision_button], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     key_row = ft.Row([rotate_button, revoke_button], spacing=10)
     reset_box = ft.Container(
-        ft.Row([design.txt(reset_messages['not_requested'], 10.5, 'regular', theme.GRAY_TEXT, expand=True),
+        ft.Row([design.txt(reset_messages['not_requested'], 11, 'regular', theme.GRAY_TEXT, expand=True),
                 reset_button], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=theme.WARN_BG, border=ft.Border.all(1, ft.Colors.with_opacity(0.45, theme.RED)),
         border_radius=design.RADIUS_BTN, padding=ft.Padding(left=12, right=10, top=10, bottom=10))
@@ -239,9 +249,9 @@ async def maintenance(app, connector, updated, ensure_poll, *, station=None, pai
     paint(station)
     if painters is not None:
         painters.append(paint)
-    content = chargers.card('', device_status, device_row, reset_info, provision_row, key_row, reset_box,
-                            head=[ft.Row([name, badge], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                  contact],
+    # Identificação → mensagem → credencial → restauração (ação destrutiva e o status dela por último).
+    content = chargers.card('', device_row, device_status, provision_row, key_row, reset_info, reset_box,
+                            head=chargers.central_head(name, badge, contact),
                             subtitle='Credencial e restauração simuladas' if is_demo else None)
     content.data = 'central-maintenance'
     if reset_state.get('status') in ('pending', 'received'):

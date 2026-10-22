@@ -10,14 +10,15 @@ from unittest.mock import AsyncMock, Mock, patch
 import flet as ft
 import httpx
 
+from chargegrid_app import demo_receipt_pdf
 from chargegrid_app.api_client import ApiClient, ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, DemoApi
-from chargegrid_app.screens import history, history_owner, receipt
+from chargegrid_app.screens import charge_detail, history, history_owner
 from chargegrid_app.screens import payout as payout_screen
 from chargegrid_app.services import files, payout
 from test_behavior import HandlerApp, descendants
 
-SECTIONS = ('Preço', 'Energia', 'Potência', 'Pagamento', 'Permanência', 'Totais')
+SECTIONS = ('Custos', 'Sessão e bateria', 'Pagamento', 'Estação e carregador')
 
 
 def texts(screen):
@@ -135,18 +136,16 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((data['payment']['environment'], data['payment']['refunded_amount']), ('mock', '15.00'))
         self.assertEqual(data['overstay'], {'status': 'not_applicable'})
         self.assertEqual(data['charges']['revenue_basis'], 'paid')
-        # A tela: subpágina do histórico com todas as seções e o PDF desabilitado na demo.
-        screen = await history.build(self.app, receipt=session['id'])
+        # A tela: detalhes da recarga (subpágina do histórico) com todas as seções e o PDF exportável na demo.
+        screen = await history.build(self.app, session=session['id'])
         text = texts(screen)
         for section in SECTIONS:
             self.assertIn(section, text)
-        for expected in ('Recibo', 'SIMULADO', 'CONTA DEMO', 'Cupom BEMVINDO10', 'Preço travado às',
-                         'Confirmada pelo equipamento às', 'Mudanças de potência', 'Pagamento simulado',
-                         'Sem taxa de permanência nesta recarga.', receipt.PDF_DEMO_NOTE):
+        for expected in (charge_detail.TITLE, 'SIMULADO', 'CONTA DEMO', 'Desconto do cupom BEMVINDO10', 'Travado às',
+                         'Energia confirmada pelo equipamento às', 'Pico 22,0 kW', 'Pagamento simulado',
+                         'Bateria simulada', charge_detail.EXPORT_LABEL, charge_detail.EXPORT_DEMO_NOTE):
             self.assertIn(expected, text)
-        pdf = next(c for c in descendants(screen) if isinstance(c, ft.Container)
-                   and any(isinstance(t, ft.Text) and t.value == receipt.PDF_LABEL for t in descendants(c.content or c)))
-        self.assertIsNone(pdf.on_click)
+        self.assertIsNotNone(tapper(screen, charge_detail.EXPORT_LABEL).on_click)
 
     async def test_seeded_session_receipt_is_honest_without_payment_or_reason(self):
         items = (await self.app.api.request('GET', 'me/charging-sessions'))['items']
@@ -155,75 +154,140 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(data['price']['recorded'])
         self.assertEqual(data['charges']['total'], '4.54')
         self.assertIn('Sem pagamento registrado: nenhum valor foi cobrado.', data['labels']['notes'])
-        text = texts(await history.build(self.app, receipt=items[0]['id']))
+        text = texts(await history.build(self.app, session=items[0]['id']))
         self.assertIn('Sem pagamento registrado', text)
+        self.assertNotIn('Velocidade', text)  # não registrada nesta recarga antiga: não vira "Máxima"
 
-    async def test_demo_pdf_is_refused_and_csv_history_is_local(self):
+    async def test_demo_receipt_pdf_is_local_and_history_pdf_is_refused(self):
+        items = (await self.app.api.request('GET', 'me/charging-sessions'))['items']
+        pdf = await self.app.api.download(f"charging-sessions/{items[0]['id']}/receipt.pdf")
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        receipt = await self.app.api.request('GET', f"charging-sessions/{items[0]['id']}/receipt")
+        labels = [label for _, rows in demo_receipt_pdf.rows(receipt) for label, _ in rows]
+        self.assertIn('Preço travado', labels)
+        self.assertFalse(any('demanda' in label.lower() or 'tarifa base' in label.lower() for label in labels))
         with self.assertRaises(ApiError) as caught:
-            await self.app.api.download('charging-sessions/demo-session-1/receipt.pdf')
+            await self.app.api.download('me/charging-sessions/export.pdf')
         self.assertEqual(caught.exception.code, 'demo_pdf_unavailable')
         content = (await self.app.api.download('me/charging-sessions/export.csv')).decode('utf-8')
         self.assertTrue(content.startswith('ID da sessão,Posto,Ponto'))
         self.assertEqual(content.count('\r\n'), 3)  # cabeçalho + duas recargas de exemplo
 
+    async def test_demo_export_shares_the_local_pdf(self):
+        items = (await self.app.api.request('GET', 'me/charging-sessions'))['items']
+        screen = await history.build(self.app, session=items[0]['id'])
+        with patch.object(files, 'deliver', AsyncMock(return_value='ok')) as deliver:
+            await tapper(screen, charge_detail.EXPORT_LABEL).on_click(None)
+        data, filename = deliver.await_args.args[1:]
+        self.assertTrue(data.startswith(b'%PDF'))
+        self.assertRegex(filename, r'^chargegrid-recibo-demo\d{4}\.pdf$')
+        self.assertEqual(self.app.notices, ['ok'])
 
-class ReceiptScreenTests(unittest.IsolatedAsyncioTestCase):
-    def real_app(self, *, web=False):
+    def test_demo_pdf_is_marked_and_never_shows_demand(self):
+        data = real_receipt()
+        data['labels'] = {**data['labels'], 'demo': True}
+        sections = dict(demo_receipt_pdf.rows(data))
+        flat = ' '.join(f'{label} {value}' for rows in sections.values() for label, value in rows)
+        self.assertIn('R$ 2,4570/kWh', flat)
+        self.assertIn('Desconto do cupom', flat)
+        for hidden in ('demanda', 'Tarifa do horário', 'Tarifa base', '1,3×'):
+            self.assertNotIn(hidden, flat)
+        self.assertTrue(demo_receipt_pdf.receipt_pdf(data).startswith(b'%PDF'))
+        self.assertEqual(demo_receipt_pdf.MARK, 'CONTA DEMO · SIMULADO · sem valor fiscal')
+
+
+class ChargeDetailScreenTests(unittest.IsolatedAsyncioTestCase):
+    SESSION = {'id': '1a2b3c4d-0000-0000-0000-000000000000', 'station_id': 'st-1', 'battery_kwh': '60.00',
+               'power_tier': 'reduced', 'max_duration_minutes': 60, 'max_cost': '40.0000', 'status': 'completed'}
+
+    def real_app(self, *, web=False, session=None):
         app = HandlerApp()
-        app.api.request.return_value = real_receipt()
+        row = self.SESSION if session is None else session
+
+        async def request(method, path, **kwargs):
+            if path.endswith('/receipt'):
+                return real_receipt()
+            if row is False:
+                raise ApiError('Sessão não encontrada', 404, 'not_found')
+            return row
+        app.api.request = AsyncMock(side_effect=request)
         app.api.download = AsyncMock(return_value=b'%PDF-1.4 recibo')
         app.page = SimpleNamespace(update=lambda: None, web=web, platform=ft.PagePlatform.ANDROID)
         return app
 
-    async def test_real_receipt_explains_price_power_payment_and_overstay(self):
+    async def test_real_detail_shows_every_fact_once_without_demand_for_the_driver(self):
         app = self.real_app()
-        screen = await history.build(app, receipt='1a2b3c4d-0000-0000-0000-000000000000')
-        app.api.request.assert_awaited_once_with('GET', 'charging-sessions/1a2b3c4d-0000-0000-0000-000000000000/receipt')
+        screen = await history.build(app, session='1a2b3c4d-0000-0000-0000-000000000000')
+        paths = sorted(call.args[1] for call in app.api.request.await_args_list)
+        self.assertEqual(paths, ['charging-sessions/1a2b3c4d-0000-0000-0000-000000000000',
+                                 'charging-sessions/1a2b3c4d-0000-0000-0000-000000000000/receipt'])
         text = texts(screen)
         for section in SECTIONS:
             self.assertIn(section, text)
-        for expected in ('Nº 1A2B3C4D', 'Tarifa do horário 18:00–22:00', 'Ajuste por demanda', '1,3×',
-                         'Demanda alta · Ocupação: 3 de 4 pontos', 'R$ 2,4570/kWh', 'Cupom BEMVINDO', '−10%',
-                         'na reserva', '12,50 kWh', 'SIMULADO', 'Pico 22,0 kW',
-                         'Redução de potência: carga da loja subiu', 'Aplicada (confirmada pelo equipamento)',
-                         'Pagamento de teste (sandbox)', 'TESTE', 'pi_test_123', 'R$ 40,00', 'R$ 27,64',
-                         'Sobra da pré-autorização liberada', 'Tolerância após a recarga', 'R$ 5,00',
-                         'Desconto do cupom', 'R$ 32,64', 'Valor pago (líquido)', 'Documento sem valor fiscal.'):
+        hero = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'detail-hero')
+        for expected in ('Posto Central', 'Recarga concluída', '12,50 kWh', 'R$ 32,64', '40 min', 'Nº 1A2B3C4D'):
+            self.assertIn(expected, texts(hero))
+        for expected in ('R$ 2,4570/kWh', 'na reserva', 'Desconto do cupom', 'R$ 3,07',
+                         'Valor pago (líquido)', 'SIMULADO', 'Pico 22,0 kW', 'Redução de potência: carga da loja subiu',
+                         'Aplicada', '20% → 100%', 'Bateria do veículo 60 kWh', 'Reduzida · mais econômica',
+                         '60 min · até R$ 40,00', 'Limite de potência no início', 'Pagamento de teste (sandbox)',
+                         'TESTE', 'pi_test_123', 'R$ 40,00', 'R$ 27,64', 'Sobra da pré-autorização liberada',
+                         'Tolerância', 'R$ 5,00', 'CG-001', 'CCS2', '60,0 kW', 'Ver estação', 'Linha do tempo',
+                         'Início confirmado pelo ponto', 'Documento sem valor fiscal.', charge_detail.EXPORT_LABEL):
             self.assertIn(expected, text)
-        self.assertNotIn(receipt.PDF_DEMO_NOTE, text)
+        # Demanda e a composição do preço são do vendedor: o motorista vê só o preço travado.
+        for hidden in ('Ajuste por demanda', '1,3×', 'Demanda alta', 'Tarifa do horário', 'Tarifa base',
+                       'Como o preço foi calculado', 'Ver recibo', 'Ver eventos da sessão', 'Custo estimado:'):
+            self.assertNotIn(hidden, text)
+        self.assertNotIn(charge_detail.EXPORT_DEMO_NOTE, text)
+        await tapper(screen, 'Ver estação').on_click(None)
+        app.go.assert_awaited_with('stations', station_id='st-1')
 
-    async def test_optional_sections_may_be_empty(self):
-        app = self.real_app()
-        app.api.request.return_value = real_receipt(
+    async def test_optional_sections_may_be_empty_and_session_is_optional(self):
+        app = self.real_app(session=False)
+        app.api.request = AsyncMock(side_effect=[real_receipt(
             power={'status': 'unavailable', 'samples': [], 'changes': [],
                    'note': 'Amostras de potência indisponíveis (não enviadas pelo equipamento ou já expiradas).'},
             payment={'status': 'not_applicable', 'note': 'Sem pagamento registrado: valor estimado, sem cobrança real.'},
-            overstay={'status': 'not_applicable'}, timeline=[])
-        text = texts(await receipt.build(app, 'x'))
-        for expected in ('Amostras de potência indisponíveis', 'Nenhuma mudança de potência registrada',
-                         'Sem pagamento registrado', 'Sem taxa de permanência nesta recarga.'):
-            self.assertIn(expected, text)
+            overstay={'status': 'not_applicable'}, timeline=[]), ApiError('x', 404, 'not_found')])
+        text = texts(await charge_detail.build(app, 'x'))
+        self.assertIn('Sem pagamento registrado', text)
+        for hidden in ('Pico', 'Mudanças de potência', 'Permanência após a recarga', 'Linha do tempo', 'Ver estação'):
+            self.assertNotIn(hidden, text)
 
-    async def test_pdf_downloads_with_auth_and_opens_the_share_sheet(self):
+    async def test_back_returns_to_the_same_list(self):
         app = self.real_app()
-        screen = await receipt.build(app, '1a2b3c4d-0000-0000-0000-000000000000')
+        screen = await history.build(app, session='1a2b3c4d-0000-0000-0000-000000000000', offset=20)
+        back = next(c for c in descendants(screen) if isinstance(c, ft.Container) and c.tooltip == 'Voltar')
+        await back.on_click(None)
+        app.go.assert_awaited_with('history', offset=20)
+
+    async def test_legacy_receipt_route_opens_the_same_screen(self):
+        app = self.real_app()
+        text = texts(await history.build(app, receipt='1a2b3c4d-0000-0000-0000-000000000000'))
+        self.assertIn(charge_detail.TITLE, text)
+        self.assertIn(charge_detail.EXPORT_LABEL, text)
+
+    async def test_export_downloads_with_auth_and_opens_the_share_sheet(self):
+        app = self.real_app()
+        screen = await charge_detail.build(app, '1a2b3c4d-0000-0000-0000-000000000000')
         share = Mock()
         share.return_value.share_files = AsyncMock()
         with patch.object(files.ft, 'Share', share):
-            await tapper(screen, receipt.PDF_LABEL).on_click(None)
+            await tapper(screen, charge_detail.EXPORT_LABEL).on_click(None)
         app.api.download.assert_awaited_once_with('charging-sessions/1a2b3c4d-0000-0000-0000-000000000000/receipt.pdf')
         shared = share.return_value.share_files.await_args.args[0][0]
         self.assertEqual((shared.data, shared.name, shared.mime_type),
                          (b'%PDF-1.4 recibo', 'chargegrid-recibo-1a2b3c4d.pdf', 'application/pdf'))
         self.assertIn('compartilhar', app.notices[-1])
 
-    async def test_pdf_on_web_uses_save_dialog_and_falls_back(self):
+    async def test_export_on_web_uses_save_dialog_and_falls_back(self):
         app = self.real_app(web=True)
-        screen = await receipt.build(app, 'x')
+        screen = await charge_detail.build(app, 'x')
         picker = Mock()
         picker.return_value.save_file = AsyncMock(return_value=None)
         with patch.object(files.ft, 'FilePicker', picker):
-            await tapper(screen, receipt.PDF_LABEL).on_click(None)
+            await tapper(screen, charge_detail.EXPORT_LABEL).on_click(None)
         kwargs = picker.return_value.save_file.await_args.kwargs
         self.assertEqual((kwargs['src_bytes'], kwargs['file_name']), (b'%PDF-1.4 recibo', 'chargegrid-recibo-1a2b3c4d.pdf'))
         # Share falha no celular -> "Salvar como".
@@ -235,27 +299,85 @@ class ReceiptScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('a.csv', message)
         self.assertEqual(picker.return_value.save_file.await_args.kwargs['allowed_extensions'], ['csv'])
 
-    async def test_pdf_error_is_reported(self):
+    async def test_export_error_is_reported(self):
         app = self.real_app()
         app.api.download.side_effect = ApiError('Sessão não encontrada', 404, 'not_found')
-        screen = await receipt.build(app, 'x')
-        await tapper(screen, receipt.PDF_LABEL).on_click(None)
+        screen = await charge_detail.build(app, 'x')
+        await tapper(screen, charge_detail.EXPORT_LABEL).on_click(None)
         self.assertEqual(app.notices, ['Sessão não encontrada'])
 
 
+class SellerChargeDetailTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.app = HandlerApp()
+        self.app.api = DemoApi()
+        await self.app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
+        self.app.profile = await self.app.api.request('GET', 'me')
+
+    async def test_seller_card_opens_the_same_detail_without_export(self):
+        listing = await history.build(self.app, manage=True)
+        card = next(c for c in descendants(listing) if getattr(c, 'data', None) == 'session-card')
+        items = (await self.app.api.request('GET', 'operator/charging-sessions'))['items']
+        await card.on_click(None)
+        self.app.go.assert_awaited_with('history', session=items[0]['id'], manage=True)
+        receipt_calls = []
+        original = self.app.api.request
+
+        async def spy(method, path, *args, **kwargs):
+            receipt_calls.append(path)
+            return await original(method, path, *args, **kwargs)
+        self.app.api.request = spy
+        screen = await history.build(self.app, manage=True, session=items[0]['id'])
+        text = texts(screen)
+        self.assertFalse(any(path.endswith('/receipt') for path in receipt_calls))
+        for expected in (charge_detail.TITLE, items[0]['station_name'], 'Custos', 'Sessão e bateria', 'Pagamento',
+                         'Estação e carregador', 'Tarifa base', 'Como o preço foi calculado', '2,40 kWh'):
+            self.assertIn(expected, text)
+        for hidden in (charge_detail.EXPORT_LABEL, 'Ver estação', 'Resumo inteligente da recarga'):
+            self.assertNotIn(hidden, text)
+
+    async def test_seller_detail_shows_demand_and_payment_from_the_listing(self):
+        session = {'id': 'own-1', 'status': 'completed', 'created_at': '2026-10-20T12:59:00+00:00',
+                   'started_at': '2026-10-20T13:00:00+00:00', 'ended_at': '2026-10-20T13:30:00+00:00',
+                   'price_per_kwh': '2.4570', 'base_price_per_kwh': '1.8900', 'demand_multiplier': '1.30',
+                   'discount_percent': 0, 'energy_wh': '10000', 'cost_estimate': '24.57', 'source': 'simulated',
+                   'station_name': 'Posto Central', 'station_address': 'Rua A, 1, Centro, São Paulo - SP',
+                   'connector': {'public_code': 'CG-1', 'connector_type': 'CCS2', 'power_kw': '60.000'},
+                   'payment': {'status': 'completed', 'status_label': 'Concluído', 'channel': 'kiosk_totem',
+                               'provider': 'simulated', 'settlement': {'status': 'done', 'captured': '24.57'}},
+                   'overstay': {'status': 'closed', 'billable_seconds': 600, 'fee_due': '4.00', 'fee_applies': True}}
+        app = HandlerApp()
+        app.history_sessions = {'own-1': session}
+        text = texts(await history.build(app, manage=True, session='own-1'))
+        app.api.request.assert_not_awaited()
+        for expected in ('Ajuste por demanda', '1,3×', 'R$ 2,4570/kWh', 'Totem · Simulado', 'Capturado R$ 24,57',
+                         '10 min na vaga · taxa R$ 4,00', '10,00 kWh'):
+            self.assertIn(expected, text)
+        self.assertNotIn(charge_detail.EXPORT_LABEL, text)
+
+    async def test_seller_detail_without_cache_searches_the_listing_or_says_not_found(self):
+        app = HandlerApp()
+        app.api.request.return_value = {'items': [], 'total': 0}
+        text = texts(await history.build(app, station_id='st-9', session='gone'))
+        app.api.request.assert_awaited_once_with('GET', 'stations/st-9/charging-sessions',
+                                                 params={'limit': charge_detail.SELLER_PAGE, 'offset': 0})
+        self.assertIn(charge_detail.NOT_FOUND, text)
+
+
 class HistoryReceiptLinkTests(unittest.IsolatedAsyncioTestCase):
-    async def test_each_consumer_card_opens_its_receipt_and_offers_export(self):
+    async def test_each_consumer_card_opens_its_detail_and_offers_export(self):
         app = HandlerApp()
         app.api = DemoApi()
         await app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
         app.profile = await app.api.request('GET', 'me')
         screen = await history.build(app)
-        links = [c for c in descendants(screen) if isinstance(c, ft.Container) and isinstance(c.content, ft.Text)
-                 and c.content.value == history.RECEIPT_LABEL]
+        cards = [c for c in descendants(screen) if getattr(c, 'data', None) == 'session-card']
         items = (await app.api.request('GET', 'me/charging-sessions'))['items']
-        self.assertEqual(len(links), len(items))
-        await links[0].on_click(None)
-        app.go.assert_awaited_with('history', receipt=items[0]['id'])
+        self.assertEqual(len(cards), len(items))
+        await cards[0].on_click(None)
+        app.go.assert_awaited_with('history', session=items[0]['id'])
+        for hidden in ('Ver recibo', 'Ver eventos da sessão', 'Resumo inteligente da recarga', 'Custo estimado:'):
+            self.assertNotIn(hidden, texts(screen))
         self.assertIn('Exportar (PDF/CSV)', texts(screen))
         self.assertIn('PDF disponível só na conta real', texts(screen))
         # CSV na demo: gerado localmente e entregue ao usuário.
