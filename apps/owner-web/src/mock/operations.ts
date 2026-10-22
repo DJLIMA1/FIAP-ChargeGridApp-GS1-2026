@@ -15,6 +15,7 @@
  *   e CG-010 aguardando a central; PATCH `charger_address` (1–247, nunca vazio, único no posto: 422/409)
  *   e `POST /connectors/{id}/chargers` (Adicionar carregador; 409 screen_required/charger_address_full);
  *   `DELETE /connectors/{id}` (Remover carregador; 409 screen_charger/point_busy; o endereço fica livre);
+ *   `DELETE /stations/{id}` (Remover estação; 409 station_busy/central_online; some das listas);
  * - D · Permanência: `rules.rotation` (`start_after_min`/`interval_min`, como a API), PUT
  *   parcial mesclado, termos públicos no posto, `overstay_fee`/`overstay_minutes` nas
  *   sessões.
@@ -64,6 +65,8 @@ export const SCREEN_FIRMWARE = '1.6.0'
  */
 const LINK_STATE = new Map<string, ChargerLinkState>()
 const LINK_SEED: Record<string, ChargerLinkState> = { 'CG-007': 'offline', 'CG-010': 'pending' }
+/** Centrais desligadas no mock (por id do posto); as outras ficam online, como na demonstração. */
+const SCREEN_OFFLINE = new Set<string>()
 /**
  * Potência que o carregador está entregando (kW) pela mesma divisão do cartão Potência; ligada
  * depois que a potência do posto é declarada (abaixo). Antes disso: a efetiva do ponto.
@@ -342,7 +345,7 @@ export function decorateChargers(station: Station, now: number = Date.now()): St
   }
   const deviceId = screenDeviceId(station)
   const lastSeen = new Date(now - 3 * SECOND).toISOString()
-  const screenOnline = true
+  const screenOnline = !SCREEN_OFFLINE.has(station.id)
   const members = station.connectors.filter((c) => !c.retired)
   station.screen_online = screenOnline
   station.screens = [
@@ -464,6 +467,34 @@ export function removeCharger(connectorId: string): void {
   REMOVED_CODES.push(connector.public_code)
   LINK_STATE.delete(connector.id)
   decorateChargers(station)
+}
+
+/** Mensagens das recusas do DELETE "Remover estação" (iguais à API). */
+export const STATION_BUSY_MESSAGE = 'Há recarga, reserva ou pedido do totem em andamento. Encerre antes de remover.'
+export const CENTRAL_ONLINE_MESSAGE =
+  'Restaure a central (Dados da estação → Restaurar) antes de remover a estação: ela volta ao QR de fábrica e pode ser usada em outro posto.'
+
+export function setScreenOnline(stationId: string, online: boolean): void {
+  if (online) SCREEN_OFFLINE.delete(stationId)
+  else SCREEN_OFFLINE.add(stationId)
+}
+
+/**
+ * `DELETE /stations/{id}` (204): o posto sai das listas, do painel e dos alertas; o histórico fica.
+ * 409 `station_busy` (recarga/reserva/pedido do totem), 409 `central_online` (central ligada:
+ * restaurar antes); 404 (inexistente ou já removido).
+ */
+export function removeStation(stationId: string): void {
+  const station = S.find((s) => s.id === stationId)
+  if (!station || data.isRemovedStation(stationId)) throw new MockFailure(404, 'not_found', 'Posto não encontrado')
+  if (station.connectors.some((c) => c.kiosk_in_use || ['charging', 'reserved', 'reconciling'].includes(c.availability_status ?? ''))) {
+    throw new MockFailure(409, 'station_busy', STATION_BUSY_MESSAGE)
+  }
+  decorateChargers(station)
+  if (station.screen_online) throw new MockFailure(409, 'central_online', CENTRAL_ONLINE_MESSAGE)
+  station.active = false
+  for (const connector of station.connectors) Object.assign(connector, { active: false, available: false, availability_status: 'disabled' })
+  data.REMOVED_STATIONS.add(stationId)
 }
 
 export function pricing(stationId: string): StationPricing {
@@ -690,7 +721,7 @@ export function marginReport(params: URLSearchParams): MarginReport {
     basis: 'ended_at',
     currency: 'BRL',
     station_id: station,
-    stations: S.filter((s) => !station || s.id === station).map((s) => ({ ...economics(s.id, false), station_name: s.name })),
+    stations: data.currentStations().filter((s) => !station || s.id === station).map((s) => ({ ...economics(s.id, false), station_name: s.name })),
     totals,
     dynamic_pricing: {
       demand_effect: totals.demand_effect,

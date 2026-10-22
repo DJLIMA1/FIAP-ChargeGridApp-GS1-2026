@@ -608,3 +608,4 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .connector-fields .span-2 { grid-column: auto; }
 }
 .screen-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.card.danger-zone { border-color: rgba(255, 133, 138, 0.35); }

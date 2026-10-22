@@ -180,7 +180,8 @@ class DemoOwner:
         station_id = self._station(params)
         if station_id:
             return station_id
-        owned = sorted(s['id'] for s in self.api._stations.values() if s['owner_id'] == self.api._profile.get('id'))
+        owned = sorted(s['id'] for s in self.api._stations.values()
+                       if s['owner_id'] == self.api._profile.get('id') and not s.get('removed_at'))
         if not owned:
             _fail('Posto não encontrado.', 'not_found', 404)
         return owned[0]
@@ -207,7 +208,8 @@ class DemoOwner:
         totals = analytics.summarize_sessions(sessions, start, end, now)
         totals.update(analytics.summarize_reservations(reservations, start, end))
         stations = {p['station_id'] for p in points} if station_id else {
-            s['id'] for s in self.api._stations.values() if s['owner_id'] == self.api._profile.get('id')}
+            s['id'] for s in self.api._stations.values()
+            if s['owner_id'] == self.api._profile.get('id') and not s.get('removed_at')}
         ranking_points = [{'connector_id': p['id'], 'station_id': p['station_id'],
                            'station_name': self.api._stations[p['station_id']]['name'],
                            'public_code': p['public_code']} for p in points]
@@ -426,7 +428,7 @@ class DemoOwner:
         rows = [economics.session_economics(s, station_energy_cost=config.get(s['station_id'], DEMO_ENERGY_COST))
                 for s in eligible]
         owner = self.api._profile.get('id')
-        stations = sorted((s for s in self.api._stations.values() if s['owner_id'] == owner
+        stations = sorted((s for s in self.api._stations.values() if s['owner_id'] == owner and not s.get('removed_at')
                            and (station_id is None or s['id'] == station_id)), key=lambda s: (s['name'], s['id']))
         rent = rent_rules.accrual(self._centrals(station_id), DEMO_RENT_RATES, start, end, self.api._now())
         report = economics.aggregate(rows, rent=rent)

@@ -83,6 +83,63 @@ def heading(app, text, on_back=None):
                         height=34, margin=ft.Margin(left=0, top=-1, right=0, bottom=0))
 
 
+REMOVE_STATION_LABEL = 'Remover estação'
+REMOVE_STATION_HINT = 'Fecha o posto: ele sai do mapa e da sua lista. O histórico de recargas continua.'
+REMOVE_STATION_DETAIL = 'A estação sai do mapa e da sua lista. Recargas e recibos continuam no histórico.'
+REMOVE_STATION_ERRORS = {
+    'station_busy': 'Há recarga, reserva ou pedido do totem em andamento. Encerre antes de remover.',
+}
+
+
+async def remove_station(app, station):
+    """``DELETE stations/{id}`` (204). ``station_busy`` com o texto do app; ``central_online`` com o da API."""
+    try:
+        await app.api.request('DELETE', f"stations/{station['id']}")
+    except ApiError as exc:
+        if exc.code in REMOVE_STATION_ERRORS:
+            raise ApiError(REMOVE_STATION_ERRORS[exc.code], exc.status, exc.code) from None
+        raise
+
+
+def removed_station_text(station):
+    name = (station.get('name') or '').strip()
+    return f'Estação {name} removida.' if name else 'Estação removida.'
+
+
+def remove_station_box(app, station):
+    """Zona de perigo no fim da página da estação: ``Remover estação`` com confirmação."""
+    name = station.get('name') or 'esta estação'
+
+    async def confirm():
+        app.page.pop_dialog()
+        await remove_station(app, station)
+        if hasattr(app, 'mark_saved'):
+            app.mark_saved()
+        app.notice(removed_station_text(station))
+        await app.go('operator')
+
+    async def ask():
+        if hasattr(app, 'prepare_navigation') and not await app.prepare_navigation():
+            return
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True, title=ft.Text(f'Remover {name}?'),
+            content=ft.Text(REMOVE_STATION_DETAIL),
+            actions=[ft.TextButton('Cancelar', on_click=lambda event: app.page.pop_dialog()),
+                     ft.TextButton('Remover', on_click=app.action(confirm), style=ft.ButtonStyle(color=theme.RED))]))
+
+    from .operator import _mini_button  # evita import circular
+    return ft.Container(
+        ft.Column([
+            design.txt(REMOVE_STATION_LABEL, 12.7, 'semibold', theme.RED),
+            ft.Row([design.txt(REMOVE_STATION_HINT, 10.5, 'regular', theme.GRAY_TEXT, expand=True),
+                    _mini_button(REMOVE_STATION_LABEL, app.action(ask), 'danger')],
+                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ], spacing=6),
+        bgcolor=theme.WARN_BG, border=ft.Border.all(1, ft.Colors.with_opacity(0.45, theme.RED)),
+        border_radius=design.RADIUS_BTN, padding=ft.Padding(left=12, right=10, top=10, bottom=10),
+        data='remove-station')
+
+
 def _round(field):
     return ft.Container(field, border_radius=14, bgcolor=theme.INPUT_BG, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
 
@@ -164,7 +221,9 @@ def _main_page(app, station, code):
             menu_row('Potência', power_summary(station, points), ft.Icons.BOLT_OUTLINED, go('power')),
             menu_row('Tarifa', 'Tarifa base, por horário e por demanda', ft.Icons.TRENDING_UP,
                      app.link('tariffs', station_id=sid)),
-        ], spacing=29), gap=14)
+        ], spacing=29),
+        ft.Container(height=14),
+        remove_station_box(app, station), gap=14)
 
 
 def _connectors_page(app, station):

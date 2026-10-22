@@ -80,7 +80,7 @@ def coupons(
         query = query.where(Coupon.active.is_(True), Coupon.valid_until > now())
     if station_id:
         station = db.get(Station, station_id)
-        if not station:
+        if not station or station.removed_at is not None:
             fail("not_found", "Posto não encontrado", 404)
         query = query.where(
             Coupon.operator_id == station.owner_id,

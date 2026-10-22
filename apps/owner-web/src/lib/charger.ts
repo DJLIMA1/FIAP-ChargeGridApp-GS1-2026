@@ -257,3 +257,29 @@ export function removeChargerErrorText(error: unknown): string {
   }
   return 'Não foi possível remover o carregador. Tente novamente.'
 }
+
+/* ------------------------------------------------------------ remover estação */
+export const REMOVE_STATION_LABEL = 'Remover estação'
+export const REMOVE_STATION_HINT = 'Fecha o posto: ele sai do mapa e da sua lista. O histórico de recargas continua.'
+export const REMOVE_STATION_DETAIL = 'A estação sai do mapa e da sua lista. Recargas e recibos continuam no histórico.'
+export const STATION_BUSY_REMOVE_TEXT = 'Há recarga, reserva ou pedido do totem em andamento. Encerre antes de remover.'
+
+/** Pergunta do diálogo: `Remover Villa Lobos?`. */
+export function removeStationQuestion(station: Pick<Station, 'name'>): string {
+  return `Remover ${station.name.trim() || 'esta estação'}?`
+}
+
+/** Aviso depois do DELETE: `Estação Villa Lobos removida.`. */
+export function removedStationText(station: Pick<Station, 'name'>): string {
+  const name = station.name.trim()
+  return name ? `Estação ${name} removida.` : 'Estação removida.'
+}
+
+/** Erro do DELETE "Remover estação": 409 `station_busy` com o texto do painel; `central_online` e os outros, o da API. */
+export function removeStationErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'station_busy') return STATION_BUSY_REMOVE_TEXT
+    return error.message
+  }
+  return 'Não foi possível remover a estação. Tente novamente.'
+}

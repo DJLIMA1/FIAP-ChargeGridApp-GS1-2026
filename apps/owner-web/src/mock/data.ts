@@ -68,6 +68,15 @@ POINTS.forEach((p, index) => {
   })
 })
 
+/**
+ * Estações removidas pelo dono (`DELETE /stations/{id}` no mock): somem das listas, do painel e
+ * dos alertas; as sessões antigas continuam no histórico. Ficam em `STATIONS` (índices do seed).
+ */
+export const REMOVED_STATIONS = new Set<string>()
+export const isRemovedStation = (stationId: string) => REMOVED_STATIONS.has(stationId)
+/** Estações do dono que ainda existem (sem as removidas). */
+export const currentStations = () => STATIONS.filter((s) => !REMOVED_STATIONS.has(s.id))
+
 export const stationShare = (stationId?: string | null) => {
   if (!stationId) return 1
   const index = STATIONS.findIndex((s) => s.id === stationId)
@@ -75,7 +84,7 @@ export const stationShare = (stationId?: string | null) => {
 }
 const pointsFor = (stationId?: string | null) =>
   POINTS.map((p, index) => ({ ...p, index, connector: STATIONS[p.station].connectors.find((c) => c.public_code === p.code)! })).filter(
-    (p) => !stationId || STATIONS[p.station].id === stationId,
+    (p) => !REMOVED_STATIONS.has(STATIONS[p.station].id) && (!stationId || STATIONS[p.station].id === stationId),
   )
 
 // Perfil por dia da semana (Seg..Dom) e por hora — sobe ao longo da semana, como na referência.
@@ -177,7 +186,7 @@ export function overview(from: number, to: number, stationId?: string | null): O
       points: published.length, points_online: online.length,
     },
     stations: {
-      total: stationId ? 1 : STATIONS.length, active: stationId ? 1 : STATIONS.filter((s) => s.active).length,
+      total: stationId ? 1 : currentStations().length, active: stationId ? 1 : currentStations().filter((s) => s.active).length,
       points: pts.length, points_published: published.length, points_online: online.length,
     },
     ranking,

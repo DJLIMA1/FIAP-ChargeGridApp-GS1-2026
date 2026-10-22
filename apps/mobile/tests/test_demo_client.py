@@ -86,7 +86,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_routes_explicitly_fail_without_network_or_real_device_access(self):
         with patch('httpx.AsyncClient', side_effect=AssertionError('no transport')):
-            for method, path in [('POST', 'devices/sync'), ('DELETE', f"stations/{self.station['id']}"),
+            for method, path in [('POST', 'devices/sync'), ('POST', f"stations/{self.station['id']}/archive"),
                                  ('GET', 'https://real.example/api'), ('POST', 'webhooks/stripe')]:
                 await self.assert_error(method, path, code='demo_route_not_supported')
             await self.assert_error('POST', 'ownership/claim', body={'token': 'real-secret'}, code='invalid_claim')

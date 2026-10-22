@@ -102,6 +102,9 @@ class Station(Base):
     building_size: Mapped[str | None] = mapped_column(String(10))
     # Totem de autoatendimento no painel físico (migração f4b9d2c7e1a3; modules/kiosk_totem).
     kiosk_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Estação removida pelo dono (migração a9d4e2b7c1f6; ``DELETE /v1/stations/{id}``): some de
+    # todas as listas e buscas; sessões, recibos e pagamentos continuam no histórico.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180"),
         CheckConstraint("max_power_kw IS NULL OR max_power_kw > 0", name="station_max_power_positive"),

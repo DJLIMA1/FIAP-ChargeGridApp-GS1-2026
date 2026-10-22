@@ -42,6 +42,7 @@ from ...service import (
     kiosk_holds,
     lock_screen_group,
     new_public_code,
+    online,
     operator,
     owned,
     reset_blocks_point,
@@ -73,7 +74,7 @@ def stations(
         fail("coordinates_required", "Informe lat e lng para ordenar por proximidade", 422)
     if connector_type is not None and not connector_type.strip():
         fail("validation_error", "Informe um conector válido", 422)
-    query = select(Station).where(Station.active.is_(True)).order_by(Station.id)
+    query = select(Station).where(Station.active.is_(True), Station.removed_at.is_(None)).order_by(Station.id)
     if lat is not None:
         distance = 6371 * func.acos(
             func.least(
@@ -120,7 +121,7 @@ def stations(
 @router.get("/stations/{station_id}")
 def station(station_id: UUID, user=Depends(current_user), db=Depends(db_session)):
     obj = db.get(Station, station_id)
-    if not obj:
+    if not obj or obj.removed_at is not None:
         fail("not_found", "Posto não encontrado", 404)
     return station_row(db, obj, user)
 
@@ -170,6 +171,69 @@ def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_use
     db.flush()
     db.refresh(obj)
     return station_row(db, obj, user)
+
+
+CENTRAL_ONLINE_MESSAGE = ("Restaure a central (Dados da estação → Restaurar) antes de remover a estação: "
+                          "ela volta ao QR de fábrica e pode ser usada em outro posto.")
+
+
+@router.delete("/stations/{station_id}", status_code=204)
+def remove_station(station_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    """Remover estação: o dono fecha o posto inteiro.
+
+    Some de todas as listas (mapa e busca do motorista, "Suas Estações", painel, IA); sessões,
+    recibos, pagamentos e relatórios continuam (os conectores ficam como histórico, ``removed_at``).
+    Recusa com recarga, reserva ou pedido do totem em andamento (``station_busy``) e com central
+    ligada (``central_online``: restaurar antes, para ela voltar ao QR de fábrica). Centrais
+    desligadas são revogadas junto, com os carregadores comandados por elas."""
+    owned(db, user, station_id)
+    # Mesma ordem de travas do PATCH da estação: grupos de tela (ordem estável) -> estação ->
+    # conectores -> dispositivos.
+    ids = db.scalars(select(Connector.id).where(Connector.station_id == station_id)).all()
+    for root in sorted({screen_group_key(db, point_id) for point_id in ids}):
+        lock_screen_group(db, root)
+    station = db.scalar(select(Station).where(Station.id == station_id).with_for_update()
+                        .execution_options(populate_existing=True))
+    if station is None or station.owner_id != user.id or station.removed_at is not None:
+        fail("not_found", "Posto não encontrado", 404)
+    points = db.scalars(
+        select(Connector).where(Connector.station_id == station.id, Connector.removed_at.is_(None))
+        .order_by(Connector.id).with_for_update().execution_options(populate_existing=True)
+    ).all()
+    point_ids = [point.id for point in points]
+    if point_ids and (db.scalar(
+        select(ChargingSession.id).where(
+            ChargingSession.connector_id.in_(point_ids), ChargingSession.status.in_(SESSION_ACTIVE)).limit(1)
+    ) or db.scalar(
+        select(Reservation.id).where(
+            Reservation.connector_id.in_(point_ids), Reservation.status.in_(RES_ACTIVE)).limit(1)
+    ) or kiosk_holds(db, point_ids)):
+        fail("station_busy", "Há recarga, reserva ou pedido do totem em andamento. Encerre antes de remover.")
+    devices = db.scalars(
+        select(Device).where(Device.connector_id.in_(point_ids or [None]), Device.revoked.is_(False))
+        .order_by(Device.id).with_for_update().execution_options(populate_existing=True)
+    ).all()
+    screens = [device for device in devices if device.parent_device_id is None]
+    if any(online(screen) for screen in screens):
+        fail("central_online", CENTRAL_ONLINE_MESSAGE, 409)
+    # Carregadores comandados por essas centrais (mesmo que estejam em outro posto) saem junto.
+    children = db.scalars(
+        select(Device).where(Device.parent_device_id.in_([screen.id for screen in screens] or [None]),
+                             Device.revoked.is_(False))
+        .order_by(Device.id).with_for_update().execution_options(populate_existing=True)
+    ).all() if screens else []
+    for device in {device.id: device for device in [*devices, *children]}.values():
+        device.revoked = True
+        device.reconciled = False
+    stamp = now()
+    for point in points:
+        point.active = False
+        point.charger_address = None  # liberado (connector_charger_address_unless_removed)
+        point.removed_at = stamp
+    station.active = False
+    station.removed_at = stamp
+    db.flush()
+    return Response(status_code=204)
 
 
 @router.post("/stations/{station_id}/connectors", status_code=201)
@@ -342,7 +406,7 @@ def operator_stations(
     operator(user)
     return page(
         db,
-        select(Station).where(Station.owner_id == user.id).order_by(Station.id),
+        select(Station).where(Station.owner_id == user.id, Station.removed_at.is_(None)).order_by(Station.id),
         limit,
         offset,
         many=lambda items: station_rows(db, items, user),

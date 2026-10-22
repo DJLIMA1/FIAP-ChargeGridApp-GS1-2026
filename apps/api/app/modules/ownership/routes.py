@@ -57,7 +57,7 @@ def claim_point(db, user_id, data):
         fail("point_busy", "Ponto não está disponível para vinculação", 409)
     if data.station_id is not None:
         target = db.get(Station, data.station_id, populate_existing=True)
-        if target is None or target.owner_id != user.id:
+        if target is None or target.owner_id != user.id or target.removed_at is not None:
             fail("not_found", "Posto não encontrado", 404)
         # Central restaurada e vinculada de novo: os pontos que ela deixou no posto viram histórico
         # e liberam o endereço; o ponto novo herda os ajustes do antigo (senão ganharia o próximo

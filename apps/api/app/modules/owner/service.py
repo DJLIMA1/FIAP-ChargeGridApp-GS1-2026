@@ -34,6 +34,11 @@ class Scope:
         query = query.where(Station.owner_id == self.owner_id)
         return query.where(Station.id == self.station_id) if self.station_id else query
 
+    def current(self, query):
+        """Só estações não removidas: contagens, listas e escolhas do painel. Histórico (sessões,
+        reservas, margem) usa ``stations`` e continua contando as estações removidas."""
+        return self.stations(query).where(Station.removed_at.is_(None))
+
 
 @dataclass(frozen=True)
 class Window:
@@ -81,7 +86,7 @@ def point_counts(db, scope, moment):
     published = and_(Connector.active.is_(True), Station.active.is_(True))
     online = and_(Device.last_seen.is_not(None), Device.last_seen > moment - ONLINE_WINDOW)
     total, alive, stations, stations_active, all_points = db.execute(
-        scope.stations(
+        scope.current(
             select(
                 func.count(Connector.id).filter(published),
                 func.count(Connector.id).filter(and_(published, online)),
@@ -159,6 +164,8 @@ def ranking(db, scope, window, moment, limit=None):
             .select_from(Connector)
             .join(Station, Station.id == Connector.station_id)
             .outerjoin(ChargingSession, join)
+            # Estação removida só aparece com sessões na janela (histórico), nunca como ponto zerado.
+            .where(or_(Station.removed_at.is_(None), ChargingSession.id.is_not(None)))
             .group_by(Connector.id, Station.id, Station.name, Connector.public_code)
         )
     ).mappings()

@@ -110,7 +110,7 @@ def put_profile(data: DriverProfileInput, user=Depends(current_user), db=Depends
 
 
 def _stations(db, lat, lng, radius_km):
-    query = select(Station).where(Station.active.is_(True))
+    query = select(Station).where(Station.active.is_(True), Station.removed_at.is_(None))
     if lat is not None:
         distance = 6371 * func.acos(func.least(1, func.greatest(
             -1,

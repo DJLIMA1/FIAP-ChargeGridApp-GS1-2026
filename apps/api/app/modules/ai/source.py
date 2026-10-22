@@ -86,7 +86,8 @@ class DbSource:
 
     # ---------------------------------------------------------------- público
     def list_stations(self, near=None, radius_km=None):
-        query = select(Station).where(Station.active.is_(True), Station.owner_id.is_not(None)).order_by(Station.id)
+        query = select(Station).where(Station.active.is_(True), Station.removed_at.is_(None),
+                                       Station.owner_id.is_not(None)).order_by(Station.id)
         if near and radius_km:
             dlat = radius_km / 111.0
             dlng = radius_km / max(1.0, 111.0 * math.cos(math.radians(near["lat"])))
@@ -105,6 +106,7 @@ class DbSource:
         if not keys:
             return []
         stations = self.db.scalars(select(Station).where(Station.id.in_(keys), Station.active.is_(True),
+                                                         Station.removed_at.is_(None),
                                                          Station.owner_id.is_not(None))).all()
         return station_rows(self.db, stations)
 
@@ -178,7 +180,7 @@ class DbSource:
     def station_best_times(self, station_id):
         key = _uuid(station_id)
         station = self.db.get(Station, key) if key else None
-        if not station or not station.active or station.owner_id is None:
+        if not station or not station.active or station.removed_at is not None or station.owner_id is None:
             return None
         limit(self.db, f"best-times:{self.user.id}", maximum=BEST_TIMES_LIMIT[0], seconds=BEST_TIMES_LIMIT[1])
         return forecast_service.best_times(self.db, station, 12)
@@ -190,7 +192,8 @@ class DbSource:
     def owner_stations(self):
         if not self.user.operator_enabled:
             return []
-        query = select(Station).where(Station.owner_id == self.user.id).order_by(Station.id).limit(MAX_STATIONS)
+        query = (select(Station).where(Station.owner_id == self.user.id, Station.removed_at.is_(None))
+                 .order_by(Station.id).limit(MAX_STATIONS))
         return station_rows(self.db, self.db.scalars(query).all())
 
     def owner_sessions(self, since: datetime):
@@ -205,7 +208,8 @@ class DbSource:
     def owner_station_names(self):
         if not self.user.operator_enabled:
             return []
-        rows = self.db.execute(select(Station.id, Station.name).where(Station.owner_id == self.user.id)
+        rows = self.db.execute(select(Station.id, Station.name).where(Station.owner_id == self.user.id,
+                                                                     Station.removed_at.is_(None))
                                .order_by(Station.name, Station.id).limit(MAX_STATIONS)).all()
         return [{"id": str(station_id), "name": name} for station_id, name in rows]
 
