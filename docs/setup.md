@@ -59,6 +59,8 @@ O app Android consulta esse endpoint ao abrir e ao voltar do segundo plano, no m
 
 Até a 0.6.6, o app consultava as releases do GitHub. Depois que o repositório ficou privado, essas versões não enxergam mais atualizações, por isso a 0.6.7 precisa ser instalada manualmente uma última vez.
 
+O APK 0.9.2 (build 50) está em `builds/chargegrid-0.9.2.apk` (SHA-256 `c7d44d7428a98baf3193558b426fe8dbd91e64f10ae7719ed113ca3ae0e2ceac`). Publicado em 22/10/2026 no Vercel Blob (`app/chargegrid-0.9.2.apk`); os apps instalados oferecem a atualização ao abrir. Remover estação; postos de exemplo saem do modo apresentação
+
 O APK 0.9.1 (build 49) está em `builds/chargegrid-0.9.1.apk` (SHA-256 `e060f21f9da1cc04e38b85c2fc58a16a1e61bbe68d83c43303a896c40de211ff`). Publicado em 22/10/2026 no Vercel Blob (`app/chargegrid-0.9.1.apk`); os apps instalados oferecem a atualização ao abrir. Fotos reais dos carros no início e na recarga; perfil sem chave Pix
 
 O APK 0.9.0 (build 48) está em `builds/chargegrid-0.9.0.apk` (SHA-256 `ebea9af2d61a74c5ec3f1f18dc67b6399a1d7c6fd2ea1371124043120040d9b1`). Publicado em 22/10/2026 no Vercel Blob (`app/chargegrid-0.9.0.apk`); os apps instalados oferecem a atualização ao abrir. Detalhe único da recarga com recibo, limites e atalhos na recarga, cupom no Revisar, IA com seus dados e ferramentas do vendedor, seção Limites, aluguel das centrais, postos em SP no modo apresentação, carro do perfil no início
