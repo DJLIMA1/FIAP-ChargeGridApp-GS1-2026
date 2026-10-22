@@ -87,9 +87,6 @@ def map_records(records):
         if (point := coordinates(record)) is not None:
             marker = {'id': str(record['id']), 'name': record.get('name') or 'Estação de recarga',
                       'latitude': point[0], 'longitude': point[1], 'status': record.get('status', '')}
-            if record.get('demo') is True:
-                # Posto de demonstração (Modo apresentação): pino branco; os reais seguem vermelhos.
-                marker['tone'] = 'demo'
             result.append(marker)
     return result
 
