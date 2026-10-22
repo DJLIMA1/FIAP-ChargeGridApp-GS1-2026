@@ -40,7 +40,14 @@ bool chargegridPanelCapture() {
   if (!copy) return false;
   if (!lvgl_port_lock(100)) { heap_caps_free(copy); return false; }
   for (size_t y = 0; y < height; ++y)
-    for (size_t x = 0; x < width; ++x) copy[y * width + x] = frame[(y * 2) * 800 + x * 2];
+    for (size_t x = 0; x < width; ++x) {
+#if LVGL_PORT_ROTATION_DEGREE == 180
+      // O framebuffer guarda a imagem já girada para a tela; a captura volta ao sentido de leitura.
+      copy[y * width + x] = frame[(479 - y * 2) * 800 + (799 - x * 2)];
+#else
+      copy[y * width + x] = frame[(y * 2) * 800 + x * 2];
+#endif
+    }
   lvgl_port_unlock();
   Serial.printf("CG_FRAME_RGB565 %u %u %u\n", (unsigned)width, (unsigned)height, (unsigned)bytes);
   Serial.write(reinterpret_cast<uint8_t*>(copy), bytes);

@@ -12,7 +12,7 @@ import serial
 from qa_live import Acceptance
 
 # Deve ser igual a CHARGEGRID_FIRMWARE_VERSION em firmware/esp32/include/runtime.h.
-FIRMWARE_VERSION = '0.9.5'
+FIRMWARE_VERSION = '0.9.6'
 
 
 def run(api, state, serial_path):
