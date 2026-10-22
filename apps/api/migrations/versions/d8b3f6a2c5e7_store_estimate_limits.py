@@ -18,14 +18,14 @@ reserved all the time (``chargegrid_core.site_load``): chargers = min(cap, contr
 Downgrade drops the two columns and their CHECKs.
 
 Revision ID: d8b3f6a2c5e7
-Revises: e2c7a9d4f6b3
+Revises: c4f1a8e6d2b9
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "d8b3f6a2c5e7"
-down_revision = "e2c7a9d4f6b3"
+down_revision = "c4f1a8e6d2b9"
 branch_labels = None
 depends_on = None
 

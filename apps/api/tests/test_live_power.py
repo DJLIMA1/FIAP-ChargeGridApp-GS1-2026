@@ -640,7 +640,7 @@ def test_store_estimate_migration_backfills_from_the_old_type_and_size(factory):
     spec = importlib.util.spec_from_file_location("store_estimate_migration", path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
-    assert migration.down_revision == "e2c7a9d4f6b3"
+    assert migration.down_revision == "c4f1a8e6d2b9"
     rows = {
         "super": dict(building_profile="supermercado", building_size="grande"),
         "conv": dict(building_profile="conveniencia"),
@@ -664,7 +664,7 @@ def test_store_estimate_migration_backfills_from_the_old_type_and_size(factory):
     assert got["odd"] == (D("8.2"), D("13.2"))         # tipo desconhecido = conveniência, porte pequeno
     offline = (root / "sql/migracao_d8b3f6a2c5e7.sql").read_text()
     assert "ADD COLUMN store_min_kw" in offline and "ADD COLUMN store_peak_kw" in offline
-    assert "Running upgrade e2c7a9d4f6b3 -> d8b3f6a2c5e7" in offline
+    assert "Running upgrade c4f1a8e6d2b9 -> d8b3f6a2c5e7" in offline
 
 
 def test_migration_turns_rebalancing_on_for_new_and_existing_stations():

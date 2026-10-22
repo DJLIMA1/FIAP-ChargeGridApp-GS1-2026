@@ -1,6 +1,6 @@
 BEGIN;
 
--- Running upgrade e2c7a9d4f6b3 -> d8b3f6a2c5e7
+-- Running upgrade c4f1a8e6d2b9 -> d8b3f6a2c5e7
 
 ALTER TABLE stations ADD COLUMN store_min_kw NUMERIC(10, 3);
 
@@ -36,7 +36,7 @@ ALTER TABLE stations ADD CONSTRAINT station_store_peak_range CHECK (store_peak_k
 
 ALTER TABLE stations ADD CONSTRAINT station_store_min_le_peak CHECK (store_min_kw IS NULL OR store_peak_kw IS NULL OR store_min_kw <= store_peak_kw);
 
-UPDATE alembic_version SET version_num='d8b3f6a2c5e7' WHERE alembic_version.version_num = 'e2c7a9d4f6b3';
+UPDATE alembic_version SET version_num='d8b3f6a2c5e7' WHERE alembic_version.version_num = 'c4f1a8e6d2b9';
 
 COMMIT;
 
