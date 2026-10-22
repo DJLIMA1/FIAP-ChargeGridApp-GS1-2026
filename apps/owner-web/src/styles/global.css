@@ -541,6 +541,58 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 @media (max-width: 760px) {
   .power-stats { grid-template-columns: minmax(0, 1fr); }
 }
+/* Limites: régua 0→escala e faixas de arrastar alinhadas a ela (o centro do polegar = a borda da faixa). */
+.limits-ruler, .limits-lane { --thumb: 18px; --inset: calc(var(--thumb) / 2); }
+.limits-ruler { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.limits-bar { position: relative; display: flex; height: 22px; margin: 5px var(--inset); border-radius: 7px; overflow: visible; background: var(--card); }
+.limits-bar .seg { display: block; height: 100%; flex: none; }
+.limits-bar .seg:first-child { border-radius: 7px 0 0 7px; }
+.limits-bar .seg:last-of-type { border-radius: 0 7px 7px 0; }
+.limits-bar .seg.store_base { background: var(--amber); }
+.limits-bar .seg.store_peak { background: repeating-linear-gradient(135deg, var(--amber) 0 5px, var(--amber-bg) 5px 10px); }
+.limits-bar .seg.cars, .limits-bar .seg.chargers { background: var(--green); }
+.limits-bar .seg.chargers.free { background: color-mix(in srgb, var(--green) 45%, transparent); }
+.limits-bar .seg.unused { background: var(--green-bg); }
+.limits-bar .seg.above { background: var(--tile); }
+.limits-bar .marker { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); }
+.limits-axis { display: flex; justify-content: space-between; margin: 0 var(--inset); font-size: 11.5px; }
+.limits-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.limits-legend span, .lane-title { display: inline-flex; align-items: center; gap: 6px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.dot.store { background: repeating-linear-gradient(135deg, var(--amber) 0 3px, var(--amber-bg) 3px 6px); }
+.dot.cars { background: var(--green); }
+.dot.free { background: color-mix(in srgb, var(--green) 45%, transparent); }
+.dot.marker { width: 3px; height: 12px; border-radius: 2px; background: var(--text); }
+.limits-form { gap: 14px; padding: 16px 18px; border-radius: 14px; background: var(--card-2); }
+.limits-head { display: flex; flex-direction: column; gap: 2px; }
+.limits-head .label { color: var(--muted); font-size: 13px; }
+.limits-head .value { font-family: var(--font-num); font-weight: 600; font-size: 32px; line-height: 1.05; }
+.limits-lane { display: flex; flex-direction: column; gap: 4px; }
+.lane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
+.lane-help { font-size: 12px; }
+.limits-track { position: relative; height: 28px; }
+.limits-track .band { position: absolute; top: 11px; height: 6px; border-radius: 3px; left: calc(var(--inset) + (100% - var(--thumb)) * var(--f-left)); width: calc((100% - var(--thumb)) * var(--f-width)); }
+.limits-track .band.store { background: var(--amber); }
+.limits-track.dual::before { content: ''; position: absolute; left: var(--inset); right: var(--inset); top: 12px; height: 4px; border-radius: 2px; background: var(--tile); }
+.cap-lane { position: absolute; top: 0; bottom: 0; left: calc((100% - var(--thumb)) * var(--f-left)); width: calc((100% - var(--thumb)) * var(--f-width) + var(--thumb)); }
+.limits-range { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 28px; margin: 0; background: transparent; }
+.limits-track.dual .limits-range { pointer-events: none; }
+.limits-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: transparent; }
+.limits-range.solo::-webkit-slider-runnable-track { background: var(--tile); }
+.limits-range::-moz-range-track { height: 4px; border-radius: 2px; background: transparent; }
+.limits-range.solo::-moz-range-track { background: var(--tile); }
+.limits-range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--thumb); height: var(--thumb); margin-top: -7px; border-radius: 50%; border: 2px solid var(--card); background: var(--amber); cursor: grab; pointer-events: auto; }
+.limits-range::-moz-range-thumb { width: var(--thumb); height: var(--thumb); border-radius: 50%; border: 2px solid var(--card); background: var(--amber); cursor: grab; pointer-events: auto; }
+.limits-range.contracted::-webkit-slider-thumb { background: var(--text); }
+.limits-range.contracted::-moz-range-thumb { background: var(--text); }
+.limits-range.chargers::-webkit-slider-thumb { background: var(--green); }
+.limits-range.chargers::-moz-range-thumb { background: var(--green); }
+.limits-typed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.limits-typed > p, .limits-typed > div:last-child { grid-column: 1 / -1; }
+.amber { color: var(--amber); }
+@media (max-width: 760px) {
+  .limits-typed { grid-template-columns: minmax(0, 1fr); }
+}
 .connector-fields.fields-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 /* Atalhos #economics/#power: o título não fica sob a barra superior fixa. */
 .card-title { scroll-margin-top: 96px; }

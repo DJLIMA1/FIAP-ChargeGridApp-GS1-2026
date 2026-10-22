@@ -2,14 +2,14 @@
 
 Roda N pontos simulados (o mesmo protocolo do painel físico) no mesmo posto do painel e
 dá comandos de palco pelo terminal. Nada aqui aciona saída física; os pontos são rotulados
-como simulados e o consumo da loja é simulado. Credenciais só pelo ambiente:
+como simulados; a loja é uma margem ESTIMADA (Limites), sem consumo ao vivo. Credenciais só pelo ambiente:
 
   CHARGEGRID_DEMO_DEVICE_KEYS   chaves dos pontos simulados, separadas por vírgula (ordem = carro 1, 2…)
   CHARGEGRID_DEMO_DRIVERS       e-mail:senha das contas de motorista de demo, separadas por vírgula
   CHARGEGRID_DEMO_OWNER         e-mail:senha do vendedor (opcional; necessário para "loja")
 
-Comandos: ``entra N`` (motorista N inicia no ponto simulado N), ``sai N``, ``loja KW`` (vale 30 min),
-``loja auto`` (volta à curva SIMULADA do estabelecimento), ``status`` e ``sair``. Ex.: ``python tools/demo_rebalance.py --api https://… --station <id>
+Comandos: ``entra N`` (motorista N inicia no ponto simulado N), ``sai N``, ``loja KW`` (muda o pico
+ESTIMADO da loja em Limites; fica gravado), ``loja auto`` (volta ao padrão 14–22 kW), ``status`` e ``sair``. Ex.: ``python tools/demo_rebalance.py --api https://… --station <id>
 --hca 2`` (o carro 2 usa o adaptador GoodWe HCA G2 com transporte simulado).
 """
 
@@ -116,14 +116,14 @@ class Demo:
             elif command == "loja":
                 if not self.owner or not self.station:
                     raise ValueError("Configure CHARGEGRID_DEMO_OWNER e --station para mudar a loja")
-                # "loja auto" volta à curva SIMULADA do tipo/porte; um valor vale 30 min no servidor.
+                # Muda o pico ESTIMADO da loja (Limites, PUT power-site); "loja auto" volta ao padrão 14–22 kW.
                 value = None if args[0].lower() == "auto" else args[0].replace(",", ".")
-                response = self.owner.request("PUT", f"/v1/stations/{self.station}/building-load",
-                                              json={"building_load_kw": value})
+                response = self.owner.request("PUT", f"/v1/stations/{self.station}/power-site",
+                                              json={"store_min_kw": None, "store_peak_kw": value})
                 body = response.json()
                 if response.status_code == 200:
-                    origin = "curva do estabelecimento" if value is None else "valor da demo, 30 min"
-                    self.out(f"Loja (SIMULADO, {origin}) em {body['building_load_kw']} kW: "
+                    origin = "padrão" if value is None else "informada"
+                    self.out(f"Margem da loja (ESTIMATIVA, {origin}) em {body['store_peak_kw']} kW: "
                              f"disponível {body['available_kw']} kW")
                 else:
                     self.out(f"Loja recusada: {body}")

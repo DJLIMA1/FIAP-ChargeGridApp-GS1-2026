@@ -504,10 +504,9 @@ class DemoApi(OwnerApiMixin):
                    'latitude': float(data['latitude']), 'longitude': float(data['longitude']), 'active': active,
                    'amenities': [], 'max_power_kw': None, 'power_limit_notify': False,
                    # Padrões da API: pagamentos por posto e totem desligados; rebalanceamento ligado com o
-                   # limite padrão do tipo/porte e o consumo da loja SIMULADO (chargegrid_core.site_load).
+                   # limite padrão e a margem ESTIMADA da loja (14–22 kW; chargegrid_core.site_load).
                    'prepay_required': False, 'kiosk_payments': False, 'kiosk_mode': False, 'rebalance_enabled': True,
-                   'site_limit_kw': None, 'building_load_kw': None, 'building_load_source': None,
-                   'building_load_updated_at': None, 'building_profile': None, 'building_size': None}
+                   'site_limit_kw': None, 'store_min_kw': None, 'store_peak_kw': None}
         self._stations[sid] = station
         return station
 

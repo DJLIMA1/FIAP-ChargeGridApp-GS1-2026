@@ -201,17 +201,18 @@ class RefreshInput(Input):
 
 
 class PowerSiteInput(Input):
-    """Limite contratado (null = padrão do tipo/porte), rebalanceamento e tipo/porte do estabelecimento."""
+    """Limites do posto num só salvamento (chargegrid_core.site_load), todos opcionais e parciais.
+
+    ``site_limit_kw`` (null = padrão pelo pico estimado), ``store_min_kw``/``store_peak_kw`` (margem
+    ESTIMADA da loja; null = 14–22 kW), ``max_power_kw`` (máximo dos carregadores; null = sem teto
+    próprio), ``power_limit_notify`` e ``rebalance_enabled``."""
 
     site_limit_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
     rebalance_enabled: bool | None = None
-    # Curva do consumo SIMULADO da loja (chargegrid_core.site_load); null volta ao padrão.
-    building_profile: Literal["conveniencia", "farmacia", "padaria", "supermercado", "restaurante",
-                              "shopping"] | None = None
-    building_size: Literal["pequeno", "medio", "grande"] | None = None
-
-
-class BuildingLoadInput(Input):
-    """Consumo da loja enviado pelo simulador/demo (vale 30 min); null volta à simulação automática."""
-
-    building_load_kw: Decimal | None = Field(ge=0, le=10000, allow_inf_nan=False)
+    store_min_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    store_peak_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    max_power_kw: Decimal | None = Field(default=None, allow_inf_nan=False)
+    power_limit_notify: bool | None = None
+    # DESCONTINUADOS: aceitos e ignorados por uma versão (apps antigos ainda enviam o tipo/porte).
+    building_profile: str | None = Field(default=None, max_length=20)
+    building_size: str | None = Field(default=None, max_length=10)

@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from chargegrid_core import power as power_rules
-from chargegrid_core import pricing
+from chargegrid_core import pricing, site_load
 from chargegrid_core.chargers import link as charger_link
 
 from . import overstay
@@ -131,6 +131,18 @@ def hardware_power_limit(device, maximum):
     return maximum
 
 
+def station_budget(station):
+    """Static station budget for ``allocation``: with live rebalancing the chargers' cap (the live
+    decision applies the contracted limit and the store margin); without it, the whole
+    ``site_load.chargers_budget`` = min(cap, contracted − estimated store peak), split at start."""
+    if station is None:
+        return None
+    if station.rebalance_enabled is not False:
+        return station.max_power_kw
+    return site_load.chargers_budget(station.site_limit_kw, station.store_min_kw, station.store_peak_kw,
+                                     station.max_power_kw)
+
+
 def allocation(station, connectors, retired):
     """Effective power of every point of one station (``chargegrid_core.power``)."""
     return power_rules.allocate(
@@ -143,7 +155,7 @@ def allocation(station, connectors, retired):
             }
             for point in connectors
         ],
-        station.max_power_kw if station is not None else None,
+        station_budget(station),
     )
 
 

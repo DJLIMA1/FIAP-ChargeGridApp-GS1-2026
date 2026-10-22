@@ -34,7 +34,7 @@ import type {
   StationPricing,
 } from '../api/operations'
 import type { ChargerLink, ChargerLinkState, Connector, SessionItem, Station } from '../api/types'
-import { defaultSiteLimitKw, profileLabel, requestedKw, sizeKey, profileKey } from '../lib/power'
+import { DEFAULT_STORE_MIN_KW, DEFAULT_STORE_PEAK_KW, defaultSiteLimitKw, FLOOR_KW, requestedKw } from '../lib/power'
 import {
   CHARGER_ADDRESS_EMPTY,
   CHARGER_ADDRESS_INVALID,
@@ -684,42 +684,46 @@ export function marginPdf(params: URLSearchParams): Uint8Array {
 
 interface PowerSite {
   rebalance: boolean
-  /** Informado pelo dono (`null` = padrão do tipo/porte). */
+  /** Informado pelo dono (`null` = padrão pelo pico estimado). */
   limit: number | null
-  profile: string
-  size: string
+  /** Margem ESTIMADA da loja (`null` = 14–22 kW). */
+  storeMin: number | null
+  storePeak: number | null
+  /** Máximo dos carregadores (`null` = sem teto próprio). */
+  cap: number | null
+  notify: boolean
   applied: Record<string, number>
   pendingSince: Record<string, number>
   decisions: PowerDecision[]
   lastKey: string
 }
 
-const site = (profile: string, size: string, limit: number | null): PowerSite => ({ rebalance: true, limit, profile, size, applied: {}, pendingSince: {}, decisions: [], lastKey: '' })
+const site = (limit: number | null, storeMin: number | null, storePeak: number | null): PowerSite => ({
+  rebalance: true, limit, storeMin, storePeak, cap: null, notify: false, applied: {}, pendingSince: {}, decisions: [], lastKey: '',
+})
 
-/** Rebalanceamento ligado por padrão; Villa Lobos e Villa Olímpia no limite padrão, Marginal com o do dono. */
+/** Rebalanceamento ligado por padrão; Villa Lobos nos padrões, Marginal e Villa Olímpia com a estimativa
+ * que a migração d8b3f6a2c5e7 deu aos tipos antigos (supermercado grande limitado a 85 % de 150 kW;
+ * restaurante pequeno). */
 const POWER: Record<string, PowerSite> = {
-  [S[0].id]: site('conveniencia', 'medio', null),
-  [S[1].id]: site('supermercado', 'grande', 150),
-  [S[2].id]: site('restaurante', 'pequeno', null),
+  [S[0].id]: site(null, null, null),
+  [S[1].id]: site(150, 89.6, 127.5),
+  [S[2].id]: site(null, 3.1, 18),
 }
 
-const PEAK: Record<string, number> = { conveniencia: 22, farmacia: 12, padaria: 45, supermercado: 100, restaurante: 30, shopping: 750 }
-const SIZE: Record<string, number> = { pequeno: 0.6, medio: 1, grande: 1.6 }
-/** Curva diurna simples (fração do pico por hora local), só para a demonstração. */
-const CURVE = [0.5, 0.48, 0.47, 0.46, 0.46, 0.5, 0.6, 0.72, 0.82, 0.88, 0.92, 0.96, 1, 0.98, 1, 1, 0.97, 0.94, 0.9, 0.84, 0.76, 0.68, 0.6, 0.54]
+function storeEstimate(power: PowerSite): { min: number; peak: number; isDefault: boolean } {
+  if (power.storePeak === null && power.storeMin === null) return { min: DEFAULT_STORE_MIN_KW, peak: DEFAULT_STORE_PEAK_KW, isDefault: true }
+  const peak = power.storePeak ?? Math.max(DEFAULT_STORE_PEAK_KW, power.storeMin ?? 0)
+  return { min: Math.min(power.storeMin ?? DEFAULT_STORE_MIN_KW, peak), peak, isDefault: false }
+}
 
 function effectiveLimit(power: PowerSite): { kw: number; isDefault: boolean } {
-  return power.limit === null ? { kw: defaultSiteLimitKw(power.profile, power.size), isDefault: true } : { kw: power.limit, isDefault: false }
+  return power.limit === null ? { kw: defaultSiteLimitKw(storeEstimate(power).peak), isDefault: true } : { kw: power.limit, isDefault: false }
 }
 
-/** Consumo SIMULADO da loja: pico do tipo/porte × curva horária × variação suave por janela de 5 min (≤ 85 % do limite). */
-export function simulatedLoad(stationId: string, power: PowerSite, at = Date.now()): number {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(new Date(at)))
-  const window = Math.floor(at / 300_000)
-  const jitter = 0.94 + (hash(`${stationId}:${window}`) % 1200) / 10_000
-  const peak = (PEAK[profileKey(power.profile)] ?? 22) * (SIZE[sizeKey(power.size)] ?? 1)
-  const value = Math.round(peak * CURVE[hour] * jitter * 10) / 10
-  return Math.min(value, Math.floor(effectiveLimit(power).kw * 0.85 * 10) / 10)
+/** Margem reservada para a loja: o pico ESTIMADO, fixo (nunca deixa menos de 1,4 kW do contratado). */
+export function storeReserve(power: PowerSite): number {
+  return Math.min(storeEstimate(power).peak, Math.max(0, Math.round((effectiveLimit(power).kw - FLOOR_KW) * 10) / 10))
 }
 
 const FLOOR = 1.4
@@ -728,7 +732,7 @@ deliveredKw = (connector) => {
   const station = S.find((s) => s.id === connector.station_id)
   const site = station ? POWER[station.id] : undefined
   if (!station || !site) return undefined
-  return allocate(station, site, simulatedLoad(station.id, site)).allocations.find((a) => a.connector.id === connector.id)?.target
+  return allocate(station, site, storeReserve(site)).allocations.find((a) => a.connector.id === connector.id)?.target
 }
 let decisionSeq = 1
 const kwText = (value: number) => (Math.round(value * 10) / 10).toFixed(1).replace(/\.0$/, '').replace('.', ',')
@@ -741,7 +745,8 @@ interface Allocation {
 
 function allocate(station: Station, site: PowerSite, load: number) {
   const charging = station.connectors.filter((c) => c.availability_status === 'charging')
-  const available = Math.max(0, effectiveLimit(site).kw - load)
+  const siteLeft = Math.max(0, Math.round((effectiveLimit(site).kw - load) * 10) / 10)
+  const available = site.cap === null ? siteLeft : Math.min(siteLeft, site.cap)
   const requests = charging.map((c) => requestedKw(c))
   const want = requests.reduce((t, r) => t + r, 0)
   const allocations: Allocation[] = charging.map((connector, i) => {
@@ -762,9 +767,12 @@ function reasonFor(alloc: Allocation, site: PowerSite & { load: number }, cars: 
   const kw = kwText(alloc.target)
   switch (alloc.code) {
     case 'site':
-      return { text: `${kw} kW porque a loja usa ${kwText(site.load)} de ${kwText(effectiveLimit(site).kw)} kW e ${alone}.`, short: `Loja ${kwText(site.load)}/${kwText(effectiveLimit(site).kw)} kW` }
+      return {
+        text: `${kw} kW porque ${kwText(site.load)} kW dos ${kwText(effectiveLimit(site).kw)} kW contratados ficam reservados para a loja (estimativa) e ${alone}.`,
+        short: `Contrat. ${kwText(effectiveLimit(site).kw)} - loja ${kwText(site.load)} kW`,
+      }
     case 'paused':
-      return { text: `Pausado: a loja usa ${kwText(site.load)} de ${kwText(effectiveLimit(site).kw)} kW e não sobra o mínimo de 1,4 kW para mais um carro.`, short: 'Pausado: sem capacidade' }
+      return { text: `Pausado: dos ${kwText(effectiveLimit(site).kw)} kW contratados, ${kwText(site.load)} kW ficam reservados para a loja (estimativa) e não sobra o mínimo de 1,4 kW para mais um carro.`, short: 'Pausado: sem capacidade' }
     case 'fixed':
       return { text: `${kw} kW: rebalanceamento desligado, vale a potência definida no início da recarga.`, short: 'Rebalanceamento desligado' }
     default:
@@ -782,14 +790,15 @@ function record(site: PowerSite, trigger: string, available: number, allocations
 }
 
 /** Visão de `/stations/{id}/power`; o equipamento "confirma" ajustes ~1,2 s depois. */
-export function power(stationId: string, trigger = 'initial', at = Date.now()): StationPower {
+export function power(stationId: string, trigger = 'initial'): StationPower {
   const station = S.find((s) => s.id === stationId)!
   const site = POWER[stationId]
   const now = Date.now()
-  const load = simulatedLoad(stationId, site, at)
+  const load = storeReserve(site)
+  const store = storeEstimate(site)
   const limit = effectiveLimit(site)
   const { available, allocations, cars } = allocate(station, site, load)
-  const key = JSON.stringify([site.rebalance, limit.kw, load, allocations.map((a) => a.target)])
+  const key = JSON.stringify([site.rebalance, limit.kw, load, site.cap, allocations.map((a) => a.target)])
   let confirmed = false
   for (const a of allocations) {
     const id = a.connector.id
@@ -818,18 +827,18 @@ export function power(stationId: string, trigger = 'initial', at = Date.now()): 
     site_limit_kw: limit.kw.toFixed(1),
     site_limit_default: limit.isDefault,
     site_limit_configured_kw: site.limit === null ? null : site.limit.toFixed(1),
-    site_limit_default_kw: defaultSiteLimitKw(site.profile, site.size).toFixed(1),
+    site_limit_default_kw: defaultSiteLimitKw(store.peak).toFixed(1),
+    store_min_kw: store.min.toFixed(1),
+    store_peak_kw: store.peak.toFixed(1),
+    store_reserve_kw: load.toFixed(1),
+    store_estimate_default: store.isDefault,
+    store_estimate_label: 'ESTIMATIVA',
     building_load_kw: load.toFixed(1),
-    building_load_source: 'simulated',
-    building_load_simulated: true,
-    building_load_mode: 'auto',
-    building_load_updated_at: new Date(Math.floor(at / 300_000) * 300_000).toISOString(),
-    building_load_manual_until: null,
-    building_profile: profileKey(site.profile),
-    building_size: sizeKey(site.size),
-    building_profile_label: `${profileLabel(site.profile)} · porte ${sizeKey(site.size) === 'medio' ? 'médio' : sizeKey(site.size)}`,
-    building_peak_kw: ((PEAK[profileKey(site.profile)] ?? 22) * (SIZE[sizeKey(site.size)] ?? 1)).toFixed(1),
-    station_cap_kw: null,
+    power_limit_notify: site.notify,
+    station_cap_kw: site.cap === null ? null : site.cap.toFixed(3),
+    connectors_total_kw: station.connectors.filter((c) => c.active !== false && !c.retired).reduce((t, c) => t + Number(c.power_kw), 0).toFixed(3),
+    charger_floor_kw: FLOOR_KW.toFixed(3),
+    chargers_floor_total_kw: (station.connectors.filter((c) => c.active !== false && !c.retired).length * FLOOR_KW || FLOOR_KW).toFixed(3),
     available_kw: available.toFixed(1),
     allocated_kw: allocations.reduce((t, a) => t + a.target, 0).toFixed(1),
     envelope_kw: envelope.toFixed(1),
@@ -859,15 +868,20 @@ export function power(stationId: string, trigger = 'initial', at = Date.now()): 
   }
 }
 
-const PROFILES = Object.keys(PEAK)
-const SIZES = Object.keys(SIZE)
+const decimalOrNull = (value: string | null | undefined, message: string): number | null => {
+  if (value === null || value === undefined) return null
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0) throw new MockFailure(422, 'invalid_store_estimate', message)
+  return Math.round(number * 10) / 10
+}
 
-/** `PUT power-site` parcial, como `power.service.set_site`: `site_limit_kw: null` volta ao padrão. */
+/** `PUT power-site` parcial, como `power.service.set_site`: valida o estado final; `null` volta ao padrão. */
 export function putPowerSite(
   stationId: string,
-  body: { site_limit_kw?: string | null; rebalance_enabled?: boolean; building_profile?: string | null; building_size?: string | null },
+  body: { site_limit_kw?: string | null; rebalance_enabled?: boolean; store_min_kw?: string | null; store_peak_kw?: string | null; max_power_kw?: string | null; power_limit_notify?: boolean },
 ): StationPower {
-  const site = POWER[stationId]
+  const current = POWER[stationId]
+  const site: PowerSite = { ...current }
   let trigger = 'site_limit_changed'
   if ('site_limit_kw' in body) {
     if (body.site_limit_kw === null) site.limit = null
@@ -878,17 +892,31 @@ export function putPowerSite(
       site.limit = Math.round(value * 10) / 10
     }
   }
+  if ('store_min_kw' in body) site.storeMin = decimalOrNull(body.store_min_kw, 'Informe a estimativa da loja em kW.')
+  if ('store_peak_kw' in body) {
+    site.storePeak = decimalOrNull(body.store_peak_kw, 'Informe a estimativa da loja em kW.')
+    trigger = 'store_estimate_changed'
+  }
+  if ('max_power_kw' in body) {
+    const cap = body.max_power_kw === null || body.max_power_kw === undefined ? null : Number(body.max_power_kw)
+    const station = S.find((s) => s.id === stationId)!
+    const floors = station.connectors.filter((c) => c.active !== false && !c.retired).length * FLOOR_KW
+    if (cap !== null && (!Number.isFinite(cap) || cap <= 0 || cap < floors)) throw new MockFailure(422, 'invalid_power_limit', `O limite do posto precisa ser de pelo menos ${kwText(floors)} kW.`)
+    site.cap = cap === null ? null : Math.round(cap * 10) / 10
+    trigger = 'station_cap_changed'
+  }
+  for (const key of ['rebalance_enabled', 'power_limit_notify'] as const) {
+    if (!(key in body)) continue
+    if (typeof body[key] !== 'boolean') throw new MockFailure(422, 'null_not_allowed', 'Campo não aceita null')
+  }
   if ('rebalance_enabled' in body) {
-    if (typeof body.rebalance_enabled !== 'boolean') throw new MockFailure(422, 'null_not_allowed', 'Campo não aceita null')
-    site.rebalance = body.rebalance_enabled
+    site.rebalance = body.rebalance_enabled!
     trigger = 'request_changed'
   }
-  for (const [key, allowed] of [['building_profile', PROFILES], ['building_size', SIZES]] as const) {
-    if (!(key in body)) continue
-    const value = body[key]
-    if (value !== null && value !== undefined && !allowed.includes(value)) throw new MockFailure(422, 'validation_error', 'Valor inválido')
-    if (key === 'building_profile') site.profile = value ?? 'conveniencia'
-    else site.size = value ?? 'medio'
-  }
+  if ('power_limit_notify' in body) site.notify = body.power_limit_notify!
+  if (site.storeMin !== null && site.storePeak !== null && site.storeMin > site.storePeak) throw new MockFailure(422, 'invalid_store_estimate', 'O mínimo estimado da loja não pode passar do pico.')
+  const left = effectiveLimit(site).kw - storeEstimate(site).peak
+  if (left < FLOOR_KW) throw new MockFailure(422, 'invalid_store_estimate', `O pico estimado da loja deixa ${kwText(Math.max(0, left))} kW para os carregadores; o mínimo para carregar um carro é 1,4 kW.`)
+  Object.assign(current, site)
   return power(stationId, trigger)
 }

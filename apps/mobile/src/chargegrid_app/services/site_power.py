@@ -1,8 +1,13 @@
 """Tela Potência do vendedor, sem Flet: textos e contas sobre ``GET /stations/{id}/power``.
 
-Mesmas regras da API (``chargegrid_core.site_load`` e ``chargegrid_core.power``): limite contratado
-efetivo (o do dono ou o padrão do tipo/porte), consumo da loja SIMULADO, disponível para os
-carregadores, potência configurada × efetiva de cada carregador e a validação do limite digitado.
+Mesmas regras da API (``chargegrid_core.site_load`` e ``chargegrid_core.power``):
+
+* **Limites** num só lugar: limite contratado (o do dono ou o padrão), margem ESTIMADA da loja
+  (mínimo e pico; sem medidor, o pico fica reservado o tempo todo) e máximo dos carregadores.
+  ``para os carregadores = min(máximo dos carregadores, contratado − pico estimado)``.
+* A régua da tela Limites: escala, passos, segmentos e as travas de cada faixa de arrastar
+  (``move_store``/``move_limit``/``move_cap``), além do corpo do ``PUT power-site``.
+* Potência configurada × efetiva de cada carregador.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -12,7 +17,11 @@ from chargegrid_core import site_load
 
 POLL_SECONDS = 3             # atualização do cartão enquanto a tela está aberta
 SITE_MAX_KW = Decimal(10000)
-REBALANCE_HELP = 'Divide a potência entre os carros sem passar do limite contratado.'
+REBALANCE_HELP = 'Divide a potência entre os carros sem passar dos limites do posto.'
+ESTIMATE_HELP = ('Não medimos a loja: é uma estimativa sua. Reservamos o pico estimado o tempo todo, '
+                 'por cima de tudo, e os carregadores dividem o que sobra.')
+ZERO = Decimal(0)
+NICE_STEPS = ('1', '1.2', '1.5', '2', '2.5', '3', '4', '5', '6', '8', '10')
 
 
 def number(value):
@@ -31,9 +40,7 @@ def kw(value, empty='—'):
     amount = number(value)
     if amount is None:
         return empty
-    rounded = amount.quantize(Decimal('0.1'))
-    text = f'{rounded:.0f}' if rounded == rounded.to_integral_value() else f'{rounded:.1f}'.replace('.', ',')
-    return f'{text} kW'
+    return f'{power_rules.kw_text(amount.quantize(Decimal("0.1")))} kW'
 
 
 def has_rebalance(station):
@@ -41,36 +48,41 @@ def has_rebalance(station):
     return isinstance((station or {}).get('rebalance_enabled'), bool)
 
 
-def station_limit(station):
-    """``(limite efetivo, é o padrão?)`` pelo posto (``GET stations/{id}``), como a API calcula."""
+def station_limits(station):
+    """Entradas efetivas e potência dos carregadores pelo posto (``GET stations/{id}``), como a API."""
     station = station or {}
-    return site_load.effective_site_limit(number(station.get('site_limit_kw')), station.get('building_profile'),
-                                          station.get('building_size'))
+    inputs = site_load.site_inputs(number(station.get('site_limit_kw')), number(station.get('store_min_kw')),
+                                   number(station.get('store_peak_kw')))
+    inputs['budget_kw'] = site_load.chargers_budget(inputs['site_limit_kw'], inputs['store_min_kw'],
+                                                    inputs['store_peak_kw'], number(station.get('max_power_kw')))
+    return inputs
 
 
 def menu_subtitle(station):
-    """Subtítulo do menu do posto: ``Limite 75 kW (padrão) · rebalanceamento ligado``."""
-    limit, default = station_limit(station)
-    head = f"Limite {kw(limit)}{' (padrão)' if default else ''}"
+    """Subtítulo do menu do posto: ``Até 53 kW para os carregadores · rebalanceamento ligado``."""
+    head = f"Até {kw(station_limits(station)['budget_kw'])} para os carregadores"
     return f"{head} · rebalanceamento {'ligado' if station.get('rebalance_enabled') else 'desligado'}"
 
 
 def summary(view):
-    """Cartão do topo: disponível, limite, loja (SIMULADO) e carros agora."""
-    available = number(view.get('available_kw'))
+    """Cartão do topo: disponível, limite contratado, margem ESTIMADA da loja e carros agora."""
     used = number(view.get('envelope_kw'))
     if used is None:
-        used = number(view.get('allocated_kw')) or Decimal(0)
-    exceeded = max(Decimal(0), number(view.get('exceeded_kw')) or Decimal(0))
+        used = number(view.get('allocated_kw')) or ZERO
+    exceeded = max(ZERO, number(view.get('exceeded_kw')) or ZERO)
     count = int(view.get('cars') or 0)
-    profile = view.get('building_profile_label') or site_load.profile_label()
-    manual = view.get('building_load_mode') == 'manual'
+    reserve = number(view.get('store_reserve_kw'))
+    if reserve is None:
+        reserve = number(view.get('store_peak_kw'))
+    store_detail = 'Pico estimado, reservado o tempo todo'
+    if view.get('store_estimate_default'):
+        store_detail += ' (padrão)'
     return {
-        'available': kw(available, 'Sem limite'),
+        'available': kw(view.get('available_kw'), 'Sem limite'),
         'limit': kw(view.get('site_limit_kw'), 'Sem limite'),
-        'limit_detail': 'Padrão para o tipo de estabelecimento' if view.get('site_limit_default') else 'Informado por você',
-        'load': kw(view.get('building_load_kw'), '0 kW'),
-        'load_detail': 'Valor do simulador (30 min)' if manual else profile.split(' · ')[0],
+        'limit_detail': 'Padrão (75 kW ou pico × 1,3)' if view.get('site_limit_default') else 'Informado por você',
+        'store': f'−{kw(reserve, "0 kW")}',
+        'store_detail': store_detail,
         'cars': kw(used, '0 kW'),
         'cars_detail': 'Nenhum carro carregando' if not count else f"{count} carro{'s' if count != 1 else ''} carregando",
         'over': (f'Excesso transitório de {kw(exceeded)}: reduções enviadas, aguardando os equipamentos.'
@@ -78,14 +90,15 @@ def summary(view):
     }
 
 
-def site_subtitle(view):
-    """``75 kW (padrão) · Loja de conveniência`` (o porte fica na subtela)."""
-    head = f"{kw(view.get('site_limit_kw'))}{' (padrão)' if view.get('site_limit_default') else ''}"
-    return f"{head} · {site_load.PROFILES[site_load.profile_key(view.get('building_profile'))].label}"
+def limits_subtitle(view):
+    """``Contratado 75 kW · loja até 22 kW · carregadores até 53 kW``."""
+    peak = view.get('store_reserve_kw') or view.get('store_peak_kw')
+    return (f"Contratado {kw(view.get('site_limit_kw'))} · loja até {kw(peak)} · "
+            f"carregadores até {kw(view.get('available_kw'))}")
 
 
 def cap_subtitle(station):
-    """``Sem teto · aviso desligado`` ou ``80 kW · aviso ligado``."""
+    """``Sem teto · aviso desligado`` ou ``80 kW · aviso ligado`` (API antiga, sem Limites)."""
     cap = power_rules.to_kw((station or {}).get('max_power_kw'))
     head = 'Sem teto' if cap is None else kw(cap)
     return f"{head} · aviso {'ligado' if station.get('power_limit_notify') else 'desligado'}"
@@ -97,8 +110,8 @@ def points(station):
 
 def point_name(point, index):
     """``CCS2 · Carregador 1``: o número é o endereço do carregador (dono) ou a posição no posto."""
-    number = point.get('charger_address') or index
-    return f"{point.get('connector_type') or 'Carregador'} · Carregador {number}"
+    address = point.get('charger_address') or index
+    return f"{point.get('connector_type') or 'Carregador'} · Carregador {address}"
 
 
 def connector_line(point, station, view=None):
@@ -127,12 +140,11 @@ def limit_input(value):
     amount = number(value)
     if amount is None:
         return ''
-    rounded = amount.quantize(Decimal('0.1'))
-    return f'{rounded:.0f}' if rounded == rounded.to_integral_value() else f'{rounded:.1f}'.replace('.', ',')
+    return power_rules.kw_text(amount.quantize(Decimal('0.1')))
 
 
-def parse_site_limit(text):
-    """Limite contratado digitado -> ``(valor da API | None, erro | None)``. Vazio = padrão do tipo/porte."""
+def parse_kw(text, *, allow_zero=False):
+    """kW digitado (``75,5``) -> ``(Decimal | None, erro | None)``; vazio = ``(None, None)``."""
     raw = str(text or '').strip()
     if not raw:
         return None, None
@@ -142,8 +154,197 @@ def parse_site_limit(text):
             (len(parts) == 2 and (not parts[1].isdigit() or len(parts[1]) != 1)):
         return None, 'Use kW com até 1 casa, por exemplo 75,5.'
     amount = Decimal(cleaned)
-    if amount <= 0:
-        return None, 'Informe um limite maior que zero.'
+    if amount < 0 or (amount == 0 and not allow_zero):
+        return None, 'Informe um valor maior que zero.'
     if amount > SITE_MAX_KW:
-        return None, 'O limite contratado vai até 10.000 kW.'
-    return f'{amount:.1f}', None
+        return None, 'Os valores vão até 10.000 kW.'
+    return amount, None
+
+
+# ---------------------------------------------------------------- régua da tela Limites
+def scale_max(limit, peak=ZERO, total=ZERO):
+    """Fim da régua: ``max(contratado, 20) × 1,25`` arredondado para cima (1/1,2/1,5/2/2,5/3/4/5/6/8 × 10ⁿ).
+
+    ``peak``/``total`` ficam na assinatura por compatibilidade: a régua acompanha só o contratado (o pico
+    nunca passa dele), para a parte útil ocupar ~80 % da largura."""
+    top = max(Decimal(limit or 0), Decimal(20)) * Decimal('1.25')
+    magnitude = Decimal(10) ** (len(str(int(top))) - 1)
+    for factor in NICE_STEPS:
+        candidate = Decimal(factor) * magnitude
+        if candidate >= top:
+            return candidate.quantize(Decimal(1))
+    return (Decimal(10) * magnitude).quantize(Decimal(1))
+
+
+def step_for(scale):
+    """Passo do arraste: 1 kW até 200 kW de escala, 5 kW até 1.000, 10 kW acima."""
+    scale = Decimal(scale)
+    return Decimal(1) if scale <= 200 else Decimal(5) if scale <= 1000 else Decimal(10)
+
+
+def snap(value, step):
+    """Valor do controle no passo da régua (kW, nunca negativo)."""
+    step = Decimal(step)
+    amount = Decimal(str(round(float(value) / float(step)))) * step
+    return max(ZERO, amount.quantize(Decimal('0.1')))
+
+
+def limits_state(view, station=None):
+    """Rascunho da tela Limites a partir de ``GET power`` (valores efetivos e padrões)."""
+    station = station or {}
+    total = number(view.get('connectors_total_kw'))
+    if total is None:
+        total = sum((power_rules.to_kw(point.get('power_kw')) or ZERO for point in points(station)
+                     if point.get('active') is not False), ZERO)
+    floor = number(view.get('charger_floor_kw')) or power_rules.FLOOR_KW
+    floor_total = number(view.get('chargers_floor_total_kw')) or floor
+    cap = number(view.get('station_cap_kw'))
+    if cap is None and 'station_cap_kw' not in view:
+        cap = power_rules.to_kw(station.get('max_power_kw'))
+    notify = view.get('power_limit_notify')
+    if notify is None:
+        notify = bool(station.get('power_limit_notify'))
+    low, peak, default = number(view.get('store_min_kw')), number(view.get('store_peak_kw')), \
+        bool(view.get('store_estimate_default'))
+    if peak is None:
+        low, peak, default = site_load.estimate()
+    state = {
+        'limit': number(view.get('site_limit_kw')) or site_load.default_site_limit_kw(peak),
+        'limit_default': bool(view.get('site_limit_default')),
+        'min': min(site_load.DEFAULT_MIN_KW, peak) if low is None else low, 'peak': peak,
+        'store_default': default, 'cap': cap, 'notify': bool(notify),
+        'total': total, 'floor': floor, 'floor_total': floor_total,
+    }
+    rescale(state)
+    return state
+
+
+def rescale(state):
+    """Recalcula a escala e o passo da régua (ao abrir e depois de digitar valores)."""
+    state['scale'] = scale_max(state['limit'], state['peak'], state['total'])
+    state['step'] = step_for(state['scale'])
+
+
+def remainder(state):
+    """Contratado − pico estimado (o que a loja deixa para os carregadores)."""
+    return max(ZERO, state['limit'] - state['peak'])
+
+
+def budget(state):
+    """Potência dos carregadores: ``min(teto, contratado − pico)``."""
+    left = remainder(state)
+    return left if state['cap'] is None else min(left, state['cap'])
+
+
+def cap_top(state):
+    """Valor a partir do qual o teto não muda nada (vira "sem teto próprio")."""
+    left = remainder(state)
+    return min(left, state['total']) if state['total'] > 0 else left
+
+
+def move_store(state, low, high):
+    """Arraste da faixa da loja (mínimo e pico): o pico deixa ao menos o piso de um carro."""
+    hint = None
+    high = snap(high, state['step'])
+    top = max(ZERO, state['limit'] - state['floor'])
+    if high > top:
+        high, hint = top, 'Para reservar mais para a loja, aumente o limite contratado.'
+    low = min(snap(low, state['step']), high)
+    state.update(min=low, peak=high, store_default=False)
+    return hint
+
+
+def move_limit(state, value):
+    """Arraste do limite contratado: nunca abaixo do pico da loja + o piso de um carro."""
+    hint = None
+    value = snap(value, state['step'])
+    bottom = state['peak'] + state['floor']
+    if value < bottom:
+        value, hint = bottom, 'Para baixar mais o contratado, reduza o pico estimado da loja.'
+    state.update(limit=value, limit_default=False)
+    return hint
+
+
+def move_cap(state, value):
+    """Arraste do máximo dos carregadores: no fim da faixa = sem teto próprio (``None``)."""
+    value = snap(value, state['step'])
+    hint = None
+    if value < state['floor_total']:
+        value, hint = state['floor_total'], f"O mínimo é {kw(state['floor_total'])} (piso de cada carregador)."
+    state['cap'] = None if value >= cap_top(state) else value
+    return hint
+
+
+def set_values(state, limit, low, peak, cap):
+    """Valores digitados (diálogo "Digitar valores"): ``None`` em ``cap`` = sem teto. Devolve o erro ou ``None``."""
+    if low > peak:
+        return 'O mínimo estimado da loja não pode passar do pico.'
+    if limit - peak < state['floor']:
+        return (f"O pico da loja precisa deixar ao menos {kw(state['floor'])} do contratado para os carregadores.")
+    if cap is not None and cap < state['floor_total']:
+        return f"O máximo dos carregadores precisa ser de pelo menos {kw(state['floor_total'])}."
+    state.update(limit=limit, limit_default=False, min=low, peak=peak, store_default=False)
+    state['cap'] = None if cap is None or cap >= cap_top(state) else cap
+    rescale(state)
+    return None
+
+
+def cap_text(state):
+    """``53 kW · sem teto`` (sem teto próprio: tudo que sobra, ou todos no máximo) ou ``40 kW``."""
+    if state['cap'] is None or state['cap'] >= cap_top(state):
+        return f'{kw(cap_top(state))} · sem teto'
+    return kw(state['cap'])
+
+
+def store_text(state):
+    """``14 – 22 kW``."""
+    return f"{power_rules.kw_text(state['min'])} – {kw(state['peak'])}"
+
+
+def equation(state):
+    """``75 kW contratados − 22 kW de margem da loja`` (+ teto quando ele manda)."""
+    text = f"{kw(state['limit'])} contratados − {kw(state['peak'])} de margem da loja"
+    if state['cap'] is not None and state['cap'] < remainder(state):
+        text += " · limitado pelo máximo dos carregadores"
+    return text
+
+
+def segments(state, used=None):
+    """Faixas da régua em kW, da esquerda para a direita: ``[(chave, kW)]`` (as de 0 kW somem).
+
+    ``store_base`` (0→mínimo), ``store_peak`` (mínimo→pico), ``cars`` (em uso agora, só na visão
+    geral), ``chargers``, ``unused`` (bloqueado pelo teto) e ``above`` (acima do contratado)."""
+    left = remainder(state)
+    chargers = budget(state)
+    in_use = min(max(ZERO, Decimal(used or 0)), chargers)
+    items = [('store_base', state['min']), ('store_peak', state['peak'] - state['min']),
+             ('cars', in_use), ('chargers', chargers - in_use), ('unused', left - chargers),
+             ('above', max(ZERO, state['scale'] - state['limit']))]
+    return [(key, value) for key, value in items if value > 0]
+
+
+def body(state, original):
+    """Corpo do ``PUT power-site`` com o que mudou em relação a ``original`` (``limits_state``)."""
+    result = {}
+    if not state['limit_default'] and (original['limit_default'] or state['limit'] != original['limit']):
+        result['site_limit_kw'] = f"{state['limit']:.1f}"
+    elif state['limit_default'] and not original['limit_default']:
+        result['site_limit_kw'] = None
+    store_changed = (state['min'], state['peak']) != (original['min'], original['peak'])
+    if state['store_default'] and not original['store_default']:
+        result.update(store_min_kw=None, store_peak_kw=None)
+    elif not state['store_default'] and (store_changed or original['store_default']):
+        result.update(store_min_kw=f"{state['min']:.1f}", store_peak_kw=f"{state['peak']:.1f}")
+    if state['cap'] != original['cap']:
+        result['max_power_kw'] = None if state['cap'] is None else f"{state['cap']:.1f}"
+    if state['notify'] != original['notify']:
+        result['power_limit_notify'] = state['notify']
+    return result
+
+
+def restore_defaults(state):
+    """Botão "Restaurar padrão": loja 14–22 kW, contratado padrão e sem teto próprio."""
+    low, peak, _ = site_load.estimate()
+    state.update(min=low, peak=peak, store_default=True, limit=site_load.default_site_limit_kw(peak),
+                 limit_default=True, cap=None)
+    rescale(state)

@@ -36,7 +36,8 @@ describe('mock do painel (modo demonstração)', () => {
   it('limite contratado menor reduz o alvo e o excesso aparece até a confirmação', () => {
     const villaLobos = data.STATIONS[0].id
     const before = ops.power(villaLobos)
-    const load = Number(before.building_load_kw)
+    const load = Number(before.store_reserve_kw)  // margem ESTIMADA da loja (22 kW no padrão)
+    expect(load).toBe(22)
     const after = ops.putPowerSite(villaLobos, { site_limit_kw: (load + 15).toFixed(1) })
     expect(after.available_kw).toBe('15.0')
     expect(after.points.find((p) => p.session)?.session?.target_kw).toBe('15.0')

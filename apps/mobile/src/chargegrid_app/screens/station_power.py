@@ -1,17 +1,19 @@
-"""Potência do posto (vendedor): limite contratado, rebalanceamento, loja SIMULADA e cada carregador.
+"""Potência do posto (vendedor): Limites, rebalanceamento e cada carregador.
 
-Rota ``station_admin`` com ``page='power'`` e ``section`` (None | 'site' | 'cap' | 'connector', este com
-``connector_id``). Mesmo padrão da Tarifa: um cartão com o que vale agora e linhas de ajuste que abrem
-subtelas simples (descrição, campos e Salvar no rodapé).
+Rota ``station_admin`` com ``page='power'`` e ``section`` (None | 'limits' | 'connector', este com
+``connector_id``; 'site' e 'cap' são apelidos antigos de 'limits'). Mesmo padrão da Tarifa: um cartão
+com o que vale agora e linhas de ajuste que abrem subtelas simples (descrição, campos e Salvar no rodapé).
 
-* Cartão (``GET stations/{id}/power``, a cada 3 s): disponível para os carregadores, limite contratado
-  (o do dono ou o padrão do tipo/porte), consumo da loja agora (SIMULADO) e potência dos carros.
+* Cartão (``GET stations/{id}/power``, a cada 3 s): disponível para os carregadores, uma régua só de
+  leitura (margem da loja, carros agora, livre), limite contratado, margem ESTIMADA da loja e carros.
+  Não há consumo da loja ao vivo nem simulado: sem medidor, o pico estimado fica reservado o tempo todo.
 * Rebalanceamento: Ligado/Desligado (``PUT power-site``), ligado por padrão; muda só com a resposta.
 * Por carregador: potência configurada e efetiva; a subtela edita ``power_limit_kw`` (``PATCH connectors``).
-* Ajustes: Limite contratado (valor, tipo e porte do estabelecimento; ``PUT power-site``) e Teto dos
-  carregadores (``max_power_kw`` e aviso; ``PATCH stations``).
+* Limites (um só lugar, um só ``PUT power-site``): régua 0→escala com três faixas de arrastar alinhadas
+  a ela (loja: mínimo e pico; limite contratado; máximo dos carregadores, embaixo da parte verde),
+  "Digitar valores" para números exatos e o aviso quando os limites reduzirem uma recarga.
 
-API sem a rota de potência (404): sem cartão nem rebalanceamento; conectores e teto continuam.
+API sem a rota de potência (404): sem cartão, rebalanceamento nem Limites; conectores e teto continuam.
 """
 
 from decimal import Decimal
@@ -26,14 +28,25 @@ from ..services import site_power as sp
 from ..ui import design, theme
 from ..ui.states import status_chip
 from .station_admin import heading
-from .tariffs import _row, _save_button, entry_row
+from .tariffs import (  # noqa: F401  (_save_button: compatibilidade)
+    _row,
+    _save_button,
+    entry_row,
+)
 
 CONNECTOR_ICON = '/design/icon_station_charge.svg'
-SITE_HELP = 'Potência máxima da instalação, loja incluída. Vazio usa o padrão do tipo de estabelecimento.'
+LIMITS_HELP = 'Quanto o posto pode puxar da rede e quanto fica guardado para a loja.'
 CAP_HELP = ('Soma máxima dos carregadores deste posto. Acima dela a potência é dividida '
             '(mínimo de 1,4 kW por carregador).')
 CONNECTOR_HELP = 'Potência máxima que este carregador entrega. O rebalanceamento pode reduzi-la enquanto houver outros carros.'
 FIXED_NOTE = 'Rebalanceamento desligado: recargas em andamento mantêm a potência com que começaram.'
+LIMIT_HELP = 'Demanda da instalação inteira, loja incluída (a da conta de luz).'
+CAP_LANE_HELP = 'Soma máxima dos carregadores. No fim da faixa: sem teto próprio.'
+FIXED_LIMITS_NOTE = ('Rebalanceamento desligado: os limites valem no início de cada recarga, '
+                     'divididos entre os carregadores ativos.')
+BAR_HEIGHT = 22
+MARKER_HEIGHT = 32
+TRACK_INSET = 24  # recuo do trilho do RangeSlider do Flutter: régua e faixas usam o mesmo, alinhadas
 
 
 def _link(app, sid, **data):
@@ -56,8 +69,8 @@ async def _view(app, sid):
 async def build(app, station, section=None, connector_id=None):
     sid = station['id']
     view = await _view(app, sid) if sp.has_rebalance(station) else None
-    if section == 'site' and view is not None:
-        return site_page(app, station, view)
+    if section in ('limits', 'site', 'cap') and view is not None:
+        return limits_page(app, station, view)
     if section == 'cap':
         return cap_page(app, station)
     if section == 'connector':
@@ -67,21 +80,90 @@ async def build(app, station, section=None, connector_id=None):
     return overview(app, station, view)
 
 
+# ---------------------------------------------------------------- régua
+def _colors():
+    return {'store_base': theme.AMBER, 'store_peak': None, 'cars': theme.GREEN,
+            'chargers': theme.GREEN, 'unused': ft.Colors.with_opacity(0.2, theme.GREEN),
+            'above': theme.SEGMENT_OFF}
+
+
+def _stripes():
+    """Âmbar listrado: a parte da loja entre o mínimo e o pico é estimativa."""
+    light = '#F2C27D'
+    return ft.LinearGradient(begin=ft.Alignment(-1, -1), end=ft.Alignment(-0.6, 0.2), tile_mode=ft.GradientTileMode.REPEATED,
+                             colors=[theme.AMBER, theme.AMBER, light, light], stops=[0, 0.5, 0.5, 1])
+
+
+def _segment(key, value, live=False):
+    color = _colors()[key]
+    if live and key == 'chargers':
+        color = ft.Colors.with_opacity(0.45, theme.GREEN)  # livre (os carros em uso ficam cheios)
+    return ft.Container(expand=max(1, int(value * 10)), height=BAR_HEIGHT, bgcolor=color,
+                        gradient=_stripes() if key == 'store_peak' else None, data=f'bar-{key}')
+
+
+def bar(state, used=None):
+    """Régua 0→escala: loja (âmbar, listrada = estimativa), carregadores (verde), marcador do
+    contratado e trilho acima dele. Larguras proporcionais (``expand``), sem medir pixels."""
+    items = sp.segments(state, used)
+    live = used is not None
+    inside = [_segment(key, value, live) for key, value in items if key != 'above']
+    above = [value for key, value in items if key == 'above']
+    left = ft.Container(ft.Row(inside, spacing=0), expand=max(1, int(state['limit'] * 10)),
+                        border_radius=ft.BorderRadius.only(top_left=7, bottom_left=7, top_right=0, bottom_right=0)
+                        if above else 7, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
+    parts = [left, ft.Container(width=3, height=MARKER_HEIGHT, bgcolor=theme.TEXT_COLOR, border_radius=2,
+                                data='bar-contracted')]
+    if above:
+        parts.append(ft.Container(expand=max(1, int(above[0] * 10)), height=BAR_HEIGHT, bgcolor=theme.SEGMENT_OFF,
+                                  border_radius=ft.BorderRadius.only(top_left=0, bottom_left=0, top_right=7,
+                                                                     bottom_right=7), data='bar-above'))
+    return ft.Row(parts, spacing=0, height=MARKER_HEIGHT, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                  data='limits-bar')
+
+
+def _dot(color, striped=False):
+    return ft.Container(width=10, height=10, border_radius=3, bgcolor=color, gradient=_stripes() if striped else None)
+
+
+def legend(state, live=False):
+    entries = [(_dot(theme.AMBER, True), 'Loja (estimativa)')]
+    if live:
+        entries += [(_dot(theme.GREEN), 'Em uso'), (_dot(ft.Colors.with_opacity(0.45, theme.GREEN)), 'Livre')]
+    else:
+        entries.append((_dot(theme.GREEN), 'Carregadores'))
+    entries.append((ft.Container(width=3, height=12, bgcolor=theme.TEXT_COLOR, border_radius=2),
+                    f"Contratado {sp.kw(state['limit'])}"))
+    return ft.Row([ft.Row([mark, design.txt(text, 10.5, 'regular', theme.GRAY_TEXT)], spacing=5, tight=True)
+                   for mark, text in entries], spacing=12, wrap=True, run_spacing=4)
+
+
+def axis(state):
+    return ft.Row([design.txt('0', 10, 'regular', theme.GRAY_TEXT), ft.Container(expand=True),
+                   design.txt(sp.kw(state['scale']), 10, 'regular', theme.GRAY_TEXT)], spacing=0)
+
+
 # ---------------------------------------------------------------- visão geral
 def summary_card(view):
-    """Cartão "Disponível para os carregadores" (mesmo visual do "Tarifa atual")."""
+    """Cartão "Disponível para os carregadores" (mesmo visual do "Tarifa atual") com a régua só de leitura."""
     info = sp.summary(view)
-    load_label = ft.Row([design.txt('Loja agora', 12.5, 'regular', theme.GRAY_TEXT),
-                         status_chip(site_load.LABEL, 'AMBER')], spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER)
-    load = ft.Row([ft.Column([load_label, design.txt(info['load_detail'], 10.5, 'regular', theme.GRAY_TEXT)],
-                             spacing=1, expand=True),
-                   design.txt(info['load'], 12.5, 'bold')], vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                  data='store-load')
+    state = sp.limits_state(view)
+    used = sp.number(view.get('envelope_kw'))
+    if used is None:
+        used = sp.number(view.get('allocated_kw'))
+    store_label = ft.Row([design.txt('Margem da loja', 12.5, 'regular', theme.GRAY_TEXT),
+                          status_chip(site_load.LABEL, 'SLATE')], spacing=8,
+                         vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    store = ft.Row([ft.Column([store_label, design.txt(info['store_detail'], 10.5, 'regular', theme.GRAY_TEXT)],
+                              spacing=1, expand=True),
+                    design.txt(info['store'], 12.5, 'bold')], vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                   data='store-margin')
+    limit = info['limit'] + (' (padrão)' if view.get('site_limit_default') else '')
     body = [design.txt('Disponível para os carregadores', 13.5, 'bold'),
             design.txt(info['available'], 30, 'semibold', data='available'),
-            _row('Limite contratado', info['limit'], info['limit_detail']),
-            load,
+            ft.Column([bar(state, used or 0), legend(state, live=True)], spacing=6),
+            _row('Limite contratado', limit, info['limit_detail']),
+            store,
             _row('Carros agora', info['cars'], info['cars_detail'])]
     if info['over']:
         body.append(design.txt(info['over'], 11, 'semibold', theme.ERROR))
@@ -163,10 +245,11 @@ def overview(app, station, view):
                                           theme.GRAY_TEXT)]
     controls.append(design.section_label('Ajustes'))
     if view is not None:
-        controls.append(entry_row('Limite contratado', sp.site_subtitle(view), ft.Icons.ELECTRICAL_SERVICES,
-                                  _link(app, sid, section='site'), 'power-site'))
-    controls.append(entry_row('Teto dos carregadores', sp.cap_subtitle(station), ft.Icons.SPEED,
-                              _link(app, sid, section='cap'), 'power-cap'))
+        controls.append(entry_row('Limites', sp.limits_subtitle(view), ft.Icons.TUNE,
+                                  _link(app, sid, section='limits'), 'power-limits'))
+    else:
+        controls.append(entry_row('Teto dos carregadores', sp.cap_subtitle(station), ft.Icons.SPEED,
+                                  _link(app, sid, section='cap'), 'power-cap'))
     if _demo(app) and view is not None:
         controls.append(_demo_traffic(app, sid))
     return design.page(heading(app, 'Potência', app.link('station_admin', station_id=sid)), *controls, gap=16)
@@ -202,63 +285,198 @@ def _snap(value, low, high):
     return max(low, min(high, number))
 
 
-def site_page(app, station, view):
-    """Limite contratado (vazio = padrão) e tipo/porte do estabelecimento (curva SIMULADA da loja)."""
+def _inset(control):
+    """Mesmo recuo do trilho do RangeSlider (que não aceita ``padding``): régua e faixas alinhadas."""
+    return ft.Container(control, padding=ft.Padding(left=TRACK_INSET, right=TRACK_INSET, top=0, bottom=0))
+
+
+def _lane_head(color, title, value, chip=None, striped=False):
+    left = [_dot(color, striped), design.txt(title, 12.5, 'semibold')]
+    if chip:
+        left.append(status_chip(chip, 'SLATE'))
+    return ft.Row([ft.Row(left, spacing=7, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                   ft.Container(expand=True), value], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+
+def limits_page(app, station, view):
+    """Limites: régua + faixas de arrastar (loja, contratado, máximo dos carregadores), um só ``PUT power-site``."""
     sid = station['id']
-    state = {'profile': view.get('building_profile') or site_load.DEFAULT_PROFILE,
-             'size': view.get('building_size') or site_load.DEFAULT_SIZE}
-    field = design.number_field(sp.limit_input(view.get('site_limit_configured_kw')), suffix='kW')
-    field.data = 'site_limit'
-    kinds, sizes = ft.Container(), ft.Container()
-    hint = design.txt('', 11, 'regular', theme.GRAY_TEXT, data='site-default')
+    original = sp.limits_state(view, station)
+    state = dict(original)
+    hero = design.txt('', 30, 'semibold', data='limits-budget')
+    equation = design.txt('', 11.5, 'regular', theme.GRAY_TEXT, data='limits-equation')
+    ruler = ft.Container(data='limits-ruler')
+    store_value = design.txt('', 12.5, 'bold', data='store-value')
+    limit_value = design.txt('', 12.5, 'bold', data='limit-value')
+    cap_value = design.txt('', 12.5, 'bold', data='cap-value')
+    hint = design.txt('', 11, 'semibold', theme.AMBER, visible=False, data='limits-hint')
     message = design.txt('', 12, 'regular', theme.ERROR, visible=False)
+    notify = ft.Container()
+    cap_lane = ft.Container(data='cap-lane')
+
+    store_range = ft.RangeSlider(start_value=float(state['min']), end_value=float(state['peak']), min=0,
+                                 max=float(state['scale']), active_color=theme.AMBER,
+                                 inactive_color=theme.SEGMENT_OFF, data='store-range')
+    limit_slider = ft.Slider(value=float(state['limit']), min=0, max=float(state['scale']),
+                             active_color=theme.BTN_PRIMARY, inactive_color=theme.SEGMENT_OFF,
+                             thumb_color=theme.BTN_PRIMARY, padding=0, data='limit-slider')
+    cap_slider = ft.Slider(value=0, min=0, max=1, active_color=theme.GREEN, inactive_color=theme.SEGMENT_OFF,
+                           thumb_color=theme.GREEN, padding=0, data='cap-slider')
+
+    def sync_controls():
+        """Valores, escala e passos das faixas a partir do rascunho (abrir, digitar, restaurar)."""
+        divisions = int(state['scale'] / state['step'])
+        store_range.max = limit_slider.max = float(state['scale'])
+        store_range.divisions = limit_slider.divisions = divisions
+        store_range.start_value, store_range.end_value = float(state['min']), float(state['peak'])
+        limit_slider.value = float(state['limit'])
 
     def draw():
-        default = site_load.default_site_limit_kw(state['profile'], state['size'])
-        field.hint_text = f'{sp.limit_input(default)} (padrão)'
-        hint.value = (f"Padrão: {sp.kw(default)} · pico típico da loja "
-                      f"{sp.kw(site_load.peak_kw(state['profile'], state['size']))} ({site_load.LABEL})")
-        chips = [ft.Container(design.chip_option(item.label, selected=key == state['profile'],
-                                                 on_click=choose('profile', key)), expand=True)
-                 for key, item in site_load.PROFILES.items()]
-        kinds.content = ft.Column([ft.Row(chips[index:index + 2], spacing=8) for index in range(0, len(chips), 2)],
-                                  spacing=8)  # duas colunas, como os atalhos de valor
-        sizes.content = design.segmented([(key, label) for key, (label, _) in site_load.SIZES.items()],
-                                         state['size'], pick_size, height=37.5)
+        left = sp.remainder(state)
+        hero.value = sp.kw(sp.budget(state))
+        equation.value = sp.equation(state)
+        ruler.content = ft.Column([_inset(bar(state)), _inset(axis(state)), legend(state)], spacing=5)
+        store_value.value = sp.store_text(state)
+        limit_value.value = sp.kw(state['limit']) + (' (padrão)' if state['limit_default'] else '')
+        cap_value.value = sp.cap_text(state)
+        cap_slider.max = float(max(left, Decimal('0.1')))
+        cap_slider.value = float(min(sp.budget(state), left))
+        cap_lane.content = ft.Row([
+            ft.Container(expand=max(1, int(state['peak'] * 10)) if state['peak'] > 0 else None,
+                         width=None if state['peak'] > 0 else 0),
+            ft.Container(cap_slider, expand=max(1, int(left * 10))),
+            ft.Container(expand=max(1, int((state['scale'] - state['limit']) * 10)))
+            if state['scale'] > state['limit'] else ft.Container(width=0)], spacing=0)
+        notify.content = design.segmented([(True, 'Ligado'), (False, 'Desligado')], state['notify'], set_notify,
+                                          height=37.5)
 
-    def choose(name, key):
-        async def handler(event=None):
-            state[name] = key
-            draw()
-            app.page.update()
-        return handler
+    def show_hint(text):
+        hint.value, hint.visible = text or '', bool(text)
 
-    async def pick_size(key):
-        await choose('size', key)()
-    draw()
+    def refresh():
+        draw()
+        app.page.update()
+
+    async def store_moved(event):
+        text = sp.move_store(state, event.control.start_value, event.control.end_value)
+        if text:
+            store_range.start_value, store_range.end_value = float(state['min']), float(state['peak'])
+        show_hint(text)
+        refresh()
+
+    async def limit_moved(event):
+        text = sp.move_limit(state, event.control.value)
+        if text:
+            limit_slider.value = float(state['limit'])
+        show_hint(text)
+        refresh()
+
+    async def cap_moved(event):
+        show_hint(sp.move_cap(state, event.control.value))
+        refresh()
+
+    def set_notify(flag):
+        state['notify'] = flag
+        refresh()
+
+    store_range.on_change = store_moved
+    limit_slider.on_change = limit_moved
+    cap_slider.on_change = cap_moved
+
+    async def restore(event=None):
+        sp.restore_defaults(state)
+        sync_controls()
+        show_hint(None)
+        refresh()
+
+    async def ask_values(event=None):
+        fields = {
+            'limit': design.number_field(sp.limit_input(state['limit']), suffix='kW'),
+            'min': design.number_field(sp.limit_input(state['min']), suffix='kW'),
+            'peak': design.number_field(sp.limit_input(state['peak']), suffix='kW'),
+            'cap': design.number_field('' if state['cap'] is None else sp.limit_input(state['cap']), suffix='kW',
+                                       hint='Vazio = sem teto próprio'),
+        }
+        for key, field in fields.items():
+            field.data = f'type-{key}'
+        error = design.txt('', 11.5, 'regular', theme.ERROR, visible=False)
+
+        def apply(event=None):
+            parsed = {}
+            for key, field in fields.items():
+                value, problem = sp.parse_kw(field.value, allow_zero=key == 'min' or key == 'peak')
+                if problem or (value is None and key != 'cap'):
+                    error.value, error.visible = problem or 'Preencha o contratado e a estimativa da loja.', True
+                    app.page.update()
+                    return
+                parsed[key] = value
+            problem = sp.set_values(state, parsed['limit'], parsed['min'], parsed['peak'], parsed['cap'])
+            if problem:
+                error.value, error.visible = problem, True
+                app.page.update()
+                return
+            app.page.pop_dialog()
+            sync_controls()
+            show_hint(None)
+            refresh()
+
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True, title=ft.Text('Digitar valores'),
+            content=ft.Column([design.labeled('Limite contratado', fields['limit'], gap=6),
+                               design.labeled('Loja · mínimo estimado', fields['min'], gap=6),
+                               design.labeled('Loja · pico estimado', fields['peak'], gap=6),
+                               design.labeled('Máximo dos carregadores', fields['cap'], gap=6), error],
+                              tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
+            actions=[ft.TextButton('Cancelar', on_click=lambda event: app.page.pop_dialog()),
+                     ft.TextButton('Aplicar', on_click=apply)]))
 
     async def save(event=None):
-        value, error = sp.parse_site_limit(field.value)
-        if error:
-            message.value, message.visible = error, True
-            app.page.update()
+        changes = sp.body(state, original)
+        if not changes:
+            await app.go('station_admin', station_id=sid, page='power')
             return
-        body = {'site_limit_kw': value, 'building_profile': state['profile'], 'building_size': state['size']}
         try:
-            await app.api.request('PUT', f'stations/{sid}/power-site', body)
+            await app.api.request('PUT', f'stations/{sid}/power-site', changes)
         except ApiError as exc:
             message.value, message.visible = str(exc), True
             app.page.update()
             return
-        app.notice('Limite contratado salvo.')
+        if hasattr(app, 'mark_saved'):
+            app.mark_saved()
+        app.notice('Limites salvos.')
         await app.go('station_admin', station_id=sid, page='power')
 
-    return _sub_page(app, sid, 'Limite contratado', SITE_HELP, [
-        design.labeled('Limite contratado', _rounded(field), gap=9),
-        design.labeled('Tipo de estabelecimento', kinds, gap=9),
-        design.labeled('Porte', sizes, gap=9),
-        hint,
-    ], [message, _save_button('Salvar limite', app.action(save))])
+    sync_controls()
+    draw()
+    lanes = ft.Column([
+        _lane_head(theme.AMBER, 'Loja', store_value, site_load.LABEL, striped=True),
+        store_range,
+        design.txt(sp.ESTIMATE_HELP, 10.5, 'regular', theme.GRAY_TEXT, data='estimate-help'),
+        ft.Container(height=6),
+        _lane_head(theme.BTN_PRIMARY, 'Limite contratado', limit_value),
+        _inset(limit_slider),
+        design.txt(LIMIT_HELP, 10.5, 'regular', theme.GRAY_TEXT),
+        ft.Container(height=6),
+        _lane_head(theme.GREEN, 'Máximo dos carregadores', cap_value),
+        _inset(cap_lane),
+        design.txt(CAP_LANE_HELP, 10.5, 'regular', theme.GRAY_TEXT),
+    ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    card = design.card_box(ft.Column([
+        design.txt('Para os carregadores', 13.5, 'bold'), hero, equation, ft.Container(height=4), ruler,
+        ft.Divider(height=18, color=theme.BORDER_SOFT), lanes, hint,
+    ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        padding=ft.Padding(left=16, right=16, top=15, bottom=14), radius=18, data='limits-card')
+    controls = [card,
+                ft.Row([ft.TextButton('Digitar valores', icon=ft.Icons.KEYBOARD, on_click=ask_values,
+                                      data='type-values')], alignment=ft.MainAxisAlignment.END),
+                design.labeled('Avisar quando os limites reduzirem uma recarga', notify, gap=5, strong=False)]
+    if station.get('rebalance_enabled') is False:
+        controls.append(design.txt(FIXED_LIMITS_NOTE, 10.5, 'regular', theme.GRAY_TEXT))
+    return _sub_page(app, sid, 'Limites', LIMITS_HELP, controls,
+                     [message, ft.Row([design.secondary_button('Restaurar padrão', app.action(restore), height=50,
+                                                               expand=True),
+                                       design.primary_button('Salvar limites', app.action(save), height=50,
+                                                             expand=True)], spacing=12)])
 
 
 def cap_page(app, station):

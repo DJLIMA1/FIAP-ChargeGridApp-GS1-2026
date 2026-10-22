@@ -83,17 +83,20 @@ class Station(Base):
     # START e mostrar o QR de pagamento no painel físico.
     prepay_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     kiosk_payments: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-    # Rebalanceamento ao vivo (migração b7d2f4a91c36): limite contratado da instalação (loja
-    # incluída; NULL = padrão do tipo/porte, chargegrid_core.site_load) e consumo do estabelecimento.
-    # Sem medição real, o consumo é SIMULADO pela curva do tipo/porte; ``building_load_kw`` com
-    # ``building_load_source = 'simulated'`` é o valor enviado pelo simulador/demo (PUT building-load),
-    # válido por 30 min. Ligado por padrão desde a migração a3e8c5d1f7b9.
+    # Limites do posto (chargegrid_core.site_load): limite contratado da instalação (loja incluída;
+    # NULL = padrão pelo pico estimado) e, desde a migração d8b3f6a2c5e7, a margem ESTIMADA da loja
+    # (mínimo e pico típicos; NULL = 14–22 kW). Sem medidor, o pico estimado fica reservado o tempo
+    # todo: carregadores = min(max_power_kw, contratado − pico). Rebalanceamento ligado por padrão
+    # desde a migração a3e8c5d1f7b9.
     site_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    store_min_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    store_peak_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # DESCONTINUADAS (sem uso desde d8b3f6a2c5e7; mantidas por uma versão para rollback): consumo
+    # simulado/manual da loja e tipo/porte da curva simulada.
     building_load_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     building_load_source: Mapped[str | None] = mapped_column(String(20))
     building_load_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
-    # Tipo e porte do estabelecimento para a curva simulada (NULL = conveniência, porte médio).
     building_profile: Mapped[str | None] = mapped_column(String(20))
     building_size: Mapped[str | None] = mapped_column(String(10))
     # Totem de autoatendimento no painel físico (migração f4b9d2c7e1a3; modules/kiosk_totem).
@@ -108,6 +111,11 @@ class Station(Base):
         CheckConstraint("building_load_kw IS NULL OR building_load_kw >= 0", name="station_building_load_range"),
         CheckConstraint("building_load_source IS NULL OR building_load_source IN ('simulated')",
                         name="station_building_load_source"),
+        CheckConstraint("store_min_kw IS NULL OR store_min_kw >= 0", name="station_store_min_range"),
+        CheckConstraint("store_peak_kw IS NULL OR (store_peak_kw >= 0 AND store_peak_kw <= 10000)",
+                        name="station_store_peak_range"),
+        CheckConstraint("store_min_kw IS NULL OR store_peak_kw IS NULL OR store_min_kw <= store_peak_kw",
+                        name="station_store_min_le_peak"),
     )
 
 

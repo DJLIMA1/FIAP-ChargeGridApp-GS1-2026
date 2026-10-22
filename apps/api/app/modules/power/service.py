@@ -14,11 +14,10 @@ envelopes (aplicado confirmado ou ajuste pendente) dos outros pontos. Redução 
 confirmação é reenviada uma vez; na segunda falha o ponto recebe STOP. Ponto offline
 mantém a capacidade reservada: falta de rede nunca prova parada.
 
-Entradas do posto (``site_inputs``): o limite contratado é o informado pelo dono ou, sem ele,
-o padrão do tipo/porte do estabelecimento (``site_load.default_site_limit_kw``: 75 kW do
-Grupo B ou pico × 1,3). Sem medidor real, o consumo da loja é SIMULADO pela curva do tipo/porte
-(``site_load.simulate``, janelas de 5 min, reproduzível por posto); um valor enviado pelo
-simulador/demo (``PUT building-load``) vale por ``MANUAL_LOAD_TTL`` e depois volta à curva.
+Entradas do posto (``site_inputs``, regra em ``chargegrid_core.site_load``): o limite contratado é
+o informado pelo dono ou, sem ele, o padrão (75 kW do Grupo B ou pico estimado × 1,3). Sem medidor,
+a loja é uma margem ESTIMADA fixa (mínimo e pico; padrão 14–22 kW): o pico estimado fica reservado
+o tempo todo, por cima de tudo. Não há consumo ao vivo nem simulado.
 """
 
 from datetime import timedelta
@@ -44,7 +43,6 @@ ZERO = Decimal(0)
 KW = Decimal("0.001")
 TENTH = Decimal("0.1")
 POWER_EVENTS = ("power_requested", "power_applied", "power_failed")
-MANUAL_LOAD_TTL = timedelta(minutes=30)
 
 
 def kw_to_w(value) -> int:
@@ -153,31 +151,12 @@ def _state(db, station):
     ]
 
 
-def manual_until(station):
-    """Fim da validade do consumo enviado pelo simulador/demo (``PUT building-load``), ou ``None``."""
-    if station.building_load_kw is None or station.building_load_source != "simulated" \
-            or station.building_load_updated_at is None:
-        return None
-    return station.building_load_updated_at + MANUAL_LOAD_TTL
+def site_inputs(station):
+    """Entradas da decisão do posto: limite efetivo e margem ESTIMADA da loja (fixa).
 
-
-def site_inputs(station, moment=None):
-    """Entradas da decisão do posto: limite efetivo e consumo da loja (SIMULADO).
-
-    ``{site_limit_kw, site_limit_default, building_load_kw, building_load_mode ('profile' | 'manual'),
-    building_load_at, manual_until}``."""
-    moment = moment or now()
-    limit, is_default = site_load.effective_site_limit(station.site_limit_kw, station.building_profile,
-                                                       station.building_size)
-    until = manual_until(station)
-    if until is not None and until > moment:
-        load, mode, at = Decimal(station.building_load_kw), "manual", station.building_load_updated_at
-    else:
-        load = site_load.simulate(str(station.id), moment, station.building_profile, station.building_size,
-                                  site_limit_kw=limit)
-        mode, at, until = "profile", site_load.window_start(moment), None
-    return {"site_limit_kw": limit, "site_limit_default": is_default, "building_load_kw": load,
-            "building_load_mode": mode, "building_load_at": at, "manual_until": until}
+    ``{site_limit_kw, site_limit_default, store_min_kw, store_peak_kw, store_estimate_default,
+    store_reserve_kw}``."""
+    return site_load.site_inputs(station.site_limit_kw, station.store_min_kw, station.store_peak_kw)
 
 
 def _decide(station, points, inputs=None):
@@ -203,7 +182,7 @@ def _decide(station, points, inputs=None):
     return balancing.decide(
         participants,
         site_limit_kw=inputs["site_limit_kw"],
-        building_load_kw=inputs["building_load_kw"],
+        store_reserve_kw=inputs["store_reserve_kw"],
         station_cap_kw=station.max_power_kw,
     )
 
@@ -476,8 +455,20 @@ def _refresh_decision(db, station):
                            _labels(points))
 
 
+def _station_ratings(db, station):
+    """Nominais dos conectores ativos (não removidos nem aposentados) do posto."""
+    from ...http_helpers import retired_ids
+
+    points = db.scalars(select(Connector).where(Connector.station_id == station.id,
+                                                Connector.removed_at.is_(None))).all()
+    retired = retired_ids(db, [point.id for point in points])
+    return [point.power_kw for point in points if point.active and point.id not in retired]
+
+
 def set_site(db, station, data):
+    """Limites do posto num só salvamento; valida o estado final (``site_load.validate``)."""
     fields = data.model_fields_set
+    ratings = _station_ratings(db, station)  # antes de mudar o posto (a consulta faria autoflush)
     if "site_limit_kw" in fields:
         value = data.site_limit_kw
         if value is not None:
@@ -485,30 +476,31 @@ def set_site(db, station, data):
                 fail("invalid_power_limit", "Informe um limite contratado maior que zero.", 422)
             value = _quantize_kw(value)
             if value > power_rules.STATION_MAX_KW:
-                fail("invalid_power_limit",
-                     f"O limite contratado deve ser de até {power_rules.kw_text(power_rules.STATION_MAX_KW)} kW.", 422)
+                fail("invalid_power_limit", "O limite contratado deve ser de até 10.000 kW.", 422)
         station.site_limit_kw = value
+    for name in ("store_min_kw", "store_peak_kw"):
+        if name in fields:
+            value = getattr(data, name)
+            setattr(station, name, None if value is None else _quantize_kw(value))
     if "rebalance_enabled" in fields:
         if data.rebalance_enabled is None:
             fail("null_not_allowed", "Campo não aceita null", 422)
         station.rebalance_enabled = data.rebalance_enabled
-    if "building_profile" in fields:
-        station.building_profile = data.building_profile
-    if "building_size" in fields:
-        station.building_size = data.building_size
-    db.flush()
-    _refresh_decision(db, station)
-
-
-def set_building_load(db, station, value):
-    """Consumo enviado pelo simulador/demo (vale ``MANUAL_LOAD_TTL``); ``None`` volta à simulação automática."""
-    if value is None:
-        station.building_load_kw = None
-        station.building_load_source = None
-    else:
-        station.building_load_kw = _quantize_kw(value)
-        station.building_load_source = "simulated"
-    station.building_load_updated_at = now()
+    if "power_limit_notify" in fields:
+        if data.power_limit_notify is None:
+            fail("null_not_allowed", "Campo não aceita null", 422)
+        station.power_limit_notify = data.power_limit_notify
+    if "max_power_kw" in fields:
+        try:
+            station.max_power_kw = power_rules.validate_station_max(data.max_power_kw, ratings)
+        except ValueError as exc:
+            fail("invalid_power_limit", str(exc), 422)
+    if fields & {"site_limit_kw", "store_min_kw", "store_peak_kw"}:
+        try:
+            site_load.validate(station.site_limit_kw, station.store_min_kw, station.store_peak_kw, ratings)
+        except ValueError as exc:
+            fail("invalid_store_estimate", str(exc), 422)
+    # building_profile/building_size: descontinuados, aceitos e ignorados.
     db.flush()
     _refresh_decision(db, station)
 
@@ -558,27 +550,27 @@ def station_view(db, station):
         .order_by(PowerDecision.created_at.desc(), PowerDecision.id.desc()).limit(20)
     ).all()
     total = sum(envelopes.values(), ZERO)
-    profile = site_load.profile_key(station.building_profile)
-    size = site_load.size_key(station.building_size)
+    ratings = [connector.power_kw for connector in connectors if connector.active]
     return {
         "station_id": str(station.id),
         "rebalance_enabled": station.rebalance_enabled,
-        # Limite efetivo (o do dono ou o padrão do tipo/porte) e o informado pelo dono (null = padrão).
+        # Limite efetivo (o do dono ou o padrão pelo pico estimado) e o informado pelo dono (null = padrão).
         "site_limit_kw": _text(inputs["site_limit_kw"]),
         "site_limit_default": inputs["site_limit_default"],
         "site_limit_configured_kw": _text(station.site_limit_kw),
-        "site_limit_default_kw": _text(site_load.default_site_limit_kw(profile, size)),
-        # Consumo da loja agora: sempre SIMULADO (sem medidor); curva do tipo/porte ou valor do simulador.
-        "building_load_kw": _text(inputs["building_load_kw"]),
-        "building_load_source": "simulated",
-        "building_load_simulated": True,
-        "building_load_mode": inputs["building_load_mode"],
-        "building_load_updated_at": inputs["building_load_at"],
-        "building_load_manual_until": inputs["manual_until"],
-        "building_profile": profile,
-        "building_size": size,
-        "building_profile_label": site_load.profile_label(profile, size),
-        "building_peak_kw": _text(site_load.peak_kw(profile, size)),
+        "site_limit_default_kw": _text(site_load.default_site_limit_kw(inputs["store_peak_kw"])),
+        # Margem ESTIMADA da loja (fixa, sem medidor nem simulação): o pico fica reservado o tempo todo.
+        "store_min_kw": _text(inputs["store_min_kw"]),
+        "store_peak_kw": _text(inputs["store_peak_kw"]),
+        "store_reserve_kw": _text(inputs["store_reserve_kw"]),
+        "store_estimate_default": inputs["store_estimate_default"],
+        "store_estimate_label": site_load.LABEL,
+        # DESCONTINUADO (apps antigos): igual a store_reserve_kw.
+        "building_load_kw": _text(inputs["store_reserve_kw"]),
+        "power_limit_notify": station.power_limit_notify,
+        "connectors_total_kw": _text(sum((Decimal(value) for value in ratings), ZERO)),
+        "charger_floor_kw": _text(site_load.charger_floor(ratings)),
+        "chargers_floor_total_kw": _text(sum((power_rules.floor_for(value) for value in ratings), ZERO)),
         "station_cap_kw": _text(station.max_power_kw),
         "available_kw": _text(decision["available_kw"]),
         "allocated_kw": _text(decision["allocated_kw"]),

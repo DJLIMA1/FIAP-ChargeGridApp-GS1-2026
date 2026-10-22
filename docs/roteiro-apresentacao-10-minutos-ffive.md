@@ -47,7 +47,7 @@ As falas estão em citações. As indicações **TELA / AÇÃO** são para a equ
 
 **TELA / AÇÃO:** Voltar à lista de estações, abrir o posto e o detalhe de potência. Apontar o limite da instalação e a parcela do estabelecimento. Deixar essa tela preparada no segundo celular para acompanhar a recarga.
 
-> No painel operacional, o dono acompanha seus postos. O balanceamento considera o consumo da loja e os carros carregando. Para testar isso, simulamos seis tipos de estabelecimento e três portes, com variações de horário e calendário. Quando a potência diminui, o sistema informa o motivo.
+> No painel operacional, o dono acompanha seus postos. O balanceamento considera o consumo da loja e os carros carregando. Como não medimos a loja, o dono informa uma estimativa do consumo mínimo e do pico, e o sistema reserva o pico o tempo todo antes de dividir o resto. Quando a potência diminui, o sistema informa o motivo.
 
 ## 2. Conta do usuário e recarga
 
