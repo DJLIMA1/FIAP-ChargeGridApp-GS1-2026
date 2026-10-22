@@ -11,6 +11,7 @@ from test_consumer_flows import (
     charging_app,
     fields,
     next_charging_step,
+    receipt_for,
     reservation,
     texts,
 )
@@ -24,7 +25,7 @@ from chargegrid_app.demo import (
     DEMO_PRESENCE_CODE,
     DemoApi,
 )
-from chargegrid_app.screens import charging, history, home, reservations, stations
+from chargegrid_app.screens import charge_detail, charging, history, home, reservations, stations
 from chargegrid_app.services import maps
 from chargegrid_app.services.location import geocode_demo_address
 from chargegrid_app.services.search_location import SearchLocation
@@ -195,12 +196,15 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         reservation_screen = await reservations.build(app,detail=True)
         self.assertIn('Reserva simulada confirmada',texts(reservation_screen))
         self.assertIn(DEMO_PRESENCE_CODE,texts(reservation_screen))
-        app.api.request.return_value = {'items':[{**CONTEXT,'id':'demo-session','status':'completed',
-                                                'max_duration_minutes':10,'soc_percent':45}],'total':1}
+        item = {**CONTEXT,'id':'demo-session','status':'completed','max_duration_minutes':10,'soc_percent':45,
+                'source':'simulated'}
+        app.api.request.return_value = {'items':[item],'total':1}
         history_screen = await history.build(app)
         self.assertIn('HISTÓRICO SIMULADO',texts(history_screen))
-        self.assertIn('Recarga simulada concluída',texts(history_screen))
-        self.assertIn('Bateria simulada: 45%',texts(history_screen))
+        app.api.request.return_value = receipt_for(item,demo=True)
+        detail = await history.build(app,session='demo-session')
+        for expected in ('CONTA DEMO','SIMULADO','Bateria simulada','45%',charge_detail.EXPORT_DEMO_NOTE):
+            self.assertIn(expected,texts(detail))
 
     async def test_demo_home_labels_simulated_state_without_duplicate_banner(self):
         app = HandlerApp()

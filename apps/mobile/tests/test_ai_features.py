@@ -277,7 +277,11 @@ class AiScreensTests(unittest.IsolatedAsyncioTestCase):
     async def test_history_session_insight_and_operator_insights(self):
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1'}), \
                 patch('httpx.AsyncClient', side_effect=AssertionError('network')):
-            screen = await history.build(self.app)
+            # O resumo inteligente fica nos detalhes da recarga (não no cartão da lista).
+            listing = await history.build(self.app)
+            self.assertNotIn('Resumo inteligente da recarga', texts(listing))
+            first = (await self.app.api.request('GET', 'me/charging-sessions'))['items'][0]
+            screen = await history.build(self.app, session=first['id'])
             await by_tooltip(screen, 'Resumo inteligente da recarga')(None)
             self.assertIn('Recarga de 2,40 kWh', texts(screen))
             self.assertIn('Valores estimados', texts(screen))

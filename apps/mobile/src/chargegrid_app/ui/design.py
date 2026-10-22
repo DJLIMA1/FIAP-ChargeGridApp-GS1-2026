@@ -19,7 +19,9 @@ Rotas do consumidor
   booking         assistente de recarga          (aba Recarga) params: step (1..N),
                   station_id, connector_id, mode, ...
   reservations / charging   fluxos já existentes (aba Recarga)
-  history, chat, profile (Conta), coupons
+  history         histórico; ``session=<id>`` abre os detalhes da recarga (``screens/charge_detail.py``;
+                  ``receipt=<id>`` é o nome antigo); voltar -> a mesma lista
+  chat, profile (Conta), coupons
   wallet          saldo do consumidor (aba Conta) params: step, page, ... ; voltar -> profile
   notifications   lista de notificações (sem aba ativa; voltar -> home)
 

@@ -653,9 +653,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
                 await app.go('charging')
-            # Atalho para o recibo explicável (subpágina do histórico).
+            # Atalho para os detalhes da recarga com o recibo (subpágina do histórico).
             extra.insert(extra.index(offline),
-                         ft.Container(button('Ver recibo',app.link('history',receipt=session['id']),secondary=True),
+                         ft.Container(button('Ver detalhes da recarga',app.link('history',session=session['id']),secondary=True),
                                       data='receipt-shortcut'))
             if getattr(app,'charging_draft',None):
                 extra.insert(0,button('Retomar preparação da recarga',app.link('charging'),secondary=True))

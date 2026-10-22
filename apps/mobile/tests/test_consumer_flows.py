@@ -12,6 +12,7 @@ from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import charging, history, home, reservations, stations
 from chargegrid_app.services.search_location import SearchLocation
 from chargegrid_app.ui.point_summary import point_context
+from chargegrid_core import receipt as core_receipt
 from test_behavior import HandlerApp, click, descendants, station_responses
 
 POINT = {'id':'point-one','public_code':'CG-ONE','connector_type':'Tipo 2',
@@ -19,6 +20,13 @@ POINT = {'id':'point-one','public_code':'CG-ONE','connector_type':'Tipo 2',
 STATION = {'id':'station-one','name':'Posto Central','address':'Rua Central, 10',
            'latitude':-23.5,'longitude':-46.6,'connectors':[POINT]}
 CONTEXT = point_context(STATION,POINT)
+
+
+def receipt_for(session, events=(), demo=False):
+    """Recibo do mesmo núcleo da API para uma sessão do histórico (detalhes da recarga)."""
+    return core_receipt.build_receipt({'session':session,
+                                       'station':{'name':session.get('station_name'),'address':session.get('station_address')},
+                                       'point':session.get('connector') or {},'events':list(events),'demo':demo})
 
 
 def texts(screen):
@@ -188,34 +196,41 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
     async def test_history_uses_session_tariff_and_limit_not_current_point_price(self):
         app = HandlerApp()
         session = {**CONTEXT,'id':'session','status':'completed','max_duration_minutes':5,'price_per_kwh':'1.25'}
-        app.api.request.return_value = {'items':[session],'total':1}
-        screen = await history.build(app)
-        self.assertIn('Tarifa da sessão: R$ 1,25/kWh',texts(screen))
-        self.assertNotIn('R$ 2,00/kWh',texts(screen))
-        self.assertIn('limite de 5 min',texts(screen))
-
-    async def test_history_reveals_only_fetched_observed_events(self):
-        app = HandlerApp()
-        session = {**CONTEXT,'id':'session','status':'completed','max_duration_minutes':5,'price_per_kwh':'1.25'}
         async def request(method,path,**kwargs):
             if path == 'me/charging-sessions':
                 return {'items':[session],'total':1}
-            self.assertEqual(path,'charging-sessions/session/events')
-            return [{'kind':'start_requested','source':'api','observed_at':'2026-09-27T12:00:00+00:00'},
-                    {'kind':'start_applied','source':'device_sync','observed_at':'2026-09-27T12:00:05+00:00'}]
+            self.assertEqual(path,'charging-sessions/session/receipt')
+            return receipt_for(session)
         app.api.request.side_effect = request
-        screen = await history.build(app)
-        self.assertNotIn('REGISTRO DA SESSÃO',texts(screen))
-        await click(screen,'Ver eventos da sessão')(None)
-        self.assertIn('REGISTRO DA SESSÃO',texts(screen))
-        self.assertIn('Início confirmado pelo ponto',texts(screen))
+        await history.build(app)
+        screen = await history.build(app,session='session')  # usa o item da lista: só o recibo é pedido
+        self.assertIn('R$ 1,25/kWh',texts(screen))
+        self.assertNotIn('R$ 2,00/kWh',texts(screen))
+        self.assertIn('Limite escolhido',texts(screen))
+        self.assertIn('5 min',texts(screen))
+
+    async def test_history_detail_timeline_shows_only_observed_events(self):
+        app = HandlerApp()
+        session = {**CONTEXT,'id':'session','status':'completed','max_duration_minutes':5,'price_per_kwh':'1.25',
+                   'started_at':'2026-09-27T12:00:05+00:00','ended_at':'2026-09-27T12:05:00+00:00'}
+        events = [{'kind':'start_requested','source':'api','observed_at':'2026-09-27T12:00:00+00:00'},
+                  {'kind':'start_applied','source':'device_sync','observed_at':'2026-09-27T12:00:05+00:00'}]
+        async def request(method,path,**kwargs):
+            if path == 'me/charging-sessions':
+                return {'items':[session],'total':1}
+            self.assertEqual(path,'charging-sessions/session/receipt')  # sem GET /events separado
+            return receipt_for(session,events)
+        app.api.request.side_effect = request
+        listing = await history.build(app)
+        self.assertNotIn('Ver eventos da sessão',texts(listing))
+        screen = await history.build(app,session='session')
+        timeline = next(item for item in descendants(screen) if getattr(item,'data',None) == 'timeline')
+        body = next(item for item in descendants(screen) if isinstance(item,ft.Column) and item.visible is False
+                    and 'Início confirmado pelo ponto' in texts(item))
+        timeline.on_click(None)
+        self.assertTrue(body.visible)
         self.assertIn('sincronização do ponto',texts(screen))
-        self.assertIn('horário local',texts(screen))
-        await click(screen,'Ocultar eventos da sessão')(None)
-        # The history row is itself a card; the events panel nested in it is hidden.
-        self.assertTrue(any(not item.visible for item in descendants(screen)
-                            if isinstance(item,ft.Container) and item.content
-                            and 'REGISTRO DA SESSÃO' in texts(item)))
+        self.assertNotIn('Parada confirmada',texts(screen))
 
     async def test_reservation_screen_shows_destination_and_correct_charge_context(self):
         app = HandlerApp()

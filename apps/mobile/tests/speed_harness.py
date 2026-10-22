@@ -173,7 +173,7 @@ async def driver_rows(latency=LATENCY):
         rows.append(await h.open('Booking passo 2', 'booking', station_id=station['id'], step=2, kind='reserve'))
         rows.append(await h.open('Histórico', 'history'))
         if receipt_id:
-            rows.append(await h.open('Recibo', 'history', receipt=receipt_id))
+            rows.append(await h.open('Detalhes da recarga', 'history', session=receipt_id))
         rows.append(await h.open('Chat', 'chat'))
         rows.append(await h.open('Conta', 'profile'))
         h.advance(30)

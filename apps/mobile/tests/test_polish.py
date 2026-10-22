@@ -65,20 +65,17 @@ class PolishTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(chips.wrap)
         self.assertEqual(chips.scroll, ft.ScrollMode.AUTO)
 
-    async def test_history_shows_ai_summary_on_the_card(self):
+    async def test_ai_summary_lives_in_the_charge_detail_not_on_the_card(self):
         api = DemoApi()
         await api.login(DEMO_EMAIL, DEMO_PASSWORD)
         app = SimpleNamespace(api=api, profile={}, page=SimpleNamespace(update=lambda: None),
                               action=lambda operation: operation, link=lambda *args, **kwargs: None)
+        marker = ('ai-disclosure', 'Resumo inteligente da recarga')
         screen = await history.build(app)
-        cards = [item for item in descendants(screen) if isinstance(item, ft.ExpansionTile)]
-        self.assertTrue(cards)
-        # The disclosure lives on the card, not inside the collapsed "Detalhes da sessão".
-        for tile in cards:
-            self.assertFalse(any(getattr(item, 'data', None) == ('ai-disclosure', 'Resumo inteligente da recarga')
-                                 for control in tile.controls for item in descendants(control)))
-        self.assertTrue(any(getattr(item, 'data', None) == ('ai-disclosure', 'Resumo inteligente da recarga')
-                            for item in descendants(screen)))
+        self.assertFalse(any(getattr(item, 'data', None) == marker for item in descendants(screen)))
+        first = (await api.request('GET', 'me/charging-sessions'))['items'][0]
+        detail = await history.build(app, session=first['id'])
+        self.assertTrue(any(getattr(item, 'data', None) == marker for item in descendants(detail)))
         await api.close()
 
     def test_charge_needed_next_stop_is_highlighted(self):
