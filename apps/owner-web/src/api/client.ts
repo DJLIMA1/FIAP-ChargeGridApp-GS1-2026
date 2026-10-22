@@ -194,6 +194,8 @@ export function createApiClient(config: ApiClientConfig) {
       request<T>('POST', path, { ...options, body }),
     patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, { body }),
     put: <T>(path: string, body: unknown) => request<T>('PUT', path, { body }),
+    /** DELETE sem corpo; 204 (corpo vazio) resolve `undefined`. */
+    delete: <T = void>(path: string) => request<T>('DELETE', path),
     /** Arquivo (CSV/PDF) com a mesma autenticação; o nome é montado por quem chama. */
     async blob(path: string, query?: Query, timeoutMs = 60_000): Promise<Blob> {
       const response = await send('GET', path, { query, timeoutMs })

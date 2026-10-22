@@ -163,7 +163,15 @@ export interface Connector {
   reserved_until?: string | null
   /** Totem 0.8.0: ponto travado por um pedido do totem (`occupied` + "Em uso no totem"). */
   kiosk_in_use?: boolean
+  /**
+   * Carregador online: a tela tem contato E o carregador deste endereço respondeu à tela no último
+   * sync. Firmware antigo (sem endereço reportado): igual a `screen_online`.
+   */
   online?: boolean
+  /** A TELA da estação tem contato (sync < 45 s). Diferente de `online` (o carregador). */
+  screen_online?: boolean
+  /** `charger_offline` (tela online, carregador sem resposta) ou `screen_offline` (tela sem contato). */
+  unavailable_reason?: UnavailableReason | null
   physical_state?: string
   retired?: boolean
   /** Limite do vendedor para o conector (`null` = nominal) e a potência efetiva no posto (`power.allocate`). */
@@ -174,8 +182,37 @@ export interface Connector {
    * automático pela ordem do posto. `null` só em dado legado; ausente na API antiga.
    */
   charger_address?: number | null
-  /** Estado do link pelo último sync da tela (só o dono); `offline`/`pending` = a tela usa a simulação interna. */
+  /** Estado do carregador pelo último sync da tela (só o dono). */
   charger_link?: ChargerLink | null
+  /** A tela que comanda este carregador (só o dono); `null` = ponto sem tela. */
+  screen?: ChargerScreen | null
+}
+
+export type UnavailableReason = 'charger_offline' | 'screen_offline'
+
+/** Tela (ESP32-S3) que comanda um carregador: `role` `screen` = o ponto da própria tela (QR); `charger` = carregador adicional. */
+export interface ChargerScreen {
+  device_id: string
+  connector_id: string
+  public_code: string
+  online: boolean
+  last_seen: string | null
+  firmware_version: string | null
+  role: 'screen' | 'charger' | string
+  /** A tela declarou suporte a vários carregadores (firmware novo). */
+  multi_charger: boolean
+}
+
+/** Tela do posto (`station.screens`, só o dono) e os carregadores que ela comanda. */
+export interface StationScreen {
+  device_id: string
+  connector_id: string
+  public_code: string
+  online: boolean
+  last_seen: string | null
+  firmware_version: string | null
+  multi_charger: boolean
+  charger_ids: string[]
 }
 
 export type ChargerLinkState = 'online' | 'offline' | 'pending'
@@ -189,6 +226,10 @@ export interface ChargerLink {
   simulated?: boolean
   /** `pending` = a tela (online) ainda não confirmou este endereço. */
   link: ChargerLinkState | string
+  /** Última leitura OK do carregador pela tela (ISO) ou `null`. */
+  last_online_at?: string | null
+  /** Potência lida do carregador (W) ou `null`. */
+  measured_power_w?: number | null
   reported?: { model: string; transport: string; address: number; link: string } | null
 }
 
@@ -215,6 +256,10 @@ export interface Station {
   kiosk_status?: StationKioskStatus | null
   /** Frente D: termos vigentes da taxa de permanência. */
   overstay?: StationOverstay | null
+  /** A estação (tela) tem contato: alguma tela do posto online; `null` = posto sem tela. */
+  screen_online?: boolean | null
+  /** Só o dono: as telas do posto e os carregadores de cada uma. */
+  screens?: StationScreen[]
 }
 
 export interface Coupon {

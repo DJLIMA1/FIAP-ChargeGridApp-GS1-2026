@@ -219,7 +219,7 @@ export function PowerCard({ station }: { station: Station }) {
           {points.length ? (
             <div>
               <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
-                Por conector
+                Por carregador
               </div>
               {points.map((connector) => {
                 const line = connectorLine(connectorPower(connector, view))

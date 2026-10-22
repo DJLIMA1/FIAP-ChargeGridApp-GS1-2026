@@ -345,6 +345,7 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     address_field = charger_address_field(connector) if connector else None
 
     async def save():
+        refresh.invalidate()
         body = {'public_code':onboarding_screen._required(public,'código público',50),
                 'connector_type':onboarding_screen._required(kind,'tipo de conector',50),
                 'power_kw':onboarding_screen._number(power,'Potência',Decimal('0.001'),1000),

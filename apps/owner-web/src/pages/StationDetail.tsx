@@ -7,18 +7,34 @@ import { useAuth } from '../auth/AuthContext'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
-import { ChargerField } from '../components/station/ChargerField'
+import { ChargerCard } from '../components/station/ChargerCard'
 import { EconomicsCard } from '../components/station/EconomicsCard'
 import { KioskField } from '../components/station/KioskField'
 import { OverstayCard } from '../components/station/OverstayCard'
 import { PowerCard } from '../components/station/PowerCard'
-import { Badge, Card, EmptyState, ErrorBanner, Field, PageHead, Skeleton, Switch } from '../components/ui'
-import { nextFreeChargerAddress } from '../lib/charger'
+import { ScreenStatus } from '../components/station/ScreenStatus'
+import { Badge, Banner, Card, ConfirmDialog, EmptyState, ErrorBanner, Field, PageHead, Skeleton } from '../components/ui'
+import {
+  REMOVE_CHARGER_HINT,
+  STATION_SCREEN_META,
+  addChargerErrorText,
+  addChargerTarget,
+  cgAddrHint,
+  chargerName,
+  nextFreeChargerAddress,
+  offlineChargers,
+  removableCharger,
+  removeChargerErrorText,
+  removeChargerQuestion,
+  stationChargerSummary,
+  stationScreenState,
+} from '../lib/charger'
 import { useFilters } from '../lib/filters'
-import { formatPower, formatRelative, formatTariff } from '../lib/format'
-import { AMENITY_KINDS, AMENITY_LABELS, availabilityMeta } from '../lib/labels'
-import { useApi } from '../lib/useApi'
-import { toInputDecimal, validateDuration, validatePower, validatePrice, validateText } from '../lib/validate'
+import { formatRelative } from '../lib/format'
+import { AMENITY_KINDS, AMENITY_LABELS } from '../lib/labels'
+import { useStationView } from '../lib/useStationView'
+import { useLiveDraft } from '../lib/useLiveDraft'
+import { validateText } from '../lib/validate'
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -32,22 +48,17 @@ function errorText(error: unknown): string {
 export function StationForm({ station, onSaved }: { station: Station; onSaved(next: Station): void }) {
   const { ep } = useAuth()
   const toast = useToast()
-  const [name, setName] = useState(station.name)
-  const [address, setAddress] = useState(station.address)
-  const [active, setActive] = useState(station.active)
-  // Coordenadas da sugestão escolhida: o mapa do app passa a apontar para o novo endereço.
+  const initial = useMemo(() => ({ name: station.name, address: station.address, active: station.active }),
+    [station.name, station.address, station.active])
+  const [draft, setDraft, formEvents] = useLiveDraft(initial)
+  const { name, address, active } = draft
+  const setName = (value: string) => setDraft((previous) => ({ ...previous, name: value }))
+  const setAddress = (value: string) => setDraft((previous) => ({ ...previous, address: value }))
+  const setActive = (value: boolean) => setDraft((previous) => ({ ...previous, active: value }))
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [touched, setTouched] = useState(false)
-
-  // Só os campos do formulário: ligar o totem (salvo na hora) não descarta o que está sendo digitado.
-  useEffect(() => {
-    setName(station.name)
-    setAddress(station.address)
-    setActive(station.active)
-    setCoords(null)
-  }, [station.name, station.address, station.active])
 
   const nameError = validateText(name, 'o nome da estação', 100)
   const addressError = validateText(address, 'o endereço', 300)
@@ -82,8 +93,10 @@ export function StationForm({ station, onSaved }: { station: Station; onSaved(ne
   }
 
   return (
-    <Card title="Dados da estação" sub="Visíveis para os motoristas no app; o totem liga e desliga na hora" id="station-data">
-      <form onSubmit={save} className="stack" noValidate>
+    <Card title="Dados da estação" sub="Dados visíveis para motoristas; a central gerencia os carregadores." id="station-data">
+      <form onSubmit={save} className="stack" noValidate {...formEvents}>
+        <ScreenStatus station={station} />
+        {stationScreenState(station) === 'offline' ? <StationHealth station={station} /> : null}
         {error ? <ErrorBanner error={error} title="Alterações não salvas" /> : null}
         <div className="form-grid">
           <Field label="Nome da estação" error={touched || name !== station.name ? nameError : null}>
@@ -141,116 +154,145 @@ export function StationForm({ station, onSaved }: { station: Station; onSaved(ne
   )
 }
 
-/* ------------------------------------------------------------------ conector */
-function ConnectorEditor({ connector, onSaved, suggestedAddress = null }: { connector: Connector; onSaved(next: Connector): void; suggestedAddress?: number | null }) {
+/* -------------------------------------------------------------- carregadores */
+
+/** Banner do estado da estação × carregadores: um carregador offline não derruba a estação. */
+export function StationHealth({ station }: { station: Station }) {
+  const state = stationScreenState(station)
+  if (state === 'offline') {
+    return (
+      <Banner tone="error" icon="wifiOff" title="Estação offline">
+        A central está sem contato: todos os carregadores ficam indisponíveis até ela voltar.
+      </Banner>
+    )
+  }
+  const offline = offlineChargers(station)
+  if (state !== 'online' || !offline.length) return null
+  const codes = offline.map((c) => c.public_code).join(', ')
+  return (
+    <Banner tone="info" icon="alert" title={offline.length === 1 ? `Carregador ${codes} offline` : `Carregadores ${codes} offline`}>
+      {offline.length === 1 ? 'Só esse ponto fica indisponível' : 'Só esses pontos ficam indisponíveis'}; os motoristas são orientados a usar outro ponto da estação.
+    </Banner>
+  )
+}
+
+export function ChargersCard({
+  station,
+  onSaved,
+  onAdded,
+  onRemoved,
+  suggestedAddress = null,
+}: {
+  station: Station
+  onSaved(next: Connector): void
+  onAdded(next: Connector): void
+  onRemoved?(removed: Connector): void
+  suggestedAddress?: number | null
+}) {
   const { ep } = useAuth()
   const toast = useToast()
-  const initial = useMemo(
-    () => ({
-      price: toInputDecimal(connector.price_per_kwh, 2),
-      power: toInputDecimal(connector.power_kw),
-      duration: String(connector.max_duration_minutes),
-      active: connector.active,
-    }),
-    // Só os campos do formulário: salvar o carregador (na hora) não descarta o que está sendo digitado.
-    [connector.price_per_kwh, connector.power_kw, connector.max_duration_minutes, connector.active],
-  )
-  const [draft, setDraft] = useState(initial)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => setDraft(initial), [initial])
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [added, setAdded] = useState<Connector | null>(null)
+  // Carregador a remover (diálogo aberto), o DELETE em andamento e o erro dele (mostrado no diálogo).
+  const [removing, setRemoving] = useState<Connector | null>(null)
+  const [removeBusy, setRemoveBusy] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
+  const points = station.connectors
+  const target = addChargerTarget(station)
 
-  const price = validatePrice(draft.price)
-  const power = validatePower(draft.power)
-  const duration = validateDuration(draft.duration)
-  const invalid = Boolean(price.error || power.error || duration.error)
-  const body = useMemo(() => {
-    const changes: Record<string, string | number | boolean> = {}
-    if (price.value !== undefined && Number(price.value) !== Number(connector.price_per_kwh)) changes.price_per_kwh = price.value
-    if (power.value !== undefined && Number(power.value) !== Number(connector.power_kw)) changes.power_kw = power.value
-    if (duration.value !== undefined && duration.value !== connector.max_duration_minutes) changes.max_duration_minutes = duration.value
-    if (draft.active !== connector.active) changes.active = draft.active
-    return changes
-  }, [price.value, power.value, duration.value, draft.active, connector])
-  const dirty = Object.keys(body).length > 0
-  const status = availabilityMeta(connector)
-  const busy = ['charging', 'reserved', 'reconciling'].includes(connector.availability_status ?? '')
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    if (invalid || !dirty || saving) return
-    setSaving(true)
-    setError(null)
+  const add = async () => {
+    if (!target || adding) return
+    setAdding(true)
+    setAddError(null)
     try {
-      const next = await ep.patchConnector(connector.id, body)
-      onSaved(next)
-      toast(`Conector ${connector.public_code} atualizado`)
+      const next = await ep.addCharger(target.id)
+      setAdded(next)
+      onAdded(next)
+      toast(`Carregador ${next.public_code} adicionado`)
     } catch (err) {
-      setError(errorText(err))
+      setAddError(addChargerErrorText(err))
     } finally {
-      setSaving(false)
+      setAdding(false)
+    }
+  }
+
+  const askRemove = (connector: Connector) => {
+    setRemoveError(null)
+    setRemoving(connector)
+  }
+  const remove = async () => {
+    if (!removing || removeBusy) return
+    setRemoveBusy(true)
+    setRemoveError(null)
+    try {
+      await ep.removeCharger(removing.id)
+      if (added?.id === removing.id) setAdded(null)
+      onRemoved?.(removing)
+      toast(`${chargerName(removing)} removido. O endereço ficou livre para outro carregador.`)
+      setRemoving(null)
+    } catch (err) {
+      setRemoveError(removeChargerErrorText(err))
+    } finally {
+      setRemoveBusy(false)
     }
   }
 
   return (
-    <form className="connector-card" onSubmit={save} noValidate>
-      <div className="connector-head" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span className="tile" style={{ width: 40, height: 40, background: '#333' }}>
-          <Icon name="zap" size={19} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="num" style={{ fontSize: 22, fontWeight: 600 }}>
-              {connector.public_code}
+    <Card
+      title="Carregadores"
+      sub="Cada carregador é um GoodWe HCA G2 (simulado) comandado pela central da estação"
+      id="connectors"
+      action={
+        target ? (
+          <button type="button" className="btn btn-secondary" disabled={adding} onClick={() => void add()} data-testid="add-charger">
+            <Icon name="plus" size={16} /> {adding ? 'Adicionando…' : 'Adicionar carregador'}
+          </button>
+        ) : null
+      }
+    >
+      <div className="stack" style={{ gap: 12 }}>
+        {stationScreenState(station) !== 'offline' ? <StationHealth station={station} /> : null}
+        {addError ? <ErrorBanner error={addError} title="Carregador não adicionado" /> : null}
+        {added && added.charger_address !== null && added.charger_address !== undefined ? (
+          <Banner tone="ok" icon="check" title={`Carregador ${added.public_code} adicionado no endereço ${added.charger_address}`}>
+            <span data-testid="added-charger">
+              Inativo por enquanto. {cgAddrHint(added.charger_address)}, mesma rede Wi-Fi da central; publique quando ele ficar online.
             </span>
-            {status ? <Badge tone={status.tone}>{status.label}</Badge> : null}
-            {connector.retired ? <Badge tone="gray">Em restauração</Badge> : null}
-          </div>
-          <div className="muted" style={{ fontSize: 12.5 }}>
-            {connector.connector_type} · {formatPower(connector.power_kw)} · {formatTariff(connector.price_per_kwh)}
-          </div>
-        </div>
-        <Switch checked={draft.active} onChange={(value) => setDraft({ ...draft, active: value })} label={draft.active ? 'Publicado' : 'Desativado'} disabled={saving} />
+          </Banner>
+        ) : null}
+        {points.length ? (
+          points.map((connector) => (
+            <ChargerCard
+              key={connector.id}
+              connector={connector}
+              onSaved={onSaved}
+              suggestedAddress={suggestedAddress}
+              onRemove={onRemoved && removableCharger(connector) ? () => askRemove(connector) : undefined}
+            />
+          ))
+        ) : (
+          <EmptyState icon="plug" title="Nenhum carregador">
+            A estação aparece aqui depois de vincular a central pelo QR de propriedade no app ChargeGrid.
+          </EmptyState>
+        )}
       </div>
-      <div className="connector-fields">
-        <Field label="Tarifa" hint="R$/kWh" error={price.error && draft.price !== initial.price ? price.error : null}>
-          <div className="input-affix">
-            <span className="lead">R$</span>
-            <input className="input" inputMode="decimal" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} aria-invalid={Boolean(price.error)} />
-            <span className="affix">/kWh</span>
-          </div>
-        </Field>
-        <Field label="Potência" error={power.error && draft.power !== initial.power ? power.error : null}>
-          <div className="input-affix">
-            <input className="input" inputMode="decimal" value={draft.power} onChange={(e) => setDraft({ ...draft, power: e.target.value })} aria-invalid={Boolean(power.error)} />
-            <span className="affix">kW</span>
-          </div>
-        </Field>
-        <Field label="Duração máxima" error={duration.error && draft.duration !== initial.duration ? duration.error : null}>
-          <div className="input-affix">
-            <input className="input" inputMode="numeric" value={draft.duration} onChange={(e) => setDraft({ ...draft, duration: e.target.value })} aria-invalid={Boolean(duration.error)} />
-            <span className="affix">min</span>
-          </div>
-        </Field>
-      </div>
-      <ChargerField connector={connector} onSaved={onSaved} suggested={suggestedAddress} />
-      {error ? (
-        <div style={{ marginTop: 12 }}>
-          <ErrorBanner error={error} title="Conector não atualizado" />
-        </div>
+      {removing ? (
+        <ConfirmDialog
+          title={removeChargerQuestion(removing)}
+          confirmLabel="Remover"
+          busyLabel="Removendo…"
+          danger
+          busy={removeBusy}
+          error={removeError}
+          errorTitle="Carregador não removido"
+          onConfirm={() => void remove()}
+          onCancel={() => setRemoving(null)}
+        >
+          {REMOVE_CHARGER_HINT}
+        </ConfirmDialog>
       ) : null}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-        <span className="dim" style={{ fontSize: 12.5, flex: 1, minWidth: 200 }}>
-          {busy ? 'Há recarga ou reserva em andamento: a API só aceita alterações quando o ponto estiver livre.' : connector.online ? 'Dispositivo online' : 'Dispositivo offline'}
-        </span>
-        <button type="button" className="btn btn-ghost" disabled={!dirty || saving} onClick={() => { setDraft(initial); setError(null) }}>
-          Descartar
-        </button>
-        <button type="submit" className="btn btn-primary" disabled={!dirty || invalid || saving}>
-          {saving ? 'Salvando…' : 'Salvar conector'}
-        </button>
-      </div>
-    </form>
+    </Card>
   )
 }
 
@@ -268,10 +310,9 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
     () => (station.amenities ?? []).map((a) => ({ kind: a.kind, name: a.name ?? '', distance: a.distance_m === null || a.distance_m === undefined ? '' : String(a.distance_m) })),
     [station],
   )
-  const [rows, setRows] = useState(initial)
+  const [rows, setRows, formEvents] = useLiveDraft(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => setRows(initial), [initial])
 
   const problems = rows.map((row) => {
     if (row.name.length > 80) return 'Nome com até 80 caracteres'
@@ -308,7 +349,7 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
         </button>
       }
     >
-      <div className="stack" style={{ gap: 10 }}>
+      <div className="stack" style={{ gap: 10 }} {...formEvents}>
         {!rows.length ? (
           <p className="muted" style={{ margin: 0 }}>
             Nenhuma comodidade cadastrada.
@@ -353,13 +394,8 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
 /* ---------------------------------------------------------------------- page */
 export default function StationDetail() {
   const { id = '' } = useParams()
-  const { ep } = useAuth()
   const { replaceStation } = useFilters()
-  const { data, error, reload } = useApi((signal) => ep.station(id, signal), `station|${id}`)
-  const [station, setStation] = useState<Station | null>(null)
-  useEffect(() => {
-    if (data) setStation(data)
-  }, [data])
+  const { station, error, reload, update: acceptStation, lastRefresh } = useStationView(id)
   // Atalhos como /estacoes/:id#economics (do Resultado) rolam até o cartão.
   const { hash } = useLocation()
   const loaded = Boolean(station)
@@ -370,14 +406,27 @@ export default function StationDetail() {
   }, [loaded, hash])
 
   const update = (next: Station) => {
-    // A resposta do PATCH é a fonte da verdade (sem atualização otimista).
-    setStation(next)
+    acceptStation(next)
     replaceStation(next)
   }
   const updateConnector = (next: Connector) => {
-    if (!station) return
-    const merged = { ...station, connectors: station.connectors.map((c) => (c.id === next.id ? { ...c, ...next } : c)) }
-    update(merged)
+    acceptStation((previous) => ({ ...previous,
+      connectors: previous.connectors.map((c) => c.id === next.id ? { ...c, ...next } : c),
+    }))
+  }
+  const addConnector = (next: Connector) => {
+    acceptStation((previous) => ({ ...previous,
+      connectors: [...previous.connectors.filter((c) => c.id !== next.id), next],
+    }))
+  }
+
+  // Removido: some da lista na hora; o GET em seguida traz as centrais/endereços como a API ficou.
+  const removeConnector = (removed: Connector) => {
+    acceptStation((previous) => ({ ...previous,
+      connectors: previous.connectors.filter((c) => c.id !== removed.id),
+      screens: previous.screens?.map((s) => ({ ...s, charger_ids: s.charger_ids.filter((id) => id !== removed.id) })),
+    }))
+    reload()
   }
 
   const back = (
@@ -415,9 +464,10 @@ export default function StationDetail() {
   }
 
   const points = station.connectors
-  const online = points.filter((c) => c.online).length
   // Só para um ponto legado sem endereço: o próximo livre do posto (como a API faz na criação).
   const freeAddress = nextFreeChargerAddress(points.map((c) => c.charger_address))
+  const screenState = stationScreenState(station)
+  const screenMeta = STATION_SCREEN_META[screenState]
   return (
     <>
       <PageHead
@@ -426,7 +476,8 @@ export default function StationDetail() {
         sub={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Badge tone={station.active ? 'green' : 'gray'}>{station.active ? 'Ativa' : 'Inativa'}</Badge>
-            {points.length} conector(es) · {online} online · atualizado {formatRelative(new Date())}
+            <Badge tone={screenMeta.tone}>{screenMeta.label}</Badge>
+            {stationChargerSummary(station)} · atualizado {formatRelative(lastRefresh)}
           </span>
         }
         actions={
@@ -436,20 +487,9 @@ export default function StationDetail() {
         }
       />
       <div className="stack">
+        {error ? <ErrorBanner error={error} title="Falha ao atualizar carregadores" onRetry={reload} /> : null}
         <StationForm station={station} onSaved={update} />
-        <Card title="Conectores e tarifas" sub="Tarifa base, potência, limite de duração e o carregador GoodWe (endereço) de cada conector" id="connectors">
-          {points.length ? (
-            <div className="stack" style={{ gap: 12 }}>
-              {points.map((connector) => (
-                <ConnectorEditor key={connector.id} connector={connector} onSaved={updateConnector} suggestedAddress={freeAddress} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon="plug" title="Nenhum conector">
-              Novos pontos são adicionados escaneando o QR de propriedade do equipamento no app ChargeGrid.
-            </EmptyState>
-          )}
-        </Card>
+        <ChargersCard station={station} onSaved={updateConnector} onAdded={addConnector} onRemoved={removeConnector} suggestedAddress={freeAddress} />
         <PowerCard station={station} />
         <EconomicsCard stationId={station.id} />
         <OverstayCard station={station} />

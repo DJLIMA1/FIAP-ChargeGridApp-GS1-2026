@@ -44,6 +44,8 @@ export type ConnectorPatch = Partial<{
   active: boolean
   /** Endereço do carregador GoodWe deste conector (1–247, único no posto; não pode ficar vazio). */
   charger_address: number
+  /** Limite do dono (kW, até a potência nominal); `null` = usa a nominal. */
+  power_limit_kw: string | null
 }>
 
 export interface MarginFilters extends PeriodQuery {
@@ -76,6 +78,16 @@ export function endpoints(api: ApiClient) {
     patchStation: (id: string, body: StationPatch) => api.patch<Station>(`/stations/${encodeURIComponent(id)}`, body),
     patchConnector: (id: string, body: ConnectorPatch) =>
       api.patch<Connector>(`/connectors/${encodeURIComponent(id)}`, body),
+    /**
+     * Adicionar carregador à tela do ponto `connectorId` (ou à tela dele, se for um carregador
+     * adicional): próximo endereço livre, inativo. 409 `screen_required` / `charger_address_full`.
+     */
+    addCharger: (connectorId: string) => api.post<Connector>(`/connectors/${encodeURIComponent(connectorId)}/chargers`, {}),
+    /**
+     * Remover carregador adicional (204, sem corpo): sai da estação e o endereço fica livre para o
+     * próximo "Adicionar carregador". 409 `screen_charger` (o da própria central) / `point_busy`; 404.
+     */
+    removeCharger: (connectorId: string) => api.delete<void>(`/connectors/${encodeURIComponent(connectorId)}`),
     // C · Resultado: custo do kWh do posto (comissão só leitura) e margem do período.
     economics: (id: string, signal?: AbortSignal) =>
       api.get<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, undefined, signal),

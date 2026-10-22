@@ -106,11 +106,11 @@ export function Badge({ tone, children, plain }: { tone: Tone | 'solid-green'; c
   return <span className={`badge ${tone} ${plain ? 'plain' : ''}`}>{children}</span>
 }
 
-export function Drawer({ title, onClose, children, footer }: { title: ReactNode; onClose(): void; children: ReactNode; footer?: ReactNode }) {
+/** Foco no diálogo, Esc fecha, rolagem da página travada; ao fechar, o foco volta para quem abriu. */
+function useModal(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null)
   const closeRef = useRef(onClose)
   closeRef.current = onClose
-  const titleId = useId()
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     ref.current?.focus()
@@ -126,6 +126,12 @@ export function Drawer({ title, onClose, children, footer }: { title: ReactNode;
       previous?.focus?.()
     }
   }, [])
+  return ref
+}
+
+export function Drawer({ title, onClose, children, footer }: { title: ReactNode; onClose(): void; children: ReactNode; footer?: ReactNode }) {
+  const ref = useModal(onClose)
+  const titleId = useId()
   return (
     <>
       <div className="overlay" onClick={onClose} aria-hidden />
@@ -138,6 +144,59 @@ export function Drawer({ title, onClose, children, footer }: { title: ReactNode;
         </div>
         <div className="drawer-body">{children}</div>
         {footer ? <div className="drawer-foot">{footer}</div> : null}
+      </div>
+    </>
+  )
+}
+
+/**
+ * Confirmação de uma ação (ex.: "Remover carregador 3?"): Cancelar e o botão da ação (`danger` =
+ * destrutiva). Enquanto `busy`, não fecha (Esc/fundo/Cancelar) e o botão mostra `busyLabel`.
+ */
+export function ConfirmDialog({
+  title,
+  children,
+  confirmLabel,
+  busyLabel,
+  busy = false,
+  danger = false,
+  error,
+  errorTitle,
+  onConfirm,
+  onCancel,
+}: {
+  title: ReactNode
+  children?: ReactNode
+  confirmLabel: string
+  busyLabel?: string
+  busy?: boolean
+  danger?: boolean
+  error?: string | null
+  errorTitle?: string
+  onConfirm(): void
+  onCancel(): void
+}) {
+  const cancel = () => {
+    if (!busy) onCancel()
+  }
+  const ref = useModal(cancel)
+  const titleId = useId()
+  const bodyId = useId()
+  return (
+    <>
+      <div className="overlay" onClick={cancel} aria-hidden />
+      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={children ? bodyId : undefined} tabIndex={-1} ref={ref} data-testid="confirm-dialog">
+        <h2 id={titleId}>{title}</h2>
+        {children ? <div id={bodyId} className="muted">{children}</div> : null}
+        {error ? <ErrorBanner error={error} title={errorTitle} /> : null}
+        <div className="dialog-foot">
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={cancel}>
+            Cancelar
+          </button>
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={busy} onClick={onConfirm}>
+            {busy && busyLabel ? busyLabel : confirmLabel}
+          </button>
+        </div>
       </div>
     </>
   )
