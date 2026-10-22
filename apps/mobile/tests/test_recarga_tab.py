@@ -123,7 +123,7 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await reservations.build(app)
         shown = texts(screen)
-        self.assertIn('Encontre uma estação', shown)
+        self.assertIn('Perto de Você', shown)
         self.assertNotIn('Minhas recargas', shown)
 
     async def test_no_active_recharge_shows_no_card(self):
@@ -132,7 +132,7 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by_data(screen, 'active-session') + by_data(screen, 'active-reservation'), [])
         self.assertNotIn('Recarga em andamento', texts(screen))
         self.assertNotIn('Reserva ativa', texts(screen))
-        self.assertIn('Encontre uma estação', texts(screen))
+        self.assertIn('Perto de Você', texts(screen))
 
     async def test_running_session_card_opens_charging(self):
         app, _ = app_with(session=SESSION)
@@ -140,7 +140,7 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
         shown = texts(screen)
         self.assertIn('Recarga em andamento', shown)
         self.assertIn('Posto Centro', shown)
-        self.assertLess(shown.index('Recarga em andamento'), shown.index('Encontre uma estação'))
+        self.assertLess(shown.index('Recarga em andamento'), shown.index('Perto de Você'))
         card, = by_data(screen, 'active-session')
         await card.on_click(None)
         app.go.assert_awaited_once_with('charging', session_id='ses')
@@ -166,7 +166,7 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(stations, 'station_map_widget', new=AsyncMock(return_value=ft.Text('Map'))):
             await app.poll()
         self.assertNotIn('Recarga em andamento', texts(screen))
-        self.assertIn('Encontre uma estação', texts(screen))
+        self.assertIn('Perto de Você', texts(screen))
 
     async def test_api_failure_never_breaks_station_search(self):
         app = HandlerApp()
@@ -177,7 +177,7 @@ class RecargaTabScreenTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError('offline')
         app.api.request.side_effect = request
         screen = await build_stations(app)
-        self.assertIn('Encontre uma estação', texts(screen))
+        self.assertIn('Perto de Você', texts(screen))
 
     async def test_vendor_mode_and_station_detail_do_not_ask_for_active_recharge(self):
         app, _ = app_with(session=SESSION, mode='vendor')

@@ -45,7 +45,7 @@ def _date(value):
 
 def balance_card(app):
     return ft.Container(
-        ft.Column([ft.Text('SALDO DISPONÍVEL', size=11, color=theme.TEXT_COLOR, font_family=design.FONT,
+        ft.Column([ft.Text('SALDO SIMULADO', size=11, color=theme.TEXT_COLOR, font_family=design.FONT,
                            style=ft.TextStyle(letter_spacing=1.4)),
                    design.money_text(wallet.balance(app), 28)], spacing=1),
         bgcolor=theme.CARD, border_radius=design.RADIUS_CARD, padding=ft.Padding(left=16, right=16, top=15, bottom=13),
@@ -169,7 +169,7 @@ def _method_card(title, icon, selected, on_click):
 
 async def _confirm(app, amount):
     try:
-        wallet.credit(app, amount, 'Pix Recebido')
+        await wallet.shared_credit(app, amount, 'Pix Recebido (simulado)')
     except ApiError as error:
         app.notice(str(error))
         return
@@ -270,6 +270,7 @@ def success(app):
 
 
 async def build(app, **params):
+    await wallet.refresh(app)
     page = params.get('page')
     try:
         step = int(params.get('step') or 0)

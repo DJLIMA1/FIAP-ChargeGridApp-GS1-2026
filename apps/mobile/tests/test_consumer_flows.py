@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import flet as ft
+from chargegrid_map import VectorMap
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import charging, history, home, reservations, stations
@@ -269,7 +270,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Mais postos',texts(screen))
             await app.poll()
             self.assertNotIn('Mais postos',texts(screen))
-            self.assertEqual(draw.await_count,1)
+            draw.assert_not_awaited()
 
     async def test_station_search_preserves_poll_state_and_map_is_inline_not_redundant(self):
         app = HandlerApp()
@@ -280,17 +281,13 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(stations, 'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))):
             screen = await stations.build(app)
             self.assertFalse(any(isinstance(item,ft.ExpansionTile) for item in descendants(screen)))
-            body = screen.controls[0]
-            map_section = next(item for item in body.controls
-                               if isinstance(item,ft.Column) and texts(item) == 'Map')
-            self.assertTrue(map_section.visible)
-            listing = next(item for item in body.controls
-                           if isinstance(item,ft.Column) and 'Posto Central' in texts(item))
-            self.assertLess(body.controls.index(map_section),body.controls.index(listing))
+            viewer = next(item for item in descendants(screen) if isinstance(item,VectorMap))
+            self.assertTrue(viewer.visible)
+            self.assertTrue(any(getattr(item, 'data', None) == 'station-sheet' for item in descendants(screen)))
             search = next(item for item in descendants(screen) if isinstance(item,ft.TextField))
             search.value = 'Filtro em edição'
             await app.poll()
-            self.assertTrue(map_section.visible)
+            self.assertIs(next(item for item in descendants(screen) if isinstance(item,VectorMap)), viewer)
             self.assertIs(next(item for item in descendants(screen) if isinstance(item,ft.TextField)),search)
             self.assertEqual(search.value,'Filtro em edição')
 

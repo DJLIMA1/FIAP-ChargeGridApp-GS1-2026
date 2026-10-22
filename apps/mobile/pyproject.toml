@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chargegrid-app"
-version = "0.8.1"
+version = "0.8.7"
 description = "Aplicativo Flet do ChargeGrid"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
     "pillow>=11,<13",
     "httpx>=0.28,<1",
     "chargegrid-scanner==0.1.0",
+    "chargegrid-map==0.1.0",
 ]
 
 [project.scripts]
@@ -24,7 +25,7 @@ chargegrid-app = "chargegrid_app.main:run"
 product = "ChargeGrid"
 artifact = "chargegrid"
 bundle_id = "br.com.ffive.chargegrid"
-build_number = 41
+build_number = 47
 # "location": GPS do Modo motorista, pedido só quando o motorista toca "Usar minha localização".
 permissions = ["camera", "location"]
 
@@ -37,6 +38,7 @@ NSLocationWhenInUseUsageDescription = "O ChargeGrid usa sua localização para a
 
 [tool.flet.dev_packages]
 chargegrid-scanner = "packages/chargegrid_scanner"
+chargegrid-map = "packages/chargegrid_map"
 
 [tool.flet.app]
 # The mobile build uses only assets/app_config.json, generated from the public

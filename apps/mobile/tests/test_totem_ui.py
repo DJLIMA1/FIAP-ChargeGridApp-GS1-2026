@@ -190,7 +190,7 @@ class KioskSwitchTests(StorageCase):
         station = (await app.api.request('GET', 'operator/stations'))['items'][0]
         self.assertIs(station['kiosk_mode'], False)
         menu = await station_admin.build(app, station_id=station['id'])
-        self.assertIn('Nome, endereço, status e totem (desligado)', texts(menu))
+        self.assertIn('Nome, endereço, status, central e totem (desligado)', texts(menu))
         screen = await station_admin.build(app, station_id=station['id'], page='data')
         self.assertIn('Totem de autoatendimento', texts(screen))
         self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento: Stripe (teste)')

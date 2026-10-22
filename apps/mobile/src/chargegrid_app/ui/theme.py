@@ -4,12 +4,14 @@ Paleta de cores e constantes visuais do ChargeGrid.
 Suporta os temas escuro (padrão; é o design de referência) e claro. Como o resto do app importa as
 cores como `import theme` e acessa `theme.WHITE`, `theme.BG_COLOR` etc.,
 usamos um `__getattr__` de módulo (PEP 562): cada acesso a `theme.NOME`
-é resolvido dinamicamente contra a paleta ativa no momento, então
+é resolvido contra o tema da página da sessão (com ContextVar fora do Flet), então
 chamar `theme.set_dark(True)` muda a cor retornada por TODO o app
 imediatamente, sem precisar reimportar nada.
 """
 
 from contextvars import ContextVar
+
+import flet as ft
 
 # Cores-base da marca (design de referência): verde dos pinos/"Disponível" e azul-marinho do posto
 # em destaque. Os tokens MAP_* de cada paleta derivam delas (e das superfícies do tema) via _mix.
@@ -28,7 +30,7 @@ def _mix(base, other, amount):
 # remapeados por luminância numa rampa land → block → road (+ labels), com água e áreas verdes
 # levemente tingidas pelas cores da marca. Pinos, balões e o crédito "© OpenStreetMap" também
 # têm variante por tema.
-_MAP_LIGHT_LAND = "#EEF0F1"
+_MAP_LIGHT_LAND = "#E2EBEB"
 _MAP_DARK_LAND = "#1E2124"
 
 LIGHT = {
@@ -70,11 +72,11 @@ LIGHT = {
     "ON_PRIMARY": "#FFFFFF",
     # --- mapa (estilo ChargeGrid, variante clara) ---
     "MAP_LAND": _MAP_LIGHT_LAND,                  # terreno / fundo do mapa e do esquemático
-    "MAP_BLOCK": "#E2E5E7",                       # edificações e quadras
-    "MAP_EDGE": "#D2D6DA",                        # contornos de quadras e bordas de vias
+    "MAP_BLOCK": "#D2DFE0",                       # edificações e quadras
+    "MAP_EDGE": "#BBCBCD",                        # contornos de quadras e bordas de vias
     "MAP_ROAD": "#FFFFFF",
     "MAP_ROAD_MAJOR": "#FFFFFF",                  # avenidas (laranja/amarelo no OSM padrão)
-    "MAP_LABEL": "#5E6870",                       # nomes de ruas e ícones
+    "MAP_LABEL": "#4F636A",                       # nomes de ruas e ícones
     "MAP_WATER": _mix(_MAP_LIGHT_LAND, "#205EA8", .25),
     "MAP_PARK": _mix(_MAP_LIGHT_LAND, BRAND_GREEN, .18),
     "MAP_RING": "#CED8DE",                        # anéis do mapa esquemático
@@ -176,12 +178,24 @@ def set_dark(enabled: bool):
     show_consumer()/show_retailer() depois disso para redesenhar a tela
     com as novas cores."""
     _dark_enabled.set(bool(enabled))
+    try:
+        ft.context.page.theme_mode = ft.ThemeMode.DARK if enabled else ft.ThemeMode.LIGHT
+    except RuntimeError:  # Pure builders/tests outside a Flet session.
+        pass
 
 
 def is_dark() -> bool:
     """Estado atual do tema — usado pra desenhar o Switch de modo escuro
     já na posição certa e pra decidir a legenda 🚗/⚡/⛔ dos marcadores do
     mapa em cada paleta."""
+    # Flet creates separate tasks for events. Their ContextVars do not inherit
+    # changes made by navigation, but every callback has its session's page.
+    try:
+        mode = ft.context.page.theme_mode
+    except RuntimeError:
+        mode = None
+    if mode in (ft.ThemeMode.DARK, ft.ThemeMode.LIGHT):
+        return mode == ft.ThemeMode.DARK
     return _dark_enabled.get()
 
 

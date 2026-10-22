@@ -5,6 +5,8 @@ from uuid import uuid4
 
 import httpx
 
+from chargegrid_core.chargers.link import CHARGER_OFFLINE, CHARGER_OFFLINE_MESSAGE
+
 from . import api_cache
 from .config import api_url, running_in_browser, validate_api_url
 from .owner_api import OwnerApiMixin
@@ -21,23 +23,39 @@ RETRYABLE = (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError, htt
 # 409 point_unavailable com reason "kiosk_in_use": o ponto está travado por um pedido do totem.
 KIOSK_IN_USE = 'kiosk_in_use'
 KIOSK_IN_USE_MESSAGE = 'Ponto em uso no totem'
+# 409 point_unavailable com reason "charger_offline": a tela tem contato, mas o carregador do ponto não
+# responde; ``alternatives`` traz os pontos livres da mesma estação ([{id, public_code}]). Textos do core.
 
 
 class ApiError(Exception):
-    def __init__(self, message, status=0, code="network_error", reason=None):
+    def __init__(self, message, status=0, code="network_error", reason=None, alternatives=None):
         super().__init__(message)
         self.status, self.code, self.reason = status, code, reason
+        self.alternatives = list(alternatives or [])
 
     @property
     def kiosk_in_use(self):
         return self.code == 'point_unavailable' and self.reason == KIOSK_IN_USE
 
+    @property
+    def charger_offline(self):
+        return self.code == 'point_unavailable' and self.reason == CHARGER_OFFLINE
 
-def api_error(message, status, code, reason=None):
+
+def charger_offline_message(alternatives=None):
+    """``Carregador offline — use outro ponto desta estação`` (+ os códigos livres sugeridos)."""
+    codes = [str(item.get('public_code')) for item in alternatives or []
+             if isinstance(item, dict) and item.get('public_code')]
+    return f"{CHARGER_OFFLINE_MESSAGE} (livres: {', '.join(codes)})" if codes else CHARGER_OFFLINE_MESSAGE
+
+
+def api_error(message, status, code, reason=None, alternatives=None):
     """``ApiError`` com o texto do app para os motivos conhecidos (ex.: "Ponto em uso no totem")."""
     if code == 'point_unavailable' and reason == KIOSK_IN_USE:
         message = KIOSK_IN_USE_MESSAGE
-    return ApiError(message, status, code, reason)
+    elif code == 'point_unavailable' and reason == CHARGER_OFFLINE:
+        message = charger_offline_message(alternatives)
+    return ApiError(message, status, code, reason, alternatives)
 
 
 class ApiClient(OwnerApiMixin):
@@ -128,11 +146,13 @@ class ApiClient(OwnerApiMixin):
                 message = error.get('message') or 'Confira os dados informados.'
                 code = error.get('code', 'invalid_request')
                 reason = error.get('reason') if isinstance(error.get('reason'), str) else None
+                alternatives = error.get('alternatives') if isinstance(error.get('alternatives'), list) else None
             except (ValueError, AttributeError):
                 message, code, reason = 'O servidor não pôde concluir o pedido.', 'server_error', None
+                alternatives = None
             if response.status_code == 429:
                 message = 'Muitas tentativas. Aguarde antes de tentar novamente.'
-            raise api_error(message, response.status_code, code, reason)
+            raise api_error(message, response.status_code, code, reason, alternatives)
         try:
             return response.json() if response.content else None
         except ValueError as exc:

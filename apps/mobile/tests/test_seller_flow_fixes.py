@@ -1,11 +1,12 @@
 """Regressions for seller setup, device maintenance and coupon management."""
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import (
+    central_admin,
     coupons,
     onboarding,
     operator,
@@ -41,6 +42,23 @@ def coupon_fixture(**changes):
     }
 
 
+async def central_maintenance(app, connector):
+    polls = []
+    pending = []
+
+    def ensure_poll():
+        if polls:
+            app.set_poll(polls[0], 5)
+        else:
+            pending.append(True)
+
+    screen, poll = await central_admin.maintenance(app, connector, AsyncMock(), ensure_poll)
+    polls.append(poll)
+    if pending:
+        ensure_poll()
+    return screen
+
+
 class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
     async def test_reset_after_provision_uses_new_device_and_polls_it(self):
         app = HandlerApp()
@@ -50,7 +68,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
             ApiError('Ausente',404),{'device_id':'new-device','device_key':'test-only'},
             {'status':'pending'},{'status':'applied'},
         ]
-        screen = await operator.connector_form(app,'station',{'id':'point'})
+        screen = await central_maintenance(app, {'id':'point'})
         with patch('chargegrid_app.screens.operator.show_key'):
             await click(screen,'Provisionar')(None)
         await click(screen,'Restaurar')(None)
@@ -61,9 +79,11 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         await app.poll()
         self.assertEqual(app.api.request.await_args.args,('GET','devices/new-device/factory-reset'))
         self.assertIn('Restauração confirmada',texts(screen))
-        active = next(control.data for control in descendants(screen) if type(getattr(control,'data',None)).__name__ == '_Toggle')
-        self.assertFalse(active.value)
-        self.assertTrue(active.disabled)
+        for label in ('Rotacionar', 'Revogar', 'Restaurar'):
+            control = next(c for c in descendants(screen) if isinstance(getattr(c, 'content', None), ft.Text)
+                           and c.content.value == label)
+            self.assertFalse(control.visible)
+
 
     async def test_reset_after_reprovision_never_targets_revoked_device(self):
         app = HandlerApp()
@@ -73,7 +93,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
             {'device_id':'old-device','online':True}, {'status':'not_requested'},
             {'revoked':True}, {'device_id':'replacement','device_key':'test-only'}, {'status':'pending'},
         ]
-        screen = await operator.connector_form(app,'station',{'id':'point'})
+        screen = await central_maintenance(app, {'id':'point'})
         await click(screen,'Revogar')(None)
         with patch('chargegrid_app.screens.operator.show_key'):
             await click(screen,'Provisionar')(None)
@@ -134,7 +154,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.profile = {'account_type':'vendor','operator_enabled':False}
         screen = await coupons.build(app,manage=True)
-        self.assertIn('Vincule sua primeira tela',texts(screen))
+        self.assertIn('Vincule sua primeira central',texts(screen))
         await click(screen,'Configurar meu primeiro ponto')(None)
         app.go.assert_awaited_with('operator')
         app.api.request.assert_not_awaited()
@@ -194,7 +214,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
             {'items':[station_fixture()],'total':1},
         ]
         screen = await operator.build(app)
-        self.assertIn('Pontos desativados',texts(screen))
+        self.assertIn('Carregadores desativados',texts(screen))
         self.assertNotIn('Configuração pendente',texts(screen))
         row = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
                    and 'Posto Central' in texts(c) and not isinstance(c.content,ft.Column))
@@ -204,7 +224,7 @@ class SellerFlowFixesTests(unittest.IsolatedAsyncioTestCase):
     async def test_review_disabled_point_preserves_shared_station(self):
         app = HandlerApp()
         screen = station_admin._connectors_page(app,station_fixture())
-        await click(screen,'Revisar e ativar ponto')(None)
+        await click(screen,'Revisar e ativar carregador')(None)
         app.go.assert_awaited_with('operator',station_id='station',point_id='point',
                                   onboarding=True,step=2,existing_station=True)
 

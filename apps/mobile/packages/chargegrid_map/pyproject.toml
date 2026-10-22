@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chargegrid-map"
+version = "0.1.0"
+description = "Shared OpenFreeMap vector maps for ChargeGrid"
+requires-python = ">=3.10"
+dependencies = ["flet==1.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"flutter.chargegrid_map" = ["pubspec.yaml", "lib/**/*.dart"]

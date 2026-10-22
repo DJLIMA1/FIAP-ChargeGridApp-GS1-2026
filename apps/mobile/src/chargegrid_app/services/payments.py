@@ -76,6 +76,8 @@ def request_body(connector_id, intent, energy_kwh=None):
         body.update(mode='energy', energy_kwh=str(energy_kwh))
     else:
         body.update(mode='time', minutes=int(intent.get('minutes') or 30))
+    if intent.get('power_tier') in ('max', 'reduced'):
+        body['power_tier'] = intent['power_tier']
     if intent.get('max_power_kw') is not None:
         body['max_power_kw'] = str(intent['max_power_kw'])
     return body

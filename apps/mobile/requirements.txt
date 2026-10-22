@@ -1,4 +1,6 @@
 flet==1.0.0
 flet-geolocator==1.0.0
+# Local map extension: pip install -e apps/mobile/packages/chargegrid_map
+-e apps/mobile/packages/chargegrid_map
 pillow>=11,<13
 httpx>=0.28,<1

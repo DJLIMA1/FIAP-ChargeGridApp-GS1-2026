@@ -6,6 +6,7 @@ import flet as ft
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import coupons, operator
 from test_behavior import HandlerApp, click, descendants
+from test_seller_flow_fixes import central_maintenance
 
 
 class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
@@ -71,29 +72,29 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
     async def test_connector_edit_rediscovers_readonly_device_without_secret(self):
         app = HandlerApp()
         app.api.request.return_value = {'device_id':'known-device','online':True,'last_seen':None}
-        screen = await operator.connector_form(app,'station',{'id':'connector'},device_id='stale-navigation-id')
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
-        self.assertTrue(device.read_only)
-        self.assertTrue(device.visible)
+        screen = await central_maintenance(app, {'id':'connector'})
+        device = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.data == 'device-id')
+        row = next(item for item in descendants(screen) if isinstance(item,ft.Row) and device in item.controls)
+        self.assertTrue(row.visible)
         self.assertEqual(device.value,'known-device')
         self.assertEqual(app.api.request.await_args_list[0].args, ('GET','connectors/connector/device'))
         self.assertEqual(app.api.request.await_args_list[1].args, ('GET','devices/known-device/factory-reset'))
         provision = next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Provisionar')
         self.assertFalse(provision.visible)
         await click(screen,'Revogar')(None)
-        self.assertFalse(device.visible)
+        self.assertFalse(row.visible)
         self.assertTrue(provision.visible)
 
     async def test_missing_device_can_be_provisioned_and_keeps_returned_id(self):
         app = HandlerApp()
         app.api.request.side_effect = [ApiError('Ausente',404),{'device_id':'new-device','device_key':'test-only-secret'}]
-        screen = await operator.connector_form(app,'station',{'id':'connector'})
+        screen = await central_maintenance(app, {'id':'connector'})
         with patch('chargegrid_app.screens.operator.show_key') as show_key:
             await click(screen,'Provisionar')(None)
             show_key.assert_called_once()
-        device = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.data == 'Dispositivo vinculado')
+        device = next(item for item in descendants(screen) if isinstance(item,ft.Text) and item.data == 'device-id')
         self.assertEqual(device.value,'new-device')
-        self.assertTrue(device.visible)
+        self.assertTrue(next(item for item in descendants(screen) if isinstance(item,ft.Row) and device in item.controls).visible)
         texts = ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text))
         self.assertNotIn('test-only-secret',texts)
 
@@ -101,7 +102,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api.request.side_effect = ApiError('Rede indisponível',503)
         with self.assertRaises(ApiError):
-            await operator.connector_form(app,'station',{'id':'connector'})
+            await central_maintenance(app, {'id':'connector'})
 
     async def test_factory_reset_requires_confirmation_and_waits_for_esp(self):
         app = HandlerApp()
@@ -114,10 +115,10 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
             {'status':'applied','command_id':'reset-id'},
         ])
         app.api.request.side_effect = lambda *args, **kwargs: next(responses)
-        screen = await operator.connector_form(app,'station',{'id':'connector','active':True})
+        screen = await central_maintenance(app, {'id':'connector','active':True})
         await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
-        self.assertEqual(dialog.title.value, 'Restaurar equipamento de fábrica?')
+        self.assertEqual(dialog.title.value, 'Restaurar central de fábrica?')
         self.assertEqual(app.api.request.await_count, 2)
         dialog.actions[0].on_click(None)
         self.assertEqual(app.api.request.await_count, 2)
@@ -127,7 +128,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.api.request.await_args.args,
                          ('POST','devices/known-device/factory-reset'))
         self.assertIsNotNone(app.poll)
-        self.assertIn('Aguardando a tela', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
+        self.assertIn('Aguardando a central', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
         await app.poll()
         self.assertIn('Restauração confirmada', ' '.join(str(item.value) for item in descendants(screen) if isinstance(item,ft.Text)))
         self.assertFalse(next(item for item in descendants(screen) if isinstance(getattr(item,'content',None),ft.Text) and item.content.value == 'Restaurar').visible)
@@ -137,7 +138,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
 
         from chargegrid_app.ui import theme
         app = HandlerApp()
-        app.api.request.side_effect = [ApiError('Ausente',404),{}]
+        app.api.request.return_value = {}
         token = theme._dark_enabled.set(False)
         try:
             screen = await operator.connector_form(app,'station',{'id':'connector','public_code':'CG-1','connector_type':'Type 2','power_kw':'7.200','price_per_kwh':'1.5000'})

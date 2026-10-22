@@ -124,10 +124,10 @@ def point_context(station, connector):
         'station_address': station['address'],
         'connector': {key: connector.get(key) for key in (
             'id', 'public_code', 'connector_type', 'power_kw',
-            'price_per_kwh', 'max_duration_minutes', 'effective_power_kw',
+            'price_per_kwh', 'max_duration_minutes', 'effective_power_kw', 'speed_prices', 'base_speed_prices',
         ) if connector.get(key) is not None or key != 'effective_power_kw'},
     }
-    charged = connector.get('dynamic_price_per_kwh')
+    charged = (connector.get('speed_prices') or {}).get('max',connector.get('dynamic_price_per_kwh'))
     if charged is not None and str(charged) != str(connector.get('price_per_kwh')):
         result['connector'].update(price_per_kwh=charged, base_price_per_kwh=connector.get('price_per_kwh'))
         multiplier = (station.get('demand') or {}).get('multiplier')

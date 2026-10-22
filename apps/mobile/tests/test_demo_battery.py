@@ -1,6 +1,7 @@
 """Demo backend parity for the car battery contract (SoC, /soc, battery_full)."""
 
 import unittest
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from chargegrid_app.api_client import ApiError
@@ -10,7 +11,9 @@ from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, D
 class DemoBatteryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.clock = [0.0]
-        self.api = DemoApi(clock=lambda: self.clock[0])
+        # Madrugada: a loja simulada (rebalanceamento) não reduz a potência; sem depender do relógio.
+        night = datetime(2026, 10, 21, 3, 0, tzinfo=timezone(timedelta(hours=-3)))
+        self.api = DemoApi(clock=lambda: self.clock[0], start_at=night)
         await self.api.login(DEMO_EMAIL, DEMO_PASSWORD)
         stations = (await self.api.request('GET', 'stations'))['items']
         self.point = next(p for s in stations for p in s['connectors'] if p['available'])

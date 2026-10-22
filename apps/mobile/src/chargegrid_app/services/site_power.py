@@ -2,7 +2,7 @@
 
 Mesmas regras da API (``chargegrid_core.site_load`` e ``chargegrid_core.power``): limite contratado
 efetivo (o do dono ou o padrão do tipo/porte), consumo da loja SIMULADO, disponível para os
-carregadores, potência configurada × efetiva de cada conector e a validação do limite digitado.
+carregadores, potência configurada × efetiva de cada carregador e a validação do limite digitado.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -96,7 +96,9 @@ def points(station):
 
 
 def point_name(point, index):
-    return f"{point.get('connector_type') or 'Conector'} · Conector {index:02d}"
+    """``CCS2 · Carregador 1``: o número é o endereço do carregador (dono) ou a posição no posto."""
+    number = point.get('charger_address') or index
+    return f"{point.get('connector_type') or 'Carregador'} · Carregador {number}"
 
 
 def connector_line(point, station, view=None):

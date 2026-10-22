@@ -423,12 +423,13 @@ class ChargeGridApp:
                                        system_navigation_bar_icon_brightness=(
                                            ft.Brightness.LIGHT if theme.is_dark() else ft.Brightness.DARK)))
         if authenticated:
+            immersive_map = route == 'stations' and not data.get('station_id')
             header = design.app_header(self)
             nav = (design.bottom_nav(self, tab_entries(self.browsing_mode), active_tab(route, data, self.browsing_mode))
                    if show_nav else ft.Container(height=0))
             content = ft.SafeArea(ft.Column([
-                header, self.freshness,
-                ft.Container(body, padding=ft.Padding(left=design.GUTTER, right=design.GUTTER, top=26, bottom=16),
+                *([] if immersive_map else [header]), self.freshness,
+                ft.Container(body, padding=0 if immersive_map else ft.Padding(left=design.GUTTER, right=design.GUTTER, top=26, bottom=16),
                              expand=True),
                 nav,
             ], expand=True, spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH), expand=True)
@@ -795,7 +796,9 @@ async def _capture_setup(app, raw):
                 listing = await app.api.request('GET', 'operator/stations')
                 owned = ((listing or {}).get('items') or [{}])[0].get('id')
             path = path.replace('@owned_station', str(owned))
-        await app.api.request(method, path, rest[0] if rest else None)
+        # Recarga/reserva/pagamento pedem Idempotency-Key, como no app.
+        await app.api.request(method, path, rest[0] if rest else None,
+                              key=app.api.new_key() if method != 'GET' else None)
 
 
 async def capture_boot(app):

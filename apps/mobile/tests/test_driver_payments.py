@@ -181,7 +181,7 @@ class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_confirm_creates_payment_with_idempotency_key_and_opens_the_hosted_checkout(self):
         await tap(await self.review(), 'Confirmar e iniciar no ponto')()
-        self.assertEqual(self.created, [({'connector_id': 'a', 'mode': 'time', 'minutes': 30, 'max_power_kw': '60.0'},
+        self.assertEqual(self.created, [({'connector_id': 'a', 'mode': 'time', 'minutes': 30, 'max_power_kw': '60.0','power_tier':'max'},
                                          'key-1')])
         self.assertEqual(self.app.go.await_args.kwargs['step'], 7)
         waiting = await self.screen(7)

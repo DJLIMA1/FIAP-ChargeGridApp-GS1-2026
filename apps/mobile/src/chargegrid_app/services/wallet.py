@@ -10,6 +10,7 @@ Nunca guarda dados de cartão.
 
 import json
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -55,6 +56,9 @@ def _load(app):
         if _demo_state is None:
             _demo_state = _demo_initial()
         return _demo_state
+    cached = getattr(app, 'shared_wallet', None)
+    if isinstance(cached, dict) and cached.get('user_id') == _user_id(app):
+        return cached
     try:
         data = json.loads(_path().read_text())
         entry = data.get(_user_id(app)) if isinstance(data, dict) else None
@@ -135,3 +139,49 @@ def debit(app, amount, description):
     if value > balance(app):
         raise ApiError('Saldo insuficiente. Adicione saldo para continuar.', 402, 'insufficient_balance')
     return _apply(app, 'debit', value, description)
+
+
+async def refresh(app):
+    """Refresh the shared SIMULATED balance. Older APIs keep the local wallet."""
+    if _is_demo(app):
+        return False
+    try:
+        remote = await app.api.request('GET', 'me/wallet')
+        if not isinstance(remote, dict) or remote.get('simulated') is not True:
+            return False
+        # A one-time server flag makes legacy import safe across devices/retries.
+        legacy = balance(app)
+        if not remote.get('legacy_imported'):
+            remote = await app.api.request('POST', 'me/wallet/simulate',
+                {'kind': 'import', 'amount': str(max(Decimal('0'), legacy)), 'title': 'Saldo simulado do app'},
+                key='wallet-legacy-import')
+        app.shared_wallet = {**remote, 'user_id': _user_id(app)}
+        return True
+    except ApiError as error:
+        if error.status == 401:
+            raise
+        # Saldo compartilhado é opcional: API antiga (404/410), rede ou servidor fora não derrubam a
+        # reserva nem a carteira; seguem com o último saldo conhecido (ou o local).
+        return False
+
+
+async def _remote_move(app, kind, amount, description, operation_key=None):
+    if _is_demo(app) or not isinstance(getattr(app, 'shared_wallet', None), dict):
+        return credit(app, amount, description) if kind == 'credit' else debit(app, amount, description)
+    pending = getattr(app, 'wallet_pending', None)
+    body = {'kind': kind, 'amount': str(_amount(amount)), 'title': description}
+    if not isinstance(pending, dict) or pending.get('body') != body:
+        pending = {'body': body, 'key': operation_key or uuid.uuid4().hex}
+        app.wallet_pending = pending
+    remote = await app.api.request('POST', 'me/wallet/simulate', body, key=pending['key'])
+    app.shared_wallet = {**remote, 'user_id': _user_id(app)}
+    app.wallet_pending = None
+    return balance(app)
+
+
+async def shared_credit(app, amount, description, operation_key=None):
+    return await _remote_move(app, 'credit', amount, description, operation_key)
+
+
+async def shared_debit(app, amount, description):
+    return await _remote_move(app, 'debit', amount, description)

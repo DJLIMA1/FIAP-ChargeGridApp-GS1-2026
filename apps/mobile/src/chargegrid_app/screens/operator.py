@@ -5,7 +5,9 @@ import flet as ft
 
 from chargegrid_core.chargers import link as charger_link
 
+from .. import api_cache
 from ..api_client import ApiError
+from ..services.charger_refresh import POLL_SECONDS, StationRefresh, merge_telemetry
 from ..services.location import station_location
 from ..ui import address_autocomplete, design, theme
 from ..ui.ai_features import ai_supported, owner_insights_control
@@ -14,8 +16,8 @@ from ..ui.components import (
     money,
     title,
 )
+from . import chargers, ownership
 from . import onboarding as onboarding_screen
-from . import ownership
 from .setup_ui import FIELD_HEIGHT, cta, setup_field, setup_title
 from .station_admin import chatbot_button, menu_row
 
@@ -47,25 +49,27 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
         return design.page(
             design.card_box(ft.Column([
                 ft.Icon(ft.Icons.QR_CODE_SCANNER, size=44, color=theme.TEXT_COLOR),
-                design.txt('Adicione um equipamento simulado para criar seu posto. Todo o processo acontece nesta demonstração.'
-                           if is_demo else 'A tela sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
+                design.txt('Adicione uma central simulada para criar seu posto. Todo o processo acontece nesta demonstração.'
+                           if is_demo else 'A central sem dono mostra um QR de vinculação. Escaneie-o para se tornar o proprietário.',
                            13, 'semibold'),
                 design.txt('Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.',
                            11, 'regular', theme.GRAY_TEXT),
                 design.txt('Posto é o local com endereço. Cada ponto é um equipamento de recarga nesse local.',
                            11, 'regular', theme.GRAY_TEXT)], spacing=10)),
-            text_button('Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela',
+            text_button('Adicionar central simulada' if is_demo else 'Escanear QR da central',
                         app.link('operator', claim=True)),
-            title='Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira tela',
+            title='Configure seu primeiro ponto simulado' if is_demo else 'Configure sua primeira central',
             title_size=20)
     if connector_id:
         if connector_id == 'new':
             return await ownership.build(app, station_id=station_id)
-        connector = connector or app.data.get('connector')
-        if not connector and station_id:
-            owner = await app.api.request('GET',f'stations/{station_id}')
+        if station_id:
+            with api_cache.network_only():
+                owner = await app.api.request('GET',f'stations/{station_id}')
             found = next((item for item in owner.get('connectors') or [] if item.get('id') == connector_id),None)
-            connector = {**found,'station_name':owner.get('name')} if found else None
+            if found is None:
+                raise ApiError('Carregador não encontrado nesta estação.', 404, 'not_found')
+            connector = {**found,'station_name':owner.get('name')}
         return await connector_form(app,station_id,connector,device_id)
     if station_id == 'new':
         return await station_form(app)
@@ -81,17 +85,18 @@ def _station_state(station):
     online = [point for point in points if point.get('online')]
     in_use = [point for point in online if point.get('available') is False]
     live = [point for point in points if point.get('active', True)]
+    screen = chargers.screen_online(station)  # estação = a central: online enquanto a central tiver contato
     if not station.get('active', True):
         status = 'Desativada'
     elif points and not live:
-        return 'Pontos desativados - revise para publicar'
-    elif online:
+        return 'Carregadores desativados - revise para publicar'
+    elif online or screen:
         status = 'Online'
     else:
         status = 'Offline'
     if in_use:
-        return f'{status} - Conectores em uso'
-    return f'{status} - Conectores livres' if online and station.get('active', True) else status
+        return f'{status} - Carregadores em uso'
+    return f'{status} - Carregadores livres' if online and station.get('active', True) else status
 
 
 def text_button(text, on_click, *, primary=True, height=48):
@@ -103,8 +108,8 @@ def text_button(text, on_click, *, primary=True, height=48):
 
 
 ADD_STATION = 'Adicionar nova estação'
-ADD_STATION_HINT = 'Pelo QR de uma tela sem dono'
-ADD_STATION_DEMO = 'Com um equipamento simulado'
+ADD_STATION_HINT = 'Pelo QR de uma central sem dono'
+ADD_STATION_DEMO = 'Com uma central simulada'
 
 
 async def station_list(app, offset, is_demo):
@@ -113,12 +118,12 @@ async def station_list(app, offset, is_demo):
     stations = result['items']
     from .stations import _seed_details
     _seed_details(app, stations, 'operator/stations', params)
-    add_label = 'Adicionar equipamento simulado' if is_demo else 'Escanear QR da tela'
+    add_label = 'Adicionar central simulada' if is_demo else 'Escanear QR da central'
     rows = [menu_row(station['name'], _station_state(station), '/design/icon_station_charge.svg',
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
     body = [ft.Container(height=8)]
     if rows:
-        # Nova estação = o fluxo de vínculo que já cria o posto: QR da tela sem dono (ou equipamento
+        # Nova estação = o fluxo de vínculo que já cria o posto: QR da central sem dono (ou equipamento
         # simulado na demo) -> Localização (nome e endereço) -> Ponto e tarifa -> Revisão -> esta lista.
         rows.append(menu_row(ADD_STATION, ADD_STATION_DEMO if is_demo else ADD_STATION_HINT, ft.Icons.ADD,
                              app.link('operator', claim=True), tile=44))
@@ -128,10 +133,10 @@ async def station_list(app, offset, is_demo):
             design.txt('Seu primeiro ponto começa adicionando um equipamento simulado.' if is_demo else
                        'Seu primeiro ponto começa no QR do equipamento.', 13, 'semibold'),
             design.txt('Adicione um equipamento fictício para experimentar a gestão.' if is_demo else
-                       'O QR aparece na tela do ponto ainda sem dono.', 11, 'regular', theme.GRAY_TEXT),
-            design.txt('1. Adicione um equipamento simulado.\n2. Configure nome, endereço de exemplo e tarifa.\n'
+                       'O QR é exibido pela central ainda sem dono.', 11, 'regular', theme.GRAY_TEXT),
+            design.txt('1. Adicione uma central simulada.\n2. Configure nome, endereço de exemplo e tarifa.\n'
                        '3. Revise, publique e teste a recarga simulada.' if is_demo else
-                       '1. Ligue a tela e configure o Wi-Fi, se necessário.\n2. Escaneie o QR com sua conta de operador.\n'
+                       '1. Ligue a central e configure o Wi-Fi, se necessário.\n2. Escaneie o QR com sua conta de operador.\n'
                        '3. Defina nome, local e tarifa; revise e publique.', 11, 'regular', theme.GRAY_TEXT)], spacing=8)))
         body.append(text_button(add_label, app.link('operator', claim=True)))
     if offset + 100 < result['total']:
@@ -168,15 +173,10 @@ class _Toggle:
         self.app.page.update()
 
 
-def _status_pill(label, color):
-    return ft.Container(design.txt(label, 10.5, 'bold', theme.on_color(color), text_align=ft.TextAlign.CENTER),
-                        bgcolor=color, border_radius=6, padding=ft.Padding(left=8, right=8, top=4, bottom=4))
-
-
 async def station_form(app, station=None, edited=False, code=None):
     """Criar posto (``Configurar Estação``): nome e endereço com sugestões; a localização vem do endereço.
 
-    Postos existentes são editados em ``station_admin`` (dados, conectores, potência e tarifas)."""
+    Postos existentes são editados em ``station_admin`` (dados, carregadores, potência e tarifas)."""
     is_demo = bool(getattr(app.api,'is_demo',False))
     name_box = setup_field('Nome da estação', '', 'Ex.: Posto Centro', gap=14, height=FIELD_HEIGHT)
     address_box = setup_field('Endereço', '', 'Rua, número, bairro, cidade e estado', gap=14, height=FIELD_HEIGHT)
@@ -230,10 +230,13 @@ def _decimal_text(value, places=None):
 
 
 def _point_status(connector, device=None):
+    """Status do CARREGADOR: Desvinculado, Desativado, Online, Offline ou Aguardando a central."""
     if connector.get('retired') or (device or {}).get('retired'):
         return 'Desvinculado', theme.SLATE
-    if not connector.get('active', True):
+    if not connector.get('active', True) or connector.get('availability_status') == 'disabled':
         return 'Desativado', theme.AMBER
+    if connector.get('charger_link') and (device or {}).get('online') is not False:
+        return chargers.link_status(connector)  # o link lido pela central (online/offline/aguardando a central)
     online = (device or connector).get('online')
     return ('Online', theme.GREEN) if online else ('Offline', theme.SLATE)
 
@@ -274,50 +277,29 @@ def _mini_button(text, on_click, kind='secondary'):
                         alignment=ft.Alignment(0, 0), on_click=on_click, ink=True)
 
 
-def _action_row(icon, label, description, control):
-    """Linha de equipamento: tile branco + título/descrição + botão compacto."""
-    return ft.Row([design.icon_tile(icon, size=40),
-                   ft.Column([design.txt(label, 13, 'semibold'), design.txt(description, 10.5, 'regular', theme.GRAY_TEXT)],
-                             spacing=2, expand=True),
-                   control], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-
 def _set_visible(box, visible):
     box.visible = visible
     box.controls[1].visible = visible
 
 
 async def connector_form(app, station_id, connector=None, device_id=None):
-    is_demo = bool(getattr(app.api,'is_demo',False))
-    connector = connector or {}
-    linked_device = None
-    reset_state = {'status': 'not_requested'}
-    if connector:
-        try:
-            linked_device = await app.api.request('GET',f"connectors/{connector['id']}/device")
-        except ApiError as exc:
-            if exc.status != 404:
-                raise
-    if linked_device and not linked_device.get('retired'):
-        reset_state = await app.api.request('GET',f"devices/{linked_device['device_id']}/factory-reset")
-    elif linked_device and linked_device.get('retired'):
-        reset_state = {'status': 'applied'}
+    """Editar carregador: status ao vivo no topo, campos do conector, identificação e ``Salvar alterações`` por último.
 
+    Cada identificador aparece uma vez: o código público e o endereço do carregador só nos campos de
+    Identificação; o cartão do topo usa o nome ``Carregador N`` (o mesmo da lista) e o status."""
+    connector = connector or {}
     # Form fields: the TextFields stay the source of truth for save().
-    gap = 14
+    gap = 8
     public_box = setup_field('Código público', connector.get('public_code',''), gap=gap, height=FIELD_HEIGHT)
     kind_box = setup_field('Tipo de conector', connector.get('connector_type','Tipo 2'), gap=gap, height=FIELD_HEIGHT)
     power_box = setup_field('Potência', _decimal_text(connector.get('power_kw','7.4')), keyboard=ft.KeyboardType.NUMBER,
                             gap=gap, height=FIELD_HEIGHT, suffix='kW')
     duration_box = setup_field('Limite por recarga', str(connector.get('max_duration_minutes','60')),
                                keyboard=ft.KeyboardType.NUMBER, gap=gap, height=FIELD_HEIGHT, suffix='min')
-    device_box = setup_field('Dispositivo vinculado', linked_device['device_id'] if linked_device else '', read_only=True,
-                             gap=gap, height=FIELD_HEIGHT)
-    public, kind, power, duration, device = (box.controls[1] for box in
-                                             (public_box, kind_box, power_box, duration_box, device_box))
+    public, kind, power, duration = (box.controls[1] for box in (public_box, kind_box, power_box, duration_box))
     back_to_connectors = app.link('station_admin', station_id=station_id, page='connectors')
     active = _Toggle(app, connector.get('active',True))
-    active_box = ft.Column([design.label('Disponível para motoristas', strong=False), active.holder], spacing=4,
+    active_box = ft.Column([design.label('Disponível para motoristas', strong=False), active.holder], spacing=6,
                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH, visible=bool(connector))
 
     palette = _chip_palette()
@@ -359,215 +341,97 @@ async def connector_form(app, station_id, connector=None, device_id=None):
     _paint_chips(power_chips, power_preset(), palette)
     power.on_change = typed_power
 
-    _set_visible(device_box, bool(linked_device))
-    device_status = ft.Text(
-        ('Desvinculado após restauração de fábrica' if linked_device.get('retired') else
-         'Último contato: '+date_time(linked_device.get('last_seen')))
-        if linked_device else 'Nenhum equipamento simulado vinculado.' if is_demo else
-        'Nenhum equipamento vinculado. Provisione uma credencial abaixo.',
-        size=13,color=theme.TEXT_COLOR,expand=True,font_family=design.FONT,
-    )
-    status_label, status_color = _point_status(connector, linked_device)
-    status_badge = _status_pill(status_label, status_color)
-    status_colors = {'Desvinculado': theme.SLATE, 'Desativado': theme.AMBER, 'Online': theme.GREEN, 'Offline': theme.SLATE}
-    def paint_status():
-        label = _point_status(connector, linked_device)[0]
-        color = status_colors[label]
-        status_badge.content.value = label
-        status_badge.bgcolor = color
-        status_badge.content.color = theme.on_color(color)
+    refresh = StationRefresh(app, station_id)
+    address_field = charger_address_field(connector) if connector else None
 
-    def update_device(identifier, message):
-        nonlocal linked_device
-        linked_device = {'device_id':identifier,'retired':False} if identifier else None
-        reset_state.clear()
-        reset_state['status'] = 'not_requested'
-        device.value = identifier
-        _set_visible(device_box, bool(identifier))
-        device_status.value = message
-        provision_row.visible = provision_button.visible = not identifier
-        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(identifier)
-        reset_box.visible = bool(identifier)
-        reset_button.visible = bool(identifier)
-        reset_info.visible = False
-        reset_info.value = reset_messages['not_requested']
-        paint_status()
-        app.page.update()
     async def save():
         body = {'public_code':onboarding_screen._required(public,'código público',50),
                 'connector_type':onboarding_screen._required(kind,'tipo de conector',50),
                 'power_kw':onboarding_screen._number(power,'Potência',Decimal('0.001'),1000),
                 'max_duration_minutes':onboarding_screen._number(duration,'Limite',1,1440,integer=True)}
+        moved = None
         if connector:
             body['active'] = active.value
-        await app.api.request('PATCH' if connector else 'POST',f"connectors/{connector['id']}" if connector else f'stations/{station_id}/connectors',body)
+        if address_field is not None and ((address_field.value or '').strip()
+                                          or connector.get('charger_address') is not None):
+            try:
+                address = charger_address_input(address_field.value)
+            except ValueError as exc:
+                address_field.error_text = str(exc)
+                app.page.update()
+                raise ApiError(str(exc)) from None
+            address_field.error_text = None
+            if address != connector.get('charger_address'):
+                body['charger_address'] = moved = address  # só quando muda: o mesmo endereço não é reenviado
+        refresh.invalidate()
+        try:
+            await app.api.request('PATCH' if connector else 'POST',
+                                  f"connectors/{connector['id']}" if connector else f'stations/{station_id}/connectors', body)
+        except ApiError as exc:
+            if address_field is not None and exc.code in _ADDRESS_ERRORS:
+                address_field.error_text = str(exc)
+                app.page.update()
+            raise
+        finally:
+            refresh.invalidate()
         if hasattr(app,'mark_saved'):
             app.mark_saved()
+        if moved is not None:
+            app.notice(f'Endereço {moved} salvo. Configure CG_ADDR = {moved} no ESP do carregador.')
         await app.go('station_admin',station_id=station_id,page='connectors')
-    async def provision():
-        result = await app.api.request('POST',f"connectors/{connector['id']}/device")
-        update_device(result['device_id'],'Credencial simulada criada. Nada precisa ser instalado.' if is_demo else
-                      'Credencial criada. Configure a chave no equipamento para conectar.')
-        show_key(app,result)
-    async def rotate():
-        if not device.value.strip():
-            raise ApiError('Informe o ID do dispositivo.')
-        result = await app.api.request('POST',f'devices/{device.value.strip()}/rotate-key')
-        device_status.value = 'Chave fictícia renovada nesta demonstração.' if is_demo else 'Chave renovada. Atualize a configuração do equipamento para reconectar.'
-        app.page.update()
-        show_key(app,result)
-    async def revoke():
-        if not device.value.strip():
-            raise ApiError('Informe o ID do dispositivo.')
-        await app.api.request('POST',f'devices/{device.value.strip()}/revoke')
-        update_device('','Credencial simulada revogada. Simule outra quando quiser.' if is_demo else
-                      'Credencial revogada. Provisione outra para reconectar o equipamento.')
-        app.notice('Revogação simulada concluída.' if is_demo else 'Dispositivo revogado; chave anterior recusada.')
-    reset_messages = {
-        'not_requested': 'Remove o vínculo e preserva o Wi-Fi. O ponto é desativado; o histórico fica.',
-        'pending': 'Aguardando a tela confirmar a restauração. Mantenha o equipamento ligado e conectado.',
-        'received': 'A tela recebeu o comando. Aguarde a confirmação antes de desligá-la.',
-        'applied': 'Restauração confirmada. O Wi-Fi foi preservado. Escaneie o novo QR para vincular a tela novamente.',
-        'failed': 'A tela não conseguiu restaurar. Verifique se está livre e tente novamente.',
-        'expired': 'A tela não confirmou a tempo. Confira a conexão e tente novamente.',
-    }
-    if is_demo:
-        reset_messages.update({
-            'not_requested':'Desativa este ponto fictício e mantém o histórico da demonstração.',
-            'pending':'Aguardando a confirmação simulada da restauração.',
-            'received':'O equipamento fictício recebeu o comando simulado.',
-            'applied':'Restauração simulada confirmada. Adicione outro equipamento simulado para criar um novo vínculo.',
-            'failed':'A restauração simulada falhou. Encerre reservas e recargas simuladas e tente novamente.',
-            'expired':'O comando simulado expirou. Tente novamente nesta demonstração.',
-        })
-    initial_status = reset_state.get('status', 'not_requested')
-    reset_info = ft.Text(reset_messages.get(initial_status, reset_messages['not_requested']),
-                         size=12, color=theme.WARNING, visible=bool(linked_device) and initial_status != 'not_requested')
-    def paint_reset(state):
-        reset_state.clear()
-        reset_state.update(state)
-        status = state.get('status', 'not_requested')
-        reset_info.value = reset_messages.get(status, reset_messages['not_requested'])
-        reset_info.visible = status != 'not_requested'
-        reset_button.visible = status in ('not_requested', 'failed', 'expired') and not (linked_device or {}).get('retired')
-        if status in ('pending', 'received', 'applied'):
-            active.value, active.disabled = False, True
-            active.draw()
-            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = False
-        elif status in ('failed', 'expired'):
-            active.disabled = False
-            active.draw()
-            rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = True
-        if status == 'applied':
-            if linked_device:
-                linked_device['retired'] = True
-            device_status.value = 'Desvinculado após restauração de fábrica'
-            paint_status()
-        app.page.update()
-    async def poll_reset():
-        if not linked_device or reset_state.get('status') not in ('pending', 'received'):
-            return
-        state = await app.api.request('GET', f"devices/{linked_device['device_id']}/factory-reset")
-        paint_reset(state)
-    async def reset_device():
-        if hasattr(app, 'prepare_navigation') and not await app.prepare_navigation():
-            return
-        def cancel(event):
-            app.page.pop_dialog()
-        async def confirm():
-            app.page.pop_dialog()
-            if not linked_device or linked_device.get('retired'):
-                raise ApiError('Abra novamente o ponto para conferir o dispositivo vinculado.')
-            state = await app.api.request('POST', f"devices/{linked_device['device_id']}/factory-reset")
-            paint_reset(state)
-            if state.get('status') in ('pending', 'received'):
-                app.set_poll(poll_reset, 5)
-        app.page.show_dialog(ft.AlertDialog(
-            modal=True,
-            title=ft.Text('Simular restauração do equipamento?' if is_demo else 'Restaurar equipamento de fábrica?'),
-            content=ft.Text('Esta ação altera apenas o ponto fictício desta demonstração. Ele será desativado e o histórico simulado será mantido. Nenhum dispositivo físico ou Wi-Fi será alterado.' if is_demo else
-                            'O vínculo desta tela será removido e o Wi-Fi será preservado. O ponto atual sairá de operação, mas seu histórico será mantido. Faça isso somente com a tela online e sem reserva ou recarga. Depois, escaneie o novo QR para vincular a tela novamente.'),
-            actions=[ft.TextButton('Cancelar', on_click=cancel),
-                     ft.TextButton('Simular restauração' if is_demo else 'Restaurar', on_click=app.action(confirm),
-                                   style=ft.ButtonStyle(color=theme.RED))],
-        ))
 
-    # Header: what is being edited and its live state.
-    header = [ft.Row([ft.Column([design.num(connector.get('public_code') or 'Novo ponto', 26)], spacing=0, expand=True)]
-                     + ([status_badge] if connector else []), spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
-    if connector.get('station_name'):
-        header.append(ft.Row([ft.Icon(ft.Icons.PLACE_OUTLINED,size=16,color=theme.GRAY_TEXT),
-                              design.txt(connector['station_name'], 13, 'regular', theme.GRAY_TEXT, expand=True)],spacing=6))
+    note = lambda text: design.txt(text, 11, 'regular', theme.GRAY_TEXT)  # noqa: E731
+    controls = [setup_title(app, 'Editar carregador' if connector else 'Novo carregador', on_back=back_to_connectors,
+                            bottom=2.25)]
     if connector:
-        header += [ft.Row([ft.Icon(ft.Icons.ROUTER_OUTLINED,size=18,color=theme.GRAY_TEXT),device_status],spacing=8),
-                   reset_info]
-    if is_demo:
-        from ..demo import DEMO_PRESENCE_CODE
-        header.append(ft.Row([ft.Icon(ft.Icons.SCIENCE_OUTLINED,size=16,color=theme.GRAY_TEXT),
-                              design.txt(f'Ponto simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
-                                         12, 'regular', theme.GRAY_TEXT, expand=True)],spacing=8))
-
-    note = lambda text: design.txt(text, 11.5, 'regular', theme.GRAY_TEXT)  # noqa: E731
-    controls = [
-        setup_title(app, 'Editar ponto' if connector else 'Novo ponto', on_back=back_to_connectors,
-                    bottom=2.25),
-        design.card_box(ft.Column(header,spacing=8)),
-        design.section_label('Conector'),
-        ft.Row(list(type_chips.values()),wrap=True,spacing=8,run_spacing=8),
-        kind_box,
-        power_box,
-        ft.Row(list(power_chips.values()),wrap=True,spacing=8,run_spacing=8),
-        design.section_label('Tempo por recarga'),
-        duration_box,
-        note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifa, na tela do posto.'),
+        charger, redraw_charger = charger_card(app, connector)
+        controls.append(charger)
+    controls += [
+        _section('Conector', ft.Row(list(type_chips.values()), wrap=True, spacing=8, run_spacing=8), kind_box,
+                 power_box, ft.Row(list(power_chips.values()), wrap=True, spacing=8, run_spacing=8)),
+        _section('Recarga', duration_box,
+                 note('Tempo máximo de cada recarga. A tarifa por kWh fica em Tarifa, na tela do posto.'),
+                 *([active_box, note('O posto também precisa estar ativo para o carregador aparecer na busca.')]
+                   if connector else [])),
     ]
+    identity = [public_box, note('Código exibido aos motoristas para encontrar este carregador.')]
+    if address_field is not None:
+        identity += [ft.Column([design.label(CHARGER_FIELD), address_field], spacing=gap,
+                               horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                     note('Único no posto. Use o mesmo número no CG_ADDR do ESP do carregador.')]
+    controls.append(_section('Identificação', *identity))
+    if connector and chargers.removable(connector):
+        controls.append(remove_box(app, station_id, connector, refresh))
+    controls.append(cta('Salvar alterações' if connector else 'Salvar carregador', app.action(save), weight='semibold'))
     if connector:
-        controls += [active_box, note('O posto também precisa estar ativo para o ponto aparecer na busca.')]
-    controls += [design.section_label('Identificação'), public_box,
-                 note('Código exibido aos motoristas para encontrar este ponto.'),
-                 cta('Salvar alterações' if connector else 'Salvar ponto',app.action(save),weight='semibold')]
-    if connector:
-        provision_button = _mini_button('Provisionar',app.action(provision),'primary')
-        rotate_button = _mini_button('Rotacionar',app.action(rotate))
-        revoke_button = _mini_button('Revogar',app.action(revoke))
-        reset_button = _mini_button('Restaurar',app.action(reset_device),'danger')
-        provision_row = _action_row(ft.Icons.KEY_OUTLINED,'Nova credencial','Gera uma chave fictícia para testar o fluxo.' if is_demo else
-                                    'Gera a chave do equipamento; ela aparece uma única vez.',provision_button)
-        rotate_row = _action_row(ft.Icons.SYNC,'Trocar chave','Troca a chave fictícia da demonstração.' if is_demo else
-                                 'Invalida a chave atual; o equipamento precisa da nova.',rotate_button)
-        revoke_row = _action_row(ft.Icons.LINK_OFF,'Desconectar','Desativa a credencial simulada.' if is_demo else
-                                 'Recusa a chave atual até nova credencial.',revoke_button)
-        reset_box = ft.Container(
-            _action_row(ft.Icons.RESTORE,'Restaurar de fábrica',reset_messages['not_requested'],reset_button),
-            bgcolor=theme.WARN_BG,border=ft.Border.all(1,ft.Colors.with_opacity(0.45,theme.RED)),
-            border_radius=design.RADIUS_CARD,padding=14)
-        provision_row.visible = provision_button.visible = not linked_device
-        rotate_row.visible = revoke_row.visible = rotate_button.visible = revoke_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') not in ('pending', 'received', 'applied')
-        reset_button.visible = bool(linked_device) and not linked_device.get('retired', False) and reset_state.get('status', 'not_requested') in ('not_requested', 'failed', 'expired')
-        reset_box.visible = bool(linked_device)
-        if linked_device and (linked_device.get('retired') or reset_state.get('status') in ('pending', 'received', 'applied')):
-            active.value, active.disabled = False, True
-            active.draw()
-        controls += [
-            design.section_label('Conexão do equipamento'),
-            note('Credencial e restauração simuladas' if is_demo else 'Credencial, chave e restauração'),
-            note('Ações apenas desta demonstração; nada real é alterado.' if is_demo else
-                 'Não é preciso mexer aqui para mudar tarifa ou disponibilidade.'),
-            device_box,provision_row,rotate_row,revoke_row,reset_box]
-        if reset_state.get('status') in ('pending', 'received'):
-            app.set_poll(poll_reset, 5)
-        controls += charger_controls(app, connector, note)
-    controls.append(cta('Voltar aos conectores',back_to_connectors,primary=False,weight='semibold'))
-    return design.page(*controls, gap=16)
+        async def update():
+            fresh = await refresh.read()
+            if not isinstance(fresh, dict):
+                return
+            latest = next((p for p in fresh.get('connectors', []) if p['id'] == connector['id']), None)
+            if latest is None:
+                return
+            merge_telemetry(connector, latest)
+            redraw_charger()
+            app.page.update()
+
+        app.set_poll(update, POLL_SECONDS)
+    return design.page(*controls, gap=20)
 
 
-CHARGER_FIELD = 'Carregador GoodWe (endereço)'
+def _section(title, *controls):
+    """Título de seção + campos com o mesmo respiro (o ``gap`` da página separa as seções)."""
+    return ft.Column([design.section_label(title), *controls], spacing=12,
+                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+
+CHARGER_FIELD = 'Endereço do carregador'
 CHARGER_HINT = f'{charger_link.MIN_ADDRESS} a {charger_link.MAX_ADDRESS}'
 _ADDRESS_ERRORS = ('invalid_charger_address', 'charger_address_taken')
 
 
 def charger_status(connector):
-    """``Carregador GoodWe · endereço 1 · online`` ou ``… · aguardando carregador (simulação da tela)``.
+    """``Carregador 1 · GoodWe HCA G2 (simulado) · online`` (``offline``, ``aguardando a central``), do core.
 
     Todo ponto é um carregador GoodWe HCA G2; vazio só em payload sem endereço (API antiga/motorista)."""
     block = connector.get('charger_link')
@@ -588,53 +452,81 @@ def charger_address_input(value):
     return charger_link.validate_address(number)
 
 
-def charger_controls(app, connector, note):
-    """Carregador GoodWe HCA G2 do ponto: endereço Modbus (sempre preenchido), salvar e status do link.
-
-    Salva só ``charger_address`` (``PATCH connectors``), independente do formulário do ponto."""
+def charger_address_field(connector):
+    """Campo do endereço Modbus (1–247), salvo junto com o formulário."""
     current = connector.get('charger_address')
-    box = setup_field(CHARGER_FIELD, '' if current is None else str(current), CHARGER_HINT,
-                      keyboard=ft.KeyboardType.NUMBER, gap=14, height=FIELD_HEIGHT)
-    field = box.controls[1]
-    status = design.txt(charger_status(connector), 13, 'regular', expand=True)
-    status.data = 'charger-status'
+    field = setup_field(CHARGER_FIELD, '' if current is None else str(current), CHARGER_HINT,
+                        keyboard=ft.KeyboardType.NUMBER, height=FIELD_HEIGHT).controls[1]
+    field.input_filter = ft.InputFilter(regex_string=r'[0-9 ]', allow=True)
+    return field
 
-    def refuse(message):
-        field.error_text = message
-        app.page.update()
-        raise ApiError(message)
 
-    async def save():
-        try:
-            address = charger_address_input(field.value)
-        except ValueError as exc:
-            refuse(str(exc))
-        try:
-            saved = await app.api.request('PATCH', f"connectors/{connector['id']}", {'charger_address': address})
-        except ApiError as exc:
-            if exc.code in _ADDRESS_ERRORS:
-                field.error_text = str(exc)
-                app.page.update()
-            raise
-        saved = saved if isinstance(saved, dict) else {}
-        connector['charger_address'] = saved.get('charger_address', address)
-        connector['charger_link'] = saved.get('charger_link')
-        if 'online' in saved:
-            connector['online'] = saved['online']
-        field.value = str(connector['charger_address'])
-        field.error_text = None
-        status.value = charger_status(connector)
-        app.page.update()
-        app.notice(f'Endereço {connector["charger_address"]} salvo para o carregador deste ponto.')
+def charger_card(app, connector):
+    """Cartão do topo: ``Carregador N`` + status, modelo/potência, última leitura e potência lida.
 
-    save_row = _action_row(ft.Icons.CABLE, 'Salvar endereço',
-                           'Sem resposta do carregador, a tela carrega com a simulação interna.',
-                           _mini_button('Salvar', app.action(save), 'primary'))
-    return [design.section_label('Carregador GoodWe'),
-            note('Cada ponto é um carregador GoodWe HCA G2. O endereço Modbus é único no posto e a tela o '
-                 'procura na rede Wi-Fi local.'),
-            box, ft.Row([ft.Icon(ft.Icons.EV_STATION_OUTLINED, size=18, color=theme.GRAY_TEXT), status], spacing=8),
-            save_row]
+    Estável durante o poll: ``draw()`` só troca os textos (nenhum controle é recriado)."""
+    name = design.txt('', 15, 'bold', expand=True)
+    subtitle = design.txt('', 11, 'regular', theme.GRAY_TEXT)
+    badge = chargers.pill('', theme.SLATE)
+    reading = design.txt('', 12.5, 'bold', text_align=ft.TextAlign.END)
+    measured = design.txt('', 12.5, 'bold', text_align=ft.TextAlign.END)
+
+    def draw():
+        block = connector.get('charger_link') or {}
+        label, color = _point_status(connector)
+        address = chargers.address_of(connector)
+        name.value = f'Carregador {address}' if address is not None else 'Carregador'
+        place = connector.get('station_name')
+        subtitle.value = ' · '.join(part for part in (place, charger_link.STATUS_LABEL, chargers.spec_line(connector))
+                                    if part)
+        badge.content.value, badge.bgcolor, badge.content.color = label, color, theme.on_color(color)
+        reading.value = date_time(block['last_online_at']) if block.get('last_online_at') else 'Sem leitura'
+        measured.value = chargers.measured_text(block.get('measured_power_w'))
+
+    lines = [ft.Column([ft.Row([name, badge], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER), subtitle],
+                       spacing=4),
+             chargers.row('Última leitura', reading), chargers.row('Potência lida', measured)]
+    if getattr(app.api, 'is_demo', False):
+        from ..demo import DEMO_PRESENCE_CODE
+        lines.append(design.txt(f'Carregador simulado. Teste no modo motorista com {DEMO_PRESENCE_CODE}.',
+                                10.5, 'regular', theme.GRAY_TEXT))
+    holder = ft.Container(design.card_box(
+        ft.Column(lines, spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        padding=ft.Padding(left=15, right=15, top=14, bottom=15), radius=18), data='charger-card')
+    draw()
+    return holder, draw
+
+
+def remove_box(app, station_id, connector, refresh=None):
+    """Zona de perigo: ``Remover carregador N`` (só carregador adicional; o da central nunca)."""
+    address = chargers.address_of(connector)
+    title = f'Remover carregador {address}?' if address is not None else 'Remover este carregador?'
+
+    async def confirm():
+        app.page.pop_dialog()
+        if refresh is not None:
+            refresh.invalidate()
+        await chargers.remove_charger(app, connector)
+        if hasattr(app, 'mark_saved'):
+            app.mark_saved()
+        app.notice(chargers.removed_text(connector))
+        await app.go('station_admin', station_id=station_id, page='connectors')
+
+    async def ask():
+        if hasattr(app, 'prepare_navigation') and not await app.prepare_navigation():
+            return
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True, title=ft.Text(title),
+            content=ft.Text(chargers.REMOVE_DETAIL),
+            actions=[ft.TextButton('Cancelar', on_click=lambda event: app.page.pop_dialog()),
+                     ft.TextButton('Remover', on_click=app.action(confirm), style=ft.ButtonStyle(color=theme.RED))]))
+
+    return ft.Container(
+        ft.Row([design.txt(chargers.REMOVE_HINT, 10.5, 'regular', theme.GRAY_TEXT, expand=True),
+                _mini_button(chargers.REMOVE_LABEL, app.action(ask), 'danger')],
+               spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=theme.WARN_BG, border=ft.Border.all(1, ft.Colors.with_opacity(0.45, theme.RED)),
+        border_radius=design.RADIUS_BTN, padding=ft.Padding(left=12, right=10, top=10, bottom=10), data='remove-charger')
 
 
 def show_key(app, result):

@@ -85,10 +85,10 @@ class RealAccountPresentationTests(TempStorage):
         with patch('flet.UrlLauncher', return_value=launcher):
             pix = await self.screen(7)
             copy = texts(pix)
-            for expected in ('Efetuar Pagamento', 'Copiar código Pix', 'Já paguei (Confirmar)', 'Expira em 14:59'):
+            for expected in ('Efetuar Pagamento', 'Copiar código Pix', 'Já efetuei o pagamento', 'Expira em 14:59'):
                 self.assertIn(expected, copy)
             self.assertNotIn('Abrir pagamento seguro', copy)
-            await tap(pix, 'Já paguei (Confirmar)')()
+            await tap(pix, 'Já efetuei o pagamento')()
         launcher.launch_url.assert_not_awaited()
         route, handoff = self.app.go.await_args.args[0], self.app.go.await_args.kwargs
         self.assertEqual(route, 'charging')
@@ -204,7 +204,7 @@ class DemoPresentationJourneyTests(TempStorage):
         self.app.booking.update(minutes_text='30', pay='pix')
         self.assertEqual(texts(await booking.build(self.app, step=5, station_id=self.sid)).count('Pix'), 1)
         await tap(await booking.build(self.app, step=6, station_id=self.sid), 'Confirmar e iniciar no ponto')()
-        await tap(await booking.build(self.app, step=7, station_id=self.sid), 'Já paguei (Confirmar)')()
+        await tap(await booking.build(self.app, step=7, station_id=self.sid), 'Já efetuei o pagamento')()
         handoff = self.app.go.await_args.kwargs
         before = wallet.balance(self.app)
 

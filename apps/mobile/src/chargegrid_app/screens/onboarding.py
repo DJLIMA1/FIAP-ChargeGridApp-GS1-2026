@@ -78,7 +78,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
         raise ApiError('O ponto vinculado não foi encontrado neste posto.')
     if point.get('retired'):
         raise ApiError('Este ponto simulado foi desvinculado. Adicione outro equipamento na gestão.' if is_demo else
-                       'Este ponto foi desvinculado. Escaneie o novo QR da tela para configurar outro ponto.')
+                       'Este ponto foi desvinculado. Escaneie o novo QR da central para configurar outro ponto.')
 
     point_id = point['id']
     step = int(step)
@@ -187,7 +187,7 @@ async def build(app, station_id, point_id=None, step=1, existing_station=False, 
             _note('O código público identifica este ponto simulado. Para testar a recarga, '
                   f'use {DEMO_PRESENCE_CODE} no modo motorista.' if is_demo else
                   'O código público identifica este ponto. Para iniciar a recarga, o cliente também '
-                  'informa o código temporário #F exibido na tela.'),
+                  'informa o código temporário #F exibido pela central.'),
             _form([kind_box, power_box, price_box, duration_box]),
             cta('Salvar e revisar', app.action(save_point), weight='bold', size=15),
             cta('Voltar ao posto' if existing_station else 'Voltar à localização',

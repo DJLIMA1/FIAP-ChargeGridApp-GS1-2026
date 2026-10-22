@@ -159,3 +159,25 @@ def settle(app, session):
         return None
     wallet.credit(app, surplus, CREDIT_TITLE)
     return surplus
+
+
+async def settle_shared(app, session):
+    """Shared simulated refunds use a session key, safe after a lost response/restart."""
+    if not isinstance(getattr(app, 'shared_wallet', None), dict):
+        return settle(app, session)
+    if not isinstance(session, dict) or not session.get('id') or session.get('status') in ACTIVE:
+        return None
+    if session.get('payment') or not vehicle_state.presentation_mode(app):
+        return None
+    rows = _load(app)
+    row = next((item for item in rows if item.get('session_id') == session['id']), None)
+    if row is None or row.get('status') == 'cancelled':
+        return None
+    if row.get('status') == 'settled':
+        return _money(row.get('credited') or 0) or None
+    surplus = max(Decimal('0.00'), _money(row.get('energy_amount')) - _money(session.get('cost_estimate') or 0))
+    if surplus:
+        await wallet.shared_credit(app, surplus, CREDIT_TITLE, operation_key=f"app-refund:{session['id']}")
+    row.update(status='settled', credited=str(surplus), end_reason=session.get('end_reason'))
+    _save(app, rows)
+    return surplus or None

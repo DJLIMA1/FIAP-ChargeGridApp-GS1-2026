@@ -152,13 +152,29 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.posts,[])
         await click(third,'Solicitar início')(None)
         self.assertEqual(len(app.posts),1)
-        self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F12345','public_code':'CG-ONE','max_duration_minutes':10})
+        self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F12345','public_code':'CG-ONE','max_duration_minutes':10,'power_tier':'max'})
         self.assertEqual(app.posts[0][0]['soc_source'],'simulated')
         self.assertTrue(15 <= app.posts[0][0]['soc_percent'] <= 60)
         self.assertEqual(app.posts[0][0]['battery_kwh'],44.9)
         # Driver's general limit: the BYD Dolphin accepts 6.6 kW on an AC point.
         self.assertEqual(app.posts[0][0]['max_power_kw'],6.6)
         self.assertIsNone(app.charging_draft)
+
+    async def test_direct_wizard_preserves_reduced_tier_and_tariff_through_start(self):
+        app = WizardApp()
+        context = deepcopy(CONTEXT)
+        context['connector']['speed_prices'] = {'max':'2','reduced':'1.25'}
+        app.station['connectors'][0].update(context['connector'])
+        second = await limits_screen(app,public_code='CG-ONE',point_context=context)
+        await click(second,'Reduzida')(None)
+        self.assertEqual(app.charging_draft['power_tier'],'reduced')
+        self.assertIn('R$ 1,25/kWh',texts(second))
+        third = await next_screen(app,second)
+        self.assertIn('Reduzida · mais econômica',texts(third))
+        self.assertIn('R$ 1,25/kWh',texts(third))
+        await click(third,'Solicitar início')(None)
+        self.assertEqual(app.posts[0][0]['power_tier'],'reduced')
+        self.assertEqual(app.posts[0][0]['max_power_kw'],3)
 
     async def test_invalid_code_cannot_advance_or_post(self):
         app = WizardApp()
@@ -303,7 +319,7 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(fields(second)['Duração máxima (min)'].value,'7')
                 third = await next_screen(app,second)
                 await click(third,'Solicitar início')(None)
-                self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F54321','max_duration_minutes':7,
+                self.assertEqual(without_soc(app.posts[0][0]),{'presence_code':'#F54321','max_duration_minutes':7,'power_tier':'max',
                                                 'public_code':'CG-ONE'})
 
     async def test_missing_reservation_does_not_unlock_uncertain_post_or_change_identity(self):

@@ -159,7 +159,7 @@ class ChargingWizardBatteryTests(StorageCase):
         await click(review, 'Solicitar início')(None)
         body = app.posts[0][0]
         self.assertEqual(without_soc(body), {'presence_code': '#F12345', 'public_code': 'CG-ONE',
-                                             'max_duration_minutes': 10})
+                                             'max_duration_minutes': 10,'power_tier':'max'})
         self.assertEqual((body['soc_percent'], body['battery_kwh'], body['soc_source']), (64.0, 44.9, 'phone'))
 
     async def test_older_api_rejecting_battery_fields_gets_one_retry_without_them(self):
@@ -291,7 +291,7 @@ class DemoChargingTests(StorageCase):
         self.assertTrue(any(text.startswith('80 km |') for text in visible))
         await tap(review, 'Confirmar e iniciar no ponto')()  # Saldo (simulado): segue direto ao início
         kwargs = self.app.go.await_args.kwargs
-        self.assertEqual(kwargs['planning_intent'], {'mode': 'autonomy', 'km': 80, 'max_power_kw': '60.0'})
+        self.assertEqual(kwargs['planning_intent'], {'mode': 'autonomy', 'km': 80, 'max_power_kw': '60.0','power_tier':'max'})
         rows = prepaid.records(self.app)
         self.assertEqual((len(rows), rows[0]['method'], rows[0]['status']), (1, 'balance', 'open'))
         draft_screen = await charging.build(self.app, **kwargs)

@@ -286,6 +286,7 @@ def overstay_box(terms):
 
 
 async def build(app, step=1, station_id=None, connector_id=None, **presets):
+    await wallet.refresh(app)
     step = max(1, min(LAST_STEP, int(step or 1)))
     if not station_id:
         return _page(
@@ -347,14 +348,15 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
 
     def quote():
         power = rules.power_options(group, car_power)[state['power'] or 'max'][0]
+        price = rules.group_price(group, state['power'] or 'max', state['connector_id'])
         if state['by'] == 'autonomy':
             result = autonomy()
             if result['energy_kwh'] <= 0:
                 raise ValueError(rules.autonomy_note(result))
-            return {**rules.estimate(power, group['price'], energy=result['energy_kwh']), 'autonomy': result}
+            return {**rules.estimate(power, price, energy=result['energy_kwh']), 'autonomy': result}
         if state['by'] == 'value':
-            return rules.estimate(power, group['price'], value=rules.parse_value(state['value_text'] or '0'))
-        return rules.estimate(power, group['price'], minutes=rules.parse_minutes(state['minutes_text'] or '0'))
+            return rules.estimate(power, price, value=rules.parse_value(state['value_text'] or '0'))
+        return rules.estimate(power, price, minutes=rules.parse_minutes(state['minutes_text'] or '0'))
 
     def safe_quote():
         try:
@@ -438,7 +440,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                     design.txt(f'Ponto reservado por {rules.TOLERANCE_MINUTES} minutos', 15, 'bold', expand=True)],
                    spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             design.txt('O prazo começa quando o posto confirma a reserva. Chegando, toque em "Cheguei" e informe o '
-                       'código #F da tela do equipamento. Se não chegar a tempo, a reserva expira.', 12, 'regular',
+                       'código #F exibido pela central. Se não chegar a tempo, a reserva expira.', 12, 'regular',
                        theme.GRAY_TEXT)], spacing=10), padding=ft.Padding(left=15, right=15, top=15, bottom=16))
         body = [ft.Container(height=4), hold, ft.Container(height=6), _fee_box(free=stripe_only)]
         return _page(*body, title='Reservar estação', on_back=app.back, steps=4, step=2, edge='c2r',
@@ -500,7 +502,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                 state['power'] = key
                 await app.go('booking', step=4, station_id=station_id)
             return handler
-        cards = [_option(rules.power_title(group, key, car_power), options[key][1],
+        cards = [_option(rules.power_title(group, key, car_power), rules.speed_subtitle(group, key, car_power, state['connector_id']),
                                      selected=state['power'] == key, on_click=choose_power(key),
                                      icon=ft.Icons.OFFLINE_BOLT_OUTLINED) for key in ('max', 'reduced')]
         return _page(*cards, title='Potência e Velocidade', on_back=app.back, steps=4, step=3, edge='c4',
@@ -548,6 +550,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         else:
             intent = {'mode': 'time', 'minutes': max(1, estimate['minutes'] or 30)}
         # Potência escolhida (conector efetivo ∩ carro ∩ opção): a API aplica no início da recarga.
+        intent['power_tier'] = state['power'] or 'max'
         intent['max_power_kw'] = str(rules.power_options(group, car_power)[state['power'] or 'max'][0])
         return intent
 
@@ -570,12 +573,13 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                     station_name=station.get('name', ''), connector_id=connector['id'])
         if reserving:
             state['key'] = state['key'] or app.api.new_key()
-            reservation = await app.api.request('POST', 'reservations', {'connector_id': connector['id']},
+            reservation = await app.api.request('POST', 'reservations', {'connector_id': connector['id'],
+                                                                       'power_tier': state['power'] or 'max'},
                                                 key=state['key'])
             state['key'] = None
             if not payment:
                 if state['pay'] == 'balance':
-                    wallet.debit(app, amount, description)
+                    await wallet.shared_debit(app, amount, description)
                 prepaid.record(app, **paid, reservation_id=reservation['id'])
             # Ao chegar e iniciar com esta reserva, o assistente #F já abre com os mesmos limites.
             app.planning_intent = {'connector_id': connector['id'], 'intent': intent}
@@ -589,7 +593,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             return
         if not payment:
             if state['pay'] == 'balance':
-                wallet.debit(app, amount, description)
+                await wallet.shared_debit(app, amount, description)
             prepaid.record(app, **paid)
         state['payment'] = None
         state['done'] = True
@@ -630,7 +634,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             detail = f"{estimate['minutes']} minutos"
         when = (f'Reservado por {rules.TOLERANCE_MINUTES} min' if reserving else 'Início no ponto com o código #F')
         kind = KIND_LABELS.get(state['by'], 'Por tempo')
-        power_note = rules.power_options(group, car_power)[state['power'] or 'max'][1]
+        power_note = rules.speed_subtitle(group, state['power'] or 'max', car_power, state['connector_id'])
         pay_sub = _pay_subtitle(state['pay'], balance)
         first = block('Recarga', row(f"{kind} | {'Reservar estação' if reserving else 'Carregar agora'}", f'{detail} | {when}',
                                      ft.Icons.ACCESS_TIME, 3), 11, 18.5)
@@ -699,7 +703,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                 except ApiError:
                     app.notice('Reserva cancelada. O pagamento de teste é liberado no fim do prazo de início.')
             if result['pay'] == 'balance':
-                wallet.credit(app, result['paid'], f"Estorno de reserva {result['station']}".strip())
+                await wallet.shared_credit(app, result['paid'], f"Estorno de reserva {result['station']}".strip())
             prepaid.cancel_reservation(app, result['id'])
         app.planning_intent = None
         state['result'] = None
@@ -806,7 +810,7 @@ def _simulated_payment(app, state, amount, finish, failing, blocked=False):
                                    height=45, bgcolor='#252525', border_radius=design.RADIUS_BTN,
                                    on_click=app.action(copy_code), ink=True),
                       margin=ft.Margin(left=0, top=0, right=0, bottom=4)),
-                  design.primary_button('Já paguei (Confirmar)', app.action(pay), height=55, size=16,
+                  design.primary_button('Já efetuei o pagamento', app.action(pay), height=55, size=16,
                                         weight='bold')]
     return _page(*body, title='Efetuar Pagamento', on_back=app.back, steps=1, step=1, footer=footer,
                  edge='c7c' if state['pay'] == 'card' else 'c7p', gap=15.5 if state['pay'] == 'card' else 13.5)

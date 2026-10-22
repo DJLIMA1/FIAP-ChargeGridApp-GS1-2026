@@ -4,10 +4,10 @@ from copy import deepcopy
 from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
+from test_consumer_flows import POINT, STATION, texts
 
 from chargegrid_app.screens import stations
 from test_behavior import HandlerApp, click, descendants
-from test_consumer_flows import POINT, STATION, texts
 
 
 def search_box(screen):
@@ -64,6 +64,9 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"{float(POINT['price_per_kwh']):.2f}".replace('.', ','), visible)
         self.assertIn('1 posto nesta página · 1 encontrado', visible)
         await open_station(screen, STATION['name'])(None)
+        app.go.assert_not_awaited()
+        self.assertIn('Ver estação', texts(screen))
+        await open_station(screen, 'Ver estação')(None)
         app.go.assert_awaited_once_with('stations', station_id=STATION['id'])
         self.assertTrue(all(call.args[0] == 'GET' for call in app.api.request.call_args_list))
 
@@ -129,6 +132,7 @@ class StationUxTests(unittest.IsolatedAsyncioTestCase):
                     screen = await stations.build(app)
                 self.assertIn(label, texts(screen))
                 await open_station(screen, STATION['name'])(None)
+                await open_station(screen, 'Ver estação')(None)
                 app.go.assert_awaited_once_with('stations', station_id=STATION['id'])
 
 

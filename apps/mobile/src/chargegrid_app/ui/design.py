@@ -124,7 +124,6 @@ ASSET_DIR = '/design/'
 AVATAR_SRC = ASSET_DIR + 'avatar_joao.jpg'
 CAR_SRC = ASSET_DIR + 'car_byd_dolphin.png'
 TOTEM_SRC = ASSET_DIR + 'totem_goodwe.png'
-MAP_SRC = ASSET_DIR + 'map_villa_lobos.jpg'
 QR_SRC = ASSET_DIR + 'qr_pix_demo.png'
 STATION_PIN_SRC = ASSET_DIR + 'icon_station_pin.svg'
 WORDMARK_SRC = '/figma/wordmark-dark.svg'
@@ -467,9 +466,9 @@ def totem_image(width=None, height=None):
 
 
 def map_image(height=160, radius=RADIUS_CARD, src=None):
-    """Mapa estático arredondado (imagem de referência, recortada)."""
-    return ft.Container(ft.Image(src=src or MAP_SRC, fit=ft.BoxFit.COVER, width=10000, height=height,
-                                 exclude_from_semantics=True),
+    """The design gallery uses the same live vector map as the rest of the app."""
+    from .vector_map import create_map
+    return ft.Container(create_map(height=height),
                         height=height, border_radius=radius, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
 
 

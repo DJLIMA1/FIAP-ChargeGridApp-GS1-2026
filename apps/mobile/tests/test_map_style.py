@@ -169,87 +169,83 @@ class ComposeAndCacheTests(unittest.TestCase):
                 sample = image.getpixel((round(180 - radius * .6), round(120 + radius * .1)))
                 self.assertTrue(close(sample, rgb(style['pin_detail']), 20), (dark, sample))  # JPEG chroma
 
+    def test_dense_viewport_uses_real_detail_and_lossless_pixels_at_the_same_location(self):
+        # A landmark at this real coordinate must stay under the interactive
+        # pin after the source resolution changes, including at a tile seam.
+        point = (-23.55, -46.63)
+
+        def tile(zoom, tx, ty):
+            image = Image.new('RGB', (256, 256), OSM['land'])
+            px, py = maps._lonlat_to_px(*point, zoom)
+            ImageDraw.Draw(image).rectangle((px - tx * 256 - 4, py - ty * 256 - 4,
+                                             px - tx * 256 + 4, py - ty * 256 + 4), fill=OSM['water'])
+            buffer = io.BytesIO()
+            image.save(buffer, format='PNG')
+            return buffer.getvalue()
+
+        with patch.object(maps, '_tile_bytes', side_effect=tile) as fetch:
+            standard = maps.build_map_png(*point, [], width=360, height=240, zoom=16, center_glyph=None)
+            fetch.reset_mock()
+            dense = maps.build_map_png(*point, [], width=360, height=240, zoom=16,
+                                       center_glyph=None, pixel_ratio=2)
+            self.assertTrue(all(call.args[0] == 17 for call in fetch.call_args_list))
+            fetch.reset_mock()
+            self.assertIs(maps.build_map_png(*point, [], width=360, height=240, zoom=16,
+                                             center_glyph=None, pixel_ratio=2), dense)
+            fetch.assert_not_called()
+        self.assertEqual(Image.open(io.BytesIO(standard)).size, (360, 240))
+        image = Image.open(io.BytesIO(dense))
+        self.assertEqual((image.size, image.format), ((720, 480), 'PNG'))
+        self.assertEqual(image.getpixel((360, 240)), rgb(maps.map_style(False)['water']))
+        self.assertEqual(len(maps._map_cache), 2)
+
+    def test_dense_viewport_respects_provider_maximum_zoom(self):
+        with patch.object(maps, '_tile_bytes', return_value=png_tile()) as fetch:
+            data = maps.build_map_png(0, 0, [], width=360, height=240, zoom=19,
+                                      center_glyph=None, pixel_ratio=2)
+        self.assertTrue(all(call.args[0] == 19 for call in fetch.call_args_list))
+        self.assertEqual(Image.open(io.BytesIO(data)).size, (360, 240))
+
 
 class CallerThemeTests(ThemeRestore, unittest.IsolatedAsyncioTestCase):
     station = {'id': 's1', 'name': 'Posto', 'latitude': -23.5505, 'longitude': -46.6333,
                'free_points': 2, 'price': 1.95, 'status': 'Disponível'}
 
-    async def test_station_maps_follow_the_app_theme(self):
+    async def test_all_maps_follow_shared_light_and_dark_vector_styles(self):
+        import json
+
+        from chargegrid_map import VectorMap
         for dark in (False, True):
             theme.set_dark(dark)
-            style = maps.map_style(dark)
             for variant in ('list', 'detail', None):
-                with self.subTest(dark=dark, variant=variant), \
-                        patch.object(maps, 'build_map_png', return_value=b'fixture') as render:
-                    screen = await maps.station_map_widget([self.station], Mock(), variant=variant)
-                    self.assertIs(render.call_args.kwargs['dark'], dark)
-                    if variant:
-                        self.assertEqual(render.call_args.kwargs['selected_color'], style[maps.VARIANT_PIN[variant]])
-                    frame = screen
-                    self.assertEqual(frame.bgcolor, style['land'])
-                    callout = next(item for item in descendants(screen) if isinstance(item, ft.Container) and item.on_click)
-                    self.assertEqual(callout.bgcolor, style['callout'])
-                    credit = next(item for item in descendants(screen) if isinstance(item, ft.Container) and item.url)
-                    self.assertEqual((credit.bgcolor, credit.content.color), (style['credit_bg'], style['credit_fg']))
-                    self.assertEqual(credit.content.value, '© OpenStreetMap')
+                with self.subTest(dark=dark, variant=variant):
+                    screen = await maps.station_map_widget([self.station], Mock(), variant=variant, offline=True, crop='villa')
+                    control = next(item for item in descendants(screen) if isinstance(item, VectorMap))
+                    data = json.loads(control.style_json)
+                    self.assertEqual(data['name'], 'ChargeGrid Dark' if dark else 'ChargeGrid Light')
+                    self.assertEqual(data['sources']['openmaptiles']['type'], 'vector')
+                    self.assertFalse(any(isinstance(item, ft.Image) for item in descendants(screen)))
 
-    async def test_explicit_dark_argument_wins_over_theme(self):
+    async def test_explicit_dark_argument_wins_over_current_theme(self):
+        import json
+
+        from chargegrid_map import VectorMap
         theme.set_dark(False)
-        with patch.object(maps, 'build_map_png', return_value=b'fixture') as render:
-            await maps.station_map_widget([self.station], Mock(), dark=True)
-            await maps.map_widget(-23.55, -46.63, [], dark=True)
-        self.assertTrue(all(call.kwargs['dark'] for call in render.call_args_list))
+        screen = await maps.station_map_widget([self.station], Mock(), dark=True)
+        control = next(item for item in descendants(screen) if isinstance(item, VectorMap))
+        self.assertEqual(json.loads(control.style_json)['name'], 'ChargeGrid Dark')
 
-    async def test_generic_map_and_legend_follow_the_theme(self):
-        for dark in (False, True):
-            theme.set_dark(dark)
-            style = maps.map_style(dark)
-            with self.subTest(dark=dark), patch.object(maps, 'build_map_png', return_value=b'fixture') as render:
-                screen = await maps.map_widget(-23.55, -46.63, [(-23.55, -46.63, '⚡')])
-                self.assertIs(render.call_args.kwargs['dark'], dark)
-                icons = [item.color for item in descendants(screen) if isinstance(item, ft.Icon)]
-                self.assertIn(style['pin'], icons)
+    async def test_vector_style_keeps_provider_labels_and_distinct_map_themes(self):
+        import json
 
-    async def test_schematic_fallback_has_both_variants(self):
-        for dark in (False, True):
-            theme.set_dark(dark)
-            style = maps.map_style(dark)
-            with self.subTest(dark=dark), patch.object(maps, 'build_map_png', side_effect=OSError('offline')):
-                screen = await maps.station_map_widget([self.station], Mock())
-                schematic = next(item for item in descendants(screen)
-                                 if isinstance(item, ft.Container) and isinstance(item.content, ft.Stack)
-                                 and item.border_radius == 18 and item.bgcolor == style['land'] and item.url is None
-                                 and item is not screen)
-                rings = [item for item in descendants(schematic) if isinstance(item, ft.Container) and item.border
-                         and item.border.top.color == style['ring']]
-                pins = [item.bgcolor for item in descendants(schematic) if isinstance(item, ft.Container)
-                        and item.bgcolor in (style['pin'], style['pin_off'])]
-                self.assertEqual(len(rings), 3)
-                self.assertTrue(pins)
-            with self.subTest(dark=dark, offline=True), patch.object(maps, 'build_map_png', side_effect=AssertionError):
-                screen = await maps.map_widget(-23.55, -46.63, [(-23.55, -46.63, '⚡')], offline=True)
-                self.assertTrue(any(isinstance(item, ft.Container) and item.bgcolor == style['land']
-                                    and isinstance(item.content, ft.Stack) for item in descendants(screen)))
-
-    async def test_demo_reference_raster_has_a_dark_variant(self):
-        villa = {**self.station, 'name': 'Villa Lobos', 'latitude': -23.5467, 'longitude': -46.7224}
-        for dark in (False, True):
-            theme.set_dark(dark)
-            with self.subTest(dark=dark), patch.object(maps, 'build_map_png', side_effect=AssertionError('network')):
-                cropped = await maps.station_map_widget([villa], Mock(), offline=True, variant='list', crop='marginal')
-                fixture = await maps.station_map_widget([villa], Mock(), offline=True)
-                for screen in (cropped, fixture):
-                    sources = [item.src for item in descendants(screen) if isinstance(item, ft.Image)]
-                    self.assertEqual(sources, [maps.DEMO_MAP_SRC[dark]])
-        for src in maps.DEMO_MAP_SRC.values():
-            self.assertTrue((ASSETS / src.lstrip('/')).is_file(), src)
-        light = Image.open(ASSETS / maps.DEMO_MAP_SRC[False].lstrip('/'))
-        dark = Image.open(ASSETS / maps.DEMO_MAP_SRC[True].lstrip('/')).convert('RGB')
-        self.assertEqual(light.size, dark.size)  # same crops (DEMO_CROPS / _RASTER_FRAMES) apply
-        # Map area went charcoal while the baked callout cards stay white and readable.
-        self.assertLess(luminance(dark.resize((1, 1), Image.Resampling.BOX).getpixel((0, 0))), .06)
-        for x0, y0, x1, y1, _ in maps.DEMO_RASTER_CARDS:
-            self.assertGreater(luminance(dark.getpixel(((x0 + x1) // 2, y1 - 12))), .85)
+        from chargegrid_app.ui.vector_map import vector_style
+        styles = [json.loads(vector_style(dark)) for dark in (False, True)]
+        for data in styles:
+            labels = [layer for layer in data['layers'] if layer['type'] == 'symbol']
+            self.assertTrue(labels)
+            self.assertTrue(any('text-size' in layer.get('layout', {}) for layer in labels))
+            self.assertTrue(data['glyphs'].startswith('https://tiles.openfreemap.org/'))
+        self.assertNotEqual(styles[0]['layers'], styles[1]['layers'])
 
 
 class AttributionTests(unittest.TestCase):

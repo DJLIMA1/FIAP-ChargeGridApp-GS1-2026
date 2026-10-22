@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from chargegrid_core import power as power_rules
+from chargegrid_core.charge_plan import autonomy_energy
+from chargegrid_core.charge_plan import autonomy_note as autonomy_note
+from chargegrid_core.charge_plan import parse_km as parse_km
+from chargegrid_core.chargers import link as charger_link
 
 RESERVATION_FEE = Decimal('4.90')
 TOLERANCE_MINUTES = 15
@@ -85,9 +89,25 @@ def kiosk_held(group):
     return sum(1 for point in group['connectors'] if point.get('kiosk_in_use') is True)
 
 
+def charger_offline_text(count, total=None):
+    """``Carregador offline`` (o único do grupo) ou ``2 carregadores offline``."""
+    if count == 1:
+        return charger_link.CHARGER_OFFLINE_SHORT if total == 1 else '1 carregador offline'
+    return f'{count} carregadores offline'
+
+
 def group_subtitle(group):
     total, free = len(group['connectors']), len(group['free'])
     held = kiosk_held(group)
+    # Tela da estação com contato, mas o carregador do ponto sem resposta: nunca conta como livre.
+    down = sum(1 for point in group['connectors'] if point.get('unavailable_reason') == charger_link.CHARGER_OFFLINE)
+    if down:
+        offline = charger_offline_text(down, total)
+        if down == total:
+            return f'{offline} · use outro ponto desta estação'
+        head = (f"{free} de {total} conectores {'livre' if free == 1 else 'livres'}" if free
+                else 'Nenhum conector livre')
+        return f'{head} · {offline}'
     if total == 1:
         return '1 conector livre' if free else ('Ponto em uso no totem' if held else 'Indisponível no momento')
     if free == total:
@@ -127,6 +147,26 @@ def power_options(group, car=None):
     top = driver_power(group, car)['kw'] if 'effective_kw' in group or car else group['power_kw']
     reduced = (top / 2).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
     return {'max': (top, 'Mais rápida'), 'reduced': (reduced, 'Reduz a potência máxima')}
+
+
+def tier_price(point, tier='max'):
+    """Preço comercial escolhido; um limite físico menor nunca seleciona o desconto."""
+    values = point.get('speed_prices') or {}
+    maximum = to_decimal(values.get('max', point.get('dynamic_price_per_kwh')
+                                    if point.get('dynamic_price_per_kwh') is not None
+                                    else point.get('price_per_kwh', point.get('price', 0))))
+    return to_decimal(values.get('reduced', maximum * Decimal('0.8'))) if tier == 'reduced' else maximum
+
+
+def group_price(group, tier='max', connector_id=None):
+    pool = group.get('free') or group.get('connectors') or []
+    point = next((p for p in pool if p.get('id') == connector_id), pool[0] if pool else group)
+    return tier_price(point, tier)
+
+
+def speed_subtitle(group, tier='max', car=None, connector_id=None):
+    label = 'Mais rápida' if tier == 'max' else 'Mais econômica'
+    return f'{label} · {money(group_price(group, tier, connector_id))}/kWh'
 
 
 def time_slots(now=None, count=SLOT_COUNT):
@@ -175,39 +215,6 @@ def parse_minutes(text):
     return int(raw)
 
 
-def parse_km(text):
-    raw = str(text or '').strip().lower().replace('km', '').strip()
-    if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= 2000:
-        raise ValueError('Informe a autonomia em km inteiros (ex.: 120).')
-    return int(raw)
-
-
-def autonomy_energy(km, consumption_kwh_per_100km, soc_percent, usable_kwh):
-    """Energia para ``km`` de autonomia: ``km x consumo / 100``, limitada ao espaço livre da bateria
-    (``(100 - SoC)% x bateria útil``). Devolve ``{energy_kwh, wanted_kwh, free_kwh, capped, km}``
-    (``km`` = autonomia efetivamente adicionada)."""
-    consumption = to_decimal(consumption_kwh_per_100km)
-    if consumption <= 0:
-        raise ValueError('Consumo do carro inválido.')
-    wanted = to_decimal(km) * consumption / 100
-    soc = min(Decimal(100), max(Decimal(0), to_decimal(soc_percent)))
-    free = (Decimal(100) - soc) / 100 * max(Decimal(0), to_decimal(usable_kwh))
-    capped = wanted > free
-    energy = free if capped else wanted
-    return {'energy_kwh': energy.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
-            'wanted_kwh': wanted.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP),
-            'free_kwh': free.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP), 'capped': capped,
-            'km': int((energy / consumption * 100).to_integral_value(rounding=ROUND_HALF_UP))}
-
-
-def autonomy_note(result):
-    """Aviso gentil quando a bateria não comporta toda a autonomia pedida (nunca mostra o SoC)."""
-    if not result or not result.get('capped'):
-        return None
-    if result['energy_kwh'] <= 0:
-        return 'A bateria do carro já está cheia: não há autonomia para adicionar agora.'
-    return (f"A bateria comporta cerca de {result['km']} km agora; a recarga vai até encher "
-            '(o restante não é cobrado).')
 
 
 def autonomy_limits(km, car, power_kw, price_per_kwh, max_minutes=None):

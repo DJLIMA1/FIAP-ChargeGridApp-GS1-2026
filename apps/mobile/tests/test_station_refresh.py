@@ -2,10 +2,17 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
+from chargegrid_map import VectorMap
+from test_station_ux import open_station
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.screens import stations
 from test_behavior import HandlerApp, descendants, station_responses
+
+
+def camera(screen):
+    return next(item.on_camera.__self__ for item in descendants(screen)
+                if isinstance(item, VectorMap))
 
 
 class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
@@ -34,19 +41,23 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.return_value = {'items':[station],'total':1}
         with patch.object(stations,'station_map_widget',new=AsyncMock(return_value=ft.Text('Map'))) as render:
             screen = await stations.build(app)
+            viewer = camera(screen)
+            await open_station(screen, 'Posto')(None)
+            selected_center = viewer.center
             field = next(item for item in descendants(screen) if isinstance(item,ft.TextField))
             field.value = 'Busca em edição'
             station['name'] = 'Posto renomeado'
             point['price_per_kwh'] = '1.95'
             await app.poll()
-            self.assertEqual(render.await_count,2)
-            self.assertEqual(render.call_args.args[0][0]['name'],'Posto renomeado')
-            self.assertEqual(render.call_args.args[0][0]['price'],1.95)
-            await render.call_args.args[1]('s')(None)
+            self.assertIs(camera(screen), viewer)
+            self.assertEqual(viewer.records[0]['name'],'Posto renomeado')
+            self.assertEqual(viewer.records[0]['price'],1.95)
+            self.assertEqual(viewer.center, selected_center)
+            await open_station(screen, 'Ver estação')(None)
             app.go.assert_awaited_once_with('stations',station_id='s')
             self.assertEqual(field.value,'Busca em edição')
             await app.poll()
-            self.assertEqual(render.await_count,2)
+            render.assert_not_awaited()  # Polling updates pins, never a static preview.
 
     async def test_map_tracks_availability_and_appearance_without_rebuilding_form(self):
         app = HandlerApp()
@@ -63,25 +74,26 @@ class StationRefreshTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = request
         with patch.object(stations, 'station_map_widget', new=AsyncMock(side_effect=lambda *a, **k: ft.Text('Map'))) as render:
             screen = await stations.build(app)
+            viewer = camera(screen)
             fields = [c for c in descendants(screen) if isinstance(c, ft.TextField)]
             fields[0].value = 'Endereço em edição'
             state = {'items': [station], 'total': 1}
             await app.poll()
-            self.assertEqual(render.await_count,1)
-            self.assertEqual(render.call_args.args[0][0]['free_points'],1)
-            self.assertEqual(render.call_args.args[0][0]['price'],2)
-            self.assertEqual(render.call_args.kwargs,dict(offline=False,crop=None,width=360,reference=None,variant='list'))
+            self.assertEqual(viewer.records[0]['free_points'],1)
+            self.assertEqual(viewer.records[0]['price'],2)
+            self.assertIs(camera(screen), viewer)
             state = {'items': [{**station, 'connectors': [{**point, 'available': False}]}], 'total': 1}
             await app.poll()
-            self.assertEqual(render.call_args.args[0][0]['free_points'],0)
-            self.assertIsNone(render.call_args.args[0][0]['price'])
+            self.assertEqual(viewer.records[0]['free_points'],0)
+            self.assertIsNone(viewer.records[0]['price'])
             self.assertEqual(fields[0].value, 'Endereço em edição')
             self.assertIs(fields[0], next(c for c in descendants(screen) if isinstance(c, ft.TextField)))
             state = {'items': [], 'total': 0}
             await app.poll()
+            self.assertEqual(viewer.records, [])
             self.assertNotIn('Map', [c.value for c in descendants(screen) if isinstance(c, ft.Text)])
             await app.poll()
-            self.assertEqual(render.await_count, 2)
+            render.assert_not_awaited()
 
     async def test_typed_address_search_failures_are_actionable_and_do_not_navigate(self):
         cases = [(AsyncMock(return_value=None), 'Endereço não encontrado'),

@@ -7,7 +7,7 @@ Dados base do dono (``rules``)
 ------------------------------
 * ``demand``: ``enabled``, ``max_increase_percent`` (teto do acréscimo, 0–100 %) e
   ``sensitivity`` (``low`` | ``medium`` | ``high``: quão cedo o preço reage).
-* ``schedule``: tarifação por horário. ``intervals`` = ``[{start, end, days, prices}]``:
+* ``schedule``: tarifação por horário. ``intervals`` = ``[{start, end, days, prices, enabled}]``:
   ``start``/``end`` ``HH:MM``, ``days`` (0 = segunda) é o dia em que o horário **começa**
   (``Seg 22:00–06:00`` vai de segunda à noite até terça de manhã) e ``prices`` é a tarifa
   base de cada conector nesse horário (``{connector_id: "1.2000"}``). Fora dos horários,
@@ -57,6 +57,7 @@ from . import overstay
 DEFAULT_RULES = {
     "demand": {"enabled": True, "max_increase_percent": 50, "sensitivity": "medium"},
     "schedule": {"enabled": True, "intervals": []},
+    "speed": {"reduced_discount_percent": 20, "prices": {}},
     "peak": {"enabled": True, "start": "18:00", "end": "21:00", "days": [0, 1, 2, 3, 4, 5, 6]},  # legado
     "rotation": dict(overstay.DEFAULT_ROTATION),
 }
@@ -127,6 +128,36 @@ def clean_rules(raw) -> dict:
     peak["days"] = sorted(set(days))
     overstay.clean_rotation(rotation)
     rules["schedule"] = _clean_schedule(rules["schedule"])
+    speed = rules["speed"]
+    try:
+        discount = int(speed["reduced_discount_percent"])
+    except (TypeError, ValueError):
+        raise ValueError("Informe o desconto da velocidade reduzida em porcentagem inteira.") from None
+    if isinstance(speed["reduced_discount_percent"], bool) or not 1 <= discount <= 100:
+        raise ValueError("O desconto da velocidade reduzida vai de 1% a 100%.")
+    if not isinstance(speed["prices"], dict):
+        raise ValueError("Tarifas por velocidade inválidas.")
+    prices = {}
+    for connector_id, values in speed["prices"].items():
+        if not isinstance(values, dict):
+            raise ValueError("Tarifas por velocidade inválidas.")
+        selected = {}
+        for tier in ("max", "reduced"):
+            if values.get(tier) is None:
+                continue
+            try:
+                amount = _dec(values[tier])
+            except (TypeError, ValueError, InvalidOperation):
+                amount = Decimal("NaN")
+            if isinstance(values[tier], bool) or not amount.is_finite() or not 0 <= amount <= Decimal(10000):
+                raise ValueError("A tarifa por velocidade vai de R$ 0,00 a R$ 10.000,00.")
+            selected[tier] = str(amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+        if "max" in selected and "reduced" in selected:
+            maximum, reduced = _dec(selected["max"]), _dec(selected["reduced"])
+            if reduced > maximum or (maximum > 0 and reduced == maximum):
+                raise ValueError("A velocidade reduzida deve custar menos que a máxima.")
+        prices[str(connector_id)] = selected
+    rules["speed"] = {"reduced_discount_percent": discount, "prices": prices}
     return rules
 
 
@@ -154,6 +185,9 @@ def _segments(interval):
 def _clean_interval(raw) -> dict:
     if not isinstance(raw, dict):
         raise ValueError("Horário da tarifa inválido.")
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("Status do horário inválido.")
     start, end = _time(raw.get("start")), _time(raw.get("end"))
     if start == end:
         raise ValueError("O início e o fim de cada horário devem ser diferentes.")
@@ -175,7 +209,7 @@ def _clean_interval(raw) -> dict:
         if isinstance(value, bool) or not amount.is_finite() or not Decimal(0) <= amount <= MAX_PRICE:
             raise ValueError("A tarifa de cada horário vai de R$ 0,00 a R$ 100,00.")
         cleaned[str(connector_id)] = str(amount.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    return {"start": start, "end": end, "days": sorted(set(days)), "prices": cleaned}
+    return {"start": start, "end": end, "days": sorted(set(days)), "prices": cleaned, "enabled": enabled}
 
 
 def _clean_schedule(schedule) -> dict:
@@ -188,6 +222,8 @@ def _clean_schedule(schedule) -> dict:
                        key=lambda item: (item["days"][0], item["start"], item["end"]))
     for index, first in enumerate(intervals):
         for second in intervals[index + 1:]:
+            if not first["enabled"] or not second["enabled"]:
+                continue
             overlap = [max(a, c) for a, b in _segments(first) for c, d in _segments(second) if a < d and c < b]
             if overlap:
                 raise ValueError(f"Os horários {window_label(first)} e {window_label(second)} se sobrepõem "
@@ -211,6 +247,11 @@ def merge_rules(stored, body, connector_ids) -> dict:
     for interval in intervals if isinstance(intervals, list) else ():
         if isinstance(interval, dict) and isinstance(interval.get("prices"), dict):
             interval["prices"] = {key: value for key, value in interval["prices"].items() if str(key) in allowed}
+    speed = merged.get("speed")
+    if isinstance(speed, dict) and isinstance(speed.get("prices"), dict):
+        # Editing one point must preserve the other points' commercial tariffs.
+        prices = {**((stored.get("speed") or {}).get("prices") or {}), **speed["prices"]}
+        speed["prices"] = {str(key): value for key, value in prices.items() if str(key) in allowed}
     return merged
 
 
@@ -229,6 +270,8 @@ def active_interval(rules, local_now: datetime | None) -> dict | None:
         return None
     minute = local_now.weekday() * DAY + local_now.hour * 60 + local_now.minute
     for index, interval in enumerate(schedule.get("intervals") or []):
+        if not interval.get("enabled", True):
+            continue
         if any(begin <= minute < end for begin, end in _segments(interval)):
             return {**interval, "index": index}
     return None
@@ -240,10 +283,33 @@ def base_now(interval, connector_id, base) -> Decimal:
     return _dec(price if price is not None else base).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
-def connector_price(status, connector_id, base) -> tuple[Decimal, Decimal]:
+def speed_prices(status, connector_id, base) -> dict:
+    """Bases e preços finais por escolha comercial; potência física nunca escolhe tarifa.
+
+    Horários continuam valendo: a tarifa digitada no horário é a máxima e mantém a
+    proporção da reduzida. Overrides do dono são bases fora dos horários. Sem override reduzida
+    custa 80% da máxima (desconto configurável).
+    """
+    speed = status.get("speed") or DEFAULT_RULES["speed"]
+    values = (speed.get("prices") or {}).get(str(connector_id)) or {}
+    maximum = _dec(values.get("max", base))
+    reduced = _dec(values.get("reduced", maximum * (100 - _dec(speed.get("reduced_discount_percent", 20))) / 100))
+    reduced = min(reduced, maximum)
+    scheduled = ((status.get("schedule_now") or {}).get("prices") or {}).get(str(connector_id))
+    if scheduled is not None:
+        scheduled = _dec(scheduled)
+        ratio = reduced / maximum if maximum > 0 else (100 - _dec(speed.get("reduced_discount_percent", 20))) / 100
+        bases = {"max": dynamic_price(scheduled, 1), "reduced": dynamic_price(scheduled, ratio)}
+    else:
+        bases = {"max": dynamic_price(maximum, 1), "reduced": dynamic_price(reduced, 1)}
+    return {"base_speed_prices": {key: str(value) for key, value in bases.items()},
+            "speed_prices": {key: str(dynamic_price(value, status["multiplier"])) for key, value in bases.items()}}
+
+
+def connector_price(status, connector_id, base, power_tier="max") -> tuple[Decimal, Decimal]:
     """``(base agora, preço agora)`` de um conector a partir de ``demand_status``."""
-    current = base_now(status.get("schedule_now"), connector_id, base)
-    return current, dynamic_price(current, status["multiplier"])
+    prices = speed_prices(status, connector_id, base)
+    return _dec(prices["base_speed_prices"][power_tier]), _dec(prices["speed_prices"][power_tier])
 
 
 def tariff_reason(multiplier, level, interval) -> tuple[str, str]:
@@ -324,6 +390,7 @@ def demand_status(rules, signals) -> dict:
     reason, reason_label = tariff_reason(multiplier, level, interval)
     return {
         "enabled": demand["enabled"],
+        "speed": rules["speed"],
         "multiplier": str(multiplier),
         "increase_percent": int(((multiplier - 1) * 100).to_integral_value(rounding=ROUND_HALF_UP)),
         "max_multiplier": str((1 + cap).quantize(Decimal("0.01"))),

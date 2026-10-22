@@ -59,11 +59,16 @@ def row(api, payment):
 def _quote(api, point, body):
     station = api._stations[point['station_id']]
     status = api._demand(station)
-    base, price = pricing.connector_price(status, point['id'], point['price_per_kwh'])
+    tier = body.get('power_tier') or 'max'
+    if tier not in ('max','reduced'):
+        _fail('Confira a velocidade da recarga.', 'validation_error', 422)
+    base, price = pricing.connector_price(status, point['id'], point['price_per_kwh'],tier)
     effective = api._power(station)['connectors'][point['id']]['effective_kw']
     driver = Decimal(str(body['max_power_kw'])) if body.get('max_power_kw') is not None else None
     power = power_rules.applied_limit(effective, driver).quantize(Decimal('0.001'), rounding=ROUND_DOWN)
     power = power if power > 0 else Decimal(point['power_kw'])
+    if tier == 'reduced':
+        power = min(power,effective / 2)
     try:
         cap = billing.quote_cap(body.get('mode'), power_kw=power, price_per_kwh=price, minutes=body.get('minutes'),
                                 max_cost=body.get('max_cost'), energy_kwh=body.get('energy_kwh'),
@@ -72,7 +77,7 @@ def _quote(api, point, body):
         _fail(str(exc), 'invalid_quote', 422)
     return {'amount_cents': cap['energy_cap_cents'], 'price': price, 'base': base,
             'multiplier': status['multiplier'], 'power': power, 'minutes': cap['max_duration_minutes'],
-            'energy_kwh': cap['energy_kwh'], 'driver': driver, 'overstay': overstay_terms(api, station)}
+            'energy_kwh': cap['energy_kwh'], 'driver': driver, 'power_tier':tier, 'overstay': overstay_terms(api, station)}
 
 
 def overstay_terms(api, station):
@@ -87,7 +92,7 @@ def overstay_terms(api, station):
 
 
 def create(api, body):
-    allowed = ('connector_id', 'mode', 'minutes', 'max_cost', 'energy_kwh', 'max_power_kw', 'coupon_code')
+    allowed = ('connector_id', 'mode', 'minutes', 'max_cost', 'energy_kwh', 'max_power_kw', 'coupon_code','power_tier')
     if set(body) - set(allowed):
         _fail('Campo não aceito pelo pagamento de demonstração.', 'validation_error', 422)
     point = api._get(api._points, body.get('connector_id'), 'Ponto não encontrado')
@@ -109,15 +114,15 @@ def create(api, body):
         'energy_cap': str(billing.money(energy)), 'fixed_fee': '0.00', 'overstay_reserve': str(billing.money(reserve)),
         'price_per_kwh': str(quote['price']), 'base_price_per_kwh': str(quote['base']),
         'demand_multiplier': str(quote['multiplier']), 'discount_percent': 0, 'coupon_code': None,
-        'max_duration_minutes': quote['minutes'],
-        'max_power_kw': str(quote['power']) if quote['driver'] is not None else None,
+        'max_duration_minutes': quote['minutes'], 'power_tier':quote['power_tier'],
+        'max_power_kw': str(quote['power']) if quote['driver'] is not None or quote['power_tier']=='reduced' else None,
         'connector_id': point['id'], 'session_id': None,
         'checkout_url': f'chargegrid-demo://checkout/{pid}',
         'expires_at': api._iso(api._elapsed + CHECKOUT_MINUTES * 60), 'start_deadline': None,
         'authorized_at': None, 'created_at': api._iso(), 'provider_ref': None, 'settlement': None,
         'quote': {'mode': body.get('mode'), 'minutes': body.get('minutes'), 'max_cost': body.get('max_cost'),
                   'energy_kwh': str(quote['energy_kwh']), 'power_kw': str(quote['power']),
-                  'reservation_terms': False, 'overstay': quote['overstay']},
+                  'power_tier':quote['power_tier'],'reservation_terms': False, 'overstay': quote['overstay']},
         'confirm_at': None,
     }
     _store(api)[pid] = payment
@@ -210,7 +215,9 @@ def attach(payment, session):
     payment.update(session_id=session['id'], status='in_use')
     session.update(max_cost=str(Decimal(payment['energy_cap']).quantize(Decimal('0.0001'))),
                    max_duration_minutes=payment['max_duration_minutes'],
-                   price_per_kwh=str(Decimal(payment['price_per_kwh'])), discount_percent=0)
+                   price_per_kwh=str(Decimal(payment['price_per_kwh'])),
+                   base_price_per_kwh=payment.get('base_price_per_kwh'),
+                   demand_multiplier=payment.get('demand_multiplier'),power_tier=payment.get('power_tier','max'),discount_percent=0)
 
 
 def for_session(api, session_id):

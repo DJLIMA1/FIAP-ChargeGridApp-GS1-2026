@@ -12,8 +12,6 @@ from pathlib import Path
 
 import flet as ft
 
-from chargegrid_core.formatting import brl
-
 from ..ui import theme
 
 _TILE_SIZE = 256
@@ -245,20 +243,22 @@ def _style_tiles(image, dark, profile=None):
     return styled
 
 
-def _draw_pin(draw, x, y, glyph, dark):
+def _draw_pin(draw, x, y, glyph, dark, *, scale=1):
     color = _marker_color(glyph, dark)
     style = map_style(dark)
     ring = style['pin_ring']
-    radius = 13 if glyph == "🚗" else 12
-    draw.ellipse((x - radius + 1, y - radius + 2, x + radius + 1, y + radius + 2), fill=style['pin_shadow'])
-    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color, outline=ring, width=3)
+    radius = (13 if glyph == "🚗" else 12) * scale
+    draw.ellipse((x - radius + scale, y - radius + 2 * scale,
+                  x + radius + scale, y + radius + 2 * scale), fill=style['pin_shadow'])
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color, outline=ring, width=3 * scale)
     if glyph == "⚡":
-        draw.polygon([(x + 1, y - 8), (x - 5, y + 1), (x - 1, y + 1),
-                      (x - 3, y + 8), (x + 6, y - 2), (x + 1, y - 2)], fill=ring)
+        draw.polygon([(x + dx * scale, y + dy * scale)
+                      for dx, dy in ((1, -8), (-5, 1), (-1, 1), (-3, 8), (6, -2), (1, -2))], fill=ring)
     elif glyph == "🚗":
-        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=ring)
+        draw.ellipse((x - 4 * scale, y - 4 * scale, x + 4 * scale, y + 4 * scale), fill=ring)
     else:
-        draw.rounded_rectangle((x - 5, y - 2, x + 5, y + 2), radius=2, fill=ring)
+        draw.rounded_rectangle((x - 5 * scale, y - 2 * scale, x + 5 * scale, y + 2 * scale),
+                               radius=2 * scale, fill=ring)
 
 
 def _draw_station_pin(draw, x, y, radius=26, available=True, color=None, dark=False):
@@ -330,139 +330,42 @@ def _map_frame(backdrop, attribution, *, width=320, callout=None, on_layout=None
 
 async def station_map_widget(stations, on_select, *, offline=False, width=320, reference=None, variant=None, crop=None,
                              dark=None):
-    """Map with an honest selected-station callout, no inferred GPS/distance.
+    """Every station map, including demo/detail, uses the shared vector renderer.
 
-    ``variant`` 'list' (green pin, "Disponível" chip) or 'detail' (navy pin, "N vagas" chip)
-    switches to the wide reference card; ``None`` keeps the original home map.
-    ``dark`` picks the map style variant; ``None`` follows the app's current theme.
+    Legacy offline/crop arguments remain accepted by screen callers; they never
+    substitute fixed geographic artwork for a real map.
     """
-    import asyncio
+    from ..ui.vector_map import coordinates, create_map, map_placeholder
 
-    dark = theme.is_dark() if dark is None else bool(dark)
-    style = map_style(dark)
+    records = [record for record in stations if coordinates(record) is not None]
+    ratio = DETAIL_MAP_RATIO if variant == 'detail' else WIDE_MAP_RATIO if variant == 'list' else STATION_MAP_RATIO
+    if not records:
+        return map_placeholder(width / ratio)
+    selected = next((record for record in records if record.get('free_points')), records[0])
+    viewport = create_map(records, on_select, center=reference or coordinates(selected), zoom=15,
+                          dark=dark, height=width / ratio, selected=selected['id'])
+    frame = ft.Container(viewport, height=width / ratio, bgcolor=map_style(dark)['land'],
+                         border_radius=16, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
+    measured_width = width
 
-    wide = variant in VARIANT_PIN
-    ratio = (DETAIL_MAP_RATIO if variant == 'detail' else WIDE_MAP_RATIO) if wide else STATION_MAP_RATIO
-    height = width / ratio
-
-    positioned = []
-    for station in stations:
-        try:
-            lat,lng = float(station['latitude']),float(station['longitude'])
-            if not math.isfinite(lat) or not math.isfinite(lng) or not -90 <= lat <= 90 or not -180 <= lng <= 180:
-                continue
-        except (KeyError,ValueError,TypeError):
-            continue
-        positioned.append((station,lat,lng))
-    if not positioned:
-        text = 'Nenhum posto encontrado. Abra a lista para buscar.' if not stations else 'Os postos desta lista ainda não têm coordenadas válidas para o mapa.'
-        return ft.Container(ft.Column([ft.Icon(ft.Icons.MAP_OUTLINED,size=32,color=theme.GRAY_TEXT),
-                                        ft.Text(text,size=13,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER)],
-                                       spacing=10,horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            height=180,bgcolor=theme.WHITE,border_radius=12,padding=24,alignment=ft.Alignment(0,0))
-    if offline and crop in DEMO_CROPS and variant in VARIANT_PIN:
-        # Demo: the raster already carries the pin and callout, so show just the matching window.
-        keyword = 'marginal' if crop == 'marginal' else 'villa lobos'
-        station_id = next((item['id'] for item,_,_ in positioned if keyword in str(item.get('name','')).lower()),
-                          positioned[0][0]['id'])
-        raster = ft.Image(src=DEMO_MAP_SRC[dark],fit=ft.BoxFit.FILL,left=0,
-                          semantics_label='Mapa da demonstração com o posto selecionado.')
-        backdrop = ft.Stack([raster],width=width,height=height)
-
-        def place(map_width):
-            frame_height = map_width / ratio
-            raster.width = map_width
-            raster.height = frame_height * _RASTER_FRAMES
-            raster.top = -frame_height * DEMO_CROPS[crop]
-            backdrop.width = map_width
-        place(width)
-        frame = _map_frame(backdrop,'Demo',width=width,ratio=ratio,radius=16,show_credit=False,on_layout=place,dark=dark)
-        frame.on_click = on_select(station_id)
-        frame.ink = True
-        return frame
-    selected,lat,lng = next((item for item in positioned if item[0]['free_points']),positioned[0])
-    markers = [(item_lat,item_lng,'⚡' if item['free_points'] else '⛔') for item,item_lat,item_lng in positioned]
-    if reference is not None:
-        markers.append((*reference,'🚗'))
-    attribution = '© OpenStreetMap contributors'
-    if offline:
-        # This bundled vector extract is specific to the public demo fixture.
-        # Never place another location on its fixed geographic marker.
-        if abs(lat-(-23.5467)) < 0.000001 and abs(lng-(-46.7224)) < 0.000001 and reference is None and selected['free_points']:
-            backdrop = ft.Image(src=DEMO_MAP_SRC[dark],width=width,height=height,fit=ft.BoxFit.COVER,
-                                semantics_label='Mapa do Parque Villa-Lobos, com o posto de exemplo da demonstração.')
-            attribution = 'Demo · © OpenStreetMap contributors'
-        else:
-            backdrop = _schematic_map(lat,lng,markers,height=height,center_glyph=None,dark=dark)
-            attribution = 'Mapa esquemático da demonstração · sem acesso à rede'
-    else:
-        try:
-            # Reframe the real geography so the featured pin sits beside the
-            # callout. The station coordinates remain the source of truth.
-            source_width, source_height = 720, round(720 / ratio)
-            selected_x,selected_y = _lonlat_to_px(lat,lng,16)
-            world_size = 2**16 * _TILE_SIZE
-            center_x = selected_x + source_width*(0.06 if wide else 0.1)
-            center_y = selected_y + source_height*(-0.08 if wide else 0.07)
-            center_lng = center_x/world_size*360-180
-            center_lat = math.degrees(math.atan(math.sinh(math.pi*(1-2*center_y/world_size))))
-            data = await asyncio.wait_for(asyncio.to_thread(build_map_png,center_lat,center_lng,markers,
-                                                            width=source_width,height=source_height,zoom=16,
-                                                            center_glyph=None,dark=dark,selected_marker=(lat,lng),
-                                                            **({'selected_color':style[VARIANT_PIN[variant]]} if wide else {})),
-                                         timeout=7)
-            backdrop = ft.Image(src=map_data_uri(data),
-                                width=width,height=height,fit=ft.BoxFit.COVER,semantics_label='Mapa dos postos, centrado em '+selected.get('name','posto'))
-        except (ImportError,OSError,RuntimeError,ValueError,TimeoutError):
-            backdrop = _schematic_map(lat,lng,markers,height=height,center_glyph=None,dark=dark)
-            attribution = 'Visão aproximada · mapa online indisponível'
-    count = selected['free_points']
-    status = f"{count} {'vaga' if count == 1 else 'vagas'}" if count else selected['status']
-    if variant == 'list' and count:
-        status = 'Disponível'
-    name_text = ft.Text(selected.get('name') or 'Posto sem nome',size=9.3 if wide else 11.5,weight=ft.FontWeight.BOLD,
-                        font_family='InterBold' if wide else 'BarlowSemiBold',color=style['callout_text'],
-                        max_lines=2,overflow=ft.TextOverflow.ELLIPSIS)
-    chip = 'chip_list' if variant == 'list' else 'chip_free'
-    chip_bg,chip_fg = (style[chip],style[chip+'_fg']) if count else (style['chip_off'],style['chip_off_fg'])
-    status_text = ft.Text(status,size=7 if wide else 11,weight=ft.FontWeight.BOLD if not wide else None,
-                          font_family='InterMedium' if wide else None,color=chip_fg)
-    badge = ft.Container(status_text,bgcolor=chip_bg,
-                         border_radius=12,padding=ft.Padding.symmetric(horizontal=8,vertical=1 if wide else 2))
-    details = [name_text,ft.Row([badge],spacing=0)]
-    price = selected.get('price')
-    distance = selected.get('distance_km')
-    if wide:
-        parts = []
-        if distance is not None:
-            parts.append(f"{distance:.1f}".replace('.',',')+' km')
-        if price is not None:
-            parts.append(f"{brl(price)}/kWh")
-        if parts:
-            details.append(ft.Text(' - '.join(parts),size=8.2,font_family='Inter',color=style['callout_muted']))
-    elif price is not None:
-        details.append(ft.Text(f"Desde {brl(price)}/kWh",size=11,color=style['callout_muted']))
-    selected_action = on_select(selected['id'])
-    callout = ft.Container(ft.Semantics(
-                           content=ft.Column(details,spacing=3 if wide else 4,horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-                           container=True,button=True,label='Ver pontos em '+(selected.get('name') or 'posto'),
-                           on_tap=selected_action),
-                           bgcolor=style['callout'],border_radius=10 if wide else 12,padding=ft.Padding(left=8,right=6,top=9,bottom=9) if wide else 10,
-                           shadow=ft.BoxShadow(blur_radius=16,spread_radius=1,color=style['callout_shadow'],offset=ft.Offset(0,3)),
-                           on_click=selected_action,ink=True)
-    def typography(map_width):
-        if not wide:
-            name_text.size = max(13,min(16,map_width*16/563))
-    return _map_frame(backdrop,attribution,width=width,callout=callout,on_layout=typography,ratio=ratio,dark=dark,
-                      radius=16 if wide else 18,callout_pos=(.494,.32,.318) if variant == 'list' else (.5,.33,.285) if wide else (.455,.367,.295))
+    async def resize(event):
+        nonlocal measured_width
+        if event.width > 0 and abs(event.width - measured_width) > .5:
+            measured_width = event.width
+            frame.height = viewport.height = event.width / ratio
+            frame.update()
+    frame.on_size_change = resize
+    return frame
 
 
 def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT, zoom=15,
-                  center_glyph="🚗", dark=False, selected_marker=None, selected_color=None):
+                  center_glyph="🚗", dark=False, selected_marker=None, selected_color=None, *, pixel_ratio=1):
     """Baixa os tiles do OpenStreetMap ao redor de (center_lat, center_lng),
     monta um recorte de width x height já centralizado, desenha os
     marcadores por cima e devolve os bytes da imagem pronta (JPEG por padrão,
     ver MAP_IMAGE_FORMAT). Entradas iguais reutilizam a imagem já composta.
+    ``pixel_ratio=2`` busca detalhes no próximo zoom, mantendo a área geográfica,
+    e entrega PNG sem perda com o dobro de pixels por eixo até o zoom 18.
 
     Usa diretamente `tile.openstreetmap.org` (o servidor de tiles oficial e
     amplamente usado do projeto) em vez de serviços de terceiros que compõem
@@ -472,15 +375,23 @@ def build_map_png(center_lat, center_lng, markers, width=320, height=_MAP_HEIGHT
     mesmos com Pillow é mais robusto, ao custo de mais uma dependência
     (`pillow`, já usada neste projeto para gerar os ícones da barra inferior).
     """
+    # The standard OSM endpoint supplies 256 px tiles, without a retina URL.
+    # For dense displays fetch the same geographic viewport one zoom deeper:
+    # twice the real detail per axis, rather than enlarging the original bitmap.
+    # Never request beyond the provider's maximum zoom (19).
+    scale = 2 if pixel_ratio > 1 and zoom < 19 else 1
+    image_format = 'PNG' if pixel_ratio > 1 else MAP_IMAGE_FORMAT
     key = (round(center_lat, 7), round(center_lng, 7), tuple(markers), width, height, zoom,
-           center_glyph, dark, selected_marker, selected_color, MAP_IMAGE_FORMAT)
+           center_glyph, dark, selected_marker, selected_color, image_format, scale)
     with _map_cache_lock:
         if key in _map_cache:
             # Polls redraw maps whenever a station changes; identical inputs
             # reuse the composed image instead of re-encoding it.
             _map_cache.move_to_end(key)
             return _map_cache[key]
-    data = _compose_map(center_lat, center_lng, markers, width, height, zoom, center_glyph, dark, selected_marker, selected_color)
+    data = _compose_map(center_lat, center_lng, markers, width * scale, height * scale,
+                        zoom + (scale == 2), center_glyph, dark, selected_marker, selected_color,
+                        image_format=image_format, pin_scale=scale)
     with _map_cache_lock:
         _map_cache[key] = data
         while len(_map_cache) > _MAP_CACHE_SIZE:
@@ -506,7 +417,8 @@ def map_data_uri(data):
     return f'data:image/{kind};base64,' + base64.b64encode(data).decode()
 
 
-def _compose_map(center_lat, center_lng, markers, width, height, zoom, center_glyph, dark, selected_marker, selected_color=None):
+def _compose_map(center_lat, center_lng, markers, width, height, zoom, center_glyph, dark, selected_marker,
+                 selected_color=None, *, image_format=None, pin_scale=1):
     from PIL import Image, ImageDraw  # import local: se o Pillow não estiver
 
     cx, cy = _lonlat_to_px(center_lat, center_lng, zoom)
@@ -552,51 +464,26 @@ def _compose_map(center_lat, center_lng, markers, width, height, zoom, center_gl
             elif glyph != '🚗':
                 _draw_station_pin(draw,x,y,radius=width*.025,available=glyph == '⚡',dark=dark)
             else:
-                _draw_pin(draw, x, y, glyph, dark)
+                _draw_pin(draw, x, y, glyph, dark, scale=pin_scale)
     if center_glyph:
-        _draw_pin(draw, width / 2, height / 2, center_glyph, dark)
+        _draw_pin(draw, width / 2, height / 2, center_glyph, dark, scale=pin_scale)
 
     buf = io.BytesIO()
-    if MAP_IMAGE_FORMAT == 'JPEG':
+    if (image_format or MAP_IMAGE_FORMAT) == 'JPEG':
         cropped.save(buf, format='JPEG', quality=85, optimize=True)
     else:
         cropped.save(buf, format='PNG')
     return buf.getvalue()
 
 async def map_widget(lat, lng, markers, center_glyph="🚗", *, offline=False, width=320, dark=None):
-    import asyncio
-    dark = theme.is_dark() if dark is None else bool(dark)
-    style = map_style(dark)
-    height = width / STATION_MAP_RATIO
-    if offline:
-        preview = _schematic_map(lat, lng, markers, height=height,center_glyph=center_glyph,dark=dark)
-        attribution = "Mapa esquemático da demonstração · sem acesso à rede"
-    else:
-        try:
-            data = await asyncio.wait_for(
-                asyncio.to_thread(build_map_png, lat, lng, markers,
-                                  width=720,height=round(720/STATION_MAP_RATIO),
-                                  center_glyph=center_glyph, dark=dark), timeout=7)
-            preview = ft.Image(src=map_data_uri(data),
-                               width=width,height=height,fit=ft.BoxFit.COVER)
-            attribution = "© OpenStreetMap contributors"
-        except (ImportError, OSError, RuntimeError, ValueError, TimeoutError):
-            preview = _schematic_map(lat, lng, markers,height=height,center_glyph=center_glyph,dark=dark)
-            attribution = "Visão aproximada · mapa online indisponível"
+    """Generic map uses the same vector component as station maps."""
+    from ..ui.vector_map import create_map
 
-    def legend_item(label, color, icon):
-        return ft.Row([
-            ft.Icon(icon, size=15, color=color),
-            ft.Text(label, size=11, color=theme.GRAY_TEXT),
-        ], spacing=4, tight=True)
-
-    legend = [legend_item("Livre", style['pin'], ft.Icons.BOLT),
-              legend_item("Indisponível", style['pin_off'], ft.Icons.REMOVE)]
-    if center_glyph:
-        legend.insert(0, legend_item("Busca", theme.RED, ft.Icons.MY_LOCATION))
-    return ft.Column([_map_frame(preview,attribution,width=width,dark=dark),
-                      ft.Row(legend,wrap=True,spacing=12,run_spacing=4)],
-                     spacing=10,horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    records = [{'id': str(index), 'name': 'Estação de recarga', 'latitude': point_lat, 'longitude': point_lng,
+                'status': 'Disponível' if glyph == '⚡' else 'Indisponível'}
+               for index, (point_lat, point_lng, glyph) in enumerate(markers) if glyph != '🚗']
+    return ft.Container(create_map(records, center=(lat, lng), width=width, height=_MAP_HEIGHT, dark=dark),
+                        height=_MAP_HEIGHT, border_radius=16, clip_behavior=ft.ClipBehavior.ANTI_ALIAS)
 
 
 # Dark variant of the reference demo raster (assets/design/map_villa_lobos.jpg, both stations' pins

@@ -38,7 +38,8 @@ def expected_multiplier(rules, connectors: int, occ: float, when) -> Decimal:
 def hour_price(rules, connectors: list[dict], when, multiplier: Decimal) -> Decimal | None:
     """Menor preço por kWh entre os conectores na hora ``when`` (a partir de)."""
     interval = pricing.active_interval(rules, when)
-    prices = [pricing.dynamic_price(pricing.base_now(interval, c["id"], c["price_per_kwh"]), multiplier)
+    prices = [pricing.connector_price({"schedule_now": interval, "multiplier": multiplier, "speed": rules.get("speed")},
+                                     c["id"], c["price_per_kwh"], c.get("power_tier", "max"))[1]
               for c in connectors]
     return min(prices) if prices else None
 

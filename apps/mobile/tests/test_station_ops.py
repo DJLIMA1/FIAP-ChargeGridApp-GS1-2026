@@ -6,9 +6,12 @@ Mesmos dados da API: ``/stations/{id}/power`` (+ ``power-site`` e ``building-loa
 ``payment``/``overstay`` das sessões. A conta demo responde as mesmas rotas (``demo_site``).
 """
 
+import asyncio
 import unittest
+from contextvars import Context
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import flet as ft
 
@@ -17,6 +20,7 @@ from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, D
 from chargegrid_app.screens import booking, history, station_admin, station_power
 from chargegrid_app.services import owner_sessions
 from chargegrid_app.services import site_power as sp
+from chargegrid_app.ui import theme
 from chargegrid_core import site_load
 from test_behavior import HandlerApp, descendants
 
@@ -118,7 +122,7 @@ class SitePowerRulesTests(unittest.TestCase):
         self.assertEqual(sp.connector_line(c, station, view), 'Inativo: fica fora da divisão do posto')
         self.assertEqual(sp.cap_subtitle({'max_power_kw': None}), 'Sem teto · aviso desligado')
         self.assertEqual(sp.cap_subtitle({'max_power_kw': '80', 'power_limit_notify': True}), '80 kW · aviso ligado')
-        self.assertEqual(sp.point_name({'connector_type': 'CCS2'}, 1), 'CCS2 · Conector 01')
+        self.assertEqual(sp.point_name({'connector_type': 'CCS2'}, 1), 'CCS2 · Carregador 1')
 
 
 class OwnerSessionTextTests(unittest.TestCase):
@@ -303,7 +307,7 @@ class StationMenuTests(unittest.IsolatedAsyncioTestCase):
         for removed in REMOVED:
             self.assertNotIn(removed, copy)
         routes = []
-        for label in ('Dados da estação', 'Conectores', 'Limite 75 kW', 'Tarifa base'):
+        for label in ('Dados da estação', 'Carregadores', 'Limite 75 kW', 'Tarifa base'):
             await press(screen, label)(None)
             routes.append((app.go.await_args.args[0], app.go.await_args.kwargs.get('page')))
         self.assertEqual(routes, [('station_admin', 'data'), ('station_admin', 'connectors'),
@@ -344,7 +348,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         copy = texts(screen)
         for expected in ('Potência', 'Disponível para os carregadores', 'Limite contratado', '75 kW',
                          'Padrão para o tipo de estabelecimento', 'Loja agora', 'SIMULADO', 'Carros agora',
-                         'Rebalanceamento', sp.REBALANCE_HELP, 'Por conector', 'CCS2 · Conector 01',
+                         'Rebalanceamento', sp.REBALANCE_HELP, 'Por carregador', 'CCS2 · Carregador 1',
                          '60 kW configurados', 'Ajustes', 'Teto dos carregadores', 'Sem teto · aviso desligado',
                          '75 kW (padrão) · Loja de conveniência',
                          'Simular carros no posto (demo)'):
@@ -383,6 +387,37 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         app.api.request = original
         await app.api.close()
 
+    async def test_power_and_site_redraws_keep_session_theme_in_fresh_event_tasks(self):
+        for dark, mode, palette in ((False, ft.ThemeMode.LIGHT, theme.LIGHT),
+                                    (True, ft.ThemeMode.DARK, theme.DARK)):
+            theme.set_dark(dark)
+            app, station, screen = await self._screen()
+            try:
+                with patch.object(ft, 'context', SimpleNamespace(page=SimpleNamespace(theme_mode=mode))):
+                    await asyncio.create_task(segment(screen, 'rebalance', 'Desligado')(None), context=Context())
+                    self.assertEqual(by_data(screen, 'power-card').bgcolor, palette['CARD'])
+                    selected = next(c for c in descendants(by_data(screen, 'rebalance'))
+                                    if isinstance(c, ft.Container) and c.on_click and c.bgcolor)
+                    self.assertEqual((selected.bgcolor, selected.content.color),
+                                     (palette['BTN_PRIMARY'], palette['BTN_PRIMARY_FG']))
+                    await asyncio.create_task(app.poll(), context=Context())
+                    self.assertEqual(by_data(screen, 'power-card').bgcolor, palette['CARD'])
+                    site = await station_admin.build(app, station_id=station['id'], page='power', section='site')
+                    await asyncio.create_task(press(site, 'Supermercado')(None), context=Context())
+                    chip = next(c for c in descendants(site) if isinstance(c, ft.Container)
+                                and c.on_click and isinstance(c.content, ft.Text) and c.content.value == 'Supermercado')
+                    self.assertEqual((chip.bgcolor, chip.content.color),
+                                     (palette['BTN_PRIMARY'], palette['BTN_PRIMARY_FG']))
+                    await asyncio.create_task(segment(site, None, 'Grande', within=site)(None), context=Context())
+                    self.assertIn('Padrão: 210 kW', by_data(site, 'site-default').value)
+                    for c in descendants(site):
+                        if isinstance(c, ft.Container) and c.on_click and isinstance(c.content, ft.Text):
+                            self.assertEqual(c.content.color, palette['BTN_PRIMARY_FG'] if c.bgcolor == palette['BTN_PRIMARY']
+                                             else palette['TEXT_COLOR'])
+            finally:
+                await app.api.close()
+        theme.set_dark(True)
+
     async def test_site_page_saves_limit_type_and_size(self):
         app, station, screen = await self._screen(section='site')
         copy = texts(screen)
@@ -415,10 +450,10 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         app, station, screen = await self._screen(section='cap')
         slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
         self.assertEqual(slider.data, 'station_power')
-        self.assertIn('Sem teto: cada conector usa a própria potência.', texts(screen))
+        self.assertIn('Sem teto: cada carregador usa a própria potência.', texts(screen))
         slider.value = 80.0
         await slider.on_change(SimpleNamespace(control=slider))
-        self.assertIn('Dividido entre os conectores ativos.', texts(screen))
+        self.assertIn('Dividido entre os carregadores ativos.', texts(screen))
         await segment(screen, None, 'Ligado', within=screen)(None)
         await press(screen, 'Salvar teto')(None)
         saved = await app.api.request('GET', f"stations/{station['id']}")
@@ -437,7 +472,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
                                            connector_id=point['id'])
         copy = texts(screen)
-        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('CCS2 · Carregador 1', copy)
         self.assertIn('Máximo do carregador: 60 kW', copy)
         self.assertIn('60 kW configurados · até', by_data(screen, 'connector-effective').value)
         slider = next(c for c in descendants(screen) if isinstance(c, ft.Slider))
@@ -447,7 +482,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         saved = await app.api.request('GET', f"stations/{station['id']}")
         self.assertEqual(float(saved['connectors'][0]['power_limit_kw']), 40.0)
         self.assertEqual(float(saved['connectors'][0]['power_kw']), 60.0)  # nominal intocada
-        self.assertEqual(app.notices[-1], 'Potência do conector salva.')
+        self.assertEqual(app.notices[-1], 'Potência do carregador salva.')
         screen = await station_admin.build(app, station_id=station['id'], page='power', section='connector',
                                            connector_id=point['id'])
         await press(screen, 'Usar o máximo')(None)
@@ -469,7 +504,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
         screen = await station_power.build(app, station)
         copy = texts(screen)
         self.assertNotIn('Disponível para os carregadores', copy)
-        self.assertIn('CCS2 · Conector 01', copy)
+        self.assertIn('CCS2 · Carregador 1', copy)
         self.assertIn('Teto dos carregadores', copy)
 
     def test_navigation_back_from_a_power_subpage(self):

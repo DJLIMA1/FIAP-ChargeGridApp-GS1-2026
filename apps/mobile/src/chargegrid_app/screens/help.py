@@ -25,7 +25,7 @@ TOPICS = {
         'a sessão física. Não conecte este protótipo a redes de alta potência ou baterias de veículo.'
     ),
     'Criar posto e vincular ponto': (
-        'No modo operador, abra Postos e escaneie o QR de vinculação exibido na tela do ponto sem dono. '
+        'No modo operador, abra Postos e escaneie o QR de vinculação exibido pela central sem dono. '
         'Posto é o endereço; ponto é o equipamento instalado nele. Escolha um novo posto ou um existente, '
         'defina a tarifa e os limites, revise e publique. O QR de vinculação é privado: não o compartilhe. '
         'Restaurar remove o vínculo e gera um novo QR, preservando o Wi-Fi do equipamento.'

@@ -108,7 +108,7 @@ async def build(app, station_id=None, show_real=False, **_):
         app.profile = {**app.profile, 'operator_enabled': True}
         if hasattr(app, 'mark_saved'):
             app.mark_saved()
-        app.notice('Ponto vinculado ao posto. Agora confira o conector e a tarifa.' if station_id else
+        app.notice('Ponto vinculado ao posto. Agora confira o carregador e a tarifa.' if station_id else
                    'Ponto vinculado. Vamos configurar seu novo posto antes de publicá-lo.')
         await app.go('operator', station_id=result['station_id'], point_id=result['connector_id'],
                      onboarding=True, step=2 if station_id else 1,
@@ -132,22 +132,22 @@ async def build(app, station_id=None, show_real=False, **_):
             await claim()
 
         return design.page(
-            setup_title(app, 'Vincular Tela'),
+            setup_title(app, 'Vincular Central'),
             _intro_card(destination, [
-                'Adicione um equipamento simulado a esta conta de demonstração.',
+                'Adicione uma central simulada a esta conta de demonstração.',
                 'Depois informe nome, endereço e tarifa. ' + (
                     'O posto reúne os pontos no mesmo endereço. ' if station else
                     'Será um novo local simulado, publicado só quando você quiser. ') +
-                'Este equipamento é inteiramente fictício: nenhuma câmera, QR físico ou carregador real é necessário.']),
-            cta('Adicionar equipamento simulado', app.action(add_demo_equipment)),
+                'Esta central é inteiramente fictícia: nenhuma câmera, QR físico ou carregador real é necessário.']),
+            cta('Adicionar central simulada', app.action(add_demo_equipment)),
             design.txt('O vínculo é criado apenas na demonstração. Você poderá editar, publicar e testar uma '
                        'recarga simulada.', 12, 'regular', theme.GRAY_TEXT, text_align=ft.TextAlign.CENTER),
             cta('Voltar', back, primary=False),
             gap=16)
     return design.page(
-        setup_title(app, 'Vincular Tela'),
+        setup_title(app, 'Vincular Central'),
         _intro_card(destination, [
-            'A tela sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
+            'A central sem dono mostra um QR de vinculação.\nEscaneie-o para se tornar o proprietário.',
             'Depois informe nome, endereço e tarifa. O ponto só aparece aos motoristas quando você publicar.']),
         camera_button, preview, cancel_camera, hint,
         ft.Container(height=25),

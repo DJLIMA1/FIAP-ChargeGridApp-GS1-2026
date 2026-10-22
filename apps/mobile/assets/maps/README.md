@@ -1,15 +1,21 @@
-# Mapa local da demonstração
+# Mapas vetoriais compartilhados
 
-`demo-centro.svg` é um recorte vetorial geográfico da Praça da Sé, São Paulo, para a localização pública e fictícia da conta demo. Não é uma captura de tiles: foi gerado a partir de 291 feições OSM consultadas uma vez via Overpass. O marcador representa as coordenadas do posto de exemplo, não a localização do usuário. A demo carrega a versão rasterizada `demo-centro.png` localmente, sem HTTP, GPS ou persistência de dados da conta. O PNG mantém os nomes das vias legíveis no renderizador do app; o SVG permanece como fonte geográfica.
+Todos os mapas exibidos pelo aplicativo usam OpenFreeMap + MapLibre: recarga, detalhes dos postos, mapa genérico e galeria visual. A conta demo usa o mesmo mapa real nas coordenadas dos postos fictícios. Nenhuma tela usa o raster de referência para representar outra localização.
 
-Dados: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Estilo e montagem: ChargeGrid. O crédito `© OpenStreetMap` permanece visível, de forma compacta, no canto inferior direito e leva à página de origem/licença. A faixa inteira foi removida, não a atribuição exigida pelas [diretrizes](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines) e pela política do servidor de tiles. Para outra coordenada demo, busca com referência explícita ou ponto indisponível, o aplicativo usa a visão esquemática identificada, sem reaproveitar um marcador fixo de ponto disponível.
+O ponto de entrada é `chargegrid_app/ui/vector_map.py`. Os estilos `styles/liberty.json` e `styles/dark.json` vieram de https://tiles.openfreemap.org/styles/liberty e https://tiles.openfreemap.org/styles/dark. O app aplica suas cores diretamente às camadas vetoriais. Ruas e textos são desenhados pelo MapLibre, com suavização e densidade mínima de 2× na versão web, mesmo em prévias com DPR=1. Essa configuração fica em `map-runtime.js` e mantém o tamanho lógico dos textos e o zoom geográfico. Os dois créditos obrigatórios aparecem por cinco segundos após carregar o mapa e se recolhem ao mover o mapa ou ao fechar o controle. O botão ⓘ permanece visível e reabre os links de atribuição e licença. Isso segue https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Interactive_maps. A marca opcional OpenFreeMap não ocupa espaço na tela.
 
-O gerador reproduzível fica em `tools/generate_demo_map.py`; executar exige rede e faz uma consulta limitada à área mostrada. Não é executado pelo aplicativo. Nas contas reais, o mapa online mantém crédito visível e cache dos tiles consultados conforme a [política do serviço OSM](https://operations.osmfoundation.org/policies/tiles/).
+Os tiles vêm de https://tiles.openfreemap.org/planet. O serviço público não exige chave. Dados © OpenStreetMap contributors; esquema © OpenMapTiles; hospedagem OpenFreeMap. Os links de atribuição ficam sobre o mapa, acima do painel da lista. A conexão pode falhar: o componente oferece tentar novamente e não inventa geografia offline. O GPS só é solicitado pelo fluxo explícito já existente no app.
 
-Para rasterizar novamente a fonte existente, sem rede:
+A extensão local `packages/chargegrid_map` contém o renderizador Flutter compartilhado, seus eventos de câmera e seleção, e a proteção de toques nos controles flutuantes sobre a versão web. O painel e os marcadores são atualizados sem remontar o mapa durante o polling.
+
+Para desenvolver a prévia web, a partir da raiz:
 
 ```sh
-PYTHONPATH=apps/mobile/src .venv/bin/python tools/render_demo_map.py
+.venv/bin/python -m pip install -e apps/mobile/packages/chargegrid_map
+.venv/bin/python tools/build_mobile_web_client.py
+PYTHONPATH=apps/mobile/src .venv/bin/python tools/preview_mobile_flows.py
 ```
 
-O enquadramento tem proporção 563:389, marcador em 40% da largura e cartão branco lateral. Início e lista de postos usam esse mesmo componente; o mapa genérico compartilha a moldura e a atribuição. O app adapta essa composição à largura disponível, sem refazer downloads ao redimensionar. O botão de recarga mantém as dimensões padrão do aplicativo, independentemente da largura do mapa.
+`FLET_WEB_PATH` aponta para `apps/mobile/.flet/vector-client/build/web`. O cliente padrão do Flet não contém extensões locais. Nos builds Android/iOS, `apps/mobile/pyproject.toml` registra a extensão automaticamente. Requer Flutter 3.44 ou superior.
+
+O runtime web MapLibre GL JS 5.16.0 e seu CSS são distribuídos localmente, com a licença em `MAPLIBRE-LICENSE.txt`. Os arquivos antigos `demo-centro.*` e `assets/design/map_villa_lobos*.jpg` são fontes históricas de design, sem uso nas telas atuais.

@@ -33,23 +33,26 @@ def _store(api):
     return api.__dict__.setdefault('_receipt_terms', {})
 
 
-def _terms_now(api, point, *, locked_by, multiplier=None):
+def _terms_now(api, point, *, locked_by, multiplier=None,power_tier='max'):
     """Termos com o mesmo cálculo que travou o preço agora (demanda do posto e horário vigente)."""
     station = api._stations[point['station_id']]
     status = api._demand(station)
     rules = pricing.stored_rules(api._pricing.get(station['id']))
     moment = api._now()
     interval = pricing.active_interval(rules, moment.astimezone(analytics.REPORT_TZ))
-    base = pricing.base_now(interval, point['id'], point['price_per_kwh'])
-    return receipts.price_terms(
+    base = pricing.connector_price(status,point['id'],point['price_per_kwh'],power_tier)[0]
+    terms = receipts.price_terms(
         locked_at=moment, locked_by=locked_by, connector_base=point['price_per_kwh'], base=base,
         multiplier=multiplier if multiplier is not None else status['multiplier'], status=status,
         interval=interval, connector_id=point['id'])
+    terms['power_tier'] = power_tier
+    return terms
 
 
 def lock_reservation(api, reservation, point):
     """Explicação do preço travado ao reservar (como ``pricing.service.current_terms``)."""
-    terms = _terms_now(api, point, locked_by='reservation', multiplier=reservation.get('demand_multiplier'))
+    terms = _terms_now(api, point, locked_by='reservation', multiplier=reservation.get('demand_multiplier'),
+                       power_tier=reservation.get('power_tier','max'))
     _store(api)[('reservation', reservation['id'])] = (reservation['created_at'], terms)
 
 
@@ -60,7 +63,12 @@ def lock_session(api, session, point, reservation=None, coupon_code=None):
     if stored and stored[0] == reservation['created_at']:
         terms = dict(stored[1])
     else:
-        terms = _terms_now(api, point, locked_by='start', multiplier=session.get('demand_multiplier'))
+        terms = _terms_now(api, point, locked_by='start', multiplier=session.get('demand_multiplier'),
+                           power_tier=session.get('power_tier','max'))
+    # A paid quote owns its original price even after the owner edits the menu.
+    if session.get('base_price_per_kwh') is not None:
+        terms['base_per_kwh'] = str(session['base_price_per_kwh'])
+    terms['power_tier'] = session.get('power_tier','max')
     if session.get('discount_percent'):
         terms['coupon'] = {'id': None, 'code': str(coupon_code or '').strip().upper() or None,
                            'discount_percent': int(session['discount_percent'])}

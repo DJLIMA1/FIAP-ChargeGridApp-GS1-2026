@@ -14,7 +14,7 @@ from chargegrid_app.demo import (
 )
 from chargegrid_app.screens import onboarding, operator, ownership
 from test_behavior import HandlerApp, click, descendants
-from test_seller_flow_fixes import fields, station_fixture, texts
+from test_seller_flow_fixes import central_maintenance, fields, station_fixture, texts
 
 
 class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
@@ -31,12 +31,12 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         screen = await ownership.build(app)
         self.assertNotIn('Escanear QR Code',texts(screen))
         self.assertNotIn('Código privado do QR',fields(screen))
-        self.assertIn('inteiramente fictício',texts(screen))
+        self.assertIn('inteiramente fictícia',texts(screen))
         app.api.request.assert_not_called()
         app.api.new_claim_token.assert_not_called()
         with self.assertRaises(ApiError):
-            await click(screen,'Adicionar equipamento simulado')(None)
-        await click(screen,'Adicionar equipamento simulado')(None)
+            await click(screen,'Adicionar central simulada')(None)
+        await click(screen,'Adicionar central simulada')(None)
         app.api.new_claim_token.assert_called_once_with()
         self.assertEqual([call.args for call in app.api.request.await_args_list],[
             ('POST','ownership/claim',{'token':DEMO_CLAIM_TOKEN}),
@@ -49,7 +49,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = [station_fixture(),{'station_id':'station','connector_id':'new-point'}]
         screen = await ownership.build(app,station_id='station')
         self.assertIn('Posto Central',texts(screen))
-        await click(screen,'Adicionar equipamento simulado')(None)
+        await click(screen,'Adicionar central simulada')(None)
         app.api.request.assert_awaited_with('POST','ownership/claim',{
             'token':DEMO_CLAIM_TOKEN,'station_id':'station',
         })
@@ -60,7 +60,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         screen = await ownership.build(app)
         self.assertIn('Escanear QR Code',texts(screen))
-        self.assertNotIn('Adicionar equipamento simulado',texts(screen))
+        self.assertNotIn('Adicionar central simulada',texts(screen))
         self.assertIn('Código privado do QR',fields(screen))
 
     async def test_demo_dashboard_lists_stations_and_keeps_local_add_action(self):
@@ -72,8 +72,8 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         screen = await operator.build(app)
         self.assertIn('Posto Central',texts(screen))
         self.assertIn('Adicionar nova estação',texts(screen))
-        self.assertIn('Com um equipamento simulado',texts(screen))
-        self.assertNotIn('Ligue a tela',texts(screen))
+        self.assertIn('Com uma central simulada',texts(screen))
+        self.assertNotIn('Ligue a central',texts(screen))
         add = next(c for c in descendants(screen) if isinstance(c,ft.Container) and c.on_click
                    and 'Adicionar nova estação' in texts(c) and not isinstance(c.content,ft.Column))
         await add.on_click(None)
@@ -131,9 +131,8 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
             {'device_id':'demo-device','online':True},{'status':'not_requested'},
             {'device_id':'demo-device','device_key':'DEMO-KEY-NOT-REAL'},
         ]
-        screen = await operator.connector_form(app,'station',station_fixture()['connectors'][0])
+        screen = await central_maintenance(app, station_fixture()['connectors'][0])
         self.assertIn('Credencial e restauração simuladas',texts(screen))
-        self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
         self.assertNotIn('ESP32',texts(screen))
         await click(screen,'Rotacionar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
@@ -147,7 +146,7 @@ class DemoSellerTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = [
             {'device_id':'demo-device','online':True},{'status':'not_requested'},{'status':'applied'},
         ]
-        screen = await operator.connector_form(app,'station',station_fixture()['connectors'][0])
+        screen = await central_maintenance(app, station_fixture()['connectors'][0])
         await click(screen,'Restaurar')(None)
         dialog = app.page.show_dialog.call_args.args[0]
         self.assertIn('Nenhum dispositivo físico ou Wi-Fi será alterado',dialog.content.value)
@@ -166,7 +165,7 @@ class DemoSellerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             before = await app.api.request('GET','operator/stations')
 
             claim_screen = await ownership.build(app)
-            await click(claim_screen,'Adicionar equipamento simulado')(None)
+            await click(claim_screen,'Adicionar central simulada')(None)
             route = app.go.await_args.kwargs
             station_id,point_id = route['station_id'],route['point_id']
             self.assertEqual(route['step'],1)
@@ -205,7 +204,7 @@ class DemoSellerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             claimed = []
             for _ in range(2):
                 screen = await ownership.build(app,station_id=station_id)
-                await click(screen,'Adicionar equipamento simulado')(None)
+                await click(screen,'Adicionar central simulada')(None)
                 route = app.go.await_args.kwargs
                 self.assertEqual(route['station_id'],station_id)
                 self.assertTrue(route['existing_station'])

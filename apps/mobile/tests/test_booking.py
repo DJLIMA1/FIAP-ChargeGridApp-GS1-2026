@@ -80,6 +80,25 @@ class RulesTests(unittest.TestCase):
         quote = rules.estimate(rules.power_options(ccs, car)['max'][0], ccs['price'], minutes=30)
         self.assertEqual(quote['energy_kwh'], Decimal('20.00'))
 
+    def test_speed_tariff_uses_explicit_choice_and_owner_values_not_effective_power(self):
+        point = {**STATION['connectors'][0], 'effective_power_kw':'15',
+                 'speed_prices':{'max':'2.50','reduced':'1.25'}}
+        group = rules.group_connectors({**STATION,'connectors':[point]})[0]
+        self.assertEqual(rules.group_price(group,'max'),Decimal('2.50'))
+        self.assertEqual(rules.group_price(group,'reduced'),Decimal('1.25'))
+        energy = Decimal('10')
+        self.assertEqual(rules.estimate(15,rules.group_price(group,'max'),energy=energy)['cost'],Decimal('25.00'))
+        self.assertEqual(rules.estimate(7.5,rules.group_price(group,'reduced'),energy=energy)['cost'],Decimal('12.50'))
+        point['effective_power_kw'] = '5'  # grid sharing cannot award the reduced commercial tariff
+        self.assertEqual(rules.tier_price(point,'max'),Decimal('2.50'))
+        self.assertEqual(rules.tier_price({'price_per_kwh':'2'},'reduced'),Decimal('1.60'))
+
+    def test_autonomy_helpers_remain_public_after_shared_plan_extraction(self):
+        self.assertEqual(rules.parse_km('100 km'),100)
+        plan = rules.autonomy_energy(100,14,20,40)
+        self.assertEqual(plan['energy_kwh'],Decimal('14.000'))
+        self.assertIsNone(rules.autonomy_note(plan))
+
     def test_time_slots_are_future_half_hours(self):
         self.assertEqual(rules.time_slots(datetime(2026, 10, 18, 12, 5)), ['12:30', '13:00', '13:30'])
         self.assertEqual(rules.time_slots(datetime(2026, 10, 18, 12, 25)), ['13:00', '13:30', '14:00'])
@@ -102,6 +121,36 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def screen(self, step, **kwargs):
         return await booking.build(self.app, step=step, station_id=self.sid, **kwargs)
+
+    async def test_booking_reduced_price_and_payment_reservation_keep_the_chosen_tier(self):
+        self.sid = (await self.app.api.request('GET','operator/stations'))['items'][0]['id']
+        station = await self.app.api.request('GET',f'stations/{self.sid}')
+        point = station['connectors'][0]
+        await self.app.api.request('PUT',f'stations/{self.sid}/pricing',
+                                   {'speed':{'prices':{point['id']:{'max':'3','reduced':'1.50'}}}})
+        power = await self.screen(4,kind='now',pick=1,power='reduced',amount='30')
+        self.assertIn('Mais econômica · R$1,50/kWh',' '.join(texts(power)))
+        self.assertIn('Mais rápida · R$3,00/kWh',' '.join(texts(power)))
+        review = await self.screen(6)
+        self.assertIn('Mais econômica · R$1,50/kWh',texts(review))
+        await tap(review,'Confirmar e iniciar no ponto')()
+        intent = self.app.go.await_args.kwargs['planning_intent']
+        self.assertEqual(intent['power_tier'],'reduced')
+        reduced = await self.app.api.request('POST','payments',
+            {'connector_id':point['id'],'mode':'energy','energy_kwh':'10','power_tier':'reduced'},key='reduced')
+        maximum = await self.app.api.request('POST','payments',
+            {'connector_id':point['id'],'mode':'energy','energy_kwh':'10','power_tier':'max'},key='maximum')
+        self.assertEqual((reduced['energy_cap'],maximum['energy_cap']),('15.00','30.00'))
+        self.assertEqual(reduced['power_tier'],'reduced')
+        self.assertEqual(maximum['power_tier'],'max')
+        reservation = await self.app.api.request('POST','reservations',
+            {'connector_id':point['id'],'power_tier':'reduced'},key='reserve-reduced')
+        await self.app.api.request('PUT',f'stations/{self.sid}/pricing',
+                                   {'speed':{'prices':{point['id']:{'max':'5','reduced':'2'}}}})
+        current = await self.app.api.request('GET','reservations/current')
+        self.assertEqual(current['id'],reservation['id'])
+        self.assertEqual(current['power_tier'],'reduced')
+        self.assertEqual(Decimal(current['connector']['price_per_kwh']),Decimal('1.50'))
 
     async def test_without_station_offers_search(self):
         screen = await booking.build(self.app, step=1)

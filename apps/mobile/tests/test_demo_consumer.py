@@ -4,6 +4,17 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 import flet as ft
+from chargegrid_map import VectorMap
+from test_consumer_flows import (
+    CONTEXT,
+    STATION,
+    charging_app,
+    fields,
+    next_charging_step,
+    reservation,
+    texts,
+)
+from test_station_ux import search_box
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import (
@@ -18,16 +29,6 @@ from chargegrid_app.services import maps
 from chargegrid_app.services.location import geocode_demo_address
 from chargegrid_app.services.search_location import SearchLocation
 from test_behavior import HandlerApp, click, descendants, station_responses
-from test_consumer_flows import (
-    CONTEXT,
-    STATION,
-    charging_app,
-    fields,
-    next_charging_step,
-    reservation,
-    texts,
-)
-from test_station_ux import search_box
 
 
 class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
@@ -91,8 +92,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(maps,'build_map_png',side_effect=AssertionError('network renderer')) as render:
             screen = await maps.map_widget(-23.55,-46.63,[(-23.55,-46.63,'⚡')],offline=True)
         render.assert_not_called()
-        self.assertIn('Mapa esquemático da demonstração',texts(screen))
-        self.assertIn('sem acesso à rede',texts(screen))
+        self.assertTrue(any(isinstance(control,VectorMap) for control in descendants(screen)))
         self.assertFalse(any(isinstance(control,ft.Image) for control in descendants(screen)))
 
     async def test_demo_station_build_and_poll_never_touch_storage_or_network(self):
@@ -110,7 +110,8 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             await app.poll()
         storage.assert_not_called()
         render.assert_not_called()
-        self.assertIn('Mapa esquemático da demonstração',texts(screen))
+        self.assertTrue(any(isinstance(control,VectorMap) and 'openfreemap.org' in control.style_json for control in descendants(screen)))
+        self.assertNotIn('Mapa esquemático',texts(screen))
         self.assertNotIn('Código #F12345',texts(screen))
         self.assertNotIn('Salvar busca neste dispositivo',texts(screen))
         self.assertNotIn('Usar busca salva',texts(screen))

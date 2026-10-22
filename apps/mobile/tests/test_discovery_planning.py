@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import flet as ft
+from test_consumer_flows import POINT, STATION, texts
+from test_station_ux import open_filters, open_station, sheet_app, sheet_field
 
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
@@ -19,8 +21,6 @@ from chargegrid_app.services.planning import (
     intent_limits,
 )
 from test_behavior import HandlerApp, click, descendants
-from test_consumer_flows import POINT, STATION, texts
-from test_station_ux import open_filters, open_station, sheet_app, sheet_field
 
 
 class PlanningTests(unittest.TestCase):
@@ -43,6 +43,17 @@ class PlanningTests(unittest.TestCase):
         self.assertEqual(result['discovery']['available_points'],1)
         self.assertEqual(discover([station],connector_type='type2',max_price_per_kwh='3'),[])
         self.assertEqual(discover([station],connector_type='ccs2',available_only=True),[])
+
+    def test_discovery_filters_and_sorts_by_current_maximum_speed_price(self):
+        low_override = {**POINT,'id':'low','price_per_kwh':'9','dynamic_price_per_kwh':'8',
+                        'speed_prices':{'max':'1.20','reduced':'0.60'}}
+        high_override = {**POINT,'id':'high','price_per_kwh':'0.10',
+                         'speed_prices':{'max':'3','reduced':'1.50'}}
+        records = [{**STATION,'id':'low','connectors':[low_override]},
+                   {**STATION,'id':'high','connectors':[high_override]}]
+        selected = discover(records,max_price_per_kwh='2')
+        self.assertEqual([row['id'] for row in selected],['low'])
+        self.assertEqual([row['id'] for row in discover(records,sort='price')],['low','high'])
 
     def test_backend_and_demo_discovery_contracts_match(self):
         path = Path(__file__).resolve().parents[2] / 'api/app/modules/stations/discovery.py'
@@ -90,6 +101,7 @@ class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
             screen = await stations.build(app,sort='price',planning_intent=plan)
         self.assertIn(estimate_text(POINT,**intent_limits(POINT,plan)),texts(screen))
         await open_station(screen,STATION['name'])(None)
+        await open_station(screen,'Ver estação')(None)
         self.assertEqual(app.go.call_args.kwargs['planning_intent'],plan)
         app.api.request.return_value = deepcopy(STATION)
         screen = await stations.build(app,**app.go.call_args.kwargs)

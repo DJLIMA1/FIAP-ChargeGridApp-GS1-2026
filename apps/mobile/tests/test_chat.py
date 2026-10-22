@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -455,7 +456,9 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
     async def test_demo_summary_reports_live_demo_result_and_demo_guidance(self):
         instant = [0.0]
         with patch('httpx.AsyncClient', side_effect=AssertionError('No network in demo chat')):
-            demo = DemoApi(clock=lambda: instant[0])
+            # Madrugada: a loja simulada (rebalanceamento) não reduz a potência; sem depender do relógio.
+            night = datetime(2026, 10, 21, 3, 0, tzinfo=timezone(timedelta(hours=-3)))
+            demo = DemoApi(clock=lambda: instant[0], start_at=night)
             await demo.login(DEMO_EMAIL, DEMO_PASSWORD)
             self.app.api = demo
             self.app.profile = await demo.request('GET', 'me')

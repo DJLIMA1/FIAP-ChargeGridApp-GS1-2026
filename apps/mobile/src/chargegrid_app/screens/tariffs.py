@@ -25,9 +25,9 @@ from ..ui import design, theme
 from .station_admin import heading
 
 PAGES = {
-    'base': ('Tarifa base', 'Preço por kWh de cada conector, fora dos horários especiais e antes da demanda.'),
+    'base': ('Tarifa base', 'Defina o preço por kWh das velocidades máxima e reduzida. A reduzida deve ser mais barata. Os horários e a demanda continuam valendo.'),
     'schedule': ('Tarifação por horário', 'Defina tarifas base diferentes por horário. Fora desses horários vale a '
-                                          'tarifa base de cada conector.'),
+                                          'tarifa base de cada carregador.'),
     'demand': ('Tarifa por demanda', 'O ChargeGrid ajusta o preço pela procura real do posto, como um app de '
                                      'corrida. Você define só o limite e quão rápido ele reage.'),
     'rotation': ('Taxa de permanência', 'Cobrada quando o carro continua conectado depois que a recarga '
@@ -42,7 +42,7 @@ LEVEL_COLORS = {'low': '#3B8B5A', 'normal': '#4A6FA5', 'high': '#C27C1E', 'very_
 REASON_COLORS = {'normal': '#3B8B5A', 'schedule': '#4A6FA5'}
 REFRESH_SECONDS = 30
 NEW_INTERVAL = {'start': '18:00', 'end': '21:00', 'days': [0, 1, 2, 3, 4], 'prices': {}}
-SCENARIOS = (  # simulação com 4 conectores
+SCENARIOS = (  # simulação com 4 carregadores
     ('Metade ocupado', {'in_use': 2, 'busy_15m': Decimal('0.5'), 'starts_60m': 2, 'baseline_60m': 2}),
     ('3 de 4 ocupados', {'in_use': 3, 'busy_15m': Decimal('0.7'), 'starts_60m': 3, 'baseline_60m': 2}),
     ('Lotado, procura em alta', {'in_use': 4, 'busy_15m': Decimal('0.9'), 'starts_60m': 6, 'baseline_60m': 2}),
@@ -76,9 +76,11 @@ def _points(connectors):
     return published or points
 
 
-def _base(connectors):
-    """Menor tarifa base entre os conectores publicados do payload de ``pricing``."""
-    return svc.base_price([{'price_per_kwh': c['base_price_per_kwh'], 'active': c.get('active')} for c in connectors])
+def _base(connectors, rules=None):
+    """Menor tarifa máxima base, inclusive personalização do dono."""
+    values = ((rules or {}).get('speed') or {}).get('prices') or {}
+    return svc.base_price([{'price_per_kwh': (values.get(c['id']) or {}).get('max',c['base_price_per_kwh']),
+                           'active': c.get('active')} for c in connectors])
 
 
 def _per_kwh(value):
@@ -117,7 +119,10 @@ def _rounded(field):
 def _schedule(rules):
     """Tarifação por horário das regras (API antiga: sem ``schedule``)."""
     schedule = rules.get('schedule') or {}
-    return {'enabled': schedule.get('enabled', True), 'intervals': list(schedule.get('intervals') or [])}
+    # Move the legacy global switch into each interval without reactivating it.
+    return {'enabled': True, 'intervals': [
+        {**item, 'enabled': schedule.get('enabled', True) and item.get('enabled', True)}
+        for item in schedule.get('intervals') or []]}
 
 
 def _interval_index(interval):
@@ -158,7 +163,8 @@ async def build(app, station_id=None, page=None, interval=None, details=False, *
 # ---------------------------------------------------------------- visão geral
 def _prices(point, status):
     """``(base do conector, base agora, preço agora)``; API antiga: sem a base do horário."""
-    base = Decimal(str(point['base_price_per_kwh']))
+    base = Decimal(str(((status.get('speed') or {}).get('prices') or {}).get(str(point['id']), {}).get(
+        'max', point['base_price_per_kwh'])))
     current = point.get('current_base_price_per_kwh')
     current = Decimal(str(current)) if current is not None else base
     price = point.get('current_price_per_kwh')
@@ -228,7 +234,7 @@ def tariff_card(status, connectors, rules, expanded=False, on_toggle=None):
     body = [ft.Row([design.txt('Tarifa atual', 13.5, 'bold', expand=True), _pill(label, color)],
                    vertical_alignment=ft.CrossAxisAlignment.CENTER)]
     if not points:
-        body.append(design.txt('Nenhum conector neste posto.', 12, 'regular', theme.GRAY_TEXT))
+        body.append(design.txt('Nenhum carregador neste posto.', 12, 'regular', theme.GRAY_TEXT))
     elif len(pairs) == 1:
         base, price = next(iter(pairs))
         body += [design.txt(_per_kwh(price), 30, 'semibold'),
@@ -237,6 +243,12 @@ def tariff_card(status, connectors, rules, expanded=False, on_toggle=None):
         for point in points:
             base, _, price = _prices(point, status)
             body.append(_row(point['public_code'], _per_kwh(price), f'Tarifa base: {_per_kwh(base)}'))
+    for point in points:
+        speeds = point.get('speed_prices') or {}
+        if speeds:
+            prefix = f"{point['public_code']} · " if len(points) > 1 else ''
+            body.append(design.txt(f"{prefix}Máxima {_per_kwh(speeds['max'])} · "
+                                   f"Reduzida {_per_kwh(speeds['reduced'])}", 11.5, 'regular', theme.GRAY_TEXT))
     toggle = ft.Container(
         ft.Row([design.txt('Detalhes', 12.5, 'semibold'),
                 ft.Icon(ft.Icons.KEYBOARD_ARROW_UP if expanded else ft.Icons.KEYBOARD_ARROW_DOWN, size=20,
@@ -249,19 +261,22 @@ def tariff_card(status, connectors, rules, expanded=False, on_toggle=None):
                            radius=18, data='tariff-card')
 
 
-def _base_summary(connectors):
-    prices = {Decimal(str(p['base_price_per_kwh'])) for p in _points(connectors)}
+def _base_summary(connectors, rules=None):
+    values = ((rules or {}).get('speed') or {}).get('prices') or {}
+    prices = {Decimal(str((values.get(p['id']) or {}).get('max',p['base_price_per_kwh'])))
+              for p in _points(connectors)}
     if not prices:
-        return 'Nenhum conector'
+        return 'Nenhum carregador'
     if len(prices) == 1:
-        return f'{_per_kwh(next(iter(prices)))} · todos os conectores'
-    return f'De {svc.fmt_money(min(prices))} a {_per_kwh(max(prices))} por conector'
+        return f'{_per_kwh(next(iter(prices)))} · todos os carregadores'
+    return f'De {svc.fmt_money(min(prices))} a {_per_kwh(max(prices))} por carregador'
 
 
 def _schedule_summary(schedule):
     count = len(schedule['intervals'])
     text = 'Nenhum horário' if not count else f"{count} horário{'s' if count != 1 else ''}"
-    return text + ('' if schedule['enabled'] or not count else ' · Inativa')
+    active = sum(item.get('enabled', True) for item in schedule['intervals'])
+    return text + (f' · {active} ativo' + ('s' if active != 1 else '') if count else '')
 
 
 def entry_row(title, subtitle, icon, on_click, data=None):
@@ -302,7 +317,7 @@ def overview(app, sid, data, details=False):
 
     demand, rotation = rules['demand'], rules['rotation']
     entries = [
-        entry('Tarifa base', _base_summary(data['connectors']), 'base', ft.Icons.ELECTRIC_BOLT),
+        entry('Tarifa base', _base_summary(data['connectors'],rules), 'base', ft.Icons.ELECTRIC_BOLT),
         entry('Tarifação por horário', _schedule_summary(_schedule(rules)), 'schedule', ft.Icons.SCHEDULE),
         entry('Tarifa por demanda', f"Até +{demand['max_increase_percent']}% · sensibilidade "
                                     f"{pricing.SENSITIVITY_LABELS[demand['sensitivity']].lower()}"
@@ -362,28 +377,61 @@ def _save_button(text, on_click):
 
 
 def base_page(app, sid, data):
-    """Tarifa base por conector (``PATCH connectors/{id}``: ``price_per_kwh``)."""
+    """Duas tarifas base por conector no menu existente; ``PUT pricing.speed`` atômico."""
     title, description = PAGES['base']
     points = [p for p in data['connectors'] if not p.get('retired')]
     message = design.txt('', 12, 'regular', theme.ERROR, visible=False)
     if not points:
         return _simple_page(app, title, description,
-                            [design.txt('Nenhum conector neste posto.', 12, 'regular', theme.GRAY_TEXT)], [],
+                            [design.txt('Nenhum carregador neste posto.', 12, 'regular', theme.GRAY_TEXT)], [],
                             _back(app, sid))
-    rows, fields = _price_rows(points, {p['id']: p['base_price_per_kwh'] for p in points})
+    speed = data['rules'].get('speed') or {}
+    configured = speed.get('prices') or {}
+    discount = Decimal(str(speed.get('reduced_discount_percent', 20)))
+    rows, fields = [], {}
+    for point in points:
+        pid = point['id']
+        values = configured.get(pid) or {}
+        maximum = Decimal(str(values.get('max', point['base_price_per_kwh'])))
+        reduced = Decimal(str(values.get('reduced', maximum * (100 - discount) / 100)))
+        pair = {}
+        for tier, label, value in (('max', 'Máxima · mais rápida', maximum),
+                                   ('reduced', 'Reduzida · mais econômica', reduced)):
+            places = 2 if value == value.quantize(Decimal('0.01')) else 4
+            field = design.number_field(svc.input_number(value,places), prefix='R$', suffix='/kWh')
+            field.data = f"{pid}:{tier}"
+            pair[tier] = field
+        fields[pid] = pair
+        rows.append(_card(point['public_code'],
+                          design.txt('Publicado' if point.get('active') else 'Não publicado', 10.5,
+                                     'regular', theme.GRAY_TEXT),
+                          _labeled('Máxima · mais rápida', _rounded(pair['max'])),
+                          _labeled('Reduzida · mais econômica', _rounded(pair['reduced']))))
 
     async def save(event=None):
-        values = _read_prices(points, fields)
-        if isinstance(values, str):
-            message.value, message.visible = values, True
+        values = dict(configured)
+        for point in points:
+            pid = point['id']
+            pair = {tier: svc.parse_decimal(field.value, maximum=Decimal('100'))
+                    for tier, field in fields[pid].items()}
+            error = (f"Informe as duas tarifas de {point['public_code']} (R$ 0,00 a R$ 100,00)."
+                     if any(value is None for value in pair.values()) else
+                     f"A velocidade reduzida de {point['public_code']} deve custar menos que a máxima."
+                     if pair['reduced'] > pair['max'] or (pair['max'] > 0 and pair['reduced'] == pair['max']) else None)
+            if error:
+                message.value, message.visible = error, True
+                _refresh(message)
+                return
+            values[pid] = {tier: str(value) for tier, value in pair.items()}
+        message.visible = False
+        try:
+            await app.api.request('PUT', f'stations/{sid}/pricing',
+                                  {**data['rules'], 'speed': {**speed, 'prices': values}})
+        except ApiError as error:
+            message.value, message.visible = str(error), True
             _refresh(message)
             return
-        message.visible = False
-        changes = {pid: value for pid, value in values.items()
-                   if value != Decimal(str(next(p for p in points if p['id'] == pid)['base_price_per_kwh']))}
-        for point_id, value in changes.items():
-            await app.api.request('PATCH', f'connectors/{point_id}', {'price_per_kwh': str(value)})
-        app.notice('Tarifa base salva.' if changes else 'Nenhuma alteração na tarifa base.')
+        app.notice('Tarifas por velocidade salvas.')
         await _back(app, sid)()
     return _simple_page(app, title, description, rows, [message, _save_button('Salvar tarifa base', app.action(save))],
                         _back(app, sid))
@@ -434,7 +482,7 @@ def demand_page(app, sid, data):
     state = {'sensitivity': rule['sensitivity']}
     sensitivity_slot = ft.Container()
     help_text = design.txt('', 11, 'regular', theme.GRAY_TEXT)
-    base = _base(data['connectors'])
+    base = _base(data['connectors'],data['rules'])
     rows = ft.Column(spacing=10)
 
     def simulate(event=None):
@@ -464,12 +512,12 @@ def demand_page(app, sid, data):
     simulate()
     how = _card('Como calculamos', *[
         design.txt(f'• {text}', 12, 'regular', theme.GRAY_TEXT) for text in (
-            'Ocupação dos conectores agora e a média dos últimos 15 minutos.',
+            'Ocupação dos carregadores agora e a média dos últimos 15 minutos.',
             'Recargas da última hora comparadas ao normal deste dia e horário.',
             'Reservas aguardando com o posto lotado.',
             'O acréscimo vale sobre a tarifa base do horário.',
             'O preço sobe em passos de 0,05× e nunca passa do seu limite.')], spacing=6)
-    simulation = _card('Simulação (4 conectores)', rows)
+    simulation = _card('Simulação (4 carregadores)', rows)
 
     def collect(enabled):
         percent = svc.parse_int(increase.value, minimum=0, maximum=100)
@@ -540,12 +588,13 @@ def _interval_prices(interval, connectors):
 
 
 def schedule_page(app, sid, data):
-    """Lista de horários + Status. Cada horário abre o editor (``interval``)."""
+    """Lista de horários com seu status. Cada horário abre o editor (``interval``)."""
     schedule = _schedule(data['rules'])
     connectors = data['connectors']
     items = [
         ft.Container(
             ft.Row([ft.Column([design.txt(pricing.window_label(item), 13, 'semibold'),
+                               design.txt('Ativa' if item['enabled'] else 'Inativa', 11, 'semibold', theme.GRAY_TEXT),
                                design.txt(f"{svc.days_label(item['days'])} · {_interval_prices(item, connectors)}",
                                           11, 'regular', theme.GRAY_TEXT)], spacing=2, expand=True),
                     ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT)],
@@ -561,9 +610,8 @@ def schedule_page(app, sid, data):
                                                                 interval='new'),
                                   icon=ft.Icons.ADD, height=42, disabled=full)
 
-    def collect(enabled):
-        return {'enabled': enabled, 'intervals': schedule['intervals']}
-    return _form_page(app, sid, 'schedule', data, [*items, add], schedule['enabled'], collect)
+    title, description = PAGES['schedule']
+    return _simple_page(app, title, description, [*items, add], [], _back(app, sid))
 
 
 def interval_page(app, sid, data, index):
@@ -571,7 +619,19 @@ def interval_page(app, sid, data, index):
     schedule = _schedule(data['rules'])
     current = NEW_INTERVAL if index == 'new' else schedule['intervals'][index]
     points = [p for p in data['connectors'] if not p.get('retired')]
-    state = {'start': current['start'], 'end': current['end'], 'days': set(current['days'])}
+    state = {'start': current['start'], 'end': current['end'], 'days': set(current['days']),
+             'enabled': current.get('enabled', True)}
+    status_slot = ft.Container(data='interval-status')
+
+    def set_status(value):
+        state['enabled'] = value
+        draw_status()
+
+    def draw_status():
+        status_slot.content = design.segmented([(True, 'Ativa'), (False, 'Inativa')], state['enabled'], set_status,
+                                               height=37.5)
+        _refresh(status_slot)
+    draw_status()
     start_box, _ = _time_box(app, 'Início', current['start'], lambda value: state.update(start=value))
     end_box, _ = _time_box(app, 'Fim', current['end'], lambda value: state.update(end=value))
     prices = current.get('prices') or {}
@@ -599,12 +659,12 @@ def interval_page(app, sid, data, index):
         if not state['days']:
             return fail('Escolha ao menos um dia.')
         if not points:
-            return fail('Cadastre um conector antes de definir horários.')
+            return fail('Cadastre um carregador antes de definir horários.')
         values = _read_prices(points, fields)
         if isinstance(values, str):
             return fail(values)
         item = {'start': state['start'], 'end': state['end'], 'days': sorted(state['days']),
-                'prices': {pid: str(value) for pid, value in values.items()}}
+                'prices': {pid: str(value) for pid, value in values.items()}, 'enabled': state['enabled']}
         intervals = list(schedule['intervals'])
         if index == 'new':
             intervals.append(item)
@@ -621,11 +681,12 @@ def interval_page(app, sid, data, index):
                                                   'marcado e termina no dia seguinte.'),
                _labeled('Tarifa base neste horário', ft.Column(rows, spacing=10),
                         'O acréscimo por demanda, se houver, vale sobre esta tarifa.')]
-    footer = [message, _save_button('Salvar horário', app.action(save))]
+    footer = [design.labeled('Status', status_slot, gap=4, strong=False),
+              message, _save_button('Salvar horário', app.action(save))]
     if index != 'new':
         footer.append(design.secondary_button('Remover horário', app.action(remove), height=42))
     title = 'Novo horário' if index == 'new' else 'Editar horário'
-    return _simple_page(app, title, 'Escolha quando esta tarifa vale e o preço de cada conector.', fields_, footer,
+    return _simple_page(app, title, 'Escolha quando esta tarifa vale e o preço de cada carregador.', fields_, footer,
                         back)
 
 

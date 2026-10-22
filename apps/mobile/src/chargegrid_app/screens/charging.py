@@ -20,6 +20,7 @@ from decimal import Decimal, InvalidOperation
 import flet as ft
 
 from chargegrid_core.pricing import multiplier_label
+from chargegrid_core.receipt import END_REASONS as RECEIPT_END_REASONS
 
 from ..api_client import ApiError
 from ..services import booking as rules
@@ -57,6 +58,9 @@ END_REASONS = {'user_stop':'Parada solicitada', 'stop_requested':'Parada solicit
 END_REASONS.update(requested='Parada solicitada', communication_lost='Conexão perdida com o servidor',
                    device_reboot='Equipamento reiniciado', command_timeout='Equipamento não confirmou a operação',
                    battery_full='Bateria cheia (100%)')
+# A central não confirmou o carregador do ponto no START: rótulo do core (oriente outro ponto da estação).
+END_REASONS['charger_offline'] = RECEIPT_END_REASONS.get('charger_offline',
+                                                         'Carregador offline — use outro ponto desta estação')
 MODES = [('time','Por tempo'),('value','Por valor'),('autonomy','Por autonomia')]
 DEFAULT_CAR = {'name':'BYD Dolphin','usable_kwh':44.9,'consumption':14.0,'soc':vehicle_state.SOC_MIN,'source':'simulated'}
 
@@ -312,10 +316,15 @@ def _detail_row(name, value):
 def details_card(session, *, demo=False):
     """Card compacto "Detalhes": só o que o painel acima não mostra."""
     energy = f"{float(session.get('energy_wh') or 0)/1000:.3f} kWh".replace('.',',')
-    limit = f"{session['max_duration_minutes']} min"
+    # Recarga iniciada no app ou no totem: mesmos campos; um limite ausente não vira "None min".
+    limits = []
+    if session.get('max_duration_minutes') is not None:
+        limits.append(f"{session['max_duration_minutes']} min")
     if session.get('max_cost') is not None:
-        limit += f" · até {money(session['max_cost'])}"
-    rows = [_detail_row('Energia entregue',energy),_detail_row('Limite',limit)]
+        limits.append(f"até {money(session['max_cost'])}")
+    rows = [_detail_row('Energia entregue',energy)]
+    if limits:
+        rows.append(_detail_row('Limite',' · '.join(limits)))
     if session.get('price_per_kwh') is not None:
         tariff = f"{money(session['price_per_kwh'])}/kWh"
         try:
@@ -324,6 +333,8 @@ def details_card(session, *, demo=False):
         except (InvalidOperation,ValueError):
             pass
         rows.append(_detail_row('Tarifa',tariff))
+    if session.get('power_tier') == 'reduced':  # a máxima é o padrão: só a escolha econômica aparece
+        rows.append(_detail_row('Velocidade','Reduzida · mais econômica'))
     if session.get('discount_percent'):
         rows.append(_detail_row('Desconto',f"{session['discount_percent']}%"))
     if session.get('end_reason'):
@@ -415,7 +426,7 @@ def _route(draft, step):
 def _code(draft):
     digits = (draft['presence_digits'] or '').strip()
     if len(digits) != 5 or not digits.isascii() or not digits.isdigit():
-        raise ApiError('Digite os cinco números que aparecem após #F na tela do posto.')
+        raise ApiError('Digite os cinco números que aparecem após #F na central.')
     return '#F'+digits
 
 
@@ -432,15 +443,28 @@ def _power(draft):
     connector = draft['point_context'].get('connector') or {}
     values = [Decimal(str(v)) for v in (connector.get('effective_power_kw') or connector.get('power_kw'),
                                          draft.get('max_power_kw')) if v not in (None,'')]
+    if draft.get('power_tier') == 'reduced' and not draft.get('max_power_kw') and values:
+        values.append(values[0] / 2)
     return min(values) if values else None
+
+
+def _tariff(draft):
+    connector = draft['point_context'].get('connector') or {}
+    if draft.get('reservation_id') and draft['point_context'].get('power_tier'):
+        return rules.to_decimal(connector.get('price_per_kwh'))
+    return rules.tier_price(connector, draft.get('power_tier') or 'max')
+
+
+def _estimate_connector(draft):
+    return {**(draft['point_context'].get('connector') or {}),
+            'price_per_kwh': _tariff(draft), 'power_kw': _power(draft)}
 
 
 def _autonomy(draft):
     """Resultado de ``rules.autonomy_limits`` para o rascunho (levanta ``ApiError`` com a explicação)."""
-    connector = draft['point_context'].get('connector') or {}
     try:
         km = rules.parse_km(draft.get('autonomy_km'))
-        return rules.autonomy_limits(km,_car(draft),_power(draft),connector.get('price_per_kwh') or 0,
+        return rules.autonomy_limits(km,_car(draft),_power(draft),_tariff(draft),
                                      _point_limit(draft))
     except (ValueError,ArithmeticError) as exc:
         raise ApiError(str(exc) or 'Informe a autonomia em km inteiros (ex.: 120).') from exc
@@ -465,8 +489,8 @@ def _limits(draft):
         raw = (draft['max_cost'] or '').strip().replace(',','.')
         if not raw:
             raise ApiError('Informe o valor estimado para limitar a recarga ou selecione Por tempo.')
-        price = (draft['point_context'].get('connector') or {}).get('price_per_kwh')
-        if price is not None and Decimal(str(price)) == 0:
+        price = _tariff(draft)
+        if (draft['point_context'].get('connector') or {}).get('price_per_kwh') is not None and price == 0:
             raise ApiError('Este ponto tem tarifa gratuita. Selecione Por tempo para definir o limite da recarga.')
         try:
             amount = Decimal(raw)
@@ -479,7 +503,8 @@ def _limits(draft):
 
 
 def _body(draft):
-    body = {'presence_code':_code(draft),**_limits(draft)}
+    body = {'presence_code':_code(draft),**_limits(draft),
+            'power_tier':draft.get('power_tier') or 'max'}
     for key in ('public_code','reservation_id'):
         if draft[key]:
             body[key] = draft[key]
@@ -499,7 +524,7 @@ def _overstay(station):
 
 
 def _estimate(draft):
-    connector = draft['point_context'].get('connector') or {}
+    connector = _estimate_connector(draft)
     if draft['mode'] == 'autonomy':
         try:
             result = _autonomy(draft)
@@ -534,7 +559,8 @@ def _review(draft):
             ('Autonomia desejada',f"{draft.get('autonomy_km')} km" if draft['mode'] == 'autonomy' else None),
             ('Limite de tempo',f"{body['max_duration_minutes']} min"),
             ('Limite de valor',money(body['max_cost']) if body.get('max_cost') else None),
-            ('Tarifa',f"{money(point['price_per_kwh'])}/kWh" if point.get('price_per_kwh') is not None else None),
+            ('Velocidade','Reduzida · mais econômica' if draft.get('power_tier') == 'reduced' else 'Máxima · mais rápida'),
+            ('Tarifa',f"{money(_tariff(draft))}/kWh" if point.get('price_per_kwh') is not None else None),
             ('Cupom',body.get('coupon_code')),
             ('Pagamento',f"Stripe (teste) · {payments.money((draft.get('payment') or {}).get('amount'))} pré-autorizado"
              if (draft.get('payment') or {}).get('amount') else 'Stripe (teste) · confirmado'
@@ -617,7 +643,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         else:
             # Fim da recarga: o carro fica com o SoC final e a sobra paga antes volta como crédito (uma vez).
             vehicle_state.record_session_end(app,session)
-            credited = prepaid.settle(app,session)
+            credited = await prepaid.settle_shared(app,session)
             if credited:
                 extra.insert(0,credit_notice(credited))
             ending = end_panels(app,session,show_payment=stripe_view)
@@ -700,7 +726,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                  'point_context':deepcopy(context),'initial_duration':initial_duration,
                  'presence_digits':presence_digits,'duration_minutes':str(initial_duration),
                  'safety_minutes':str(point_limit if connector.get('max_duration_minutes') else initial_duration),
-                 'mode':'time','max_cost':'','autonomy_km':'','car':None,'coupon_code':'','step':1,'furthest':1,
+                 'mode':'time','power_tier':context.get('power_tier') or 'max','max_cost':'','autonomy_km':'','car':None,'coupon_code':'','step':1,'furthest':1,
                  'key':app.api.new_key(),'last_body':None,'pending_body':None,'uncertain':False}
         saved_intent = getattr(app, 'planning_intent', None) or {}
         draft['station_search'] = deepcopy(station_search or (
@@ -715,6 +741,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             draft['payment'] = {'id':intention['payment_id'],'amount':intention.get('payment_amount')}
         if intention and intention.get('overstay_terms_version'):
             draft['overstay_version'] = intention['overstay_terms_version']
+        if intention and intention.get('power_tier') in ('max','reduced'):
+            draft['power_tier'] = intention['power_tier']
         if intention and intention.get('max_power_kw'):
             draft['max_power_kw'] = str(intention['max_power_kw'])
         if intention and intention.get('mode') == 'autonomy':
@@ -810,7 +838,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await navigate(2)
         controls += [point_summary(context,'Ponto reservado' if reservation_id else 'Ponto selecionado'),
                      ft.Text('Use #F12345 na conta demo; não é necessário um equipamento real.' if demo else
-                             'No local, leia os cinco números atuais após #F na tela do equipamento. O código muda periodicamente e é conferido pela API ao solicitar o início.',
+                             'No local, leia os cinco números atuais após #F na central. O código muda periodicamente e é conferido pela API ao solicitar o início.',
                              size=13,color=theme.GRAY_TEXT),presence,button('Continuar',app.action(continue_code))]
         if not context:
             controls.append(button('Prefiro escolher o ponto na lista',app.link('stations'),secondary=True))
@@ -851,6 +879,27 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         estimate = ft.Text(size=13,color=theme.GRAY_TEXT)
         mode_toggle = ft.Container()
+        speed_toggle = ft.Container()
+        speed_note = ft.Text(size=12,color=theme.GRAY_TEXT)
+        point = draft['point_context'].get('connector') or {}
+        speed_group = {'type':point.get('connector_type'),
+                       'power_kw':rules.to_decimal(point.get('power_kw')),
+                       'effective_kw':rules.to_decimal(point.get('effective_power_kw') or point.get('power_kw'))}
+        speed_car = vehicle_state.car_specs(await vehicle_state.vehicle(app))
+
+        async def choose_speed(value):
+            if draft.get('reservation_id') or draft.get('payment'):
+                return
+            draft['power_tier'] = value
+            selected_kw = rules.power_options(speed_group,speed_car)[value][0]
+            if selected_kw > 0:
+                draft['max_power_kw'] = str(selected_kw)
+            else:
+                draft.pop('max_power_kw',None)
+            capture_limits()
+            refresh_mode()
+            app.page.update()
+
 
         def capture_limits():
             draft.update(duration_minutes=duration.value or '',max_cost=cost.value or '',
@@ -874,6 +923,12 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             autonomy_note.value,autonomy_note.visible = note or '',bool(note)
             safety_summary.value = f"Limite de segurança: {draft['safety_minutes']} min"
             coupon_summary.value = 'Código informado · validação no início' if draft['coupon_code'].strip() else 'Opcional · adicionar código'
+            tier = draft.get('power_tier') or 'max'
+            speed_toggle.content = d.segmented([('max','Máxima'),('reduced','Reduzida')],tier,
+                                                lambda value:choose_speed(value),height=40)
+            speed_toggle.disabled = bool(draft.get('reservation_id') or draft.get('payment'))
+            speed_note.value = (f"{'Mais econômica' if tier == 'reduced' else 'Mais rápida'} · "
+                                f"{money(_tariff(draft))}/kWh · até {rules.fmt_number(_power(draft))} kW")
             estimate.value = _estimate(draft)
 
         async def changed(event=None):
@@ -909,7 +964,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             capture_limits()
             await navigate(1)
         controls += [mode_toggle,
-                     time_panel,value_panel,autonomy_panel,estimate,
+                     time_panel,value_panel,autonomy_panel,d.txt('Velocidade da recarga',12,'bold'),
+                     speed_toggle,speed_note,estimate,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]
     else:
         pending_message = ft.Text('A resposta do pedido anterior não chegou. Confira o estado ou repita o mesmo pedido; os limites ficam protegidos até confirmar o resultado.',
@@ -985,10 +1041,10 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     # Preço que o motorista paga (base × demanda): se mudou desde a revisão, revisa de novo.
                     # Com reserva, a API usa o multiplicador travado ao reservar.
                     if not draft['reservation_id']:
-                        charged = current_point.get('dynamic_price_per_kwh') or current_point.get('price_per_kwh')
+                        charged = rules.tier_price(current_point,draft.get('power_tier') or 'max')
                         changed_terms = changed_terms or (
                             old_point.get('price_per_kwh') is not None and charged is not None
-                            and Decimal(str(old_point['price_per_kwh'])) != Decimal(str(charged)))
+                            and _tariff(draft) != Decimal(str(charged)))
                     fresh_terms = _overstay(station)
                     shown = draft.get('overstay')
                     if (fresh_terms or {}).get('version') != (shown or {}).get('version'):
