@@ -5,7 +5,8 @@ from chargegrid_core.chargers import link as charger_link
 
 from ...database import db_session
 from ...errors import fail
-from ...models import Connector, DeviceClaim, Profile, Station, now
+from ...http_helpers import retired_ids
+from ...models import Connector, Device, DeviceClaim, Profile, Station, now
 from ...schemas import ClaimInput
 from ...security import current_user, digest
 from ...service import active_res, active_session
@@ -58,11 +59,19 @@ def claim_point(db, user_id, data):
         target = db.get(Station, data.station_id, populate_existing=True)
         if target is None or target.owner_id != user.id:
             fail("not_found", "Posto não encontrado", 404)
+        # Central restaurada e vinculada de novo: os pontos que ela deixou no posto viram histórico
+        # e liberam o endereço; o ponto novo herda os ajustes do antigo (senão ganharia o próximo
+        # endereço e procuraria um GoodWe que não existe).
+        template = retire_leftovers(db, target.id, point.id)
+        if template is not None:
+            for field in ("connector_type", "power_kw", "price_per_kwh", "max_duration_minutes", "power_limit_kw"):
+                setattr(point, field, getattr(template, field))
         # Cada conector é um carregador GoodWe: ao entrar no posto, o ponto recebe o próximo
         # endereço livre dele (o 1 do posto de fábrica colidiria com o primeiro ponto).
         used = db.scalars(
             select(Connector.charger_address)
-            .where(Connector.station_id == target.id, Connector.id != point.id)
+            .where(Connector.station_id == target.id, Connector.id != point.id,
+                   Connector.charger_address.is_not(None))
             .with_for_update()
         ).all()
         try:
@@ -77,6 +86,31 @@ def claim_point(db, user_id, data):
     user.operator_enabled = True
     db.flush()
     return claim_result(point)
+
+
+def retire_leftovers(db, station_id, keep_id):
+    """Points of a restored central still in ``station_id``: inactive, with hardware but every
+    device revoked. They become history (``removed_at``) and free their GoodWe address. Returns
+    the one with the lowest address (the central's own point first), whose settings are reused."""
+    live = select(Device.connector_id).where(Device.revoked.is_(False))
+    attached = select(Device.connector_id)
+    leftovers = db.scalars(
+        select(Connector)
+        .where(Connector.station_id == station_id, Connector.id != keep_id, Connector.removed_at.is_(None),
+               Connector.active.is_(False), Connector.id.in_(attached), Connector.id.not_in(live))
+        .order_by(Connector.charger_address.nulls_last())
+        .with_for_update()
+    ).all()
+    if not leftovers:
+        return None
+    screens = retired_ids(db, [leftover.id for leftover in leftovers])
+    template = next((leftover for leftover in leftovers if leftover.id in screens), leftovers[0])
+    stamp = now()
+    for leftover in leftovers:
+        leftover.removed_at = stamp
+        leftover.charger_address = None
+    db.flush()  # frees the addresses before the new point takes one (unique per station)
+    return template
 
 
 def claim_result(point, already=False):

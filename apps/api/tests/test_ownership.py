@@ -251,3 +251,45 @@ def test_vendor_first_setup_is_a_draft_until_both_publish_steps_succeed(factory,
             assert any(item['id'] == station_id for item in client.get('/v1/stations').json()['items'])
     finally:
         app.dependency_overrides.clear()
+
+
+def test_relinking_a_restored_central_reuses_its_address_and_settings(factory, equipment):
+    """Restaurar a central e vinculá-la de novo ao mesmo posto: o ponto novo volta ao endereço 1
+    (o do GoodWe que já existe) com os ajustes do antigo; os pontos deixados pela restauração viram
+    histórico. Antes ganhava o endereço 3 e ficava "carregador indisponível" para sempre."""
+    from datetime import timedelta
+
+    from app.models import Command, now
+
+    e = equipment
+    with factory.begin() as db:
+        old_point = db.get(Connector, e["point"])
+        old_point.charger_address, old_point.price_per_kwh, old_point.max_duration_minutes = 1, 2.5, 90
+        screen = db.get(Device, e["device"])
+        extra = Connector(station_id=e["station"], public_code="CG-02", connector_type="bench", power_kw=1,
+                          price_per_kwh=2, charger_address=2)
+        switched_off = Connector(station_id=e["station"], public_code="CG-03", connector_type="bench",
+                                 power_kw=1, price_per_kwh=2, charger_address=3, active=False)
+        db.add_all([extra, switched_off])
+        db.flush()
+        db.add(Device(connector_id=extra.id, key_hash=digest("extra"), parent_device_id=screen.id))
+        db.add(Device(connector_id=switched_off.id, key_hash=digest("off")))
+        db.flush()
+        # FACTORY_RESET aplicado: a tela e o carregador adicional ficam revogados e inativos.
+        db.add(Command(device_id=screen.id, type="FACTORY_RESET", version=1, status="applied",
+                       expires_at=now() + timedelta(minutes=5)))
+        for device in db.scalars(select(Device).where(Device.connector_id.in_([old_point.id, extra.id]))):
+            device.revoked = True
+        old_point.active = extra.active = False
+        extra_id, off_id = extra.id, switched_off.id
+
+    result = run_claim(factory, e["owner"], e["token"], e["station"])
+    assert result["station_id"] == str(e["station"])
+    with factory() as db:
+        point = db.get(Connector, e["factory_point"])
+        assert point.station_id == e["station"] and point.charger_address == 1
+        assert (point.connector_type, float(point.price_per_kwh), point.max_duration_minutes) == ("bench", 2.5, 90)
+        for leftover in (db.get(Connector, e["point"]), db.get(Connector, extra_id)):
+            assert leftover.removed_at is not None and leftover.charger_address is None
+        off = db.get(Connector, off_id)  # desligado pelo dono, com central viva: não é sobra
+        assert off.removed_at is None and off.charger_address == 3
