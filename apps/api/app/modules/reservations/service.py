@@ -17,16 +17,16 @@ from ..pricing.service import reservation_terms
 
 def reserve(db, user, data, key):
     connector = lock_point(db, user, data.connector_id)
-    old, body_hash = idempotent(db, user, "reserve", key, data.model_dump(), Reservation)
+    old, body_hash = idempotent(db, user, "reserve", key, data.model_dump(exclude_defaults=True), Reservation)
     if old:
         return old
     ensure_user_free(db, user)
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state)
+        fail_unavailable(state, db=db, connector=connector)
     # Tarifa dinâmica travada ao reservar: a recarga desta reserva paga este multiplicador;
     # ``price_terms`` guarda o motivo (demanda e horário) para o recibo.
-    multiplier, terms = reservation_terms(db, connector)
+    multiplier, terms = reservation_terms(db, connector, data.power_tier)
     reservation = Reservation(
         user_id=user.id, connector_id=connector.id, confirmation_deadline=now() + timedelta(seconds=30),
         demand_multiplier=multiplier, price_terms=terms,

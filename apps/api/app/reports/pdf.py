@@ -217,8 +217,10 @@ def receipt_pdf(receipt: dict) -> bytes:
             value = per_kwh(line["value"])
         elif unit == "×":
             value = _number(line["value"]).rstrip("0").rstrip(",") + "×"
-        else:
+        elif unit == "%":
             value = f"{line['value']}%"
+        else:
+            value = str(line["value"])
         rows.append((line["label"], value + (f" — {line['detail']}" if line.get("detail") else "")))
     story += [kit.p("Preço aceito", "h2"), kit.pairs(rows)]
     story += [kit.p(text, "small") for text in price["explanation"]]

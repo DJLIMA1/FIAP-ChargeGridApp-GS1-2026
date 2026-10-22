@@ -24,7 +24,7 @@ from chargegrid_core import billing, pricing
 from ...database import db_session
 from ...models import ChargingSession, Connector, KioskOrder, Payment, Station
 from ..kiosk_totem import service as totem
-from ..pricing.service import current_terms
+from ..pricing.service import current_terms, station_demand
 from ..receipts import service as receipts
 from . import service
 from .funding import FUNDED, PRE_START, status_label
@@ -106,6 +106,7 @@ def _kiosk_view(db, public_code, code):
     connector, station = service.kiosk_context(db, public_code, code)
     base, multiplier = current_terms(db, connector)
     price = pricing.dynamic_price(base, multiplier)
+    prices = pricing.speed_prices(station_demand(db, station), connector.id, connector.price_per_kwh)["speed_prices"]
     buttons = "".join(
         f'<button name="amount" value="{cents}">{escape(money(cents))}</button>' for cents in service.KIOSK_AMOUNTS_CENTS
     )
@@ -113,7 +114,11 @@ def _kiosk_view(db, public_code, code):
         f'<div class="card"><p class="muted">Ponto {escape(connector.public_code)} · {escape(station.name)}</p>'
         f'<h1>Pague aqui e carregue sem o app</h1><p class="muted">Tarifa agora: R$ {escape(str(price))}/kWh</p>'
         f'<form method="post" action="/pay/k/{quote(connector.public_code, safe="")}">'
-        f'<input type="hidden" name="c" value="{escape(code)}"><div class="amounts">{buttons}</div></form></div>'
+        f'<input type="hidden" name="c" value="{escape(code)}">'
+        '<label for="power-tier">Velocidade da recarga</label><select id="power-tier" name="power_tier">'
+        f'<option value="max">Máxima · R$ {_comma(prices["max"], "0.0001")}/kWh</option>'
+        f'<option value="reduced">Reduzida · R$ {_comma(prices["reduced"], "0.0001")}/kWh</option></select>'
+        f'<div class="amounts">{buttons}</div></form></div>'
         '<div class="notice">Pré-autorizamos o valor escolhido e cobramos só a energia confirmada pelo equipamento; '
         "o restante é liberado. Teste: cartão 4242 4242 4242 4242, validade futura e CVC qualquer.</div>"
     )
@@ -134,7 +139,8 @@ def _kiosk_checkout(db, public_code, form, request_base):
         amount = int((form.get("amount") or ["0"])[0])
     except ValueError:
         amount = 0
-    payment, _ = service.create_kiosk_payment(db, public_code, code, amount, request_base)
+    payment, _ = service.create_kiosk_payment(db, public_code, code, amount, request_base,
+                                                  power_tier=(form.get("power_tier") or ["max"])[0])
     return payment.checkout_url
 
 
@@ -296,6 +302,16 @@ def totem_checkout(order_id: UUID, t: str = Query(default="", max_length=100), d
         payment = db.get(Payment, order.payment_id) if order.payment_id else None
     except HTTPException as exc:
         return error_page(exc)
+    if order.method == "simulated" and order.status == "held" and payment is None:
+        connector = db.get(Connector, order.connector_id)
+        amount = int((order.quote.get("fields") or {}).get("amount_cents") or 0)
+        body = (
+            '<div class="card"><p class="muted">Pagamento da recarga</p>'
+            f'<h1>{escape(money(amount))}</h1><p>Ponto {escape(connector.public_code)}</p>'
+            '<p>Este posto está em Modo apresentação. O pagamento desta demonstração não gera cobrança real.</p>'
+            '<p>Volte à tela do posto e toque em <b>Já efetuei o pagamento</b> para continuar.</p></div>'
+        )
+        return page("Pagamento da recarga", body, tag="MODO APRESENTAÇÃO", footer=SIMULATED_FOOTER)
     if order.status == "awaiting_payment" and payment is not None and payment.status in PRE_START \
             and payment.checkout_url:
         return RedirectResponse(payment.checkout_url, status_code=303, headers={"Cache-Control": "no-store"})

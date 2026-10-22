@@ -521,7 +521,8 @@ def station_view(db, station):
     envelopes = {point.key: point.envelope() for point in points}
     by_connector = {point.connector.id: point for point in points}
     connectors = db.scalars(
-        select(Connector).where(Connector.station_id == station.id).order_by(Connector.public_code)
+        select(Connector).where(Connector.station_id == station.id, Connector.removed_at.is_(None))
+        .order_by(Connector.public_code)
     ).all()
     devices = {
         device.connector_id: device for device in db.scalars(

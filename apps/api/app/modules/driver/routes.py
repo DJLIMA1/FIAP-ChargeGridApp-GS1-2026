@@ -40,6 +40,7 @@ def _discontinued():
 
 
 router = APIRouter(dependencies=[Depends(_discontinued)])
+profile_router = APIRouter()
 
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 MAX_STATIONS = 40
@@ -85,13 +86,13 @@ def _profile_response(obj: DriverProfile | None, profile: dict) -> dict:
     }
 
 
-@router.get("/driver/profile")
+@profile_router.get("/driver/profile")
 def get_profile(user=Depends(current_user), db=Depends(db_session)):
     obj = db.get(DriverProfile, user.id)
     return _profile_response(obj, _saved(obj) or validate_profile(default_profile()))
 
 
-@router.put("/driver/profile")
+@profile_router.put("/driver/profile")
 def put_profile(data: DriverProfileInput, user=Depends(current_user), db=Depends(db_session)):
     profile = _validated(merge_profile(None, {"vehicle": _dump(data.vehicle), "preferences": _dump(data.preferences)}))
     db.execute(

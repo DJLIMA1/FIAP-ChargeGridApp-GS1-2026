@@ -27,10 +27,13 @@ from ...service import (
     active_session,
     derived_soc,
     issue,
+    lock_screen_group,
     new_public_code,
     online,
     reconcile_expiry,
+    retire_screen_chargers,
     row,
+    screen_group_busy,
     stop_if_battery_full,
 )
 from ...session_events import record as record_session_event
@@ -39,8 +42,41 @@ from ..payments.funding import prepare_recent_settlements
 from ..power import service as live_power
 
 
-def sync(db, authenticated_device, data):
-    authenticated_key_hash = authenticated_device.key_hash
+def charger_device(db, screen, address):
+    """Dispositivo do carregador ``address`` comandado pela TELA ``screen`` (sync endereçado).
+
+    O próprio endereço da tela → a tela. Outro carregador do posto ligado a ela
+    (``parent_device_id``) → a linha dele. Endereço sem carregador desta tela: 409."""
+    if screen.parent_device_id is not None:
+        fail("unauthorized", "Só a central sincroniza pelos carregadores", 401)
+    own = db.get(Connector, screen.connector_id)
+    if own.charger_address == address:
+        return screen
+    point = db.scalar(select(Connector).where(Connector.station_id == own.station_id,
+                                              Connector.charger_address == address))
+    child = db.scalar(select(Device).where(Device.connector_id == point.id, Device.revoked.is_(False))) \
+        if point is not None else None
+    if child is None or child.parent_device_id != screen.id:
+        fail("charger_not_linked", f"Nenhum carregador com endereço {address} ligado a esta central", 409)
+    return child
+
+
+def screen_chargers(db, screen):
+    """Carregadores adicionais da tela (``[{address, connector_id, public_code, charger_link}]``)."""
+    rows = db.execute(
+        select(Connector, Device).join(Device, Device.connector_id == Connector.id).where(
+            Device.parent_device_id == screen.id, Device.revoked.is_(False)
+        ).order_by(Connector.charger_address)
+    ).all()
+    return [{"address": point.charger_address, "connector_id": str(point.id), "public_code": point.public_code,
+             "charger_link": charger_link.sync_link(point.charger_address)} for point, _ in rows]
+
+
+def sync(db, authenticated_device, data, *, screen=None):
+    """Sync de um ponto. ``screen``: a tela autenticada sincronizando pelo carregador adicional
+    ``authenticated_device`` (sync endereçado, ``charger_address``); mesma regra por ponto."""
+    authenticated_key_hash = (screen or authenticated_device).key_hash
+    lock_screen_group(db, authenticated_device.connector_id)
     connector = db.scalar(
         select(Connector)
         .where(Connector.id == authenticated_device.connector_id)
@@ -55,7 +91,13 @@ def sync(db, authenticated_device, data):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    if device.revoked or device.key_hash != authenticated_key_hash:
+    if screen is not None and screen.id != device.id:
+        db.refresh(screen)
+        if screen.revoked or screen.key_hash != authenticated_key_hash or device.parent_device_id != screen.id:
+            fail("unauthorized", "Chave revogada ou alterada", 401)
+        if device.revoked:
+            fail("charger_not_linked", "Carregador desligado desta central", 409)
+    elif device.revoked or device.key_hash != authenticated_key_hash:
         fail("unauthorized", "Chave revogada ou alterada", 401)
     was_offline = not online(device)
     completed_reset_id = None
@@ -113,9 +155,18 @@ def sync(db, authenticated_device, data):
     # Capacidade declarada a cada sync: firmware rebaixado deixa de receber SET_POWER.
     device.capabilities = list(data.capabilities)
     # Firmware sem carregador externo guarda o mesmo formato de antes (sem address/link nulos).
+    previous_charger = device.charger or {}
     device.charger = data.charger.model_dump(
         exclude={key for key in ("address", "link") if getattr(data.charger, key) is None}
     ) if data.charger else None
+    if device.charger and device.charger.get("address") is not None:
+        # Última leitura OK do carregador pela tela e a potência lida (dono: "última leitura").
+        same_address = previous_charger.get("address") == device.charger["address"]
+        if device.charger.get("link") == "online":
+            device.charger["last_online_at"] = now().isoformat()
+            device.charger["measured_power_w"] = int(data.power_w) if data.power_w is not None else 0
+        elif same_address and previous_charger.get("last_online_at"):
+            device.charger["last_online_at"] = previous_charger["last_online_at"]
     if reboot and session:
         session.status = "stopping"
         issue(db, connector, device, "STOP", session=session, parameters={"reason": "device_reboot"})
@@ -141,7 +192,10 @@ def sync(db, authenticated_device, data):
                                      "command_failed", "device_sync", f"failed:{cmd.id}")
             if cmd.type == "START" and session:
                 session.status = "stopping"
-                issue(db, connector, device, "STOP", session=session, parameters={"reason": "start_failed"})
+                # A tela não confirmou o carregador GoodWe (sem resposta Modbus): o motorista vê
+                # "Carregador offline — use outro ponto desta estação" em vez de "Falha ao iniciar".
+                reason = "charger_offline" if ack.error == "charger_offline" else "start_failed"
+                issue(db, connector, device, "STOP", session=session, parameters={"reason": reason})
             elif cmd.type == "RESERVE" and reservation:
                 if reservation.status == "pending_device":
                     reservation.status = "cancelling"
@@ -158,6 +212,7 @@ def sync(db, authenticated_device, data):
                 or data.session_id
                 or active_res(db, connector.id)
                 or active_session(db, connector.id)
+                or screen_group_busy(db, device)
                 or not ack.new_device_key_hash
                 or not ack.new_claim_token_hash
                 or ack.new_device_key_hash == device.key_hash
@@ -187,6 +242,7 @@ def sync(db, authenticated_device, data):
             cmd.status = "applied"
             device.revoked = True
             device.reconciled = False
+            retire_screen_chargers(db, device)
             completed_reset_id = str(cmd.id)
             continue
         if cmd.type == "SET_POWER":
@@ -224,7 +280,10 @@ def sync(db, authenticated_device, data):
             and (data.session_id == session.id or (data.session_id is None and data.energy_wh == 0))
             and data.physical_state in ("idle", "stopped", "fault")
         ):
-            finish(session, data, cmd.parameters.get("reason") or "requested_stop")
+            reason = cmd.parameters.get("reason") or "requested_stop"
+            # START que nunca começou (falha/sem confirmação/carregador offline): vale o motivo da
+            # API, não o "requested" genérico da tela que só confirmou a parada.
+            finish(session, data, reason, force=session.started_at is None and reason in START_FAILURES)
             compatible = True
         elif cmd.type == "RELEASE" and data.physical_state in ("idle", "stopped") and not data.connected:
             if reservation and reservation.status == "cancelling":
@@ -416,10 +475,14 @@ def restore_reservation(db, connector, device, reservation, session, reboot):
     )
 
 
-def finish(session, data, fallback):
+START_FAILURES = ("start_failed", "start_timeout", "charger_offline")
+
+
+def finish(session, data, fallback, *, force=False):
     # A battery-full stop was decided by the API; the device's own reason
     # (often a generic "requested_stop") must not overwrite it.
-    reason = BATTERY_FULL if session.end_reason == BATTERY_FULL else (data.end_reason or fallback)
+    reason = BATTERY_FULL if session.end_reason == BATTERY_FULL else (
+        fallback if force else (data.end_reason or fallback))
     session.status = (
         "failed"
         if data.physical_state == "fault" or session.started_at is None
@@ -538,4 +601,7 @@ def response(db, connector, device):
     if kiosk:
         # Pedido do totem deste ponto (aberto, em recarga ou fechado há até 10 min), ou null.
         result["kiosk_order"] = kiosk["order"]
+    if device.parent_device_id is None:
+        # Tela da estação: carregadores adicionais que ela comanda (sync endereçado por cada um).
+        result["chargers"] = screen_chargers(db, device)
     return result

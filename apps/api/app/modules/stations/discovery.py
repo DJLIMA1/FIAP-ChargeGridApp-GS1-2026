@@ -17,6 +17,11 @@ def point_available(point):
             and point.get('availability_status') in (None, 'available'))
 
 
+def point_price(point):
+    return Decimal(str((point.get('speed_prices') or {}).get('max',
+                       point.get('dynamic_price_per_kwh', point.get('price_per_kwh', 0)))))
+
+
 def discover(records, *, connector_type=None, available_only=False, max_price_per_kwh=None,
              sort='default', lat=None, lng=None):
     results = []
@@ -26,12 +31,12 @@ def discover(records, *, connector_type=None, available_only=False, max_price_pe
                   if point.get('active') is not False and not point.get('retired')
                   and (not connector_type or normalize_connector(point['connector_type']) == normalize_connector(connector_type))
                   and (not available_only or point_available(point))
-                  and (max_price_per_kwh is None or Decimal(str(point['price_per_kwh'])) <= Decimal(str(max_price_per_kwh)))]
+                  and (max_price_per_kwh is None or point_price(point) <= Decimal(str(max_price_per_kwh)))]
         if filtered and not points:
             continue
         # Every displayed attribute refers to this same eligible point. Price sorting
         # uses the cheapest eligible point, even when it is currently occupied.
-        selected = min(points, key=lambda p: (Decimal(str(p['price_per_kwh'])), str(p['id']))) if points else None
+        selected = min(points, key=lambda p: (point_price(p), str(p['id']))) if points else None
         result = dict(station)
         result['discovery'] = {'point': selected, 'matching_connector_ids': [p['id'] for p in points],
                                'available_points': sum(point_available(p) for p in points), 'distance_km': None}
@@ -42,7 +47,7 @@ def discover(records, *, connector_type=None, available_only=False, max_price_pe
             result['discovery']['distance_km'] = 6371 * math.acos(max(-1, min(1, cosine)))
         results.append(result)
     if sort == 'price':
-        results.sort(key=lambda s: (Decimal(str(s['discovery']['point']['price_per_kwh']))
+        results.sort(key=lambda s: (point_price(s['discovery']['point'])
                                    if s['discovery']['point'] else Decimal('Infinity'), str(s['id'])))
     elif sort == 'distance':
         results.sort(key=lambda s: (s['discovery']['distance_km'], str(s['id'])))

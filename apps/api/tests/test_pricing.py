@@ -143,6 +143,25 @@ def test_legacy_stored_rules_with_peak_still_load(factory, seed):
     assert body["status"]["peak_now"] is False and body["status"]["reason_label"] == "Preço normal"
 
 
+def test_interval_status_round_trip_and_fallback_to_base(factory, seed):
+    client, _ = client_for(factory, seed["owner"])
+    url = f"/v1/stations/{seed['station']}/pricing"
+    schedule = _whole_week(seed["point"])
+    for interval in schedule["intervals"]:
+        interval["enabled"] = False
+    saved = client.put(url, json={"schedule": schedule})
+    assert saved.status_code == 200, saved.text
+    body = client.get(url).json()
+    assert [item["enabled"] for item in body["rules"]["schedule"]["intervals"]] == [False, False]
+    assert body["connectors"][0]["current_base_price_per_kwh"] == "2.0000"
+    assert body["status"]["schedule_now"] is None
+    for interval in schedule["intervals"]:
+        interval["enabled"] = True
+    restored = client.put(url, json={"schedule": schedule})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["connectors"][0]["current_base_price_per_kwh"] == "1.5000"
+
+
 def test_schedule_sets_the_public_price_and_the_session_locks_it(factory, seed):
     owner, _ = client_for(factory, seed["owner"])
     assert owner.put(f"/v1/stations/{seed['station']}/pricing",
@@ -183,6 +202,9 @@ def test_reservation_keeps_the_schedule_base_of_the_moment_it_was_made(factory, 
         reservation = db.get(Reservation, reserved.json()["id"])
         # Reserva feita dentro do horário de R$ 1,20 e já confirmada pelo ponto.
         reservation.created_at = made_at
+        # Simulate an old reservation, before speed tariffs stored the base snapshot.
+        reservation.price_terms = {key: value for key, value in reservation.price_terms.items()
+                                   if key != "speed_base_per_kwh"}
         reservation.status, reservation.expires_at = "confirmed", now() + timedelta(minutes=15)
         device = db.get(Device, seed["device"])
         device.physical_state, device.reconciled, device.last_seen = "reserved", True, now()

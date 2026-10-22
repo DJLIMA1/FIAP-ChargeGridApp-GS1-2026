@@ -140,6 +140,21 @@ def test_alerts_cover_offline_failures_idle_and_missing_device():
     assert "07:00" in alerts[0]["detail"]  # horário local de São Paulo
 
 
+def test_charger_offline_alert_keeps_the_station_online():
+    base = {"station_id": "st", "station_name": "Centro", "published": True, "has_device": True,
+            "last_session_at": "2026-10-13T12:00:00Z"}
+    alerts = a.build_alerts([
+        {**base, "connector_id": "p1", "public_code": "A", "online": True, "charger_offline": True,
+         "charger_address": 2},
+        {**base, "connector_id": "p2", "public_code": "B", "online": True},
+        {**base, "connector_id": "p3", "public_code": "C", "online": False, "charger_offline": True},
+    ], NOW)
+    kinds = [(alert["public_code"], alert["kind"]) for alert in alerts]
+    assert kinds == [("A", "charger_offline"), ("C", "device_offline")]  # tela offline prevalece
+    assert alerts[0]["title"] == "Carregador offline" and "carregador 2 não responde" in alerts[0]["detail"]
+    assert "a central da estação está online" in alerts[0]["detail"]
+
+
 def test_csv_export_neutralizes_formulas_and_keeps_numbers():
     rows = [a.session_export_row({**session(), "station_name": "=HYPERLINK(\"x\")", "public_code": "-10",
                                   "end_reason": "@cmd", "connector": {"public_code": "ignored"}})]

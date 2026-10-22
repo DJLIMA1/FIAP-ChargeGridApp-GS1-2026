@@ -45,6 +45,15 @@ class Profile(Base):
     __table_args__ = (CheckConstraint("account_type IN ('consumer', 'vendor')", name="profile_account_type"),)
 
 
+class SimulatedWallet(Base):
+    __tablename__ = "simulated_wallets"
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id"), primary_key=True)
+    balance_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    legacy_imported: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    transactions: Mapped[list] = mapped_column(JSONB, default=list)
+    __table_args__ = (CheckConstraint("balance_cents >= 0", name="simulated_wallet_nonnegative"),)
+
+
 class Station(Base):
     __tablename__ = "stations"
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
@@ -119,7 +128,10 @@ class Connector(Base):
     # cg-hca-<endereço>.local) ligado à tela do ponto. Nunca vazio: sem valor no INSERT, o
     # gatilho do banco põe o próximo endereço livre do posto (1, 2, 3…); o dono pode trocar.
     # Carregador sem resposta: a tela carrega com a simulação interna dela.
-    charger_address: Mapped[int] = mapped_column(Integer, nullable=False, server_default=FetchedValue())
+    charger_address: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default=FetchedValue())
+    # Carregador adicional removido pelo dono (migração e2c7a9d4f6b3) que tinha histórico: a linha
+    # fica (sessões, reservas, pagamentos), some das listas e libera o endereço (NULL só aqui).
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         CheckConstraint("power_kw > 0 AND price_per_kwh >= 0 AND max_duration_minutes > 0"),
         CheckConstraint(
@@ -128,6 +140,8 @@ class Connector(Base):
         ),
         CheckConstraint("charger_address IS NULL OR charger_address BETWEEN 1 AND 247",
                         name="connector_charger_address_range"),
+        CheckConstraint("charger_address IS NOT NULL OR removed_at IS NOT NULL",
+                        name="connector_charger_address_unless_removed"),
         # Dois pontos do mesmo posto nunca falam com o mesmo carregador.
         UniqueConstraint("station_id", "charger_address", name="uq_connector_station_charger_address"),
     )
@@ -177,8 +191,13 @@ class Device(Base):
     # controla ({model, variant, transport, min_power_w, max_power_w, step_w, phases}).
     capabilities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     charger: Mapped[dict | None] = mapped_column(JSONB)
+    # Estação = a TELA (dispositivo com chave). Carregador adicional comandado por ela: linha
+    # própria (sessões/comandos/estado do ponto) sem chave utilizável, ligada à tela; a tela
+    # sincroniza por ele com ``charger_address`` no corpo do sync (migração d3f8a1c6e2b7).
+    parent_device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id"), index=True)
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
+        CheckConstraint("parent_device_id IS NULL OR parent_device_id <> id", name="device_parent_not_self"),
     )
 
 

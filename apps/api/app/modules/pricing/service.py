@@ -102,24 +102,19 @@ def scheduled_base(station, connector, moment) -> Decimal:
     return pricing.base_now(interval, connector.id, connector.price_per_kwh)
 
 
-def current_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal]:
+def current_terms(db, connector, reservation=None, power_tier="max") -> tuple[Decimal, Decimal]:
     """``(base, multiplicador)`` travados ao iniciar uma recarga neste ponto.
 
     Com reserva, valem os termos do momento da reserva: o multiplicador gravado nela e a
     base do horário em ``reservation.created_at``. Sem reserva, os de agora.
     """
-    station = db.get(Station, connector.station_id)
-    if reservation is not None:
-        multiplier = (Decimal(reservation.demand_multiplier) if reservation.demand_multiplier is not None
-                      else Decimal(station_demand(db, station)["multiplier"]))
-        return scheduled_base(station, connector, reservation.created_at), multiplier
-    status = station_demand(db, station)
-    return pricing.connector_price(status, connector.id, connector.price_per_kwh)[0], Decimal(status["multiplier"])
+    base, multiplier, _ = locked_terms(db, connector, reservation, power_tier)
+    return base, multiplier
 
 
 # ------------------------------------------------- explicação do preço travado (recibo)
 
-def reservation_terms(db, connector) -> tuple[Decimal, dict]:
+def reservation_terms(db, connector, power_tier="max") -> tuple[Decimal, dict]:
     """``(multiplicador, termos)`` travados ao reservar: o multiplicador de ``current_multiplier``
     e a explicação (motivo e fatores da demanda, horário) gravada em ``reservations.price_terms``."""
     from chargegrid_core import receipt  # evita custo de import nas rotas de consulta
@@ -127,14 +122,15 @@ def reservation_terms(db, connector) -> tuple[Decimal, dict]:
     station = db.get(Station, connector.station_id)
     status = station_demand(db, station)
     multiplier = Decimal(status["multiplier"])
-    base, _ = pricing.connector_price(status, connector.id, connector.price_per_kwh)
+    base, _ = pricing.connector_price(status, connector.id, connector.price_per_kwh, power_tier)
     terms = receipt.price_terms(locked_at=now(), locked_by="reservation", connector_base=connector.price_per_kwh,
                                 base=base, multiplier=multiplier, status=status,
                                 interval=status.get("schedule_now"), connector_id=connector.id)
+    terms.update(power_tier=power_tier, speed_base_per_kwh=str(base))
     return multiplier, terms
 
 
-def locked_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal, dict]:
+def locked_terms(db, connector, reservation=None, power_tier="max") -> tuple[Decimal, Decimal, dict]:
     """``(base, multiplicador, termos)`` travados ao iniciar: os mesmos valores de
     ``current_terms`` mais a explicação gravada em ``charging_sessions.price_terms`` (sem cupom).
 
@@ -156,15 +152,18 @@ def locked_terms(db, connector, reservation=None) -> tuple[Decimal, Decimal, dic
             status = station_demand(db, station)
             multiplier = Decimal(status["multiplier"])
         interval = pricing.active_interval(pricing.stored_rules(station.pricing), local_time(reservation.created_at))
-        base = scheduled_base(station, connector, reservation.created_at)
+        power_tier = saved.get("power_tier", "max")
+        base = (Decimal(saved["speed_base_per_kwh"]) if saved.get("speed_base_per_kwh") is not None
+                else scheduled_base(station, connector, reservation.created_at))
         locked_by, locked_at = "reservation", reservation.created_at
     else:
         status = station_demand(db, station)
         multiplier = Decimal(status["multiplier"])
         interval = status.get("schedule_now")
-        base = pricing.connector_price(status, connector.id, connector.price_per_kwh)[0]
+        base = pricing.connector_price(status, connector.id, connector.price_per_kwh, power_tier)[0]
         locked_by, locked_at = "start", now()
     terms = receipt.price_terms(locked_at=locked_at, locked_by=locked_by, connector_base=connector.price_per_kwh,
                                 base=base, multiplier=multiplier, status=status, demand=demand,
                                 interval=interval, connector_id=connector.id)
+    terms.update(power_tier=power_tier, speed_base_per_kwh=str(base))
     return base, multiplier, terms

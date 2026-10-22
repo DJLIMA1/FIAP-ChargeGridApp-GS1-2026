@@ -416,7 +416,9 @@ def build_alerts(points: Iterable[Mapping], now: datetime, *, idle_hours: int = 
     Campos esperados: ``connector_id``, ``station_id``, ``station_name``,
     ``public_code``, ``published`` (ponto e posto ativos), ``has_device``,
     ``online``, ``last_seen``, ``physical_state``, ``failed_commands``,
-    ``last_session_at``, ``created_reference`` (opcional) e ``retired``.
+    ``last_session_at``, ``created_reference`` (opcional), ``retired`` e, opcionais,
+    ``charger_offline``/``charger_address`` (central da estação online, carregador GoodWe sem resposta:
+    só este ponto; ``online`` aqui é o da central).
     """
     alerts = []
     for point in points:
@@ -437,6 +439,13 @@ def build_alerts(points: Iterable[Mapping], now: datetime, *, idle_hours: int = 
                            "title": "Dispositivo offline",
                            "detail": f"{label}: sem comunicação. Último contato: {seen}.",
                            "at": last_seen.isoformat() if last_seen else None})
+        elif published and point.get("charger_offline"):
+            address = point.get("charger_address")
+            alerts.append({**base, "kind": "charger_offline", "severity": "critical",
+                           "title": "Carregador offline",
+                           "detail": f"{label}: a central da estação está online, mas o carregador"
+                                     f"{f' {address}' if address else ''} não responde. Só este ponto fica indisponível.",
+                           "at": None})
         if point.get("physical_state") == "fault":
             alerts.append({**base, "kind": "device_fault", "severity": "critical", "title": "Falha no equipamento",
                            "detail": f"{label}: o painel informou falha.", "at": None})

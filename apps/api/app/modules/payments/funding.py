@@ -32,13 +32,17 @@ FUNDED = ("authorized", "paid")
 KIOSK_PAYMENT_VISIBLE_MINUTES = 35
 
 
-def claim_for_start(db, user, connector, payment_id):
+def claim_for_start(db, user, connector, payment_id, power_tier="max", reservation=None):
     """Pagamento que financia este START (ou ``None`` quando o posto não exige)."""
     if payment_id is None:
         station = db.get(Station, connector.station_id)
-        if station.prepay_required and Decimal(connector.price_per_kwh) > 0:
-            fail("payment_required", "Este posto exige pagamento antes de iniciar. Pague pelo app (teste) "
-                 "e tente de novo.", 402)
+        if station.prepay_required:
+            from ..pricing.service import locked_terms as current_price_terms
+
+            base, _, _ = current_price_terms(db, connector, reservation, power_tier)
+            if base > 0:
+                fail("payment_required", "Este posto exige pagamento antes de iniciar. Pague pelo app (teste) "
+                     "e tente de novo.", 402)
         return None
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
     if not payment or payment.user_id != user.id:
@@ -61,6 +65,7 @@ def funded_input(data, payment):
         "max_duration_minutes": payment.max_duration_minutes,
         "max_power_kw": Decimal(payment.max_power_kw) if payment.max_power_kw is not None else data.max_power_kw,
         "coupon_code": None,
+        "power_tier": (payment.quote or {}).get("power_tier", "max"),
     })
 
 
@@ -264,6 +269,7 @@ def payment_row(payment, *, owner=False):
         result["coupon_code"] = payment.coupon_code
         result["checkout_url"] = payment.checkout_url if payment.status in PRE_START else None
         result["quote"] = payment.quote
+    result["power_tier"] = (payment.quote or {}).get("power_tier", "max")
     return result
 
 

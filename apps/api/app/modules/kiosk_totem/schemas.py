@@ -11,10 +11,12 @@ from ...schemas import Input
 class KioskQuoteInput(Input):
     """Como cobrar e quanto: R$ (``amount``), minutos (``minutes``) ou kWh (``energy_kwh``, 1 casa)."""
 
-    mode: Literal["value", "time", "energy"]
+    mode: Literal["value", "time", "energy", "autonomy"]
     amount: Decimal | None = Field(default=None, gt=0, le=10000, decimal_places=2, allow_inf_nan=False)
     minutes: int | None = Field(default=None, ge=1, le=1440)
     energy_kwh: Decimal | None = Field(default=None, gt=0, le=1000, decimal_places=1, allow_inf_nan=False)
+    autonomy_km: int | None = Field(default=None, ge=1, le=2000)
+    power: Literal["max", "reduced"] = "max"
 
 
 class KioskOrderInput(KioskQuoteInput):
@@ -28,3 +30,4 @@ class KioskPayInput(Input):
     """Só conferência: o método é decidido pelo servidor (``voucher``/``card_terminal`` reservados)."""
 
     method: Literal["simulated", "stripe", "voucher", "card_terminal"] | None = None
+    funding_source: Literal["balance", "pix", "card"] | None = None

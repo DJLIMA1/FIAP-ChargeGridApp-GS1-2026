@@ -28,9 +28,11 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from chargegrid_core import billing, pricing
+from chargegrid_core import power as power_rules
+from chargegrid_core.charge_plan import autonomy_energy, autonomy_note
 from chargegrid_core.receipt import END_REASONS
 
 from ... import overstay
@@ -39,6 +41,7 @@ from ...models import (
     KIOSK_ORDER_OPEN,
     ChargingSession,
     Connector,
+    Device,
     KioskOrder,
     Payment,
     Profile,
@@ -50,7 +53,8 @@ from ..charging.service import session_power_limit
 from ..payments import gateway as gateways
 from ..payments import service as payments
 from ..payments.funding import FUNDED, PRE_START, mark_zero_settlement, start_window, status_label
-from ..pricing.service import locked_terms
+from ..pricing.service import local_time, locked_terms
+from . import account
 
 MAX_TOTAL_CENTS = 20000  # teto por pedido: total pré-autorizado (energia + reserva da permanência)
 HOLD_MINUTES = 5
@@ -141,8 +145,16 @@ def _decide(active, presentation):
 
 def method_for(db, station, connector):
     """``(método, motivo)`` decididos pelo servidor a partir do modo da conta do dono."""
-    if not station.active or not connector.active or station.owner_id is None:
+    if not station.active or station.owner_id is None:
         return None, "point_disabled"
+    if not connector.active:
+        own_device = db.scalar(select(Device).where(Device.connector_id == connector.id, Device.revoked.is_(False)))
+        root = (own_device.parent_device_id or own_device.id) if own_device else None
+        sibling = db.scalar(select(Connector.id).join(Device, Device.connector_id == Connector.id).where(
+            or_(Device.id == root, Device.parent_device_id == root), Device.revoked.is_(False),
+            Connector.active.is_(True)).limit(1)) if root else None
+        if sibling is None:
+            return None, "point_disabled"
     owner = db.get(Profile, station.owner_id)
     return _decide(True, owner is not None and bool(owner.presentation_mode))
 
@@ -199,18 +211,41 @@ def _limits(connector, price, power, reserve_cents):
     return value_max, min(energy_max, Decimal(1000)), max(0, min(connector.max_duration_minutes, minutes))
 
 
-def offer(db, device):
+def offer(db, device, user=None):
     connector, station = point(db, device)
     method, reason = method_for(db, station, connector)
     base, multiplier, terms, price = _terms(db, connector)
     power = session_power_limit(db, connector) or Decimal(connector.power_kw)
+    if user:
+        vehicle = account.context(db, user)["vehicle"]
+        if vehicle:
+            power = power_rules.driver_limit(power, connector.connector_type,
+                max_ac_kw=vehicle.get("max_ac_kw"), max_dc_kw=vehicle.get("max_dc_kw"))["kw"]
     reserve = int(overstay.payment_terms(station)["reserve_cents"] or 0)
     value_max, energy_max, time_max = _limits(connector, price, power, reserve)
     state = availability(db, connector)
     busy = None if state["available"] else ("kiosk_in_use" if state["kiosk_in_use"] else state["availability_status"])
     open_order = _open_order(db, connector.id) if busy == "kiosk_in_use" else None
     why = reason or busy
+    screen_id = device.parent_device_id or device.id
+    choices = []
+    rows = db.execute(select(Connector, Device).join(Device, Device.connector_id == Connector.id).where(
+        or_(Device.id == screen_id, Device.parent_device_id == screen_id),
+        Device.revoked.is_(False), Connector.active.is_(True)).order_by(Connector.charger_address)).all()
+    for other, hardware in rows[:4]:
+        state_for_choice = availability(db, other, device=hardware)
+        choices.append({"address": 0 if hardware.id == screen_id else other.charger_address,
+                        "label": f"{other.connector_type} - {other.power_kw:g} kW / {other.public_code}",
+                        "available": state_for_choice["available"],
+                        "reason": state_for_choice["availability_status"]})
     return {
+        "ui_version": 2,
+        "connectors": choices,
+        "account": account.context(db, user) if user else None,
+        "connector_type": connector.connector_type,
+        "payment_sources": ["pix", "card"] if method == "simulated" else
+            [m for m in ("pix", "card") if m in payments.config()["methods"]],
+        "balance_available": user is not None and method == "simulated",
         "enabled": method is not None,
         "available": state["available"],
         "reason": why,
@@ -221,6 +256,10 @@ def offer(db, device):
         "currency": billing.CURRENCY,
         "public_code": connector.public_code,
         "power_kw": str(Decimal(power).quantize(Decimal("0.001"))),
+        **pricing.speed_prices({"multiplier": multiplier, "speed": pricing.stored_rules(station.pricing)["speed"],
+                                "schedule_now": pricing.active_interval(pricing.stored_rules(station.pricing),
+                                    local_time(now()))},
+                                connector.id, connector.price_per_kwh),
         "price": {"price_per_kwh": str(price.quantize(Decimal("0.0001"))),
                   "base_price_per_kwh": str(Decimal(base).quantize(Decimal("0.0001"))),
                   "demand_multiplier": str(Decimal(multiplier).quantize(Decimal("0.01"))),
@@ -267,15 +306,47 @@ def _normalized(data, connector):
     return amount, minutes, energy
 
 
-def compute_quote(db, connector, station, guest, data, method):
+def compute_quote(db, connector, station, guest, data, method, user=None):
     """``(campos do pagamento, resposta)``: o mesmo ``payments.service.quote`` do app, com o convidado."""
-    amount, minutes, energy = _normalized(data, connector)
+    selected_mode = data.mode
+    power = session_power_limit(db, connector) or Decimal(connector.power_kw)
+    vehicle = account.vehicle_view(db, user) if user else None
+    specs = vehicle["vehicle"] if vehicle and vehicle["saved"] else None
+    if specs:
+        power = power_rules.driver_limit(power, connector.connector_type,
+            max_ac_kw=specs.get("max_ac_kw"), max_dc_kw=specs.get("max_dc_kw"))["kw"]
+    if data.power == "reduced":
+        power = (power / 2).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    soc = None
+    if specs:
+        soc = db.scalar(select(ChargingSession.soc_percent).where(ChargingSession.user_id == user.id,
+            ChargingSession.soc_percent.is_not(None)).order_by(ChargingSession.created_at.desc()).limit(1))
+    plan = None
+    if selected_mode == "autonomy":
+        if not user:
+            fail("login_required", "Entre na sua conta para recarregar por autonomia", 401)
+        if not specs:
+            fail("vehicle_required", "Cadastre um carro no perfil para usar autonomia", 422)
+        if data.autonomy_km is None:
+            fail("invalid_quote", "Informe a autonomia em km", 422)
+        plan = autonomy_energy(data.autonomy_km, specs["consumption_kwh_per_100km"],
+                               soc or 0, specs["usable_battery_kwh"])
+        energy = plan["energy_kwh"]
+        if energy <= 0:
+            fail("battery_full", autonomy_note(plan), 422)
+        data = data.model_copy(update={"mode": "energy", "energy_kwh": energy})
+        amount, minutes = None, None
+    else:
+        amount, minutes, energy = _normalized(data, connector)
     request = SimpleNamespace(mode=data.mode, minutes=minutes, max_cost=amount, energy_kwh=energy,
-                              max_power_kw=None, coupon_code=None)
+                              max_power_kw=power if user or data.power == "reduced" else None, coupon_code=None,
+                              power_tier=data.power)
     fields = payments.quote(db, guest, connector, request)
     if fields["amount_cents"] > MAX_TOTAL_CENTS:
         fail("amount_above_limit", f"O total passa do limite do totem ({billing.format_money(MAX_TOTAL_CENTS)})", 422)
     detail = fields["quote"]
+    if specs:
+        detail["vehicle"] = {"battery_kwh": specs["usable_battery_kwh"], "soc_percent": str(soc) if soc is not None else None}
     public = overstay.public_terms(station)
     material = {
         "connector": str(connector.id), "method": method, "mode": data.mode, "amount": str(amount),
@@ -285,12 +356,17 @@ def compute_quote(db, connector, station, guest, data, method):
         "multiplier": str(fields["demand_multiplier"]), "discount": fields["discount_percent"],
         "max_minutes": fields["max_duration_minutes"], "estimate": detail["energy_kwh"],
         "power": detail["power_kw"], "overstay": public.get("version"),
+        "user": str(guest.id), "selection": selected_mode, "autonomy_km": data.autonomy_km,
     }
     quote_hash = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()[:32]
     demand = detail["price_terms"].get("demand") or {}
     view = {
         "quote_hash": quote_hash,
-        "mode": data.mode,
+        "mode": selected_mode,
+        "autonomy_km": data.autonomy_km,
+        "autonomy": _plain(plan),
+        "autonomy_note": autonomy_note(plan),
+        "power": data.power,
         "amount": str(amount) if amount is not None else None,
         "minutes": minutes,
         "energy_kwh": str(energy) if energy is not None else None,
@@ -313,11 +389,11 @@ def compute_quote(db, connector, station, guest, data, method):
     return fields, view
 
 
-def quote(db, device, data):
+def quote(db, device, data, user=None):
     connector, station = point(db, device)
     method = require_method(db, station, connector)
-    guest = payments.guest_profile(db, connector)
-    return compute_quote(db, connector, station, guest, data, method)[1]
+    guest = user or payments.guest_profile(db, connector)
+    return compute_quote(db, connector, station, guest, data, method, user)[1]
 
 
 # ---------------------------------------------------------------------------- pedido e trava
@@ -447,9 +523,9 @@ def expire_stale(db, connector_id):
         refresh_order(db, order)
 
 
-def create_order(db, device, data, key):
+def create_order(db, device, data, key, user=None):
     connector, station = point(db, device)
-    guest = payments.guest_profile(db, connector)
+    guest = user or payments.guest_profile(db, connector)
     # Mesma trava do START (perfil → ponto): pedido e início nunca correm juntos.
     connector = lock_point(db, guest, connector.id)
     old, body_hash = idempotent(db, guest, "kiosk_order", key, data.model_dump(mode="json"), KioskOrder)
@@ -464,13 +540,14 @@ def create_order(db, device, data, key):
         fail("overstay_terms_changed", "As condições da taxa de permanência mudaram. Revise e confirme de novo.", 409)
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state)
-    fields, view = compute_quote(db, connector, station, guest, data, method)
+        fail_unavailable(state, db=db, connector=connector)
+    fields, view = compute_quote(db, connector, station, guest, data, method, user)
     if not secrets.compare_digest(view["quote_hash"], data.quote_hash):
         fail("quote_changed", "O orçamento mudou. Revise os novos valores.", 409, quote=view)
     order = KioskOrder(
         id=uuid.uuid4(), connector_id=connector.id, guest_id=guest.id, status="held", method=method,
-        mode=data.mode, quote={"fields": _plain(fields), "view": view}, quote_hash=view["quote_hash"],
+        mode="energy" if data.mode == "autonomy" else data.mode,
+        quote={"fields": _plain(fields), "view": view, "account_id": str(user.id) if user else None}, quote_hash=view["quote_hash"],
         expires_at=now() + timedelta(minutes=HOLD_MINUTES), token_salt=secrets.token_hex(16), token_hash="",
     )
     order.token_hash = _token_hash(order_token(db, order))
@@ -505,10 +582,13 @@ def _open_checkout(db, order, payment, base):
     return order
 
 
-def pay(db, device, order_id, data, key, request_base=""):
+def pay(db, device, order_id, data, key, request_base="", user=None):
     connector, station = point(db, device)
     order = own_order(db, device, order_id)
     guest = db.get(Profile, order.guest_id)
+    source = data.funding_source
+    if order.quote.get("account_id") and (user is None or user.id != order.guest_id):
+        fail("login_required", "Entre novamente para confirmar o pagamento", 401)
     lock_point(db, guest, connector.id)
     order = _locked(db, KioskOrder, order.id)
     old, body_hash = idempotent(db, guest, f"kiosk_pay:{order.id}", key, data.model_dump(), KioskOrder)
@@ -542,11 +622,20 @@ def pay(db, device, order_id, data, key, request_base=""):
         remember(db, guest, f"kiosk_pay:{order.id}", key, body_hash, order)
         return order
     moment = now()
+    if source == "balance":
+        if not user or user.id != order.guest_id:
+            fail("login_required", "Saldo exige login na conta do pedido", 401)
+        if method != "simulated":
+            fail("method_unavailable", "O saldo é simulado e só vale em postos de apresentação", 409)
+        account.move(db, guest, -order.quote["fields"]["amount_cents"],
+                     "Recarga no totem (simulada)", f"kiosk-debit:{order.id}")
     if method == "simulated":
         payment = Payment(id=uuid.uuid4(), user_id=guest.id, connector_id=connector.id, origin="kiosk",
                           provider=payments.SIMULATED, method=payments.SIMULATED, status="paid",
                           authorized_at=moment, captured_cents=0, expires_at=moment, **_payment_fields(order))
         payment.start_deadline = moment + start_window(payment)
+        if source == "balance":
+            payment.quote = {**payment.quote, "funding_source": "balance"}
         db.add(payment)
         db.flush()
         order.payment_id = payment.id
@@ -560,10 +649,14 @@ def pay(db, device, order_id, data, key, request_base=""):
         db.commit()
         return order
     payments.require_gateway()
+    if source and source not in payments.config()["methods"]:
+        fail("method_unavailable", "Este meio de pagamento não está disponível", 409)
     payment = Payment(id=uuid.uuid4(), user_id=guest.id, connector_id=connector.id, origin="kiosk",
                       provider="stripe", status="awaiting_payment",
                       expires_at=moment + timedelta(minutes=payments.CHECKOUT_MINUTES), **_payment_fields(order))
     db.add(payment)
+    if source:
+        payment.quote = {**payment.quote, "funding_source": source}
     db.flush()
     order.payment_id = payment.id
     order.expires_at = moment + timedelta(minutes=QR_HOLD_MINUTES)
@@ -624,7 +717,8 @@ def _payment_view(db, order, payment, base):
     if order.status == "awaiting_payment" and payment.status in PRE_START and payment.checkout_url and base:
         qr = f"{base}/pay/o/{order.id}?t={order_token(db, order)}"
     return {"id": str(payment.id), "status": payment.status, "label": status_label(payment),
-            "method": order.method, "amount": _money(payment.amount_cents), "qr_url": qr}
+            "method": order.method, "amount": _money(payment.amount_cents), "qr_url": qr,
+            "funding_source": (payment.quote or {}).get("funding_source")}
 
 
 def _receipt_view(session, payment, url):
@@ -671,6 +765,12 @@ def sync_view(db, order, base):
     payment = db.get(Payment, order.payment_id) if order.payment_id else None
     session = db.get(ChargingSession, order.session_id) if order.session_id else None
     receipt_url = _return_url(db, order, base) if base else None
+    payment_view = _payment_view(db, order, payment, base)
+    # A apresentação também usa uma página real do pedido, sem inventar um Pix
+    # bancário. Abrir esse QR nunca confirma pagamento nem movimenta saldo.
+    qr_url = (f"{base}/pay/o/{order.id}?t={order_token(db, order)}"
+              if base and order.method == "simulated" and order.status == "held"
+              else (payment_view or {}).get("qr_url"))
     expires_at, remaining = _expiry(order)
     return {
         "id": str(order.id),
@@ -679,7 +779,8 @@ def sync_view(db, order, base):
         "expires_at": expires_at,
         "expires_in_seconds": remaining,
         "session_id": str(order.session_id) if order.session_id else None,
-        "payment": _payment_view(db, order, payment, base),
+        "payment": payment_view,
+        "qr_url": qr_url,
         "receipt": _receipt_view(session, payment, receipt_url),
         "error": _error_view(order),
     }
@@ -696,10 +797,11 @@ def order_view(db, order, request_base=""):
         "label": LABELS.get(order.method),
         "expires_at": view["expires_at"],
         "expires_in_seconds": view["expires_in_seconds"],
-        "quote": {key: saved.get(key) for key in ("mode", "amount", "minutes", "energy_kwh", "total", "energy_cap",
+        "quote": {key: saved.get(key) for key in ("mode", "power", "power_kw", "autonomy_km", "amount", "minutes", "energy_kwh", "total", "energy_cap",
                                                   "overstay_reserve", "price_per_kwh", "estimated_energy_kwh",
                                                   "max_duration_minutes")},
         "payment": view["payment"],
+        "qr_url": view["qr_url"],
         "session_id": view["session_id"],
         "session": {
             "status": session.status,

@@ -57,6 +57,8 @@ END_REASONS = {
     "reboot": "Equipamento reiniciado", "command_timeout": "Equipamento não confirmou a operação",
     "start_timeout": "Equipamento não confirmou o início", "start_failed": "Falha ao iniciar",
     "battery_full": "Bateria cheia (100%)",
+    # A tela não confirmou o carregador GoodWe do ponto no START (sem resposta Modbus).
+    "charger_offline": "Carregador offline — use outro ponto desta estação",
 }
 EVENT_LABELS = {
     "start_requested": "Início solicitado", "stop_requested": "Parada solicitada",
@@ -168,6 +170,11 @@ def price_section(session: Mapping) -> dict:
     locked_at = (terms or {}).get("locked_at") or _iso(session.get("created_at"))
 
     lines, explanation = [], []
+    tier = (terms or {}).get("power_tier", "max")
+    speed_label = "Velocidade reduzida" if tier == "reduced" else "Velocidade máxima"
+    if (terms or {}).get("power_tier"):
+        lines.append({"key": "power_tier", "label": "Velocidade escolhida", "value": speed_label, "unit": None})
+        explanation.append(f"{speed_label}: tarifa escolhida pelo motorista, preservada durante a recarga.")
     if schedule and connector_base is not None:
         lines.append({"key": "connector_base", "label": "Tarifa base do conector",
                       "value": _text(connector_base, "0.0001"), "unit": "R$/kWh"})
@@ -208,6 +215,8 @@ def price_section(session: Mapping) -> dict:
         "locked_by": locked_by,
         "connector_base_per_kwh": _text(connector_base, "0.0001"),
         "base_per_kwh": _text(base, "0.0001"),
+        "power_tier": tier,
+        "power_tier_label": speed_label,
         "base_source": "schedule" if schedule else "connector",
         "schedule_window": window if schedule else None,
         "demand": {"multiplier": _text(multiplier), "label": multiplier_label(multiplier),

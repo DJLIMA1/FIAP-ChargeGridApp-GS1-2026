@@ -1,10 +1,11 @@
 import math
+import secrets
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, select
+from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import case, delete, func, select
 
 from chargegrid_core import power as power_rules
 from chargegrid_core.chargers import link as charger_link
@@ -12,20 +13,40 @@ from chargegrid_core.chargers import link as charger_link
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, point_row, retired_ids, station_row, station_rows, update
-from ...models import ChargingSession, Connector, Reservation, Station
+from ...models import (
+    ChargingSession,
+    Command,
+    Connector,
+    ConnectorHourlyStats,
+    Device,
+    DeviceBoot,
+    DeviceClaim,
+    KioskOrder,
+    Payment,
+    Reservation,
+    Station,
+    Telemetry,
+    now,
+)
 from ...schemas import (
     ConnectorInput,
     ConnectorPatch,
     StationInput,
     StationPatch,
 )
-from ...security import current_user
+from ...security import current_user, digest
 from ...service import (
     RES_ACTIVE,
     SESSION_ACTIVE,
+    device_for,
+    kiosk_holds,
+    lock_screen_group,
+    new_public_code,
     operator,
     owned,
     reset_blocks_point,
+    screen_for,
+    screen_group_key,
 )
 from .discovery import discover, normalize_connector
 
@@ -82,8 +103,8 @@ def stations(
         normalized = case((key.in_(("tipo2", "typeii")), "type2"),
                           (key.in_(("ccs", "ccstype2")), "ccs2"), else_=key)
         point_query = point_query.where(normalized == normalize_connector(connector_type))
-    if max_price_per_kwh is not None:
-        point_query = point_query.where(Connector.price_per_kwh <= max_price_per_kwh)
+    # A tarifa vigente inclui velocidade, horários e demanda: o preço base SQL não
+    # pode excluir um posto cujo dono configurou uma máxima mais barata.
     if connector_type or available_only or max_price_per_kwh is not None:
         query = query.where(point_query.exists())
     # Availability includes device reconciliation and active operations. Use the
@@ -116,6 +137,11 @@ def create_station(data: StationInput, user=Depends(current_user), db=Depends(db
 @router.patch("/stations/{station_id}")
 def patch_station(station_id: UUID, data: StationPatch, user=Depends(current_user), db=Depends(db_session)):
     obj = owned(db, user, station_id)
+    # A station edit locks every connector. Take its screen groups in stable order first,
+    # so reset retirement cannot wait on a child while this edit waits on the screen.
+    ids = db.scalars(select(Connector.id).where(Connector.station_id == obj.id)).all()
+    for root in sorted({screen_group_key(db, point_id) for point_id in ids}):
+        lock_screen_group(db, root)
     points = db.scalars(
         select(Connector).where(Connector.station_id == obj.id).order_by(Connector.id).with_for_update()
     ).all()
@@ -152,14 +178,115 @@ def create_point(station_id: UUID, data: ConnectorInput, user=Depends(current_us
     fail("claim_required", "Escaneie o QR de propriedade do equipamento para adicionar um ponto", 409)
 
 
+@router.post("/connectors/{connector_id}/chargers", status_code=201)
+def add_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    """Adicionar carregador: o próximo carregador GoodWe da estação, comandado pela mesma tela.
+
+    Nasce inativo (o dono revisa e publica), com o próximo endereço livre do posto e os dados
+    do ponto da tela (tipo, potência, preço, duração). A tela passa a sincronizar por ele
+    (``chargers`` na resposta do sync dela; firmware com ``multi_charger_v1``)."""
+    point = db.get(Connector, connector_id)
+    if not point or point.removed_at is not None:
+        fail("not_found", "Ponto não encontrado", 404)
+    station = owned(db, user, point.station_id)
+    lock_screen_group(db, point.id)
+    if reset_blocks_point(db, point.id):
+        fail("reset_pending", "Aguarde a restauração da central antes de adicionar carregadores", 409)
+    # Trava a estação: dois "Adicionar carregador" seguidos não disputam o mesmo endereço.
+    db.execute(select(Station.id).where(Station.id == station.id).with_for_update())
+    screen = screen_for(db, device_for(db, point))
+    if screen is None:
+        fail("screen_required", "Este ponto não tem central vinculada. Vincule a central pelo QR antes de "
+             "adicionar carregadores.", 409)
+    base = db.get(Connector, screen.connector_id)
+    used = db.scalars(select(Connector.charger_address).where(Connector.station_id == base.station_id)).all()
+    try:
+        address = charger_link.next_free_address(used)
+    except ValueError as exc:
+        fail("charger_address_full", str(exc), 409)
+    charger = Connector(
+        station_id=base.station_id, public_code=new_public_code(db), connector_type=base.connector_type,
+        power_kw=base.power_kw, price_per_kwh=base.price_per_kwh, max_duration_minutes=base.max_duration_minutes,
+        active=False, charger_address=address,
+    )
+    db.add(charger)
+    db.flush()
+    # Sem chave utilizável: só a tela sincroniza por ele (sync endereçado).
+    db.add(Device(connector_id=charger.id, key_hash=digest(secrets.token_urlsafe(32)), parent_device_id=screen.id))
+    db.flush()
+    db.refresh(charger)
+    return point_row(db, charger, user)
+
+
+# Linhas que guardam histórico de um ponto: com qualquer uma, o carregador removido fica
+# (``removed_at``) para recibos e relatórios; sem nenhuma, as linhas dele são apagadas.
+_POINT_HISTORY = (
+    (ChargingSession, ChargingSession.connector_id),
+    (Reservation, Reservation.connector_id),
+    (Payment, Payment.connector_id),
+    (KioskOrder, KioskOrder.connector_id),
+    (ConnectorHourlyStats, ConnectorHourlyStats.connector_id),
+    # QR de propriedade: o papel da API não tem DELETE em device_claims (migração d85af641bc01).
+    (DeviceClaim, DeviceClaim.connector_id),
+)
+
+
+@router.delete("/connectors/{connector_id}", status_code=204)
+def remove_charger(connector_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    """Remover carregador: só um carregador adicional da estação (nunca o ponto da própria central).
+
+    Sem histórico, apaga o conector e os dispositivos dele. Com histórico, o conector fica para as
+    chaves estrangeiras e recibos (``removed_at``, inativo, dispositivo revogado) e some das listas,
+    do sync da central (``chargers``) e do mapa; o endereço GoodWe fica livre para reuso."""
+    point = db.get(Connector, connector_id)
+    if not point or point.removed_at is not None:
+        fail("not_found", "Ponto não encontrado", 404)
+    station = owned(db, user, point.station_id)
+    lock_screen_group(db, point.id)
+    db.execute(select(Station.id).where(Station.id == station.id).with_for_update())
+    point = db.scalar(select(Connector).where(Connector.id == connector_id).with_for_update()
+                      .execution_options(populate_existing=True))
+    if point is None or point.removed_at is not None:
+        fail("not_found", "Ponto não encontrado", 404)
+    devices = db.scalars(select(Device).where(Device.connector_id == point.id).with_for_update()).all()
+    if not any(device.parent_device_id is not None for device in devices):
+        fail("screen_charger", "Este é o carregador da própria central; ele não pode ser removido.", 409)
+    if db.scalar(
+        select(ChargingSession.id).where(
+            ChargingSession.connector_id == point.id, ChargingSession.status.in_(SESSION_ACTIVE))
+    ) or db.scalar(
+        select(Reservation.id).where(Reservation.connector_id == point.id, Reservation.status.in_(RES_ACTIVE))
+    ) or kiosk_holds(db, [point.id]):
+        fail("point_busy", "Encerre reservas/recargas antes de remover o carregador")
+    device_ids = [device.id for device in devices]
+    history = any(db.scalar(select(column).where(column == point.id).limit(1)) for _, column in _POINT_HISTORY) \
+        or (device_ids and db.scalar(select(Telemetry.id).where(Telemetry.device_id.in_(device_ids)).limit(1)))
+    if history:
+        for device in devices:
+            device.revoked = True
+            device.reconciled = False
+        point.active = False
+        point.charger_address = None  # endereço livre para o próximo "Adicionar carregador"
+        point.removed_at = now()
+    else:
+        if device_ids:
+            for model in (Command, DeviceBoot):
+                db.execute(delete(model).where(model.device_id.in_(device_ids)))
+            db.execute(delete(Device).where(Device.id.in_(device_ids)))
+        db.delete(point)
+    db.flush()
+    return Response(status_code=204)
+
+
 @router.patch("/connectors/{connector_id}")
 def patch_point(connector_id: UUID, data: ConnectorPatch, user=Depends(current_user), db=Depends(db_session)):
+    lock_screen_group(db, connector_id)
     obj = db.scalar(select(Connector).where(Connector.id == connector_id).with_for_update())
-    if not obj:
+    if not obj or obj.removed_at is not None:
         fail("not_found", "Ponto não encontrado", 404)
     owned(db, user, obj.station_id)
     if data.active is True and reset_blocks_point(db, obj.id):
-        fail("point_retired", "Ponto em restauração de fábrica; vincule a tela novamente pelo QR", 409)
+        fail("point_retired", "Ponto em restauração de fábrica; vincule a central novamente pelo QR", 409)
     if "charger_address" in data.model_fields_set and data.charger_address is None:
         # Todo conector é um carregador GoodWe: o endereço pode mudar, nunca ficar vazio.
         fail("invalid_charger_address", charger_link.EMPTY_ADDRESS_MESSAGE, 422)

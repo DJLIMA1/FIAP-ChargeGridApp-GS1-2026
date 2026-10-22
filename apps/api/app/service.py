@@ -5,7 +5,8 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
+from sqlalchemy.orm import aliased
 
 from .errors import fail
 from .models import (
@@ -37,6 +38,8 @@ def new_public_code(db, length=4):
             return code
 
 RES_ACTIVE = ("pending_device", "confirmed", "cancelling")
+# Capacidade declarada pela tela que comanda vários carregadores (sync endereçado).
+MULTI_CHARGER_CAPABILITY = "multi_charger_v1"
 SESSION_ACTIVE = ("starting", "charging", "stopping")
 _DEVICE_NOT_LOADED = object()
 
@@ -71,15 +74,95 @@ def device_for(db, connector):
     return db.scalar(select(Device).where(Device.connector_id == connector.id, Device.revoked.is_(False)))
 
 
+def screen_for(db, device):
+    """A TELA (estação) que comanda o carregador deste dispositivo: ela mesma, ou a tela-mãe de
+    um carregador adicional (``parent_device_id``). ``None`` sem dispositivo ou tela revogada."""
+    if device is None:
+        return None
+    if device.parent_device_id is None:
+        return device
+    screen = db.get(Device, device.parent_device_id)
+    return screen if screen is not None and not screen.revoked else None
+
+
+def lock_screen_group(db, connector_id):
+    """Serialize a screen lifecycle with all its chargers, before locking any Connector.
+
+    Order: existing Profile lock -> screen-group advisory lock -> Connector -> Device ->
+    power advisory lock. Lifecycle checks read siblings without FOR UPDATE: taking sibling
+    connector locks after the screen connector would invert that order. The key is the
+    screen's connector, so reprovisioning its Device cannot change the lock identity.
+    Resolve with scalar columns (not a possibly stale authenticated ORM object); callers
+    reload device/revocation state after acquiring the lock. No external I/O under this lock.
+    """
+    root = screen_group_key(db, connector_id)
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+               {"key": f"screen-group:{root}"})
+
+
+def screen_group_key(db, connector_id):
+    parent = aliased(Device)
+    return db.scalar(
+        select(parent.connector_id).select_from(Device).join(parent, parent.id == Device.parent_device_id)
+        .where(Device.connector_id == connector_id, Device.revoked.is_(False))
+    ) or connector_id
+
+
+def screen_group_busy(db, screen):
+    """Called with the screen-group lock held; preserve the existing session/reservation rule."""
+    ids = select(Device.connector_id).where(or_(Device.id == screen.id, Device.parent_device_id == screen.id))
+    return bool(db.scalar(select(ChargingSession.id).where(
+        ChargingSession.connector_id.in_(ids), ChargingSession.status.in_(SESSION_ACTIVE)).limit(1))
+        or db.scalar(select(Reservation.id).where(
+            Reservation.connector_id.in_(ids), Reservation.status.in_(RES_ACTIVE)).limit(1)))
+
+
+def retire_screen_chargers(db, screen):
+    """Retire idle dependents with their screen; keep connectors and history for the owner."""
+    for child in db.scalars(select(Device).where(Device.parent_device_id == screen.id, Device.revoked.is_(False))):
+        child.revoked = True
+        child.reconciled = False
+        db.get(Connector, child.connector_id).active = False
+
+
+def hardware_state(connector, device, screen):
+    """``(screen_online, charger_online, reason)`` do ponto.
+
+    A estação só fica offline sem contato da TELA (``screen_offline``). Com a tela online, o
+    carregador do ponto pode estar offline (``charger_offline``): a tela não o leu no último
+    sync (``devices.charger``) ou, num carregador adicional, a tela parou de sincronizar por ele.
+    Firmware antigo (sem ``charger.address``) continua como antes: carregador = tela."""
+    from chargegrid_core.chargers import link as charger_link  # módulo puro; evita ciclo no import
+
+    screen_online = online(screen)
+    if not screen_online:
+        return False, False, charger_link.SCREEN_OFFLINE
+    if device is not screen and not online(device):
+        return True, False, charger_link.CHARGER_OFFLINE
+    reason = charger_link.availability_reason(connector.charger_address, device.charger, True)
+    return True, reason is None, reason
+
+
 def reset_blocks_point(db, connector_id):
+    # Includes the screen's reset for an additional charger (also after retirement).
+    parent_ids = select(Device.parent_device_id).where(Device.connector_id == connector_id)
     return bool(db.scalar(
         select(Command.id).join(Device, Device.id == Command.device_id).where(
-            Device.connector_id == connector_id,
+            or_(Device.connector_id == connector_id, Device.id.in_(parent_ids)),
             Command.type == "FACTORY_RESET",
             (Command.status == "applied")
             | (Command.status.in_(("pending", "received")) & (Command.expires_at > now())),
         ).limit(1)
     ))
+
+
+def resetting_screens(db, screen_ids):
+    """Batch the pending screen-reset state used by public and owner availability."""
+    if not screen_ids:
+        return set()
+    return set(db.scalars(select(Command.device_id).where(
+        Command.device_id.in_(screen_ids), Command.type == "FACTORY_RESET",
+        Command.status.in_(("pending", "received")), Command.expires_at > now())))
 
 
 def online(device):
@@ -219,6 +302,7 @@ def reconcile_expiry(db, connector):
 
 def lock_point(db, user, connector_id):
     db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
+    lock_screen_group(db, connector_id)
     connector = db.scalar(
         select(Connector)
         .where(Connector.id == connector_id)
@@ -233,7 +317,8 @@ def lock_point(db, user, connector_id):
 
 def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED,
                  station=_DEVICE_NOT_LOADED, reservation=_DEVICE_NOT_LOADED, session=_DEVICE_NOT_LOADED,
-                 hold=_DEVICE_NOT_LOADED, allow_kiosk_payment=None):
+                 hold=_DEVICE_NOT_LOADED, allow_kiosk_payment=None, screen=_DEVICE_NOT_LOADED,
+                 resetting=_DEVICE_NOT_LOADED):
     """Public state without identity data: available/offline/reserved/charging/
     reconciling/disabled/fault/occupied. A deadline never implies availability.
 
@@ -242,9 +327,19 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
     A totem order holding the point (``hold``) makes it ``occupied`` with
     ``kiosk_in_use``; ``allow_kiosk_payment`` ignores the hold paid by that payment
     (the totem's own START).
+
+    Hardware: the station (screen) offline makes the point ``offline`` with
+    ``unavailable_reason`` ``screen_offline``; the screen online but this point's GoodWe charger
+    not answering makes only this point ``offline`` with ``charger_offline`` (an active session
+    keeps its charging/reconciling state). ``screen_online`` reports the station itself.
     """
     if device is _DEVICE_NOT_LOADED:
         device = device_for(db, connector)
+    if screen is _DEVICE_NOT_LOADED:
+        screen = screen_for(db, device)
+    if resetting is _DEVICE_NOT_LOADED:
+        resetting = bool(screen and screen.id in resetting_screens(db, [screen.id]))
+    screen_online, _, hardware = hardware_state(connector, device, screen)
     if station is _DEVICE_NOT_LOADED:
         station = db.get(Station, connector.station_id)
     if reservation is _DEVICE_NOT_LOADED:
@@ -265,16 +360,20 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
     )
     if not connector.active or not station or not station.active or station.owner_id is None:
         status = "disabled"
-    elif not online(device):
+    elif not screen_online or not online(device):
         status = "offline"
     elif device.physical_state == "fault":
         status = "fault"
+    elif resetting:
+        status = "reconciling"
     elif session:
         status = (
             "charging"
             if session.status == "charging" and device.physical_state == "charging" and device.reconciled
             else "reconciling"
         )
+    elif hardware is not None:
+        status = "offline"  # carregador sem resposta: só este ponto (a estação segue online)
     elif reservation and reservation.id != allow_reservation:
         status = (
             "reserved"
@@ -295,6 +394,9 @@ def availability(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LO
         "reserved_until": reserved_until,
         # Ponto travado por um pedido do totem ("Ponto em uso no totem").
         "kiosk_in_use": hold is not None,
+        # Por que está offline: "screen_offline" (a estação/tela) ou "charger_offline" (só este carregador).
+        "unavailable_reason": hardware if status == "offline" else None,
+        "screen_online": screen_online,
     }
 
 
@@ -302,11 +404,27 @@ def free(db, connector, allow_reservation=None, *, device=_DEVICE_NOT_LOADED):
     return availability(db, connector, allow_reservation, device=device)["available"]
 
 
-def fail_unavailable(state, message="Ponto indisponível"):
-    """409 ``point_unavailable`` com ``reason`` (estado do ponto, ou ``kiosk_in_use``)."""
+def fail_unavailable(state, message="Ponto indisponível", *, db=None, connector=None):
+    """409 ``point_unavailable`` com ``reason`` (estado do ponto, ``kiosk_in_use`` ou
+    ``charger_offline``). Carregador offline: ``alternatives`` = pontos livres da mesma estação."""
     if state.get("kiosk_in_use"):
         fail("point_unavailable", "Ponto em uso no totem", 409, reason="kiosk_in_use")
+    if state.get("unavailable_reason") == "charger_offline":
+        from chargegrid_core.chargers import link as charger_link
+
+        fail("point_unavailable", charger_link.CHARGER_OFFLINE_MESSAGE, 409, reason="charger_offline",
+             alternatives=station_alternatives(db, connector) if db is not None and connector is not None else [])
     fail("point_unavailable", message, 409, reason=state.get("availability_status"))
+
+
+def station_alternatives(db, connector):
+    """Outros pontos livres da mesma estação (``[{id, public_code}]``), para o motorista trocar."""
+    siblings = db.scalars(
+        select(Connector).where(Connector.station_id == connector.station_id, Connector.id != connector.id,
+                                Connector.active.is_(True)).order_by(Connector.charger_address)
+    ).all()
+    return [{"id": str(point.id), "public_code": point.public_code}
+            for point in siblings if availability(db, point)["available"]]
 
 
 def ensure_user_free(db, user, reservation=None):

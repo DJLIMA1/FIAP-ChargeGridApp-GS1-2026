@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import func, select
 
 from ...database import db_session
@@ -15,8 +15,33 @@ from ...security import current_user
 from ...service import (
     row,
 )
+from ..driver.routes import get_profile, put_profile
+from ..driver.schemas import DriverProfileInput
+from ..kiosk_totem import account
 
 router = APIRouter()
+
+
+@router.get("/me/vehicle")
+def my_vehicle(user=Depends(current_user), db=Depends(db_session)):
+    # Vehicle registration survives the discontinued driver planner.
+    return get_profile(user, db)
+
+
+@router.put("/me/vehicle")
+def save_my_vehicle(data: DriverProfileInput, user=Depends(current_user), db=Depends(db_session)):
+    return put_profile(data, user, db)
+
+
+@router.get("/me/wallet")
+def my_wallet(user=Depends(current_user), db=Depends(db_session)):
+    return account.wallet_view(account.wallet(db, user))
+
+
+@router.post("/me/wallet/simulate")
+def simulated_wallet(data: account.WalletMove, idempotency_key: str = Header(default=""),
+                     user=Depends(current_user), db=Depends(db_session)):
+    return account.simulate_move(db, user, data, idempotency_key)
 
 REPORTING_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 

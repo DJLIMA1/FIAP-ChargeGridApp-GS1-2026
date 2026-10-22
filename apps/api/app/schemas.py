@@ -77,9 +77,11 @@ class ProfilePatch(Input):
 
 class ReserveInput(Input):
     connector_id: UUID
+    power_tier: Literal["max", "reduced"] = "max"
 
 
 class StartInput(Input):
+    power_tier: Literal["max", "reduced"] = "max"
     public_code: str | None = Field(default=None, min_length=1, max_length=50)
     presence_code: str = Field(min_length=7, max_length=7, pattern=r"^#[Ff][0-9]{5}$")
     reservation_id: UUID | None = None
@@ -145,6 +147,9 @@ class SyncInput(Input):
     capabilities: list[Annotated[str, StringConstraints(max_length=40)]] = Field(default_factory=list, max_length=10)
     applied_power_w: Decimal | None = Field(default=None, ge=0, le=1000000)
     charger: ChargerInfo | None = None
+    # Sync endereçado (tela com vários carregadores): este corpo é do carregador deste endereço
+    # da mesma estação, não do ponto da própria tela. Ausente = o ponto da tela (como antes).
+    charger_address: int | None = Field(default=None, ge=1, le=247, strict=True)
 
 
 class CouponInput(Input):

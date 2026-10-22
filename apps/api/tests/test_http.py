@@ -413,7 +413,9 @@ def test_owner_can_rediscover_device_without_secrets_after_provisioning(factory,
             "retired",
             "charger",
             "charger_address",
+            "screen_device_id",
         }
+        assert first.json()["screen_device_id"] is None  # é a própria tela
         assert "test-key" not in first.text and "key_hash" not in first.text
         assert first.json()["online"] is True
         assert client.post(f"/v1/devices/{seed['device']}/revoke").status_code == 200

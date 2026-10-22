@@ -7,7 +7,7 @@ from chargegrid_core import pricing
 
 from ... import overstay
 from ...errors import fail
-from ...http_helpers import allocation, retired_ids
+from ...http_helpers import allocation, hardware_power_limit, retired_ids
 from ...models import ChargingSession, Connector, Coupon, Profile, Reservation, Station, now
 from ...presence_code import valid_code
 from ...service import (
@@ -24,6 +24,7 @@ from ...service import (
     lock_point,
     online,
     remember,
+    reset_blocks_point,
     stop_if_battery_full,
 )
 from ..devices.service import battery_parameters
@@ -98,6 +99,8 @@ def _start_body(data):
     for name in _BATTERY_KEYS:
         if body.get(name) is None:
             body.pop(name, None)
+    if body.get("power_tier") == "max":
+        body.pop("power_tier", None)
     return body
 
 
@@ -120,7 +123,12 @@ def session_power_limit(db, connector, requested=None):
     station = db.get(Station, connector.station_id)
     siblings = db.scalars(select(Connector).where(Connector.station_id == connector.station_id)).all()
     effective = allocation(station, siblings, retired_ids(db, [point.id for point in siblings]))
-    applied = power_rules.applied_limit(effective["connectors"][connector.id]["effective_kw"], requested)
+    maximum = effective["connectors"][connector.id]["effective_kw"]
+    device = device_for(db, connector)
+    # A nominal 22 kW connector may control a 7 kW charger. Use confirmed live
+    # hardware capacity before applying the driver's tier so reduced remains slower.
+    maximum = hardware_power_limit(device, maximum)
+    applied = power_rules.applied_limit(maximum, requested)
     return applied.quantize(Decimal("0.001"), rounding=ROUND_DOWN) if applied > 0 else None
 
 
@@ -156,12 +164,17 @@ def start(db, user, data, key):
             or device.physical_state != "reserved"
         ):
             fail("point_unavailable", "Ponto sem confirmação recente")
+        # A reserva autoriza o estado físico "reserved" (availability ainda o chama de
+        # occupied); preserve esse fluxo e cheque os novos bloqueios de hardware/tela.
+        state = availability(db, connector, data.reservation_id, device=device)
+        if state["unavailable_reason"] is not None or reset_blocks_point(db, connector.id):
+            fail_unavailable(state, db=db, connector=connector)
     else:
         # O pedido do totem pago por este pagamento não bloqueia o próprio START.
         state = availability(db, connector, device=device, allow_kiosk_payment=data.payment_id)
         if not state["available"]:
-            fail_unavailable(state)
-    payment = claim_for_start(db, user, connector, data.payment_id)
+            fail_unavailable(state, db=db, connector=connector)
+    payment = claim_for_start(db, user, connector, data.payment_id, data.power_tier, reservation)
     if payment:
         data = funded_input(data, payment)
     if data.max_duration_minutes > connector.max_duration_minutes:
@@ -175,7 +188,13 @@ def start(db, user, data, key):
         coupon = find_coupon(db, connector, data.coupon_code)
         discount = coupon.discount_percent if coupon else 0
         # Tarifa: base do horário × demanda, travadas ao reservar (termos da reserva) ou agora.
-        base, multiplier, terms = locked_terms(db, connector, reservation)
+        base, multiplier, terms = locked_terms(db, connector, reservation, data.power_tier)
+    selected_tier = terms.get("power_tier", "max")
+    if selected_tier == "reduced":
+        # Commercial choice limits requested power. Grid rebalance never changes the tariff.
+        cap = session_power_limit(db, connector) or Decimal(connector.power_kw)
+        cap = (cap / 2).quantize(Decimal("0.001"), rounding=ROUND_DOWN)
+        data = data.model_copy(update={"max_power_kw": min(cap, data.max_power_kw) if data.max_power_kw else cap})
     if reservation:
         reservation.status = "consumed"
     session = ChargingSession(

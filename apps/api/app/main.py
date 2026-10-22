@@ -20,6 +20,7 @@ from .modules.auth.routes import router as auth_router
 from .modules.charging.routes import router as charging_router
 from .modules.coupons.routes import router as coupons_router
 from .modules.devices.routes import router as devices_router
+from .modules.driver.routes import profile_router as vehicle_profile_router
 from .modules.driver.routes import router as driver_router
 from .modules.economics.routes import router as economics_router
 from .modules.forecast.rollup import rollup as forecast_rollup
@@ -46,7 +47,7 @@ app = FastAPI(title="ChargeGrid API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().cors_origins,
-    allow_methods=["GET", "POST", "PATCH", "PUT"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 app.include_router(auth_router, prefix="/v1")
@@ -60,6 +61,7 @@ for router in (
     coupons_router,
     owner_router,
     driver_router,
+    vehicle_profile_router,
     geo_router,
     pricing_router,
     ai_router,
@@ -138,7 +140,7 @@ async def validation_error(request: Request, error: RequestValidationError):
             message = (
                 "Atualize o app e informe o código temporário #F exibido no posto."
                 if any(item["type"] == "missing" for item in presence_errors)
-                else "O código temporário deve ter #F e cinco números. Confira a tela do posto."
+                else "O código temporário deve ter #F e cinco números. Confira o código na central do posto."
             )
     code = "validation_error"
     if request.method == "PATCH" and any("charger_address" in item["loc"] for item in error.errors()):

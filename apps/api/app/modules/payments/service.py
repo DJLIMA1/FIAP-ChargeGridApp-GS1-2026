@@ -28,7 +28,15 @@ from ...errors import fail
 from ...models import PAYMENT_OPEN, ChargingSession, Connector, Payment, PaymentEvent, Profile, Station, now
 from ...presence_code import current_code, valid_code
 from ...schemas import StartInput
-from ...service import SESSION_ACTIVE, active_res, availability, fail_unavailable, idempotent, remember
+from ...service import (
+    SESSION_ACTIVE,
+    active_res,
+    availability,
+    fail_unavailable,
+    idempotent,
+    lock_screen_group,
+    remember,
+)
 from ..auth.routes import limit
 from ..charging.service import find_coupon, session_power_limit, start, stop
 from ..pricing.service import locked_terms
@@ -96,7 +104,7 @@ def quote(db, user, connector, data):
     if reservation and (reservation.user_id != user.id or reservation.status != "confirmed"):
         reservation = None
     # Um único cálculo: os termos travados aqui (e a explicação do recibo) valem no START pago.
-    base, multiplier, price_terms = locked_terms(db, connector, reservation)
+    base, multiplier, price_terms = locked_terms(db, connector, reservation, getattr(data, "power_tier", "max"))
     price = pricing.dynamic_price(base, multiplier)
     coupon = find_coupon(db, connector, data.coupon_code)
     discount = coupon.discount_percent if coupon else 0
@@ -104,6 +112,10 @@ def quote(db, user, connector, data):
         price_terms["coupon"] = {"id": str(coupon.id), "code": coupon.code,
                                  "discount_percent": int(coupon.discount_percent)}
     power = session_power_limit(db, connector, data.max_power_kw) or Decimal(connector.power_kw)
+    selected_tier = price_terms.get("power_tier", "max")
+    if selected_tier == "reduced":
+        maximum = session_power_limit(db, connector) or Decimal(connector.power_kw)
+        power = min(power, maximum / 2)
     try:
         cap = billing.quote_cap(
             data.mode, power_kw=power, price_per_kwh=price, discount_percent=discount, minutes=data.minutes,
@@ -124,9 +136,10 @@ def quote(db, user, connector, data):
         "discount_percent": discount,
         "coupon_code": data.coupon_code.strip().upper() if data.coupon_code else None,
         "max_duration_minutes": cap["max_duration_minutes"],
-        "max_power_kw": power if data.max_power_kw is not None else None,
+        "max_power_kw": power if data.max_power_kw is not None or selected_tier == "reduced" else None,
         "quote": {
             "mode": data.mode,
+            "power_tier": selected_tier,
             "minutes": data.minutes,
             "max_cost": str(data.max_cost) if data.max_cost is not None else None,
             "energy_kwh": str(cap["energy_kwh"]),
@@ -143,7 +156,7 @@ def quote(db, user, connector, data):
 
 def _checkout_params(payment, connector, success_url, cancel_url):
     name = f"Recarga ChargeGrid {connector.public_code} (teste)"
-    return {
+    params = {
         "mode": "payment",
         "locale": "pt-BR",
         "client_reference_id": str(payment.id),
@@ -170,6 +183,12 @@ def _checkout_params(payment, connector, success_url, cancel_url):
         "cancel_url": cancel_url,
         "expires_at": int((now() + timedelta(minutes=CHECKOUT_MINUTES)).timestamp()),
     }
+    source = (payment.quote or {}).get("funding_source")
+    if source in ("pix", "card"):
+        params["payment_method_types"] = [source]
+        if source == "pix":
+            params.pop("payment_method_options", None)
+    return params
 
 
 def ensure_checkout(db, payment, success_url, cancel_url):
@@ -215,7 +234,10 @@ def expire_checkout(payment):
 
 def create_payment(db, user, data, key, request_base=""):
     db.execute(select(Profile).where(Profile.id == user.id).with_for_update()).scalar_one()
-    old, body_hash = idempotent(db, user, "payment", key, data.model_dump(), Payment)
+    body = data.model_dump()
+    if body.get("power_tier") == "max":
+        body.pop("power_tier", None)
+    old, body_hash = idempotent(db, user, "payment", key, body, Payment)
     base = public_base(request_base)
     if old:
         payment = old
@@ -361,6 +383,10 @@ def settle(db, payment_id):
     (chaves de idempotência e leitura do estado real do PaymentIntent antes de agir).
     """
     gateway = gateways.current()
+    candidate = db.get(Payment, payment_id)
+    if candidate is not None and (candidate.quote or {}).get("funding_source") == "balance":
+        # Keep the same profile -> payment lock order as kiosk pay/START.
+        db.scalar(select(Profile).where(Profile.id == candidate.user_id).with_for_update())
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update(skip_locked=True))
     if payment is not None and payment.provider == SIMULATED:
         return _settle_simulated(db, payment)
@@ -422,6 +448,12 @@ def _settle_simulated(db, payment):
     Mesma regra do cartão: fica o valor devido (``charge_cents``) e o resto é "liberado".
     """
     if payment.settlement_status in ("due", "settling"):
+        if (payment.quote or {}).get("funding_source") == "balance":
+            from ..kiosk_totem import account
+            surplus = payment.amount_cents - (payment.charge_cents or 0)
+            if surplus > 0:
+                account.move(db, db.get(Profile, payment.user_id), surplus,
+                    "Crédito de recarga não utilizada (simulado)", f"payment-refund:{payment.id}")
         _finish(payment, captured=payment.charge_cents or 0, refunded=0, fee=None)
         db.commit()
     return payment
@@ -493,8 +525,11 @@ def start_kiosk(db, payment_id):
     station = db.get(Station, connector.station_id)
     error = None
     for _ in range(2):  # o código #F pode virar entre gerar e conferir: tenta mais uma vez
+        vehicle = (payment.quote or {}).get("vehicle") or {}
         data = StartInput(public_code=connector.public_code, presence_code=current_code(station)[0],
-                          max_duration_minutes=payment.max_duration_minutes, payment_id=payment.id)
+                          max_duration_minutes=payment.max_duration_minutes, payment_id=payment.id,
+                          battery_kwh=vehicle.get("battery_kwh"), soc_percent=vehicle.get("soc_percent"),
+                          soc_source="simulated" if vehicle.get("soc_percent") is not None else None)
         try:
             with db.begin_nested():
                 session = start(db, guest, data, f"kiosk:{payment.id}")
@@ -531,19 +566,22 @@ def kiosk_context(db, public_code, code_digits):
     return connector, station
 
 
-def create_kiosk_payment(db, public_code, code_digits, amount_cents, request_base=""):
+def create_kiosk_payment(db, public_code, code_digits, amount_cents, request_base="", power_tier="max"):
     connector, station = kiosk_context(db, public_code, code_digits)
+    if power_tier not in ("max", "reduced"):
+        fail("invalid_power_tier", "Escolha a velocidade máxima ou reduzida", 422)
     require_gateway()
     if amount_cents not in KIOSK_AMOUNTS_CENTS:
         fail("invalid_amount", "Escolha um dos valores", 422)
     limit(db, f"kiosk:{connector.id}", maximum=10, seconds=300)
+    lock_screen_group(db, connector.id)
     connector = db.scalar(select(Connector).where(Connector.id == connector.id).with_for_update())
     state = availability(db, connector)
     if not state["available"]:
-        fail_unavailable(state, "Ponto em uso ou indisponível agora")
+        fail_unavailable(state, "Ponto em uso ou indisponível agora", db=db, connector=connector)
     guest = guest_profile(db, connector)
     request = SimpleNamespace(mode="value", minutes=None, max_cost=billing.money(amount_cents), energy_kwh=None,
-                              max_power_kw=None, coupon_code=None)
+                              max_power_kw=None, coupon_code=None, power_tier=power_tier)
     fields = quote(db, guest, connector, request)
     token = secrets.token_urlsafe(24)
     payment = Payment(user_id=guest.id, connector_id=connector.id, origin="kiosk", status="awaiting_payment",

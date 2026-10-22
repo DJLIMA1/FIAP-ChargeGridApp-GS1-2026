@@ -105,7 +105,7 @@ def test_full_flow_receipt_explains_price_energy_power_and_charges(factory, seed
     price = receipt["price"]
     assert price["recorded"] and price["locked_by"] == "reservation"
     assert price["coupon"] == {"code": "LOJA10", "discount_percent": 10}
-    assert [line["key"] for line in price["lines"]] == ["base", "demand", "locked_price", "coupon"]
+    assert [line["key"] for line in price["lines"]] == ["power_tier", "base", "demand", "locked_price", "coupon"]
     assert "Cupom LOJA10: −10%" in " ".join(price["explanation"])
     energy = receipt["energy"]
     assert energy["kwh"] == "5.000" and energy["confirmed_by_device"] and energy["source"] == "simulated"

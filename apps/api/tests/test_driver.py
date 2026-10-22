@@ -222,7 +222,8 @@ def test_driver_routes_require_authentication(factory, seed):
 def test_driver_mode_is_discontinued_in_production(factory, seed, monkeypatch):
     monkeypatch.setattr(routes, 'DISCONTINUED', True)
     client, _ = client_for(factory, seed['a'])
-    for method, path in (('GET', '/v1/driver/profile'), ('POST', '/v1/driver/plan'),
+    assert client.get('/v1/driver/profile').status_code == 200  # car registration remains available
+    for method, path in (('POST', '/v1/driver/plan'),
                          ('POST', '/v1/driver/next-stop'), ('GET', '/v1/driver/context')):
         response = client.request(method, path, json={} if method == 'POST' else None)
         assert response.status_code == 410, (path, response.text)
