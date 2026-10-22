@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from chargegrid_core import billing, pricing
+from chargegrid_core import overstay as overstay_rules
 
 from ...database import db_session
 from ...models import ChargingSession, Connector, KioskOrder, Payment, Station
@@ -28,6 +29,7 @@ from ..pricing.service import current_terms, station_demand
 from ..receipts import service as receipts
 from . import service
 from .funding import FUNDED, PRE_START, status_label
+from .overstay import overstay_terms
 
 router = APIRouter(include_in_schema=False)
 
@@ -102,13 +104,28 @@ def _final(payment):
 # ---------------------------------------------------------------------------- QR do painel
 
 
+def _amount_label(cents, reserve_cents):
+    """Botão do valor: com a taxa de permanência ligada, a pré-autorização inclui a reserva do teto."""
+    if not reserve_cents:
+        return money(cents)
+    return f"{money(cents)} + até {money(reserve_cents)} de permanência = {money(cents + reserve_cents)}"
+
+
 def _kiosk_view(db, public_code, code):
     connector, station = service.kiosk_context(db, public_code, code)
     base, multiplier = current_terms(db, connector)
     price = pricing.dynamic_price(base, multiplier)
     prices = pricing.speed_prices(station_demand(db, station), connector.id, connector.price_per_kwh)["speed_prices"]
+    terms = overstay_terms(db, station)
+    reserve = int(terms.get("reserve_cents") or 0)
     buttons = "".join(
-        f'<button name="amount" value="{cents}">{escape(money(cents))}</button>' for cents in service.KIOSK_AMOUNTS_CENTS
+        f'<button name="amount" value="{cents}">{escape(_amount_label(cents, reserve))}</button>'
+        for cents in service.KIOSK_AMOUNTS_CENTS
+    )
+    overstay_note = (
+        f'<div class="notice">Taxa de permanência: {escape(overstay_rules.summary(terms) or "")} A pré-autorização '
+        f"inclui a reserva de até {escape(money(reserve))} para essa taxa; só é cobrado o que for devido.</div>"
+        if reserve else ""
     )
     body = (
         f'<div class="card"><p class="muted">Ponto {escape(connector.public_code)} · {escape(station.name)}</p>'
@@ -119,8 +136,10 @@ def _kiosk_view(db, public_code, code):
         f'<option value="max">Máxima · R$ {_comma(prices["max"], "0.0001")}/kWh</option>'
         f'<option value="reduced">Reduzida · R$ {_comma(prices["reduced"], "0.0001")}/kWh</option></select>'
         f'<div class="amounts">{buttons}</div></form></div>'
-        '<div class="notice">Pré-autorizamos o valor escolhido e cobramos só a energia confirmada pelo equipamento; '
-        "o restante é liberado. Teste: cartão 4242 4242 4242 4242, validade futura e CVC qualquer.</div>"
+        '<div class="notice">Pré-autorizamos o valor mostrado no botão e cobramos só a energia confirmada pelo '
+        "equipamento (e a taxa de permanência, se houver); o restante é liberado. Teste: cartão 4242 4242 4242 4242, "
+        "validade futura e CVC qualquer.</div>"
+        f"{overstay_note}"
     )
     return page("Pagar recarga", body)
 

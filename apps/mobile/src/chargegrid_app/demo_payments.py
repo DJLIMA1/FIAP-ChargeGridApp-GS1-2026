@@ -181,9 +181,11 @@ def _date(value):
 
 def _settle(payment, energy_cents, overstay_cents=0):
     amount = billing.to_cents(payment['amount'])
-    plan = billing.settle_amounts(amount_cents=amount, energy_cents=energy_cents, overstay_cents=overstay_cents)
+    cap = billing.to_cents(payment['energy_cap']) if payment.get('energy_cap') is not None else amount
+    plan = billing.settle_amounts(amount_cents=amount, energy_cents=energy_cents, overstay_cents=overstay_cents,
+                                  energy_cap_cents=cap)
     money = billing.money
-    kept_overstay = max(0, plan['charge_cents'] - min(energy_cents, amount)) if plan['charge_cents'] else 0
+    kept_overstay = max(0, plan['charge_cents'] - min(energy_cents, cap, amount)) if plan['charge_cents'] else 0
     payment['settlement'] = {
         'status': 'done', 'energy_amount': str(money(energy_cents)),
         'overstay_amount': str(money(kept_overstay)), 'fixed_fee': '0.00',

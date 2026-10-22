@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 import httpx
+from chargegrid_core import analytics
 
 from chargegrid_app.api_client import ApiClient, ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, DemoApi
@@ -294,14 +295,23 @@ class OwnerResultTests(unittest.IsolatedAsyncioTestCase):
         screen = await history.build(self.app, manage=True)
         card = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'owner-result')
         text = texts(card)
-        for expected in ('Resultado do período', 'Receita bruta', 'Comissão da plataforma (25%)', 'Repasse ao dono',
-                         'Custo da energia', 'Margem estimada', 'Receita bruta não é lucro.'):
+        for expected in ('Resultado do período', 'Receita cobrada', 'Comissão da plataforma (25%)', 'Repasse ao dono',
+                         'Aluguel das centrais (', 'Repasse líquido', 'Custo da energia', 'Resultado estimado',
+                         'Margem de contribuição antes do aluguel', 'Receita bruta não é lucro.'):
             self.assertIn(expected, text)
         report = await self.app.api.owner_margin({**history_owner._window(7), 'limit': 1})
         totals = report['totals']
         self.assertEqual(Decimal(totals['revenue_total']) - Decimal(totals['platform_fee']), Decimal(totals['owner_net']))
         self.assertEqual(Decimal(totals['owner_net']) - Decimal(totals['energy_cost']), Decimal(totals['margin']))
+        # Aluguel R$ 99,00/mês por central, 7 dias: descontado do repasse e do resultado.
+        self.assertGreater(Decimal(totals['central_rent']), 0)
+        self.assertEqual(Decimal(totals['owner_net']) - Decimal(totals['central_rent']),
+                         Decimal(totals['owner_net_after_rent']))
+        self.assertEqual(Decimal(totals['margin']) - Decimal(totals['central_rent']), Decimal(totals['result']))
         self.assertIn(history_owner._brl(totals['owner_net']), text)
+        self.assertIn(history_owner._brl(totals['owner_net_after_rent']), text)
+        self.assertNotIn('demo', text.lower())
+        self.assertNotIn('simulad', text.lower())
         await card.on_click(None)
         self.app.go.assert_awaited_with('history', manage=True, page='economics')
 
@@ -356,6 +366,30 @@ class OwnerResultTests(unittest.IsolatedAsyncioTestCase):
             await tapper(screen, 'PDF').on_click(None)
         self.assertEqual(app.api.owner_export.await_args.args[:2], ('margin', 'pdf'))
         self.assertEqual(set(app.api.owner_export.await_args.args[2]), {'from', 'to'})
+
+    async def test_economics_page_offers_month_statements_with_rent_lines(self):
+        screen = await history.build(self.app, manage=True, page='economics', days=history_owner.MONTH_PREVIOUS)
+        text = texts(screen)
+        for expected in ('Mês anterior', 'Aluguel das centrais', 'Repasse líquido', 'Aluguel por central: R$ 99,00/mês'):
+            self.assertIn(expected, text)
+        card = next(c for c in descendants(screen) if getattr(c, 'data', None) == 'central-rent')
+        self.assertRegex(texts(card), r'\d{2}/\d{4} · (28|29|30|31)/(28|29|30|31) dias')
+        self.assertIn('R$ 99,00', texts(card))  # mês anterior inteiro = o valor mensal
+        window = history_owner._window(history_owner.MONTH_CURRENT)
+        start = datetime.fromisoformat(window['from']).astimezone(analytics.REPORT_TZ)
+        self.assertEqual((start.day, start.hour), (1, 0))
+        self.assertIn('Mês atual', texts(await history.build(self.app, manage=True, page='economics',
+                                                             days=history_owner.MONTH_CURRENT)))
+
+    async def test_detailed_cascade_closes_from_gross_to_charged(self):
+        report = margin_report()
+        report['totals'].update(gross='112.00', discount='10.00', overstay_revenue=None, payment_adjustment='-2.00')
+        report['coupons'] = {'sessions': 2, 'discount': '10.00'}
+        text = texts(ft.Column(history_owner.cascade(report, detailed=True)))
+        for expected in ('Receita bruta', 'R$ 112,00', 'Cupons (2 recargas)', 'Ajuste do pagamento', '− R$ 2,00',
+                         'Receita cobrada', 'R$ 100,00', 'Margem estimada'):
+            self.assertIn(expected, text)
+        self.assertNotIn('Aluguel', text)
 
     async def test_missing_cost_is_never_zero(self):
         report = margin_report()

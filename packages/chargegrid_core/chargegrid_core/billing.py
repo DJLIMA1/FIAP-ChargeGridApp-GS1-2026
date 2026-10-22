@@ -13,8 +13,9 @@ Regras do acerto
 ----------------
 1. Devido = energia + taxa fixa + permanência (taxa de permanência da frente de overstay).
 2. Nunca se cobra acima do valor autorizado/pago (``amount_cents``). Energia + taxa acima do
-   teto é **perdoada** (``waived``); permanência além da reserva aceita **não é cobrada**
-   (``uncollected``) — nada de cobrança extra silenciosa.
+   teto **de energia** aceito (``energy_cap_cents`` + taxa fixa) é **perdoada** (``waived``),
+   mesmo quando a autorização também reserva a permanência; permanência além da reserva aceita
+   **não é cobrada** (``uncollected``) — nada de cobrança extra silenciosa.
 3. Cobrança positiva abaixo do mínimo do provedor (R$ 0,50 no cartão em BRL) é perdoada:
    ``below_minimum`` e nada é cobrado.
 4. Ação no provedor: autorização retida (cartão) → ``capture`` do valor final (ou ``cancel``
@@ -131,13 +132,19 @@ def quote_cap(mode, *, power_kw, price_per_kwh, discount_percent=0, minutes=None
 
 
 def settle_amounts(*, amount_cents, energy_cents, fixed_fee_cents=0, overstay_cents=0,
-                   captured_upfront=False, min_charge_cents=MIN_CHARGE_CENTS) -> dict:
-    """Acerto final (ver regras no topo do módulo). Todos os valores em centavos inteiros."""
+                   captured_upfront=False, min_charge_cents=MIN_CHARGE_CENTS, energy_cap_cents=None) -> dict:
+    """Acerto final (ver regras no topo do módulo). Todos os valores em centavos inteiros.
+
+    ``energy_cap_cents``: teto da energia aceito no orçamento (sem a taxa fixa e sem a reserva da
+    permanência). Sem ele (legado), o teto da energia é o valor autorizado inteiro.
+    """
     amount = max(0, int(amount_cents))
-    base = max(0, int(energy_cents)) + max(0, int(fixed_fee_cents))
+    fixed = max(0, int(fixed_fee_cents))
+    base = max(0, int(energy_cents)) + fixed
     overstay = max(0, int(overstay_cents))
-    waived = max(0, base - amount)
-    kept = min(base, amount)
+    ceiling = amount if energy_cap_cents is None else min(amount, max(0, int(energy_cap_cents)) + fixed)
+    waived = max(0, base - ceiling)
+    kept = min(base, ceiling)
     overstay_kept = min(overstay, amount - kept)
     uncollected = overstay - overstay_kept
     charge = kept + overstay_kept

@@ -13,7 +13,7 @@ from chargegrid_core import receipt as receipts
 from ...errors import fail
 from ...models import ChargingSession, Connector, SessionEvent, Station, Telemetry, now
 from ...service import row
-from .registry import sections_for
+from .registry import extras_for, sections_for
 
 MAX_SAMPLES = 20000  # ~7 dias a cada 30 s; a curva é reduzida a 120 pontos no núcleo
 HISTORY_LIMIT = 10000
@@ -71,7 +71,10 @@ def history_report(db, user, window) -> dict:
     if len(records) > HISTORY_LIMIT:
         fail("export_too_large", f"Mais de {HISTORY_LIMIT} recargas. Reduza o período.", 413)
     moment = now()
-    items = [receipts.history_row({**row(session), "station_name": name, "public_code": code}, moment)
+    # Mesmo total do recibo: permanência e valor capturado entram (uma consulta por frente).
+    extras = extras_for(db, [session for session, _, _ in records])
+    items = [receipts.history_row({**row(session), "station_name": name, "public_code": code}, moment,
+                                  extras.get(session.id))
              for session, name, code in records]
     return {
         "schema_version": 1,

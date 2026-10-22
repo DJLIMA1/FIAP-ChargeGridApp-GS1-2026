@@ -22,6 +22,7 @@
  * Nunca entra no build de produção (importado só pelo mock).
  */
 import type {
+  CentralRentLine,
   MarginReport,
   MarginRow,
   PowerDecision,
@@ -89,6 +90,15 @@ export class MockFailure extends Error {
 
 const ENERGY_COST: Record<string, string | null> = { [S[0].id]: '0.8500', [S[1].id]: '0.9200', [S[2].id]: null }
 const FEE = '25.00'
+/** Aluguel mensal por central (contrato); cada estação tem uma central vinculada há muito tempo. */
+const CENTRAL_RENT = 99
+const DAY = 86_400_000
+const SP_OFFSET = 3 * 3_600_000 // São Paulo = UTC−3: meia-noite local às 03:00 UTC
+
+function centralsOf(stationId: string): number {
+  const station = S.find((s) => s.id === stationId)
+  return station && screenPoint(station) ? 1 : 0
+}
 
 export function economics(stationId: string, notes = true): StationEconomics {
   const result: StationEconomics = {
@@ -97,14 +107,56 @@ export function economics(stationId: string, notes = true): StationEconomics {
     platform_fee_percent: FEE,
     fee_editable: false,
     currency: 'BRL',
+    central_monthly_rent: CENTRAL_RENT.toFixed(2),
+    centrals: centralsOf(stationId),
+    rent_editable: false,
   }
   if (notes) {
     result.notes = [
       'Custo do kWh: informe o valor médio pago à distribuidora (R$/kWh). Vale para as próximas recargas; as anteriores mantêm o custo travado no início.',
       'A comissão da plataforma é definida em contrato e não pode ser alterada no painel.',
+      'Aluguel mensal por central: definido em contrato, rateado pelos dias de vínculo no mês e descontado do repasse.',
     ]
   }
   return result
+}
+
+/**
+ * `chargegrid_core.rent.accrual`: cada dia local cujo início está em [from, min(to, agora)) vale
+ * aluguel mensal ÷ dias do mês; arredondado ao centavo por central e mês.
+ */
+export function rentAccrual(from: number, to: number, stationIds: string[], now = Date.now()) {
+  const cutoff = Math.min(to, now)
+  let day = Math.floor((from - SP_OFFSET) / DAY) * DAY + SP_OFFSET
+  if (day < from) day += DAY
+  const groups = new Map<string, CentralRentLine & { exact: number }>()
+  for (; day < cutoff; day += DAY) {
+    const local = new Date(day - SP_OFFSET)
+    const year = local.getUTCFullYear()
+    const monthIndex = local.getUTCMonth()
+    const month = `${year}-${String(monthIndex + 1).padStart(2, '0')}`
+    const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+    for (const stationId of stationIds) {
+      const station = S.find((s) => s.id === stationId)
+      const screen = station ? screenPoint(station) : undefined
+      if (!station || !screen) continue
+      const key = `${stationId}|${month}`
+      const group = groups.get(key) ?? {
+        station_id: stationId, station_name: station.name, device_id: `central-${screen.id}`, central: screen.public_code,
+        month, days: 0, days_in_month: daysInMonth, monthly_amount: CENTRAL_RENT.toFixed(2), amount: '0.00', exact: 0,
+      }
+      group.days += 1
+      group.exact += CENTRAL_RENT / daysInMonth
+      groups.set(key, group)
+    }
+  }
+  const lines: CentralRentLine[] = [...groups.values()]
+    .map(({ exact, ...line }) => ({ ...line, amount: money(cents(exact)) }))
+    .sort((a, b) => a.station_name.localeCompare(b.station_name) || a.month.localeCompare(b.month))
+  const byStation: Record<string, number> = {}
+  lines.forEach((line) => (byStation[line.station_id ?? ''] = (byStation[line.station_id ?? ''] ?? 0) + cents(Number(line.amount))))
+  const total = Object.values(byStation).reduce((t, v) => t + v, 0)
+  return { lines, byStation, total: lines.length ? total : null, centrals: new Set(lines.map((l) => l.device_id)).size }
 }
 
 export function putEconomics(stationId: string, body: Record<string, unknown>): StationEconomics {
@@ -495,8 +547,9 @@ export function decorateSession(session: SessionItem): SessionItem {
 const METHODOLOGY = [
   'Receita bruta não é lucro. Margem = receita cobrada − comissão da plataforma − tarifa do provedor de pagamento − custo estimado da energia.',
   'Comissão sobre o valor cobrado depois do cupom, incluindo a taxa de permanência. O cupom é um desconto do dono do posto.',
-  'Custo da energia = kWh × custo do kWh informado pelo dono, travado no início de cada recarga. Não inclui custos fixos (equipamento, aluguel, manutenção) nem tarifa de demanda (R$/kW).',
-  'Sessões encerradas (concluídas ou interrompidas) com energia positiva, atribuídas à data de término (horário de São Paulo). Valores estimados até a confirmação do pagamento.',
+  'Custo da energia = kWh × custo do kWh informado pelo dono, travado no início de cada recarga. Não inclui custos fixos (equipamento, manutenção) nem tarifa de demanda (R$/kW).',
+  'Sessões encerradas (concluídas ou interrompidas) com energia positiva, atribuídas à data de término (horário de São Paulo). Valores estimados até a confirmação do pagamento; a diferença do valor capturado (perdoado ou não cobrado) aparece como ajuste do pagamento.',
+  'Aluguel das centrais: valor mensal por central (definido em contrato) rateado por dia de vínculo no horário de São Paulo — valor mensal ÷ dias do mês por dia em que a central esteve vinculada. É descontado do repasse (folha) e do resultado; a margem de contribuição por recarga não muda.',
 ]
 
 function localHour(iso: string) {
@@ -525,14 +578,15 @@ function marginRow(raw: SessionItem): MarginRow {
   const ownerNet = revenueTotal - platformFee - (providerFee ?? 0)
   const cost = ENERGY_COST[session.station_id]
   const energyCost = cost === null || cost === undefined ? null : value(kwh * Number(cost))
+  const adjustment = revenueTotal - revenue - overstay
   const margin = energyCost === null ? null : ownerNet - energyCost
   return {
     session_id: session.id, ended_at: session.ended_at, station_id: session.station_id, station_name: session.station_name, public_code: session.public_code,
     source: session.source, energy_kwh: kwh.toFixed(3), connector_base_per_kwh: connectorBase.toFixed(4), base_per_kwh: base.toFixed(4),
     demand_multiplier: multiplier.toFixed(2), price_per_kwh: price.toFixed(4), coupon_code: session.discount_percent ? 'VERAO10' : null,
-    discount_percent: session.discount_percent, list_value: money(list), schedule_effect: money(atBase - list), demand_effect: money(gross - atBase),
+    discount_percent: session.discount_percent, list_value: money(list), schedule_effect: money(atBase - list), speed_effect: null, demand_effect: money(gross - atBase),
     gross: money(gross), discount: money(gross - revenue), revenue: money(revenue), overstay_revenue: overstay ? money(overstay) : null,
-    revenue_total: money(revenueTotal), revenue_basis: payment ? 'captured' : 'estimated', payment_environment: session.payment ? 'test' : null,
+    revenue_total: money(revenueTotal), payment_adjustment: money(adjustment), revenue_basis: payment ? 'captured' : 'estimated', payment_environment: session.payment ? 'test' : null,
     platform_fee_percent: FEE, platform_fee: money(platformFee), provider_fee: providerFee === null ? null : money(providerFee), owner_net: money(ownerNet),
     energy_cost_per_kwh: cost ?? null, cost_basis: cost ? 'snapshot' : 'missing', energy_cost: energyCost === null ? null : money(energyCost),
     margin: margin === null ? null : money(margin), margin_percent: margin !== null && revenueTotal ? ((margin / revenueTotal) * 100).toFixed(1) : null,
@@ -542,7 +596,7 @@ function marginRow(raw: SessionItem): MarginRow {
 const sumC = (rows: MarginRow[], key: keyof MarginRow) => rows.reduce((total, row) => total + (row[key] === null ? 0 : cents(Number(row[key]))), 0)
 const anyValue = (rows: MarginRow[], key: keyof MarginRow) => rows.some((row) => row[key] !== null)
 
-function totalsOf(rows: MarginRow[]) {
+function totalsOf(rows: MarginRow[], rentCents: number | null = null, centrals = 0) {
   const covered = rows.filter((row) => row.energy_cost !== null)
   const complete = covered.length === rows.length
   const revenueTotal = sumC(rows, 'revenue_total')
@@ -567,6 +621,13 @@ function totalsOf(rows: MarginRow[]) {
     margin_covered: money(marginCovered),
     margin_percent: margin !== null && revenueTotal ? ((margin / revenueTotal) * 100).toFixed(1) : null,
     coverage: { sessions: rows.length, with_energy_cost: covered.length, missing_energy_cost: rows.length - covered.length },
+    speed_effect: null,
+    payment_adjustment: money(sumC(rows, 'payment_adjustment')),
+    central_rent: rentCents === null ? null : money(rentCents),
+    centrals,
+    owner_net_after_rent: money(sumC(rows, 'owner_net') - (rentCents ?? 0)),
+    result: margin === null ? null : money(margin - (rentCents ?? 0)),
+    result_percent: margin !== null && revenueTotal ? (((margin - (rentCents ?? 0)) / revenueTotal) * 100).toFixed(1) : null,
   }
 }
 
@@ -583,17 +644,40 @@ function marginRows(params: URLSearchParams): MarginRow[] {
     .sort((a, b) => (a.ended_at! < b.ended_at! ? 1 : -1))
 }
 
+function windowOf(params: URLSearchParams) {
+  const from = Date.parse(params.get('from') ?? '') || Date.now() - 7 * 86_400_000
+  const to = Date.parse(params.get('to') ?? '') || Date.now()
+  return { from, to }
+}
+
+function rentOf(params: URLSearchParams) {
+  const { from, to } = windowOf(params)
+  const station = params.get('station_id')
+  return rentAccrual(from, to, S.filter((s) => !station || s.id === station).map((s) => s.id))
+}
+
+export function rentCsv(params: URLSearchParams): string {
+  const header = ['Posto', 'Central (ponto)', 'Mês', 'Dias cobrados', 'Dias do mês', 'Aluguel mensal (R$)', 'Valor (R$)']
+  const lines = rentOf(params).lines.map((l) => [l.station_name, l.central, l.month, l.days, l.days_in_month, l.monthly_amount, l.amount].join(','))
+  return [header.join(','), ...lines].join('\r\n') + '\r\n'
+}
+
 export function marginReport(params: URLSearchParams): MarginReport {
   const rows = marginRows(params)
-  const totals = totalsOf(rows)
+  const rent = rentOf(params)
+  const totals = totalsOf(rows, rent.total, rent.centrals)
   const station = params.get('station_id')
   const surge = rows.filter((r) => Number(r.demand_multiplier) > 1)
   const coupons = rows.filter((r) => r.discount_percent)
   const sources: Record<string, number> = {}
   rows.forEach((r) => (sources[r.source ?? 'unknown'] = (sources[r.source ?? 'unknown'] ?? 0) + 1))
   const byStation = S.filter((s) => !station || s.id === station)
-    .map((s) => ({ ...totalsOf(rows.filter((r) => r.station_id === s.id)), station_id: s.id, station_name: s.name }))
-    .filter((entry) => entry.sessions)
+    .map((s) => ({
+      ...totalsOf(rows.filter((r) => r.station_id === s.id), rent.total === null ? null : (rent.byStation[s.id] ?? 0), centralsOf(s.id)),
+      station_id: s.id,
+      station_name: s.name,
+    }))
+    .filter((entry) => entry.sessions || entry.central_rent !== null)
   const warnings: string[] = []
   if (totals.coverage.missing_energy_cost) {
     warnings.push(`${totals.coverage.missing_energy_cost} de ${totals.sessions} sessões sem custo da energia informado: a margem total não é calculada. Informe o custo do kWh do posto.`)
@@ -618,6 +702,7 @@ export function marginReport(params: URLSearchParams): MarginReport {
     coupons: { sessions: coupons.length, discount: money(sumC(coupons, 'discount')) },
     sources,
     by_station: byStation,
+    central_rent: rent.total === null ? null : { total: money(rent.total), centrals: rent.centrals, lines: rent.lines },
     warnings,
     methodology: METHODOLOGY,
     items: rows.slice(offset, offset + limit),
@@ -647,7 +732,8 @@ export function marginCsv(params: URLSearchParams): string {
 
 /** PDF mínimo e válido de uma página (texto Helvetica) só para a demonstração. */
 export function marginPdf(params: URLSearchParams): Uint8Array {
-  const t = totalsOf(marginRows(params))
+  const rent = rentOf(params)
+  const t = totalsOf(marginRows(params), rent.total, rent.centrals)
   const ascii = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[()\\]/g, '')
   const lines = [
     'ChargeGrid - Resultado do posto (DEMONSTRACAO, dados ficticios)',
@@ -657,6 +743,7 @@ export function marginPdf(params: URLSearchParams): Uint8Array {
     `Receita cobrada: R$ ${t.revenue_total}`,
     `Comissao da plataforma (25%): - R$ ${t.platform_fee}`,
     `Repasse: R$ ${t.owner_net}`,
+    ...(t.central_rent === null ? [] : [`Aluguel das centrais: - R$ ${t.central_rent}`, `Repasse liquido: R$ ${t.owner_net_after_rent}`]),
     `Custo estimado da energia: ${t.coverage.missing_energy_cost ? '-' : `- R$ ${t.energy_cost}`}`,
     `Margem estimada: ${t.margin === null ? '-' : `R$ ${t.margin}`}`,
   ].map(ascii)

@@ -21,6 +21,11 @@ export interface StationEconomics {
   fee_editable: boolean
   currency: string
   notes?: string[]
+  /** Aluguel mensal por central vigente hoje (contrato, só leitura); `null`/ausente = sem aluguel. */
+  central_monthly_rent?: Decimal | null
+  /** Centrais (telas) vinculadas ao posto. */
+  centrals?: number
+  rent_editable?: boolean
 }
 
 export type CostBasis = 'snapshot' | 'current' | 'missing'
@@ -41,12 +46,16 @@ export interface MarginRow {
   discount_percent: number
   list_value: Decimal
   schedule_effect: Decimal | null
+  /** Diferença da base pela velocidade escolhida (base do conector); `null` sem a informação. */
+  speed_effect?: Decimal | null
   demand_effect: Decimal
   gross: Decimal
   discount: Decimal
   revenue: Decimal
   overstay_revenue: Decimal | null
   revenue_total: Decimal
+  /** Receita cobrada − energia − permanência: perdoado/não cobrado no pagamento (≤ 0 em geral). */
+  payment_adjustment?: Decimal
   revenue_basis: 'estimated' | 'captured' | string
   payment_environment: string | null
   platform_fee_percent: Decimal
@@ -79,6 +88,29 @@ export interface MarginTotals {
   margin_covered: Decimal
   margin_percent: Decimal | null
   coverage: { sessions: number; with_energy_cost: number; missing_energy_cost: number }
+  speed_effect?: Decimal | null
+  payment_adjustment?: Decimal
+  /** Aluguel das centrais no período (`null` = sem aluguel configurado). */
+  central_rent?: Decimal | null
+  centrals?: number
+  /** Repasse − aluguel das centrais (o que vai para a folha do dono). */
+  owner_net_after_rent?: Decimal
+  /** Margem − aluguel das centrais (`null` sem custo da energia). */
+  result?: Decimal | null
+  result_percent?: Decimal | null
+}
+
+export interface CentralRentLine {
+  station_id: string | null
+  station_name: string
+  device_id: string
+  central: string
+  /** "2026-10" */
+  month: string
+  days: number
+  days_in_month: number
+  monthly_amount: Decimal
+  amount: Decimal
 }
 
 export interface MarginStationConfig extends StationEconomics {
@@ -96,12 +128,14 @@ export interface MarginReport {
   dynamic_pricing: {
     demand_effect: Decimal
     schedule_effect: Decimal | null
+    speed_effect?: Decimal | null
     sessions_with_increase: number
     average_multiplier: Decimal | null
   }
   coupons: { sessions: number; discount: Decimal }
   sources: Record<string, number>
   by_station: (MarginTotals & { station_id: string | null; station_name: string })[]
+  central_rent?: { total: Decimal; centrals: number; lines: CentralRentLine[] } | null
   warnings: string[]
   methodology: string[]
   items: MarginRow[]

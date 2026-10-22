@@ -12,6 +12,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from chargegrid_core import analytics, economics
+from chargegrid_core import rent as rent_rules
 from chargegrid_core.formatting import brl
 
 from . import demo_site
@@ -24,6 +25,8 @@ END_REASONS = ('duration_limit', 'requested', 'requested', 'cost_limit', 'local_
 SAMPLE_INSIGHT_MODEL = 'demo-local'
 # Custo do kWh dos postos da conta demo (valor de exemplo; o dono pode trocar na tela de resultado).
 DEMO_ENERGY_COST = Decimal('0.8500')
+DEMO_CENTRAL_RENT = Decimal('99.00')  # aluguel mensal por central nesta conta (o real vem do contrato, no banco)
+DEMO_RENT_RATES = ({'station_id': None, 'monthly_amount': DEMO_CENTRAL_RENT, 'effective_from': '2000-01-01'},)
 
 
 def _fail(message, code='validation_error', status=422):
@@ -364,17 +367,32 @@ class DemoOwner:
             state = self._economics_state = (self.api._wall, {})
         return state[1]
 
+    def _centrals(self, station_id=None):
+        """Centrais (telas) vinculadas: pontos do dono que não são carregador adicional e têm dispositivo
+        ativo. Vinculadas desde antes de qualquer período consultado (até 366 dias)."""
+        since = self.api._now() - timedelta(days=400)
+        screens = self.api._charger_screen
+        devices = {d['connector_id']: d for d in self.api._devices.values() if not d['revoked']}
+        return [{'device_id': devices[p['id']]['id'], 'station_id': p['station_id'],
+                 'station_name': self.api._stations[p['station_id']]['name'], 'central': p['public_code'],
+                 'linked_at': since, 'unlinked_at': None}
+                for p in self._owned_points(station_id) if p['id'] not in screens and p['id'] in devices]
+
     def _station_economics(self, station, notes=True):
         config = self._economics_config()
         cost = config.get(station['id'], DEMO_ENERGY_COST)
         result = {'station_id': station['id'],
                   'energy_cost_per_kwh': analytics.decimal_text(cost, '0.0001') if cost is not None else None,
                   'platform_fee_percent': analytics.decimal_text(economics.DEFAULT_PLATFORM_FEE_PERCENT, '0.01'),
-                  'fee_editable': False, 'currency': 'BRL'}
+                  'fee_editable': False, 'currency': 'BRL',
+                  'central_monthly_rent': analytics.decimal_text(DEMO_CENTRAL_RENT),
+                  'centrals': len(self._centrals(station['id'])), 'rent_editable': False}
         if notes:
             result['notes'] = ['Custo do kWh: informe o valor médio pago à distribuidora (R$/kWh). Vale para as '
                                'próximas recargas; as anteriores mantêm o custo travado no início.',
-                               'A comissão da plataforma é definida em contrato e não pode ser alterada no painel.']
+                               'A comissão da plataforma é definida em contrato e não pode ser alterada no painel.',
+                               'Aluguel mensal por central: definido em contrato, rateado pelos dias de vínculo no '
+                               'mês e descontado do repasse.']
         return result
 
     def economics(self, method, station_id, body):
@@ -410,7 +428,8 @@ class DemoOwner:
         owner = self.api._profile.get('id')
         stations = sorted((s for s in self.api._stations.values() if s['owner_id'] == owner
                            and (station_id is None or s['id'] == station_id)), key=lambda s: (s['name'], s['id']))
-        report = economics.aggregate(rows)
+        rent = rent_rules.accrual(self._centrals(station_id), DEMO_RENT_RATES, start, end, self.api._now())
+        report = economics.aggregate(rows, rent=rent)
         report.update(
             schema_version=economics.SCHEMA_VERSION,
             period={'from': start.isoformat(), 'to': end.isoformat(), 'timezone': analytics.REPORT_TZ_NAME},

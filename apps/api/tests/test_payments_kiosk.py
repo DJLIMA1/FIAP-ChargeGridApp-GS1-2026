@@ -176,3 +176,15 @@ def test_kiosk_start_from_webhook_gets_live_power(http, factory, seed, stripe):
         assert start_cmd.parameters["power_decision_id"] == decision.id
         assert session.power_state == "raising" and session.power_decision_id == decision.id
         assert db.get(Payment, payment.id).session_id == session.id
+
+
+def test_kiosk_page_discloses_the_overstay_reserve_in_the_preauthorization(http, factory, seed):
+    page = http.get(f"/pay/k/CG-01?c={_digits(factory, seed)}")
+    assert "R$ 10,00</button>" in page.text and "permanência =" not in page.text
+    with factory.begin() as db:
+        db.get(Station, seed["station"]).pricing = {"rotation": {
+            "enabled": True, "start_after_min": 10, "interval_min": 1, "amount": "1.00", "max_amount": "30.00"}}
+    page = http.get(f"/pay/k/CG-01?c={_digits(factory, seed)}")
+    assert "R$ 10,00 + até R$ 30,00 de permanência = R$ 40,00" in page.text
+    assert "10 min de tolerância" in page.text and "reserva de até R$ 30,00" in page.text
+    assert re.findall(r'name="amount" value="(\d+)"', page.text) == ["1000", "2000", "4000"]

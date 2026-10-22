@@ -219,8 +219,10 @@ def history_rows(api, params=None):
         if session.get('user_id') != api._profile.get('id') or ended is None or not start <= ended < end:
             continue
         point = api._points[session['connector_id']]
+        payment = _payment(api, session)  # mesmo total do recibo: com pagamento acertado, o capturado
         rows.append(receipts.history_row({**session, 'station_name': api._stations[point['station_id']]['name'],
-                                          'public_code': point['public_code']}, now))
+                                          'public_code': point['public_code']}, now,
+                                         {'payment': payment} if payment else None))
     rows.sort(key=lambda row: (row['ended_at'] or '', row['id']), reverse=True)
     return rows
 

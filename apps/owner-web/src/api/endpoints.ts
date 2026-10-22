@@ -95,6 +95,7 @@ export function endpoints(api: ApiClient) {
       api.put<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, { energy_cost_per_kwh: energyCostPerKwh }),
     margin: (q: MarginFilters, signal?: AbortSignal) => api.get<MarginReport>('/owner/margin', { ...q }, signal),
     exportMargin: (fmt: 'csv' | 'pdf', q: PeriodQuery) => api.blob(`/owner/export/margin.${fmt}`, { ...marginExportQuery(q) }),
+    exportCentralRent: (q: PeriodQuery) => api.blob('/owner/export/central-rent.csv', { ...marginExportQuery(q) }),
     // Potência do posto: limite contratado (padrão ou do dono), loja SIMULADA, rebalanceamento e tipo/porte.
     power: (id: string, signal?: AbortSignal) => api.get<StationPower>(`/stations/${encodeURIComponent(id)}/power`, undefined, signal),
     putPowerSite: (id: string, body: PowerSiteInput) => api.put<StationPower>(`/stations/${encodeURIComponent(id)}/power-site`, body),
