@@ -58,8 +58,10 @@ def _state(app):
     if not hasattr(app, 'chat_draft'):
         app.chat_draft = ''
     if not app.chat_messages:
-        ai = (' Pergunte sobre postos, custos, reservas ou seus gastos, ou peça para planejar seu turno no '
-              'Modo Motorista.') if getattr(app.api, 'ai_enabled', False) else ''
+        vendor = getattr(app, 'browsing_mode', 'consumer') == 'vendor'
+        ai = ((' Pergunte sobre receita, carregadores, horários de pico, tarifas e cupons dos seus postos.' if vendor
+               else ' Pergunte quanto custa carregar o seu carro, postos mais baratos, reservas ou seus gastos.')
+              if getattr(app.api, 'ai_enabled', False) else '')
         app.chat_messages.append({
             'role': 'assistant',
             'content': 'Oi! Sou o assistente da ChargeGrid. Posso ajudar com recarga, pagamento ou um resumo da sua conta.' + ai,
@@ -230,7 +232,15 @@ async def answer(app, question):
 AI_DISCLAIMER = 'Respostas geradas por IA podem conter erros. Confira valores antes de confirmar.'
 _AI_ROUTES = {'open_station': 'stations', 'reserve': 'stations', 'open_reservation': 'reservations',
               'open_charging': 'charging', 'open_history': 'history', 'open_operator': 'operator',
-              'search_stations': 'stations'}  # open_driver: Modo motorista descontinuado
+              'search_stations': 'stations', 'open_receipt': 'history', 'open_wallet': 'wallet',
+              'open_tariffs': 'tariffs', 'open_coupons': 'coupons',
+              'open_owner_history': 'history'}  # open_driver: Modo motorista descontinuado
+AI_CONTEXT_TIMEOUT = 2.5
+# Sugestões por papel (4 antes da primeira pergunta; depois o chat mostra só as 2 primeiras).
+DRIVER_PROMPTS = ['Quanto custa carregar de 20% a 80%?', 'Posto mais barato perto de mim agora',
+                  'Explique minha última recarga', 'Quanto gastei com recarga este mês?']
+OWNER_PROMPTS = ['Resumo da receita desta semana', 'Quais carregadores renderam menos este mês?',
+                 'Algum carregador offline agora?', 'Devo mudar a tarifa no horário de pico?']
 
 
 def _ai_actions(suggested):
@@ -247,6 +257,14 @@ def _ai_actions(suggested):
             data['detail'] = True
         if item.get('session_id') and route == 'charging':
             data['session_id'] = str(item['session_id'])
+        if item.get('type') == 'open_receipt':
+            if not item.get('session_id'):
+                continue  # o recibo sempre abre uma recarga específica
+            data['receipt'] = str(item['session_id'])  # mesmo atalho do "Ver recibo" (history?receipt=<id>)
+        if item.get('station_id') and route == 'tariffs':
+            data['station_id'] = str(item['station_id'])
+        if item.get('type') in ('open_owner_history', 'open_coupons'):
+            data['manage'] = True
         # Reservar abre o posto: a reserva segue o fluxo normal, com confirmação.
         label = str(item.get('label') or 'Abrir')[:60]
         actions.append(_action(label, route, **data))
@@ -268,10 +286,33 @@ def _ai_history(messages):
     return history
 
 
+async def _device_context(app, mode):
+    """Bateria que o app usa (motorista) e posição já permitida, para a IA não perguntar o que o app sabe.
+
+    Nunca abre diálogo de permissão nem atrasa a pergunta por mais de ``AI_CONTEXT_TIMEOUT``."""
+    from ..services import geolocation, vehicle_state
+
+    context = {}
+    if mode == 'driver':
+        try:
+            soc, source = await asyncio.wait_for(vehicle_state.current_soc(app), AI_CONTEXT_TIMEOUT)
+            context.update(soc_percent=round(float(soc), 1), soc_source='phone' if source == 'phone' else 'simulated')
+        except Exception:  # noqa: BLE001 - sem o nível, a IA usa a última recarga ou pergunta
+            pass
+    try:
+        position = await asyncio.wait_for(geolocation.current_position(app, ask=False), AI_CONTEXT_TIMEOUT)
+    except Exception:  # noqa: BLE001 - sem localização, a IA compara pela rede
+        position = None
+    if position:
+        context.update(lat=round(float(position[0]), 5), lng=round(float(position[1]), 5))
+    return context
+
+
 async def ai_answer(app, messages):
     """Ask the backend assistant; raises ApiError when AI is unavailable."""
     mode = 'owner' if getattr(app, 'browsing_mode', 'consumer') == 'vendor' else 'driver'
-    result = await app.api.request('POST', 'ai/chat', {'messages': _ai_history(messages), 'context': {'mode': mode}})
+    context = {'mode': mode, **await _device_context(app, mode)}
+    result = await app.api.request('POST', 'ai/chat', {'messages': _ai_history(messages), 'context': context})
     if not isinstance(result, dict) or not isinstance(result.get('reply'), str) or not result['reply'].strip():
         raise ApiError('Resposta inválida do assistente.')
     return {'content': result['reply'].strip(), 'actions': _ai_actions(result.get('suggested_actions')), 'source': 'ai'}
@@ -468,10 +509,7 @@ async def build(app, question='', topic=None, seed_demo=False, **_):
     elif topic == 'charging':
         suggestions = ['Minha recarga', 'Iniciar uma recarga', 'Ajuda com limites', 'Parar ou resolver uma falha']
     if ai_mode:
-        suggestions = (['Como foram meus postos este mês?', 'Como aumentar a receita dos meus postos?',
-                        'Algum ponto meu está offline?'] if vendor else
-                       ['Postos rápidos perto da Paulista', 'Planeje meu turno: estou com 30% de bateria',
-                        'Quanto gastei com recarga este mês?', 'Quanto custa carregar de 20% a 80%?'])
+        suggestions = list(OWNER_PROMPTS if vendor else DRIVER_PROMPTS)
         if topic == 'reservations':
             suggestions = ['Minha reserva ainda está valendo?', 'Reservar um ponto perto de mim', *suggestions[:2]]
         elif topic == 'charging':

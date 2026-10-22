@@ -10,6 +10,13 @@ cliente demo (dados em memória). Métodos podem ser síncronos ou ``async``:
 * ``owner_stations() -> list[dict]`` / ``owner_sessions(since: datetime) -> list[dict]``
 * opcionais: ``get_connector(id)``, ``driver_profile() -> dict | None`` (perfil salvo do Modo
   Motorista) e ``driver_stations() -> list[dict]`` (postos para o planejador)
+* opcionais do motorista (``driver_tools``): ``vehicle()``, ``wallet()``, ``get_stations(ids)``,
+  ``session_receipt(id | None)``, ``station_best_times(station_id)``
+* opcionais do dono: ver ``owner_tools`` (mesmos serviços do dashboard)
+
+Papéis (``role``): ``driver`` e ``owner`` recebem conjuntos separados de ferramentas
+(menos tokens por rodada); ``None`` mantém o conjunto original (compatibilidade).
+Ferramentas cujo método da fonte não existe não são oferecidas ao modelo.
 
 O titular é sempre o usuário autenticado da ``source``: nenhuma ferramenta
 recebe ``user_id`` do modelo.
@@ -22,10 +29,12 @@ import json
 from datetime import datetime, timedelta
 
 from . import driver as driver_slot
-from .estimates import EstimateError, estimate_charge
+from .driver_tools import DRIVER_SPECS, HISTORY_PERIOD_PROPS, DriverTools
+from .estimates import EstimateError
 from .insights import LOCAL_TZ, owner_indicators, owner_recommendations
+from .owner_tools import OWNER_SPECS, OwnerTools
 from .places import resolve_place
-from .schema import ToolArgumentError, parse_arguments, validate
+from .schema import ToolArgumentError, ToolDataError, parse_arguments, validate
 from .search import FILTER_SCHEMA, filters_from_tool
 from .stations import compact_station, filter_stations
 from .text import clean
@@ -50,22 +59,6 @@ SPECS = {
         "description": "Detalhes de um posto: pontos, conector, potência, tarifa (R$/kWh), tempo máximo e disponibilidade.",
         "parameters": {"type": "object", "properties": {"station_id": _ID}, "required": ["station_id"]},
     },
-    "estimate_charge": {
-        "description": ("Estima energia, tempo e custo de uma recarga num ponto (connector_id) ou com potência/tarifa "
-                        "informadas. Informe um alvo: energy_kwh, faixa de bateria (battery_kwh + from/to_percent), "
-                        "budget_brl ou minutes. Use somente connector_id devolvido antes por search_stations ou "
-                        "get_station_details (não chame em paralelo com a busca)."),
-        "parameters": {"type": "object", "properties": {
-            "connector_id": _ID,
-            "power_kw": {"type": "number", "minimum": 0.5, "maximum": 1000},
-            "price_per_kwh": {"type": "number", "minimum": 0, "maximum": 100},
-            "energy_kwh": {"type": "number", "minimum": 0.1, "maximum": 300},
-            "battery_kwh": {"type": "number", "minimum": 5, "maximum": 300},
-            "from_percent": {"type": "number", "minimum": 0, "maximum": 100},
-            "to_percent": {"type": "number", "minimum": 0, "maximum": 100},
-            "budget_brl": {"type": "number", "minimum": 1, "maximum": 5000},
-            "minutes": {"type": "number", "minimum": 1, "maximum": 1440}}},
-    },
     "get_my_reservation": {
         "description": "Reserva ativa do usuário logado (posto, ponto, estado e prazo de chegada).",
         "parameters": {"type": "object", "properties": {}},
@@ -75,8 +68,10 @@ SPECS = {
         "parameters": {"type": "object", "properties": {}},
     },
     "get_my_charging_history": {
-        "description": "Últimas recargas do usuário logado e gasto estimado do mês corrente.",
-        "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 10}}},
+        "description": ("Últimas recargas do usuário logado e gasto estimado do mês corrente. Com period, soma "
+                        "recargas, kWh, gasto, preço médio, cupons e taxas de permanência por posto no período."),
+        "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                                                        **HISTORY_PERIOD_PROPS}},
     },
     "get_owner_indicators": {
         "description": ("Indicadores dos postos do próprio dono: receita e energia estimadas, sessões por hora, "
@@ -85,6 +80,15 @@ SPECS = {
         "owner_only": True,
     },
 }
+for _name, _spec in SPECS.items():
+    _spec.setdefault("roles", ("driver", "legacy") if not _spec.get("owner_only") else ("legacy",))
+for _name in ("search_stations", "get_station_details"):
+    SPECS[_name]["roles"] = ("driver", "owner", "legacy")
+SPECS["get_owner_indicators"]["roles"] = ("legacy", "owner_fallback")
+SPECS = {**SPECS, **DRIVER_SPECS, **OWNER_SPECS}
+ORDER = ("search_stations", "get_station_details", "estimate_charge", "compare_charge_options", "get_station_best_times",
+         "get_my_reservation", "get_current_charging", "get_my_charging_history", "explain_my_session", "get_my_wallet",
+         *OWNER_SPECS, "get_owner_indicators")
 
 
 async def _call(function, *args, **kwargs):
@@ -121,18 +125,33 @@ def compact_session(record: dict) -> dict:
     }
 
 
-class Toolbox:
-    """Executa as ferramentas validadas e guarda os resultados da rodada."""
+class Toolbox(DriverTools, OwnerTools):
+    """Executa as ferramentas validadas e guarda os resultados da rodada.
 
-    def __init__(self, source, *, owner: bool = False, now: datetime, origin: dict | None = None):
+    ``context``: cartão de ``context.build_context`` (carro, SoC, postos mais usados) usado
+    como padrão pelas ferramentas do motorista."""
+
+    def __init__(self, source, *, owner: bool = False, now: datetime, origin: dict | None = None,
+                 role: str | None = None, context: dict | None = None):
         self.source, self.owner, self.now, self.origin = source, owner, now, origin
+        self.role = "owner" if role == "owner" and owner else ("driver" if role else None)
+        self.context = context or {}
         self.records: list[tuple[str, dict, dict]] = []
         self._points: dict[str, dict] = {}
         self._planner = driver_slot.planner()
 
+    def _available(self, spec: dict) -> bool:
+        return all(hasattr(self.source, method) for method in spec.get("requires", ()))
+
     def names(self) -> list[str]:
-        names = [name for name, spec in SPECS.items() if self.owner or not spec.get("owner_only")]
-        if self._planner:
+        if self.role is None:
+            names = [name for name in ORDER if "legacy" in SPECS[name]["roles"]
+                     and (self.owner or not SPECS[name].get("owner_only"))]
+        else:
+            names = [name for name in ORDER if self.role in SPECS[name]["roles"] and self._available(SPECS[name])]
+            if self.role == "owner" and not any(name in OWNER_SPECS for name in names):
+                names.append("get_owner_indicators")  # fonte sem os serviços do dashboard
+        if self._planner and self.role != "owner":
             names.append("plan_driver_shift")
         return names
 
@@ -154,8 +173,8 @@ class Toolbox:
             schema = SPECS[name]["parameters"] if name in SPECS else driver_slot.SCHEMA
             args = validate(parse_arguments(raw_arguments), schema)
             data = await getattr(self, "_" + name)(**args) if name in SPECS else await self._plan_driver_shift(args)
-        except (ToolArgumentError, EstimateError) as exc:
-            args, data = {}, {"error": str(exc)}
+        except (ToolArgumentError, EstimateError, ToolDataError) as exc:
+            args, data = {}, {"error": clean(str(exc), 200) or "dado indisponível"}
         self.records.append((name, args, data))
         return data
 
@@ -188,23 +207,6 @@ class Toolbox:
         self._remember(compact)
         return compact
 
-    async def _estimate_charge(self, connector_id: str | None = None, **target) -> dict:
-        context = {}
-        if connector_id:
-            point = self._points.get(connector_id)
-            if point is None and hasattr(self.source, "get_connector"):
-                point = await _call(self.source.get_connector, connector_id)
-            if not point:
-                return {"error": "ponto não encontrado; busque o posto antes ou informe potência e tarifa"}
-            target.setdefault("power_kw", point.get("power_kw"))
-            target.setdefault("price_per_kwh", point.get("price_per_kwh"))
-            target.setdefault("max_minutes", point.get("max_duration_minutes"))
-            context = {"station_id": point.get("station_id"), "station_name": point.get("station_name"),
-                       "point_code": point.get("code")}
-        power, price = target.pop("power_kw", None), target.pop("price_per_kwh", None)
-        result = estimate_charge(float(power or 0), float(price) if price is not None else -1, **target)
-        return {**context, "power_kw": power, "price_per_kwh": price, **result}
-
     async def _get_my_reservation(self) -> dict:
         record = await _call(self.source.current_reservation)
         if not record:
@@ -219,12 +221,15 @@ class Toolbox:
         record = await _call(self.source.current_session)
         return {"session": compact_session(record) if record else None}
 
-    async def _get_my_charging_history(self, limit: int = 5) -> dict:
+    async def _get_my_charging_history(self, limit: int = 5, period: str | None = None, from_date=None,
+                                       to_date=None) -> dict:
         records = await _call(self.source.recent_sessions, limit) or []
         summary = await _call(self.source.month_summary) or {}
         sessions = [compact_session(r) for r in records[:limit]]
         costs = [s["cost_brl"] for s in sessions if s["cost_brl"]]
-        return {
+        extra = {"period_summary": await self.period_history(period, from_date, to_date)} \
+            if period or (from_date and to_date) else {}
+        return {**extra,
             "month": summary.get("month"), "month_sessions": summary.get("sessions_count"),
             "month_energy_kwh": round(float(summary.get("energy_wh") or 0) / 1000, 2) if summary else None,
             "month_estimated_cost_brl": _money(summary.get("estimated_cost")),

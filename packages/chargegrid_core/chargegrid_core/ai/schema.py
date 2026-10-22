@@ -16,6 +16,13 @@ class ToolArgumentError(ValueError):
     """Argumentos inválidos; a mensagem é devolvida ao modelo para correção."""
 
 
+class ToolDataError(RuntimeError):
+    """Dado fora do escopo do usuário, inexistente ou indisponível agora.
+
+    A fonte (API/demo) traduz seus erros de negócio (404, 403, 413, 429...) nesta
+    exceção; o modelo recebe só a mensagem curta, sem detalhes internos."""
+
+
 def parse_arguments(raw: object) -> dict:
     if raw is None or raw == "":
         return {}
