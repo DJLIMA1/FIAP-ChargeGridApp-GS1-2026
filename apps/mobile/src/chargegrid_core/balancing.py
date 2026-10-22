@@ -5,9 +5,10 @@ pelos testes. Tudo em ``Decimal`` e kW, em passos de 0,1 kW.
 
 Disponível para os carregadores
 -------------------------------
-``min(teto dos carregadores do posto, limite contratado − consumo do estabelecimento)``,
-nunca abaixo de zero. Sem nenhum dos dois configurado, não há limite: cada carro
-recebe o próprio máximo.
+``min(teto dos carregadores do posto, limite contratado − margem estimada da loja)``,
+nunca abaixo de zero. A margem é o pico ESTIMADO da loja, reservado o tempo todo
+(``site_load``; não há medidor nem simulação). Sem nenhum dos dois configurado, não há
+limite: cada carro recebe o próprio máximo.
 
 Divisão
 -------
@@ -27,8 +28,8 @@ Transição segura
 O envelope de um ponto é o maior valor que ainda pode estar aplicado nele (aplicado
 confirmado ou ajuste pendente). Reduções são emitidas sempre; um aumento só cabe na
 folga ``disponível − Σ envelopes dos outros − aplicado``. Assim a soma nunca passa do
-disponível por causa de um aumento; um salto do consumo da loja pode passar até as
-reduções serem confirmadas, e isso é medido em ``exceeded``.
+disponível por causa de um aumento; quando o dono reduz um limite ou aumenta a margem da
+loja, a soma pode passar até as reduções serem confirmadas, e isso é medido em ``exceeded``.
 """
 
 from __future__ import annotations
@@ -88,11 +89,11 @@ class Participant:
         return max(ZERO, value), kind
 
 
-def available(site_limit_kw=None, building_load_kw=None, station_cap_kw=None) -> tuple[Decimal | None, str | None]:
+def available(site_limit_kw=None, store_reserve_kw=None, station_cap_kw=None) -> tuple[Decimal | None, str | None]:
     """Potência disponível para os carregadores e quem a limita (``site``/``station``)."""
     site_limit = _kw(site_limit_kw)
     cap = _kw(station_cap_kw)
-    site = None if site_limit is None else max(ZERO, site_limit - (_kw(building_load_kw) or ZERO))
+    site = None if site_limit is None else max(ZERO, site_limit - (_kw(store_reserve_kw) or ZERO))
     if site is None and cap is None:
         return None, None
     if site is None:
@@ -102,10 +103,10 @@ def available(site_limit_kw=None, building_load_kw=None, station_cap_kw=None) ->
     return cap, STATION
 
 
-def decide(participants, *, site_limit_kw=None, building_load_kw=None, station_cap_kw=None) -> dict:
+def decide(participants, *, site_limit_kw=None, store_reserve_kw=None, station_cap_kw=None) -> dict:
     """Alvo de cada sessão. Devolve ``{available_kw, binding, cars, allocated_kw, sessions:
     {id: {target_kw, request_kw, floor_kw, limited_by}}, ...entradas}``."""
-    avail, binding = available(site_limit_kw, building_load_kw, station_cap_kw)
+    avail, binding = available(site_limit_kw, store_reserve_kw, station_cap_kw)
     ordered = sorted(participants, key=lambda item: (tuple(item.order), item.id))
     sessions = {}
     fixed_total = ZERO
@@ -148,7 +149,7 @@ def decide(participants, *, site_limit_kw=None, building_load_kw=None, station_c
         'available_kw': avail,
         'binding': binding,
         'site_limit_kw': _kw(site_limit_kw),
-        'building_load_kw': _kw(building_load_kw) if site_limit_kw is not None else None,
+        'store_reserve_kw': _kw(store_reserve_kw) if site_limit_kw is not None else None,
         'station_cap_kw': _kw(station_cap_kw),
         'cars': len(ordered),
         'allocated_kw': sum((value['target_kw'] for value in sessions.values()), ZERO),
@@ -198,23 +199,25 @@ def explain(decision: dict, session_id) -> dict:
     code = item['limited_by']
     kw = kw_text(item['target_kw'])
     count = decision['cars']
-    building = kw_text(decision.get('building_load_kw') or ZERO)
+    store = kw_text(decision.get('store_reserve_kw') or ZERO)
     limit = kw_text(decision.get('site_limit_kw'))
     cap = kw_text(decision.get('station_cap_kw'))
     site_known = decision.get('site_limit_kw') is not None
     alone = 'só o seu carro está carregando' if count == 1 else f'há {count} carros carregando'
-    context = f' (a loja usa {building} de {limit} kW; {_cars(count)} carregando).' if site_known else '.'
+    context = (f' ({store} kW dos {limit} kW contratados ficam reservados para a loja; '
+               f'{_cars(count)} carregando).' if site_known else '.')
     if code == SITE:
-        text = f'{kw} kW porque a loja usa {building} de {limit} kW e {alone}.'
-        short = f'Loja {building}/{limit} kW · {_cars(count)}'
+        text = (f'{kw} kW porque {store} kW dos {limit} kW contratados ficam reservados para a loja '
+                f'(estimativa) e {alone}.')
+        short = f'Contrat. {limit} - loja {store} kW · {_cars(count)}'
     elif code == STATION:
         text = f'{kw} kW porque o posto limita os carregadores a {cap} kW e {alone}.'
         short = f'Posto {cap} kW · {_cars(count)}'
     elif code == PAUSED:
         floor = kw_text(item.get('floor_kw') or FLOOR_KW)
         if decision.get('binding') == SITE:
-            text = (f'Pausado: a loja usa {building} de {limit} kW e não sobra o mínimo de {floor} kW '
-                    'para mais um carro.')
+            text = (f'Pausado: dos {limit} kW contratados, {store} kW ficam reservados para a loja '
+                    f'(estimativa) e não sobra o mínimo de {floor} kW para mais um carro.')
         else:
             text = f'Pausado: o limite de {cap} kW do posto já está com os carros que chegaram antes.'
         short = 'Pausado: sem capacidade'
@@ -244,8 +247,8 @@ def summary(decision: dict, labels: dict | None = None) -> str:
     if avail is None:
         head = 'Sem limite configurado: cada carro recebe o próprio máximo'
     elif decision['binding'] == SITE:
-        head = (f"Disponível {kw_text(avail)} kW (loja usa {kw_text(decision['building_load_kw'] or ZERO)} "
-                f"de {kw_text(decision['site_limit_kw'])} kW)")
+        head = (f"Disponível {kw_text(avail)} kW ({kw_text(decision['site_limit_kw'])} kW contratados − "
+                f"{kw_text(decision['store_reserve_kw'] or ZERO)} kW reservados para a loja)")
     else:
         head = f'Disponível {kw_text(avail)} kW (teto dos carregadores do posto)'
     parts = []
@@ -266,7 +269,7 @@ def snapshot(decision: dict, envelopes: dict | None = None) -> dict:
     envelopes = envelopes or {}
     return {
         'site_limit_kw': _text(decision.get('site_limit_kw')),
-        'building_load_kw': _text(decision.get('building_load_kw')),
+        'store_reserve_kw': _text(decision.get('store_reserve_kw')),
         'station_cap_kw': _text(decision.get('station_cap_kw')),
         'available_kw': _text(decision.get('available_kw')),
         'sessions': {
@@ -287,7 +290,7 @@ def trigger(previous: dict | None, current: dict) -> str:
     """O que mudou entre dois ``snapshot``: o gatilho registrado da decisão."""
     if not previous:
         return 'initial'
-    for key, name in (('building_load_kw', 'building_load_changed'), ('site_limit_kw', 'site_limit_changed'),
+    for key, name in (('store_reserve_kw', 'store_estimate_changed'), ('site_limit_kw', 'site_limit_changed'),
                       ('station_cap_kw', 'station_cap_changed')):
         if previous.get(key) != current.get(key):
             return name

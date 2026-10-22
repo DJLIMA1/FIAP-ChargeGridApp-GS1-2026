@@ -140,9 +140,9 @@ def test_receipt_pdf_shows_calculated_difference_and_paid_total(flow, stripe, fa
 
 def test_power_changes_in_receipt_count_only_acknowledged(bench):  # noqa: F811
     _charge_live(bench, "a")
-    bench.building(26)
+    bench.store(26)
     bench.sync("a", 2)  # redução pedida e confirmada (ACK) → 4 kW
-    bench.building(12)
+    bench.store(12)
     bench.sync("a")  # aumento pedido, ACK ainda não chegou
     bench.sims["a"].acks = []
     bench.as_user(bench.drivers["a"])
@@ -154,14 +154,14 @@ def test_power_changes_in_receipt_count_only_acknowledged(bench):  # noqa: F811
     assert start["applied_kw"] == "7.200" and start["reason_code"] == "start_limit"
     assert reduce["requested_kw"] == "4.000" and reduce["applied_kw"] == "4.000"
     assert reduce["previous_kw"] == "7.200" and reduce["confirmed_at"] and reduce["source"] == "rebalance"
-    assert reduce["reason_code"] and "loja usa 26 de 30 kW" in reduce["reason_label"]
+    assert reduce["reason_code"] and "26 kW dos 30 kW contratados ficam reservados para a loja" in reduce["reason_label"]
     assert raise_["requested_kw"] == "7.200" and raise_["applied_kw"] is None and raise_["confirmed_at"] is None
     assert [item["kw"] for item in receipt["power"]["applied_limits"]] == ["7.200", "4.000"]
 
 
 def test_power_change_rejected_by_device_is_failed(bench):  # noqa: F811
     _charge_live(bench, "a")
-    bench.building(25)
+    bench.store(25)
     bench.sync("a")
     command = bench.commands("a", "SET_POWER")[-1]
     payload = bench.sims["a"].payload()
@@ -180,7 +180,7 @@ def test_power_change_rejected_by_device_is_failed(bench):  # noqa: F811
 
 def test_power_change_failed_ack_without_event_is_failed(bench):  # noqa: F811
     _charge_live(bench, "a")
-    bench.building(25)
+    bench.store(25)
     bench.sync("a")
     with bench.factory.begin() as db:
         command = db.get(Command, bench.commands("a", "SET_POWER")[-1].id)

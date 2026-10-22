@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { MarginReport, MarginRow } from '../api/operations'
+import type { CentralRentLine, MarginReport, MarginRow } from '../api/operations'
 import { useAuth } from '../auth/AuthContext'
 import { Icon } from '../components/Icon'
 import { useToast } from '../components/Toast'
@@ -8,7 +8,7 @@ import { Badge, Banner, Card, EmptyState, ErrorBanner, Kpi, PageHead, Skeleton, 
 import { downloadBlob } from '../lib/exporters'
 import { useFilters } from '../lib/filters'
 import { formatCurrency, formatEnergy, formatNumber, formatPercent, formatShortDateTime, toNumber } from '../lib/format'
-import { buildCascade, cascadeWidth, feeLabel, marginExportFilename, NOT_PROFIT_TEXT, NOT_PROFIT_TITLE, stationsMissingCost, type CascadeStep } from '../lib/margin'
+import { buildCascade, cascadeWidth, feeLabel, marginExportFilename, monthLabel, NOT_PROFIT_TEXT, NOT_PROFIT_TITLE, rentExportFilename, stationsMissingCost, type CascadeStep } from '../lib/margin'
 import { periodLabel } from '../lib/period'
 import { useApi } from '../lib/useApi'
 
@@ -37,7 +37,7 @@ function Cascade({ report, firstMissing }: { report: MarginReport; firstMissing:
           <div
             key={step.key}
             role="listitem"
-            style={{ padding: '10px 0', borderTop: step.kind === 'result' || step.key === 'owner_net' || step.key === 'revenue_total' ? '1px solid #333' : undefined }}
+            style={{ padding: '10px 0', borderTop: step.kind === 'result' || step.kind === 'total' && step.key !== 'gross' ? '1px solid #333' : undefined }}
           >
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ width: 16, textAlign: 'center', color: COLOR[step.kind], fontWeight: 700 }} aria-hidden>
@@ -58,6 +58,45 @@ function Cascade({ report, firstMissing }: { report: MarginReport; firstMissing:
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function RentTable({ lines, total }: { lines: CentralRentLine[]; total: string }) {
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Estação</th>
+            <th>Central</th>
+            <th>Mês</th>
+            <th className="right">Dias</th>
+            <th className="right">Mensal</th>
+            <th className="right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line) => (
+            <tr key={`${line.device_id}|${line.month}|${line.monthly_amount}`}>
+              <td>{line.station_name}</td>
+              <td className="strong">{line.central || '—'}</td>
+              <td className="tabular">{monthLabel(line.month)}</td>
+              <td className="right tabular">
+                {line.days}/{line.days_in_month}
+              </td>
+              <td className="right tabular muted">{formatCurrency(line.monthly_amount)}</td>
+              <td className="right tabular strong">{formatCurrency(line.amount)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td colSpan={5} className="strong">
+              Total descontado do repasse
+            </td>
+            <td className="right tabular strong">{formatCurrency(total)}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -130,7 +169,7 @@ export default function Result() {
   const toast = useToast()
   const { query, refreshKey, period, stationId, stations } = useFilters()
   const [page, setPage] = useState(0)
-  const [exporting, setExporting] = useState<null | 'csv' | 'pdf'>(null)
+  const [exporting, setExporting] = useState<null | 'csv' | 'pdf' | 'rent'>(null)
   useEffect(() => setPage(0), [refreshKey])
   const { data, error, loading, reload } = useApi(
     (signal) => ep.margin({ ...query, limit: PAGE_SIZE, offset: page * PAGE_SIZE }, signal),
@@ -141,6 +180,21 @@ export default function Result() {
   const missing = data ? stationsMissingCost(data) : []
   const total = data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const rent = data?.central_rent ?? null
+  const hasRent = Boolean(totals && totals.central_rent !== null && totals.central_rent !== undefined)
+  const exportRent = async () => {
+    setExporting('rent')
+    try {
+      const blob = await ep.exportCentralRent(query)
+      downloadBlob(rentExportFilename(new Date(), station?.name), blob)
+      toast('CSV do aluguel das centrais exportado')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Falha ao exportar', 'error')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const exportAs = async (fmt: 'csv' | 'pdf') => {
     setExporting(fmt)
@@ -179,9 +233,17 @@ export default function Result() {
 
         <div className="grid kpis">
           <Kpi variant="hero" label="Receita bruta" icon="wallet" loading={!data && !error} value={formatCurrency(totals?.gross, { compact: true })} hint={totals ? `${formatNumber(totals.sessions)} recarga(s) · ${formatEnergy(totals.energy_kwh)}` : undefined} />
-          <Kpi label="Repasse" icon="trendUp" loading={!data && !error} value={formatCurrency(totals?.owner_net)} hint="Receita cobrada − comissão − tarifa do provedor" />
+          {hasRent ? (
+            <Kpi label="Repasse líquido" icon="trendUp" loading={!data && !error} value={formatCurrency(totals?.owner_net_after_rent)} hint={`Repasse ${formatCurrency(totals?.owner_net)} − aluguel das centrais ${formatCurrency(totals?.central_rent)}`} />
+          ) : (
+            <Kpi label="Repasse" icon="trendUp" loading={!data && !error} value={formatCurrency(totals?.owner_net)} hint="Receita cobrada − comissão − tarifa do provedor" />
+          )}
           <Kpi label="Custo da energia" icon="zap" loading={!data && !error} value={totals && !totals.coverage.missing_energy_cost ? formatCurrency(totals.energy_cost) : '—'} hint={totals?.coverage.missing_energy_cost ? `${formatNumber(totals.coverage.missing_energy_cost)} sessão(ões) sem custo informado` : 'kWh × custo do kWh do posto'} hintTone={totals?.coverage.missing_energy_cost ? 'bad' : undefined} />
-          <Kpi label="Margem estimada" icon="chart" loading={!data && !error} value={totals && totals.margin !== null && !totals.coverage.missing_energy_cost ? formatCurrency(totals.margin) : '—'} hint={totals && totals.margin_percent !== null && !totals.coverage.missing_energy_cost ? `${formatPercent(totals.margin_percent)} da receita cobrada` : 'Informe o custo do kWh para calcular'} hintTone={totals && (toNumber(totals.margin) ?? 0) < 0 ? 'bad' : undefined} />
+          {hasRent ? (
+            <Kpi label="Resultado estimado" icon="chart" loading={!data && !error} value={totals && totals.result !== null && totals.result !== undefined && !totals.coverage.missing_energy_cost ? formatCurrency(totals.result) : '—'} hint={totals && !totals.coverage.missing_energy_cost ? `Margem antes do aluguel: ${formatCurrency(totals.margin)}` : 'Informe o custo do kWh para calcular'} hintTone={totals && (toNumber(totals.result) ?? 0) < 0 ? 'bad' : undefined} />
+          ) : (
+            <Kpi label="Margem estimada" icon="chart" loading={!data && !error} value={totals && totals.margin !== null && !totals.coverage.missing_energy_cost ? formatCurrency(totals.margin) : '—'} hint={totals && totals.margin_percent !== null && !totals.coverage.missing_energy_cost ? `${formatPercent(totals.margin_percent)} da receita cobrada` : 'Informe o custo do kWh para calcular'} hintTone={totals && (toNumber(totals.margin) ?? 0) < 0 ? 'bad' : undefined} />
+          )}
         </div>
 
         {data?.warnings.length ? (
@@ -224,6 +286,13 @@ export default function Result() {
                     <div className="value">{data.dynamic_pricing.schedule_effect === null ? '—' : formatCurrency(data.dynamic_pricing.schedule_effect)}</div>
                     <div className="dim" style={{ fontSize: 12.5 }}>Diferença para a tarifa base do conector</div>
                   </div>
+                  {data.dynamic_pricing.speed_effect !== null && data.dynamic_pricing.speed_effect !== undefined ? (
+                    <div>
+                      <div className="label">Efeito da velocidade</div>
+                      <div className="value">{formatCurrency(data.dynamic_pricing.speed_effect)}</div>
+                      <div className="dim" style={{ fontSize: 12.5 }}>Velocidade reduzida ou tarifa própria escolhida</div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </Card>
@@ -268,6 +337,21 @@ export default function Result() {
             </Card>
           </div>
         </div>
+
+        {rent && rent.lines.length ? (
+          <Card
+            title="Aluguel das centrais"
+            sub={`${formatNumber(rent.centrals)} ${rent.centrals === 1 ? 'central' : 'centrais'} · valor mensal rateado pelos dias de vínculo no mês e descontado do repasse`}
+            id="central-rent"
+            action={
+              <button type="button" className="btn btn-secondary" onClick={exportRent} disabled={Boolean(exporting)}>
+                <Icon name="download" size={16} /> {exporting === 'rent' ? 'Exportando…' : 'CSV do aluguel'}
+              </button>
+            }
+          >
+            <RentTable lines={rent.lines} total={rent.total} />
+          </Card>
+        ) : null}
 
         <Card title="Por sessão" sub={data ? `${formatNumber(total)} recarga(s) encerrada(s) no período` : undefined} id="margin-sessions">
           {!data && !error ? <SkeletonRows rows={6} height={22} /> : null}

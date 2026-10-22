@@ -180,5 +180,66 @@ def test_margin_csv_appends_channel_and_method_at_the_end():
     rows = [{**e.session_economics(session()), "payment_channel": "Totem", "payment_method": "Simulado"},
             e.session_economics(session(id="s2"))]
     parsed = list(csv.reader(io.StringIO(e.margin_csv(rows))))
-    assert parsed[0][-3:] == ["Base da receita", "Canal", "Pagamento"]
-    assert parsed[1][-2:] == ["Totem", "Simulado"] and parsed[2][-2:] == ["", ""]
+    # O formato anterior continua igual coluna a coluna; colunas novas entram sempre no fim.
+    assert parsed[0][-5:] == ["Base da receita", "Canal", "Pagamento", "Efeito da velocidade (R$)",
+                              "Ajuste do pagamento (R$)"]
+    assert parsed[1][-4:-2] == ["Totem", "Simulado"] and parsed[2][-4:-2] == ["", ""]
+    assert parsed[1][-1] == "0.00"
+
+
+# ------------------------------------------------- ajuste do pagamento, velocidade e aluguel
+
+def test_captured_payment_difference_is_an_adjustment_that_closes_the_cascade():
+    # Pré-pago: R$ 10,40 de energia pelo equipamento, R$ 10,00 capturado (acima do teto: perdoado).
+    row = e.session_economics(session(discount_percent=0, cost_estimate="10.4000", price_terms={}),
+                              extras={"payment": {"net_amount": "10.00", "provider_fee": "0.40"}})
+    assert row["revenue"] == Decimal("10.40") and row["revenue_total"] == Decimal("10.00")
+    assert row["payment_adjustment"] == Decimal("-0.40")
+    totals = e.aggregate([row])["totals"]
+    assert totals["gross"] - totals["discount"] + totals["payment_adjustment"] == totals["revenue_total"]
+
+
+def test_reduced_speed_without_schedule_is_speed_effect_not_schedule_effect():
+    terms = {**TERMS, "base_source": "connector", "connector_base_per_kwh": "2.0000", "power_tier": "reduced"}
+    row = e.session_economics(session(base_price_per_kwh="1.6000", price_per_kwh="1.6000", demand_multiplier="1.00",
+                                      discount_percent=0, cost_estimate="16.0000", price_terms=terms))
+    assert row["schedule_effect"] == Decimal("0.00") and row["speed_effect"] == Decimal("-4.00")
+    assert row["list_value"] + row["schedule_effect"] + row["speed_effect"] + row["demand_effect"] == row["gross"]
+    report = e.aggregate([row])
+    assert report["dynamic_pricing"]["speed_effect"] == Decimal("-4.00")
+
+
+def test_warning_counts_only_sessions_without_confirmed_payment():
+    paid = e.session_economics(session(), extras={"payment": {"net_amount": "14.04", "provider_fee": None}})
+    estimated = e.session_economics(session(id="s2"))
+    assert not any("pagamento" in text for text in e.aggregate([paid])["warnings"])
+    assert "1 de 2 recargas sem pagamento confirmado: receita estimada pela energia registrada." in \
+        e.aggregate([paid, estimated])["warnings"]
+    assert "Sem pagamento confirmado: receitas estimadas pela energia registrada." in \
+        e.aggregate([estimated])["warnings"]
+
+
+def test_central_rent_reduces_payout_and_result_but_not_session_margin():
+    row = e.session_economics(session())
+    rent = {"total": Decimal("99.00"), "centrals": 1, "by_station": {"st1": Decimal("54.29"), "st2": Decimal("44.71")},
+            "lines": [{"station_id": "st1", "station_name": "Posto A", "device_id": "d1", "central": "CG-1",
+                       "month": "2026-10", "days": 17, "days_in_month": 31, "monthly_amount": Decimal("99.00"),
+                       "amount": Decimal("54.29")},
+                      {"station_id": "st2", "station_name": "Posto B", "device_id": "d2", "central": "CG-2",
+                       "month": "2026-10", "days": 14, "days_in_month": 31, "monthly_amount": Decimal("99.00"),
+                       "amount": Decimal("44.71")}]}
+    report = e.aggregate([row], rent=rent)
+    totals = report["totals"]
+    assert totals["central_rent"] == Decimal("99.00") and totals["margin"] == Decimal("2.53")
+    assert totals["owner_net_after_rent"] == Decimal("10.53") - Decimal("99.00")
+    assert totals["result"] == Decimal("2.53") - Decimal("99.00")
+    stations = {item["station_id"]: item for item in report["by_station"]}
+    assert stations["st2"]["sessions"] == 0 and stations["st2"]["central_rent"] == Decimal("44.71")
+    assert stations["st2"]["station_name"] == "Posto B" and stations["st1"]["centrals"] == 1
+    assert report["central_rent"]["lines"][0]["amount"] == Decimal("54.29")
+    data = e.serialize(report)
+    assert data["totals"]["central_rent"] == "99.00" and data["central_rent"]["lines"][0]["days"] == 17
+    without = e.aggregate([row])
+    assert without["central_rent"] is None and without["totals"]["central_rent"] is None
+    assert without["totals"]["owner_net_after_rent"] == without["totals"]["owner_net"]
+    assert without["totals"]["result"] == without["totals"]["margin"]

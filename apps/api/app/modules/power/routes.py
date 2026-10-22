@@ -5,11 +5,10 @@ from fastapi import APIRouter, Depends
 from ...database import db_session
 from ...errors import fail
 from ...models import ChargingSession
-from ...schemas import BuildingLoadInput, PowerSiteInput
+from ...schemas import PowerSiteInput
 from ...security import current_user
 from ...service import owned
-from ..auth.routes import limit
-from .service import session_view, set_building_load, set_site, station_view
+from .service import session_view, set_site, station_view
 
 router = APIRouter()
 
@@ -27,13 +26,11 @@ def station_power_site(station_id: UUID, data: PowerSiteInput, user=Depends(curr
 
 
 @router.put("/stations/{station_id}/building-load")
-def station_building_load(station_id: UUID, data: BuildingLoadInput, user=Depends(current_user),
-                          db=Depends(db_session)):
-    # Controle deslizante do painel do vendedor: 120/min deixa arrastar sem travar.
-    limit(db, f"building-load:{user.id}", maximum=120)
-    station = owned(db, user, station_id)
-    set_building_load(db, station, data.building_load_kw)
-    return station_view(db, station)
+def station_building_load(station_id: UUID, user=Depends(current_user), db=Depends(db_session)):
+    # Consumo da loja ao vivo/simulado removido: a loja é uma margem ESTIMADA fixa (PUT power-site).
+    owned(db, user, station_id)
+    fail("store_load_removed", "A loja agora é uma margem estimada: informe o mínimo e o pico estimados "
+                               "em Limites (PUT power-site, store_min_kw e store_peak_kw).", 410)
 
 
 @router.get("/charging-sessions/{session_id}/power")

@@ -49,8 +49,7 @@ class Bench:
                 self.drivers[name] = profile.id
             db.flush()
             station = Station(owner_id=owner.id, name="Loja", address="Rua", latitude=0, longitude=0,
-                              site_limit_kw=D(30), building_load_kw=D(12), building_load_source="simulated",
-                              building_load_updated_at=now(),  # valor do simulador (vale 30 min)
+                              site_limit_kw=D(30), store_min_kw=D(0), store_peak_kw=D(12),  # margem ESTIMADA
                               rebalance_enabled=live_enabled)
             db.add(station)
             db.flush()
@@ -107,9 +106,11 @@ class Bench:
                                     headers={"Idempotency-Key": f"stop-{name}-{uuid.uuid4()}"})
         assert response.status_code == 202, response.text
 
-    def building(self, kw):
+    def store(self, kw):
+        """O dono muda o pico ESTIMADO da loja (Limites): a margem reservada passa a ser ``kw``."""
         self.as_user(self.owner)
-        response = self.client.put(f"/v1/stations/{self.station}/building-load", json={"building_load_kw": kw})
+        response = self.client.put(f"/v1/stations/{self.station}/power-site",
+                                   json={"store_min_kw": 0, "store_peak_kw": kw})
         assert response.status_code == 200, response.text
         return response.json()
 
@@ -153,7 +154,8 @@ def test_lone_car_gets_full_power_not_one_third(bench):
     start = bench.commands("a", "START")[-1]
     assert start.parameters["power_limit_w"] == 7200
     session = bench.session("a")
-    assert session.power_reason == "7,2 kW, o máximo deste carregador (a loja usa 12 de 30 kW; 1 carro carregando)."
+    assert session.power_reason == ("7,2 kW, o máximo deste carregador (12 kW dos 30 kW contratados ficam reservados "
+                                    "para a loja; 1 carro carregando).")
 
 
 def test_third_car_reduces_others_first_then_raises_after_acks(bench):
@@ -186,7 +188,8 @@ def test_third_car_reduces_others_first_then_raises_after_acks(bench):
     bench.sync("c")
     assert [bench.applied(name) for name in "abc"] == [D("6.0")] * 3
     assert bench.envelope_total() == D(18)
-    assert bench.session("c").power_reason == "6 kW porque a loja usa 12 de 30 kW e há 3 carros carregando."
+    assert bench.session("c").power_reason == ("6 kW porque 12 kW dos 30 kW contratados ficam reservados para a loja "
+                                               "(estimativa) e há 3 carros carregando.")
 
 
 def test_store_load_change_reduces_all_on_next_syncs_and_panel_shows_reason(bench):
@@ -195,15 +198,15 @@ def test_store_load_change_reduces_all_on_next_syncs_and_panel_shows_reason(benc
     for name in "abc":
         bench.sync(name, 2)
     bench.sync("c", 2)
-    view = bench.building(24)
-    assert view["available_kw"] == "6.000" and view["building_load_simulated"] is True
-    assert view["decisions"][0]["trigger"] == "building_load_changed"
+    view = bench.store(24)
+    assert view["available_kw"] == "6.000" and view["store_reserve_kw"] == "24.000"
+    assert view["decisions"][0]["trigger"] == "store_estimate_changed"
     for name in "abc":
         bench.sync(name, 2)
     assert [bench.applied(name) for name in "abc"] == [D("2.0")] * 3
     panel = bench.sync("a")["authorized"]["session"]
     assert panel["applied_power_kw"] == 2.0
-    assert panel["power_reason_short"] == "Loja 24/30 kW · 3 carros"
+    assert panel["power_reason_short"] == "Contrat. 30 - loja 24 kW · 3 carros"
     assert panel["power_state"] == "applied"
     bench.as_user(bench.owner)
     view = bench.client.get(f"/v1/stations/{bench.station}/power").json()
@@ -215,12 +218,13 @@ def test_store_load_change_reduces_all_on_next_syncs_and_panel_shows_reason(benc
 
 def test_driver_power_timeline_for_receipt(bench):
     _charge(bench, "a")
-    bench.building(26)
+    bench.store(26)
     bench.sync("a", 2)
     bench.as_user(bench.drivers["a"])
     body = bench.client.get(f"/v1/charging-sessions/{bench.sessions['a']}/power").json()
     assert [segment["applied_kw"] for segment in body["segments"]] == ["7.200", "4.000"]
-    assert body["segments"][1]["reason_text"] == "4 kW porque a loja usa 26 de 30 kW e só o seu carro está carregando."
+    assert body["segments"][1]["reason_text"] == ("4 kW porque 26 kW dos 30 kW contratados ficam reservados para a "
+                                                  "loja (estimativa) e só o seu carro está carregando.")
     assert body["current"]["applied_kw"] == "4.000"
     assert body["requests"][0]["kind"] == "power_requested"
     bench.as_user(bench.drivers["b"])
@@ -234,7 +238,7 @@ def test_driver_power_timeline_for_receipt(bench):
 def test_stop_supersedes_pending_set_power_and_frees_capacity(bench):
     for name in "ab":
         _charge(bench, name)
-    bench.building(24)  # 6 kW para 2 carros
+    bench.store(24)  # 6 kW para 2 carros
     body = bench.sync("a")  # recebe SET_POWER 3000, ainda sem ACK
     assert body["commands"][0]["type"] == "SET_POWER"
     bench.stop("a")
@@ -250,7 +254,7 @@ def test_stop_supersedes_pending_set_power_and_frees_capacity(bench):
 def test_pending_stop_blocks_set_power(bench):
     _charge(bench, "a")
     bench.stop("a")
-    bench.building(25)
+    bench.store(25)
     body = bench.sync("a")
     assert [cmd["type"] for cmd in body["commands"]] == ["STOP"]
     assert bench.commands("a", "SET_POWER") == []
@@ -258,7 +262,7 @@ def test_pending_stop_blocks_set_power(bench):
 
 def test_set_power_does_not_mark_point_reconciling(bench):
     _charge(bench, "a")
-    bench.building(25)
+    bench.store(25)
     bench.sync("a")
     bench.as_user(bench.drivers["b"])
     stations = bench.client.get(f"/v1/stations/{bench.station}").json()
@@ -268,7 +272,7 @@ def test_set_power_does_not_mark_point_reconciling(bench):
 
 def test_ack_with_power_above_request_is_rejected(bench):
     _charge(bench, "a")
-    bench.building(25)
+    bench.store(25)
     bench.sync("a")
     command = bench.commands("a", "SET_POWER")[-1]
     payload = bench.sims["a"].payload()
@@ -285,10 +289,10 @@ def test_ack_with_power_above_request_is_rejected(bench):
 
 def test_lost_increase_ack_is_resolved_by_reported_applied_power(bench):
     _charge(bench, "a")
-    bench.building(26)
+    bench.store(26)
     bench.sync("a", 2)
     assert bench.applied("a") == D("4.0")
-    bench.building(12)
+    bench.store(12)
     bench.sync("a")  # recebe e aplica o aumento
     bench.sims["a"].acks = []  # o ACK se perde
     with bench.factory.begin() as db:
@@ -305,7 +309,7 @@ def test_unconfirmed_reduction_is_retried_once_then_point_is_stopped(factory, tm
         _charge(bench, "a")
         assert bench.applied("a") == D("7.0")  # GW7K: máximo de 7 kW
         transport.fail_writes = 100
-        bench.building(26)
+        bench.store(26)
         bench.sync("a", 2)  # 1ª redução: escrita perdida, ACK failed (readback) → 2ª tentativa
         assert bench.commands("a", "SET_POWER")[0].error == "readback_mismatch"
         assert bench.applied("a") == D("7.0")  # a potência antiga continua valendo
@@ -324,7 +328,7 @@ def test_hca_adapter_point_follows_decision_through_registers(factory, tmp_path)
     bench = Bench(factory, tmp_path, chargers={"a": (charger, transport)})
     try:
         _charge(bench, "a")
-        bench.building(26)
+        bench.store(26)
         bench.sync("a", 2)
         assert bench.applied("a") == D("4.0") and transport.read(10029) == [40]
         with factory() as db:
@@ -343,11 +347,11 @@ def test_legacy_firmware_never_gets_set_power_or_zero_start(factory, tmp_path):
         _charge(bench, "a")
         start = bench.commands("a", "START")[-1]
         assert "power_limit_w" not in start.parameters and start.parameters["max_power_kw"] == 7.2
-        bench.building(26)
+        bench.store(26)
         assert bench.sync("a", 3)["commands"] == []
         assert bench.session("a").power_state == "fixed"
         # O carro novo conta com os 7,2 kW fixos do ponto antigo.
-        bench.building(12)
+        bench.store(12)
         bench.start("b")
         assert bench.commands("b", "START")[-1].parameters["power_limit_w"] == 7200
     finally:
@@ -356,19 +360,20 @@ def test_legacy_firmware_never_gets_set_power_or_zero_start(factory, tmp_path):
 
 def test_new_car_refused_when_site_is_full(bench):
     _charge(bench, "a")
-    bench.building("28.5")
+    bench.store("28.5")
     bench.sync("a", 2)
     response = bench.start("b", expect=409)
     error = response.json()["error"]
     assert error["code"] == "site_power_full"
-    assert error["message"].startswith("Sem potência disponível agora: a loja usa 28,5 de 30 kW")
+    assert error["message"].startswith("Sem potência disponível agora: dos 30 kW contratados, 28,5 kW ficam "
+                                       "reservados para a loja")
     with bench.factory() as db:
         assert db.scalar(select(ChargingSession).where(ChargingSession.user_id == bench.drivers["b"])) is None
 
 
 def test_new_car_may_start_paused_while_others_reduce(bench):
     _charge(bench, "a")
-    bench.building(22)  # 8 kW: o carro A fica com 7,2
+    bench.store(22)  # 8 kW: o carro A fica com 7,2
     bench.sync("a", 2)
     bench.start("b", max_power_kw="7.2")
     start = bench.commands("b", "START")[-1]
@@ -384,23 +389,25 @@ def test_driver_cap_is_kept_live(bench):
     _charge(bench, "a", max_power_kw="3.5")
     assert bench.applied("a") == D("3.5")
     assert bench.session("a").requested_power_kw == D("3.5")
-    bench.building(0)
+    bench.store(0)
     bench.sync("a", 2)
     assert bench.applied("a") == D("3.5")
     assert bench.session("a").power_reason == "3,5 kW, o limite escolhido para o seu carro."
 
 
-def test_disabled_station_keeps_next_start_behavior(factory, tmp_path):
+def test_disabled_station_splits_the_limits_at_start_and_never_sends_set_power(factory, tmp_path):
+    """Rebalanceamento desligado: a margem vale por cima de tudo, dividida no START entre os pontos
+    ativos (30 contratados − 12 da loja = 18 kW ÷ 3 = 6 kW); depois nada muda durante a recarga."""
     bench = Bench(factory, tmp_path, live_enabled=False)
     try:
         _charge(bench, "a")
         start = bench.commands("a", "START")[-1]
-        assert "power_limit_w" not in start.parameters
-        bench.building(29)
+        assert "power_limit_w" not in start.parameters and start.parameters["max_power_kw"] == 6.0
+        bench.store(28)
         assert bench.sync("a", 2)["commands"] == []
         assert bench.commands("a", "SET_POWER") == []
         session = bench.session("a")
-        assert session.power_state is None and session.applied_power_kw == D("7.2")
+        assert session.power_state is None and session.power_limit_kw == D("6.0")
     finally:
         clear_overrides()
 
@@ -408,7 +415,8 @@ def test_disabled_station_keeps_next_start_behavior(factory, tmp_path):
 def test_owner_routes_validate_and_are_owner_only(bench):
     bench.as_user(bench.owner)
     url = f"/v1/stations/{bench.station}"
-    assert bench.client.put(url + "/building-load", json={"building_load_kw": -1}).status_code == 422
+    removed = bench.client.put(url + "/building-load", json={"building_load_kw": 1})
+    assert removed.status_code == 410 and removed.json()["error"]["code"] == "store_load_removed"
     assert bench.client.put(url + "/power-site", json={"site_limit_kw": 0}).status_code == 422
     assert bench.client.put(url + "/power-site", json={"rebalance_enabled": None}).status_code == 422
     view = bench.client.put(url + "/power-site", json={"site_limit_kw": "45.04", "rebalance_enabled": False}).json()
@@ -438,11 +446,11 @@ def test_concurrent_raises_never_share_the_same_headroom(bench):
     bench.sync("c", 2)
     assert [bench.applied(name) for name in "abc"] == [D("6.0")] * 3
     bench.stop("c")  # STOP pendente: os 6 kW de C continuam reservados
-    bench.building(24)
+    bench.store(24)
     for name in "ab":
         bench.sync(name, 2)
     assert (bench.applied("a"), bench.applied("b")) == (D("3.0"), D("3.0"))
-    bench.building(12)  # A e B querem 7,2; a folga real é 18 − 6 (C) − 3 − 3 = 6
+    bench.store(12)  # A e B querem 7,2; a folga real é 18 − 6 (C) − 3 − 3 = 6
     barrier = threading.Barrier(2)
     errors = []
 
@@ -485,7 +493,7 @@ def test_sync_rate_limit_allows_one_second_syncs(bench):
         bench.sync("a")
 
 
-# ---- Consumo SIMULADO da loja e rebalanceamento ligado por padrão ----------------------------------
+# ---- Margem ESTIMADA da loja, limites e rebalanceamento ligado por padrão ----------------------------------
 
 
 def _plain_station(factory, **fields):
@@ -510,86 +518,153 @@ def test_new_stations_have_rebalancing_on_and_payment_switches_off(factory):
         body = created.json()
         assert body["rebalance_enabled"] is True
         assert body["prepay_required"] is False and body["kiosk_payments"] is False and body["kiosk_mode"] is False
-        assert body["site_limit_kw"] is None  # o dono não informou: vale o padrão do tipo/porte
+        assert body["site_limit_kw"] is None  # o dono não informou: vale o padrão (75 kW)
     finally:
         clear_overrides()
 
 
-def test_power_view_uses_default_limit_and_simulated_store_load(factory):
-    from chargegrid_core import site_load
-
+def test_power_view_uses_default_limit_and_estimated_store_margin(factory):
     owner, station_id = _plain_station(factory)
     client, _ = client_for(factory, owner)
+    url = f"/v1/stations/{station_id}/power-site"
     try:
         view = client.get(f"/v1/stations/{station_id}/power").json()
         assert view["rebalance_enabled"] is True
         assert view["site_limit_kw"] == "75.000" and view["site_limit_default"] is True
         assert view["site_limit_configured_kw"] is None and view["site_limit_default_kw"] == "75.000"
-        assert view["building_load_simulated"] is True and view["building_load_mode"] == "profile"
-        assert view["building_profile"] == "conveniencia" and view["building_size"] == "medio"
-        assert view["building_profile_label"] == "Loja de conveniência · porte médio"
-        expected = site_load.simulate(str(station_id), now(), "conveniencia", "medio", site_limit_kw=D(75))
-        assert abs(D(view["building_load_kw"]) - expected) <= D("0.5")  # mesma janela (ou a vizinha)
-        assert D(view["available_kw"]) == D(75) - D(view["building_load_kw"])
-        # Tipo/porte mudam a curva e o limite padrão; um limite do dono vale no lugar do padrão.
-        view = client.put(f"/v1/stations/{station_id}/power-site",
-                          json={"building_profile": "supermercado", "building_size": "grande"}).json()
-        assert view["site_limit_kw"] == "210.000" and view["building_profile"] == "supermercado"
-        assert client.put(f"/v1/stations/{station_id}/power-site",
-                          json={"building_profile": "fabrica"}).status_code == 422
-        view = client.put(f"/v1/stations/{station_id}/power-site", json={"site_limit_kw": "120"}).json()
-        assert view["site_limit_kw"] == "120.000" and view["site_limit_default"] is False
-        assert D(view["building_load_kw"]) <= D(120) * site_load.MAX_LOAD_SHARE
-        view = client.put(f"/v1/stations/{station_id}/power-site", json={"site_limit_kw": None,
-                                                                          "building_profile": None}).json()
-        assert view["site_limit_kw"] == "75.000" and view["building_profile"] == "conveniencia"
+        # Sem medidor: margem ESTIMADA fixa (14–22 kW), o pico reservado o tempo todo; nada simulado.
+        assert (view["store_min_kw"], view["store_peak_kw"], view["store_reserve_kw"]) == ("14.000", "22.000", "22.000")
+        assert view["store_estimate_default"] is True and view["store_estimate_label"] == "ESTIMATIVA"
+        assert view["available_kw"] == "53.000" and view["building_load_kw"] == "22.000"  # alias descontinuado
+        for gone in ("building_load_simulated", "building_load_mode", "building_profile", "building_size",
+                     "building_profile_label", "building_peak_kw", "building_load_manual_until"):
+            assert gone not in view
+        assert client.get(f"/v1/stations/{station_id}/power").json()["available_kw"] == "53.000"  # estável
+        # Tipo/porte de apps antigos: aceitos e ignorados.
+        view = client.put(url, json={"building_profile": "supermercado", "building_size": "grande"}).json()
+        assert view["available_kw"] == "53.000"
+        # Pico maior: o limite padrão acompanha (160 × 1,3 → 210) e sobram 50 kW.
+        view = client.put(url, json={"store_min_kw": "89.6", "store_peak_kw": "160"}).json()
+        assert (view["site_limit_kw"], view["available_kw"], view["store_estimate_default"]) == \
+            ("210.000", "50.000", False)
+        refused = client.put(url, json={"site_limit_kw": "120"})
+        assert refused.status_code == 422 and refused.json()["error"]["code"] == "invalid_store_estimate"
+        assert "deixa 0 kW para os carregadores" in refused.json()["error"]["message"]
+        assert client.get(f"/v1/stations/{station_id}/power").json()["site_limit_kw"] == "210.000"  # nada gravado
+        view = client.put(url, json={"site_limit_kw": "200.04"}).json()
+        assert (view["site_limit_kw"], view["available_kw"]) == ("200.000", "40.000")
+        assert client.put(url, json={"store_min_kw": "170"}).status_code == 422  # mínimo acima do pico
+        assert client.put(url, json={"store_peak_kw": "-1"}).status_code == 422
+        view = client.put(url, json={"site_limit_kw": None, "store_min_kw": None, "store_peak_kw": None}).json()
+        assert (view["site_limit_kw"], view["store_peak_kw"], view["available_kw"]) == ("75.000", "22.000", "53.000")
     finally:
         clear_overrides()
 
 
-def test_simulator_load_lasts_30_minutes_and_null_returns_to_the_curve(factory):
-    owner, station_id = _plain_station(factory)
-    client, _ = client_for(factory, owner)
-    url = f"/v1/stations/{station_id}/building-load"
-    try:
-        view = client.put(url, json={"building_load_kw": "33.3"}).json()
-        assert view["building_load_kw"] == "33.300" and view["building_load_mode"] == "manual"
-        assert view["building_load_manual_until"] is not None
-        with factory.begin() as db:
-            db.get(Station, station_id).building_load_updated_at = now() - timedelta(minutes=31)
-        view = client.get(f"/v1/stations/{station_id}/power").json()
-        assert view["building_load_mode"] == "profile" and view["building_load_manual_until"] is None
-        client.put(url, json={"building_load_kw": "40"})
-        view = client.put(url, json={"building_load_kw": None}).json()
-        assert view["building_load_mode"] == "profile"
-        with factory() as db:
-            station = db.get(Station, station_id)
-            assert station.building_load_kw is None and station.building_load_source is None
-        assert client.put(url, json={}).status_code == 422  # o campo continua obrigatório
-    finally:
-        clear_overrides()
+def test_power_site_saves_all_limits_in_one_atomic_put(bench):
+    bench.as_user(bench.owner)
+    url = f"/v1/stations/{bench.station}/power-site"
+    view = bench.client.put(url, json={"site_limit_kw": "30", "store_min_kw": "2", "store_peak_kw": "10",
+                                       "max_power_kw": "12", "power_limit_notify": True}).json()
+    assert (view["station_cap_kw"], view["available_kw"], view["power_limit_notify"]) == ("12.000", "12.000", True)
+    assert (view["connectors_total_kw"], view["charger_floor_kw"], view["chargers_floor_total_kw"]) == \
+        ("21.600", "1.400", "4.200")
+    # Teto abaixo do piso dos 3 conectores: 422 e nada muda (nem o pico enviado junto).
+    refused = bench.client.put(url, json={"store_peak_kw": "5", "max_power_kw": "3"})
+    assert refused.status_code == 422 and refused.json()["error"]["code"] == "invalid_power_limit"
+    view = bench.client.get(f"/v1/stations/{bench.station}/power").json()
+    assert (view["station_cap_kw"], view["store_peak_kw"]) == ("12.000", "10.000")
+    view = bench.client.put(url, json={"max_power_kw": None, "power_limit_notify": False}).json()
+    assert (view["station_cap_kw"], view["available_kw"], view["power_limit_notify"]) == (None, "20.000", False)
+    assert bench.client.put(url, json={"power_limit_notify": None}).status_code == 422
+    station = bench.client.get(f"/v1/stations/{bench.station}").json()
+    assert station["store_peak_kw"] == "10.000" and station["max_power_kw"] is None
 
 
-def test_simulated_store_plus_chargers_stay_within_the_default_limit(factory, tmp_path):
-    bench = Bench(factory, tmp_path)
+@pytest.mark.parametrize("live_enabled", [True, False])
+def test_lab_station_with_defaults_keeps_a_7kw_hca_at_full_power(factory, tmp_path, live_enabled):
+    """A central real (sem valores gravados, HCA de 7 kW) não pode pausar: 75 − 22 = 53 kW sobram."""
+    charger, transport = load_charger("goodwe-hca-g2")
+    bench = Bench(factory, tmp_path, live_enabled=live_enabled, chargers={"a": (charger, transport)})
     try:
-        with factory.begin() as db:  # posto "de fábrica": sem limite informado nem valor do simulador
+        with factory.begin() as db:  # posto "de fábrica"
             station = db.get(Station, bench.station)
-            station.site_limit_kw = None
-            station.building_load_kw = None
-            station.building_load_source = None
-        for name in "abc":
-            _charge(bench, name)
-        for _ in range(3):
-            for name in "abc":
-                bench.sync(name, 2)
+            station.site_limit_kw = station.store_min_kw = station.store_peak_kw = None
+        _charge(bench, "a")
+        bench.sync("a", 3)
+        session = bench.session("a")
+        assert session.status == "charging" and session.power_limit_kw == D("7.0")
+        if live_enabled:
+            assert bench.applied("a") == D("7.0") and session.power_state == "applied"
         bench.as_user(bench.owner)
         view = bench.client.get(f"/v1/stations/{bench.station}/power").json()
-        assert view["site_limit_default"] is True and view["building_load_mode"] == "profile"
-        assert D(view["building_load_kw"]) + bench.envelope_total() <= D(view["site_limit_kw"])
-        assert view["exceeded_kw"] == "0.000"
+        assert view["available_kw"] == "53.000" and view["store_estimate_default"] is True
     finally:
         clear_overrides()
+
+
+def test_disabled_rebalancing_splits_contract_minus_store_peak_between_two_60kw_points(factory):
+    """2 × 60 kW DC, padrões (75 − 22 = 53 kW), rebalanceamento desligado: 26,5 kW cada no START.
+    Ligado, a divisão fica com a decisão ao vivo (um carro sozinho recebe até 53 kW)."""
+    from app.http_helpers import allocation, station_budget
+
+    owner, station_id = _plain_station(factory, rebalance_enabled=False)
+    with factory.begin() as db:
+        for code in ("DC-1", "DC-2"):
+            db.add(Connector(station_id=station_id, public_code=code, connector_type="CCS2", power_kw=D(60),
+                             price_per_kwh=D(2), max_duration_minutes=60))
+    with factory() as db:
+        station = db.get(Station, station_id)
+        points = db.scalars(select(Connector).where(Connector.station_id == station_id)).all()
+        assert station_budget(station) == D(53)
+        shares = allocation(station, points, set())["connectors"]
+        assert sorted(item["effective_kw"] for item in shares.values()) == [D("26.5"), D("26.5")]
+        station.rebalance_enabled = True
+        assert station_budget(station) is None
+        assert all(item["effective_kw"] == D(60) for item in allocation(station, points, set())["connectors"].values())
+    client, _ = client_for(factory, owner)
+    try:
+        body = client.get(f"/v1/stations/{station_id}").json()
+        assert [point["effective_power_kw"] for point in body["connectors"]] == ["26.500", "26.500"]
+    finally:
+        clear_overrides()
+
+
+def test_store_estimate_migration_backfills_from_the_old_type_and_size(factory):
+    import importlib.util
+
+    from sqlalchemy import text
+
+    root = Path(__file__).resolve().parents[1]
+    path = root / "migrations/versions/d8b3f6a2c5e7_store_estimate_limits.py"
+    spec = importlib.util.spec_from_file_location("store_estimate_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.down_revision == "c4f1a8e6d2b9"
+    rows = {
+        "super": dict(building_profile="supermercado", building_size="grande"),
+        "conv": dict(building_profile="conveniencia"),
+        "mall": dict(building_profile="shopping", site_limit_kw=D(75)),
+        "small": dict(site_limit_kw=D(20)),
+        "plain": dict(),
+        "big": dict(site_limit_kw=D(100)),
+        "odd": dict(building_profile="fabrica", building_size="pequeno"),
+    }
+    ids = {name: _plain_station(factory, **fields)[1] for name, fields in rows.items()}
+    with factory.begin() as db:
+        db.execute(text(migration.backfill_sql()))
+    with factory() as db:
+        got = {name: (db.get(Station, ident).store_min_kw, db.get(Station, ident).store_peak_kw)
+               for name, ident in ids.items()}
+    assert got["super"] == (D("89.6"), D("160"))       # 100 × 1,6; 0,56 do pico
+    assert got["conv"] == (D("13.6"), D("22"))
+    assert got["mall"] == (D("63.7"), D("63.7"))       # nunca acima de 85 % do contratado
+    assert got["small"] == (D("14"), D("17"))          # padrão, limitado a 85 % de 20
+    assert got["plain"] == (None, None) and got["big"] == (None, None)  # seguem o padrão 14–22
+    assert got["odd"] == (D("8.2"), D("13.2"))         # tipo desconhecido = conveniência, porte pequeno
+    offline = (root / "sql/migracao_d8b3f6a2c5e7.sql").read_text()
+    assert "ADD COLUMN store_min_kw" in offline and "ADD COLUMN store_peak_kw" in offline
+    assert "Running upgrade c4f1a8e6d2b9 -> d8b3f6a2c5e7" in offline
 
 
 def test_migration_turns_rebalancing_on_for_new_and_existing_stations():

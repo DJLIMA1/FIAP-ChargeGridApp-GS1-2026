@@ -89,6 +89,19 @@ def test_settle_overstay_inside_and_beyond_reserve():
     assert (beyond['charge_cents'], beyond['uncollected_cents']) == (2500, 200)
 
 
+def test_settle_energy_above_cap_is_waived_even_with_overstay_reserve():
+    # Teto da energia R$ 10,00 + reserva da permanência R$ 30,00: a energia acima do teto aceito é
+    # perdoada (antes saía da reserva da permanência e o motorista pagava R$ 10,40).
+    plan = billing.settle_amounts(amount_cents=4000, energy_cents=1040, overstay_cents=0, energy_cap_cents=1000)
+    assert (plan['charge_cents'], plan['waived_cents'], plan['return_cents']) == (1000, 40, 3000)
+    full = billing.settle_amounts(amount_cents=4000, energy_cents=1040, overstay_cents=3000, energy_cap_cents=1000)
+    assert (full['charge_cents'], full['waived_cents'], full['uncollected_cents']) == (4000, 40, 0)
+    inside = billing.settle_amounts(amount_cents=4000, energy_cents=800, overstay_cents=500, energy_cap_cents=1000)
+    assert (inside['charge_cents'], inside['waived_cents'], inside['return_cents']) == (1300, 0, 2700)
+    fee = billing.settle_amounts(amount_cents=4490, energy_cents=1100, fixed_fee_cents=490, energy_cap_cents=1000)
+    assert (fee['charge_cents'], fee['waived_cents']) == (1490, 100)
+
+
 def test_settle_fixed_fee_is_kept():
     result = billing.settle_amounts(amount_cents=2490, energy_cents=0, fixed_fee_cents=490)
     assert (result['charge_cents'], result['return_cents']) == (490, 2000)

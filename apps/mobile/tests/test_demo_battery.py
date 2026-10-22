@@ -51,7 +51,8 @@ class DemoBatteryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status, 422)
 
     async def test_simulated_soc_rises_with_energy_and_stops_battery_full(self):
-        power = Decimal(self.point['power_kw'])
+        # Limites padrão do posto: 75 kW contratados − 22 kW da loja = até 53 kW para o carro.
+        power = min(Decimal(self.point['power_kw']), Decimal(53))
         session = await self.start(soc_percent=90, battery_kwh=10, soc_source='simulated')
         # 1 s to start; 0.5 kWh at `power` kW -> +5 %.
         self.clock[0] = 1 + float(Decimal('0.5') / power * 3600)

@@ -17,11 +17,26 @@ describe('mock do painel (modo demonstração)', () => {
     expect(report.totals.margin).toBeNull()
     expect(report.totals.coverage.missing_energy_cost).toBeGreaterThan(0)
     const steps = buildCascade(report.totals, '25%')
-    expect(steps.find((s) => s.key === 'margin')?.value).toBeNull()
+    expect(steps.find((s) => s.kind === 'result')?.value).toBeNull()
+    // Aluguel das centrais (R$ 99,00/mês por central): descontado do repasse.
+    expect(c(report.totals.central_rent ?? null)).toBeGreaterThan(0)
+    expect(c(report.totals.owner_net_after_rent ?? null)).toBe(c(report.totals.owner_net) - c(report.totals.central_rent ?? null))
+    expect(report.central_rent?.lines.reduce((t, l) => t + c(l.amount), 0)).toBe(c(report.totals.central_rent ?? null))
+    expect(steps.map((s) => s.key)).toContain('owner_net_after_rent')
     for (const row of report.items) {
       expect(c(row.revenue_total) - c(row.platform_fee) - c(row.provider_fee)).toBe(c(row.owner_net))
       if (row.margin !== null) expect(c(row.owner_net) - c(row.energy_cost)).toBe(c(row.margin))
     }
+  })
+
+  it('aluguel de um mês fechado é o valor mensal e o CSV traz uma linha por central e mês', () => {
+    const params = new URLSearchParams({ from: '2026-09-01T03:00:00.000Z', to: '2026-10-01T03:00:00.000Z' })
+    const rent = ops.rentAccrual(Date.parse(params.get('from')!), Date.parse(params.get('to')!), [data.STATIONS[0].id], Date.parse('2026-10-22T12:00:00Z'))
+    expect(rent.lines).toHaveLength(1)
+    expect(rent.lines[0]).toMatchObject({ month: '2026-09', days: 30, days_in_month: 30, amount: '99.00' })
+    const partial = ops.rentAccrual(Date.parse('2026-10-01T03:00:00Z'), Date.parse('2026-11-01T03:00:00Z'), [data.STATIONS[0].id], Date.parse('2026-10-22T12:00:00Z'))
+    expect(partial.lines[0]).toMatchObject({ days: 22, days_in_month: 31, amount: '70.26' })
+    expect(ops.rentCsv(new URLSearchParams()).split('\r\n')[0]).toBe('Posto,Central (ponto),Mês,Dias cobrados,Dias do mês,Aluguel mensal (R$),Valor (R$)')
   })
 
   it('com o custo informado em todos os postos, a margem total aparece', () => {
@@ -36,7 +51,8 @@ describe('mock do painel (modo demonstração)', () => {
   it('limite contratado menor reduz o alvo e o excesso aparece até a confirmação', () => {
     const villaLobos = data.STATIONS[0].id
     const before = ops.power(villaLobos)
-    const load = Number(before.building_load_kw)
+    const load = Number(before.store_reserve_kw)  // margem ESTIMADA da loja (22 kW no padrão)
+    expect(load).toBe(22)
     const after = ops.putPowerSite(villaLobos, { site_limit_kw: (load + 15).toFixed(1) })
     expect(after.available_kw).toBe('15.0')
     expect(after.points.find((p) => p.session)?.session?.target_kw).toBe('15.0')

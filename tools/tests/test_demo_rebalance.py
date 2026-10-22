@@ -31,10 +31,11 @@ class FakeClient:
             if not self.expired_once:
                 self.expired_once = True
                 return Response(401, {})
-            return Response(202, {"id": "session-1", "power_reason": "6 kW porque a loja usa 12 de 30 kW"})
-        if path.endswith("/building-load"):
-            self.loads = [*getattr(self, "loads", []), json["building_load_kw"]]
-            return Response(200, {"building_load_kw": json["building_load_kw"] or "18.4", "available_kw": "6.000"})
+            return Response(202, {"id": "session-1", "power_reason": "6 kW porque 12 kW dos 30 kW contratados ficam "
+                                                                    "reservados para a loja"})
+        if path.endswith("/power-site"):
+            self.loads = [*getattr(self, "loads", []), json]
+            return Response(200, {"store_peak_kw": json["store_peak_kw"] or "22.000", "available_kw": "6.000"})
         return Response(202, {})
 
 
@@ -61,14 +62,15 @@ def test_commands_start_stop_and_store_load_with_relogin_on_401():
     driver, owner = Account(client, "d@x.com", "s"), Account(client, "o@x.com", "s")
     demo = Demo(client, [_device()], [driver], owner, "station-1", out=lines.append)
     assert demo.handle("entra 1")
-    assert lines[-1] == "Carro 1 entrou em CG-SIM1: 6 kW porque a loja usa 12 de 30 kW"
+    assert lines[-1] == "Carro 1 entrou em CG-SIM1: 6 kW porque 12 kW dos 30 kW contratados ficam reservados para a loja"
     logins = [call for call in client.calls if call[1] == "/v1/auth/login"]
     assert len(logins) == 2  # token expirado: novo login e nova tentativa
-    demo.handle("loja 24,5")
-    assert lines[-1] == "Loja (SIMULADO, valor da demo, 30 min) em 24.5 kW: disponível 6.000 kW"
-    demo.handle("loja auto")  # volta à curva simulada do estabelecimento
-    assert client.loads[-1] is None
-    assert lines[-1] == "Loja (SIMULADO, curva do estabelecimento) em 18.4 kW: disponível 6.000 kW"
+    demo.handle("loja 24,5")  # muda o pico ESTIMADO da loja (Limites)
+    assert client.loads[-1] == {"store_min_kw": None, "store_peak_kw": "24.5"}
+    assert lines[-1] == "Margem da loja (ESTIMATIVA, informada) em 24.5 kW: disponível 6.000 kW"
+    demo.handle("loja auto")  # volta ao padrão 14–22 kW
+    assert client.loads[-1] == {"store_min_kw": None, "store_peak_kw": None}
+    assert lines[-1] == "Margem da loja (ESTIMATIVA, padrão) em 22.000 kW: disponível 6.000 kW"
     demo.handle("sai 1")
     assert ("POST", "/v1/charging-sessions/session-1/stop") in [call[:2] for call in client.calls]
     demo.handle("entra 9")

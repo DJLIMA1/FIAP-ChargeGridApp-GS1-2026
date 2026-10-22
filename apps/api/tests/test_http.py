@@ -105,7 +105,8 @@ def test_me_summary_month_boundaries_and_user_isolation(factory, seed):
         assert response.json() == {
             "month": month,
             "currency": "BRL",
-            "estimated_cost": "3.1250",
+            # Cada sessão ao centavo antes de somar (2,50 + 0,63), como o histórico e o recibo.
+            "estimated_cost": "3.1300",
             "energy_wh": "1250.000",
             "sessions_count": 2,
         }

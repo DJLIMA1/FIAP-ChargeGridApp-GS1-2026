@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     FetchedValue,
     ForeignKey,
@@ -83,17 +84,20 @@ class Station(Base):
     # START e mostrar o QR de pagamento no painel físico.
     prepay_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     kiosk_payments: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-    # Rebalanceamento ao vivo (migração b7d2f4a91c36): limite contratado da instalação (loja
-    # incluída; NULL = padrão do tipo/porte, chargegrid_core.site_load) e consumo do estabelecimento.
-    # Sem medição real, o consumo é SIMULADO pela curva do tipo/porte; ``building_load_kw`` com
-    # ``building_load_source = 'simulated'`` é o valor enviado pelo simulador/demo (PUT building-load),
-    # válido por 30 min. Ligado por padrão desde a migração a3e8c5d1f7b9.
+    # Limites do posto (chargegrid_core.site_load): limite contratado da instalação (loja incluída;
+    # NULL = padrão pelo pico estimado) e, desde a migração d8b3f6a2c5e7, a margem ESTIMADA da loja
+    # (mínimo e pico típicos; NULL = 14–22 kW). Sem medidor, o pico estimado fica reservado o tempo
+    # todo: carregadores = min(max_power_kw, contratado − pico). Rebalanceamento ligado por padrão
+    # desde a migração a3e8c5d1f7b9.
     site_limit_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    store_min_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    store_peak_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # DESCONTINUADAS (sem uso desde d8b3f6a2c5e7; mantidas por uma versão para rollback): consumo
+    # simulado/manual da loja e tipo/porte da curva simulada.
     building_load_kw: Mapped[float | None] = mapped_column(Numeric(10, 3))
     building_load_source: Mapped[str | None] = mapped_column(String(20))
     building_load_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rebalance_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
-    # Tipo e porte do estabelecimento para a curva simulada (NULL = conveniência, porte médio).
     building_profile: Mapped[str | None] = mapped_column(String(20))
     building_size: Mapped[str | None] = mapped_column(String(10))
     # Totem de autoatendimento no painel físico (migração f4b9d2c7e1a3; modules/kiosk_totem).
@@ -108,6 +112,11 @@ class Station(Base):
         CheckConstraint("building_load_kw IS NULL OR building_load_kw >= 0", name="station_building_load_range"),
         CheckConstraint("building_load_source IS NULL OR building_load_source IN ('simulated')",
                         name="station_building_load_source"),
+        CheckConstraint("store_min_kw IS NULL OR store_min_kw >= 0", name="station_store_min_range"),
+        CheckConstraint("store_peak_kw IS NULL OR (store_peak_kw >= 0 AND store_peak_kw <= 10000)",
+                        name="station_store_peak_range"),
+        CheckConstraint("store_min_kw IS NULL OR store_peak_kw IS NULL OR store_min_kw <= store_peak_kw",
+                        name="station_store_min_le_peak"),
     )
 
 
@@ -195,9 +204,62 @@ class Device(Base):
     # própria (sessões/comandos/estado do ponto) sem chave utilizável, ligada à tela; a tela
     # sincroniza por ele com ``charger_address`` no corpo do sync (migração d3f8a1c6e2b7).
     parent_device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    # Aluguel das centrais (migração c4f1a8e6d2b9): quando a linha nasceu (NULL = antes da migração;
+    # vale o vínculo do QR) e quando foi revogada (gatilho ``device_revoked_at``: revogar, restaurar
+    # de fábrica ou aposentar carregadores sem tocar nesses fluxos).
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=now,
+                                                        server_default=text("now()"))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
         CheckConstraint("parent_device_id IS NULL OR parent_device_id <> id", name="device_parent_not_self"),
+    )
+
+
+# Mesmo gatilho da migração c4f1a8e6d2b9: a primeira revogação grava ``revoked_at`` (fim do
+# aluguel da central), qualquer que seja o caminho que revogou.
+DEVICE_REVOKED_AT_TRIGGER = (
+    """
+CREATE OR REPLACE FUNCTION device_revoked_at() RETURNS trigger AS $$
+BEGIN
+    IF NEW.revoked AND NEW.revoked_at IS NULL AND (TG_OP = 'INSERT' OR NOT OLD.revoked) THEN
+        NEW.revoked_at := now();
+    END IF;
+    RETURN NEW;
+END
+$$ LANGUAGE plpgsql
+""",
+    """
+CREATE TRIGGER device_revoked_at BEFORE INSERT OR UPDATE OF revoked ON devices
+FOR EACH ROW EXECUTE FUNCTION device_revoked_at()
+""",
+)
+for _statement in DEVICE_REVOKED_AT_TRIGGER:
+    event.listen(Device.__table__, "after_create", DDL(_statement).execute_if(dialect="postgresql"))
+
+
+class CentralRentRate(Base):
+    """Aluguel mensal por central (contrato; ``chargegrid_core.rent``), com vigência por data local.
+
+    ``station_id`` NULL = padrão da plataforma; numa linha de posto, ``monthly_amount`` NULL =
+    volta ao padrão a partir de ``effective_from``. Gravado só pela administração
+    (``tools/set_central_rent.py``); o dono só lê.
+    """
+
+    __tablename__ = "central_rent_rates"
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    station_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("stations.id"), index=True)
+    monthly_amount: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    effective_from: Mapped[datetime] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, server_default=text("now()"))
+    __table_args__ = (
+        CheckConstraint("monthly_amount IS NULL OR monthly_amount BETWEEN 0 AND 10000",
+                        name="central_rent_amount_range"),
+        CheckConstraint("station_id IS NOT NULL OR monthly_amount IS NOT NULL", name="central_rent_default_amount"),
+        Index("uq_central_rent_default", "effective_from", unique=True, postgresql_where=text("station_id IS NULL")),
+        Index("uq_central_rent_station", "station_id", "effective_from", unique=True,
+              postgresql_where=text("station_id IS NOT NULL")),
     )
 
 

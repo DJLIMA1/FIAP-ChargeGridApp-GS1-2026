@@ -3,7 +3,7 @@
  * `types.ts`: decimais como strings, `null` = sem dado):
  *
  * - C · Resultado: `/stations/{id}/economics`, `/owner/margin` e exportações;
- * - B · Energia do estabelecimento: `/stations/{id}/power`, `power-site`, `building-load`;
+ * - B · Potência e Limites do posto: `/stations/{id}/power` e `power-site` (margem ESTIMADA da loja);
  * - A · Pagamentos (Stripe em modo teste): `payment` nas sessões do dono;
  * - D · Permanência: `rules.rotation`, `overstay` no posto/sessão e `occupancy` no ao vivo.
  *
@@ -21,6 +21,11 @@ export interface StationEconomics {
   fee_editable: boolean
   currency: string
   notes?: string[]
+  /** Aluguel mensal por central vigente hoje (contrato, só leitura); `null`/ausente = sem aluguel. */
+  central_monthly_rent?: Decimal | null
+  /** Centrais (telas) vinculadas ao posto. */
+  centrals?: number
+  rent_editable?: boolean
 }
 
 export type CostBasis = 'snapshot' | 'current' | 'missing'
@@ -41,12 +46,16 @@ export interface MarginRow {
   discount_percent: number
   list_value: Decimal
   schedule_effect: Decimal | null
+  /** Diferença da base pela velocidade escolhida (base do conector); `null` sem a informação. */
+  speed_effect?: Decimal | null
   demand_effect: Decimal
   gross: Decimal
   discount: Decimal
   revenue: Decimal
   overstay_revenue: Decimal | null
   revenue_total: Decimal
+  /** Receita cobrada − energia − permanência: perdoado/não cobrado no pagamento (≤ 0 em geral). */
+  payment_adjustment?: Decimal
   revenue_basis: 'estimated' | 'captured' | string
   payment_environment: string | null
   platform_fee_percent: Decimal
@@ -79,6 +88,29 @@ export interface MarginTotals {
   margin_covered: Decimal
   margin_percent: Decimal | null
   coverage: { sessions: number; with_energy_cost: number; missing_energy_cost: number }
+  speed_effect?: Decimal | null
+  payment_adjustment?: Decimal
+  /** Aluguel das centrais no período (`null` = sem aluguel configurado). */
+  central_rent?: Decimal | null
+  centrals?: number
+  /** Repasse − aluguel das centrais (o que vai para a folha do dono). */
+  owner_net_after_rent?: Decimal
+  /** Margem − aluguel das centrais (`null` sem custo da energia). */
+  result?: Decimal | null
+  result_percent?: Decimal | null
+}
+
+export interface CentralRentLine {
+  station_id: string | null
+  station_name: string
+  device_id: string
+  central: string
+  /** "2026-10" */
+  month: string
+  days: number
+  days_in_month: number
+  monthly_amount: Decimal
+  amount: Decimal
 }
 
 export interface MarginStationConfig extends StationEconomics {
@@ -96,12 +128,14 @@ export interface MarginReport {
   dynamic_pricing: {
     demand_effect: Decimal
     schedule_effect: Decimal | null
+    speed_effect?: Decimal | null
     sessions_with_increase: number
     average_multiplier: Decimal | null
   }
   coupons: { sessions: number; discount: Decimal }
   sources: Record<string, number>
   by_station: (MarginTotals & { station_id: string | null; station_name: string })[]
+  central_rent?: { total: Decimal; centrals: number; lines: CentralRentLine[] } | null
   warnings: string[]
   methodology: string[]
   items: MarginRow[]
@@ -149,23 +183,25 @@ export interface PowerDecision {
 export interface StationPower {
   station_id: string
   rebalance_enabled: boolean
-  /** Limite efetivo: o informado pelo dono ou o padrão do tipo/porte (`site_limit_default`). */
+  /** Limite efetivo: o informado pelo dono ou o padrão pelo pico estimado (`site_limit_default`). */
   site_limit_kw: Decimal | null
   site_limit_default: boolean
   /** Informado pelo dono (`null` = vale o padrão). */
   site_limit_configured_kw: Decimal | null
   site_limit_default_kw: Decimal | null
-  /** Consumo da loja agora: sempre SIMULADO (sem medidor), pela curva do tipo/porte ou do simulador. */
-  building_load_kw: Decimal | null
-  building_load_source: string | null
-  building_load_simulated: boolean
-  building_load_mode?: 'auto' | 'manual' | string | null
-  building_load_updated_at: string | null
-  building_load_manual_until?: string | null
-  building_profile: string
-  building_size: string
-  building_profile_label?: string
-  building_peak_kw?: Decimal | null
+  /** Margem ESTIMADA da loja (fixa, sem medidor nem simulação): o pico fica reservado o tempo todo. */
+  store_min_kw?: Decimal | null
+  store_peak_kw?: Decimal | null
+  store_reserve_kw?: Decimal | null
+  store_estimate_default?: boolean
+  store_estimate_label?: string
+  /** Descontinuado (apps antigos): igual a `store_reserve_kw`. */
+  building_load_kw?: Decimal | null
+  power_limit_notify?: boolean
+  /** Soma das nominais dos conectores ativos, piso de um carro e soma dos pisos (faixas de Limites). */
+  connectors_total_kw?: Decimal | null
+  charger_floor_kw?: Decimal | null
+  chargers_floor_total_kw?: Decimal | null
   station_cap_kw: Decimal | null
   available_kw: Decimal | null
   allocated_kw: Decimal | null
@@ -176,12 +212,15 @@ export interface StationPower {
   decisions: PowerDecision[]
 }
 
-/** `PUT /stations/{id}/power-site` (parcial): `site_limit_kw: null` volta ao padrão do tipo/porte. */
+/** `PUT /stations/{id}/power-site` (parcial, um só salvamento): `null` volta ao padrão (contratado,
+ * loja 14–22 kW) ou tira o teto próprio dos carregadores (`max_power_kw`). */
 export interface PowerSiteInput {
   site_limit_kw?: string | null
+  store_min_kw?: string | null
+  store_peak_kw?: string | null
+  max_power_kw?: string | null
+  power_limit_notify?: boolean
   rebalance_enabled?: boolean
-  building_profile?: 'conveniencia' | 'farmacia' | 'padaria' | 'supermercado' | 'restaurante' | 'shopping'
-  building_size?: 'pequeno' | 'medio' | 'grande'
 }
 
 /* ------------------------------------------------------------ A · pagamentos */

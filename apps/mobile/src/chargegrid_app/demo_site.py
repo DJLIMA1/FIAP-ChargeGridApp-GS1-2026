@@ -3,23 +3,22 @@
 Responde às rotas do vendedor da API com o mesmo núcleo (``chargegrid_core.balancing`` e
 ``chargegrid_core.site_load``):
 
-* ``GET stations/{id}/power``, ``PUT stations/{id}/power-site`` (limite contratado, rebalanceamento,
-  tipo/porte do estabelecimento) e ``PUT stations/{id}/building-load`` (valor do simulador por 30 min;
-  ``null`` volta à curva), com o registro das últimas decisões. Como na API, o limite sem valor do
-  dono é o padrão do tipo/porte e o consumo da loja é SIMULADO pela curva, no relógio da demo;
+* ``GET stations/{id}/power`` e ``PUT stations/{id}/power-site`` (Limites: limite contratado, margem
+  ESTIMADA da loja, máximo dos carregadores, aviso e rebalanceamento), com o registro das últimas
+  decisões. Como na API, a loja é uma estimativa fixa (padrão 14–22 kW) e o pico estimado fica
+  reservado o tempo todo; ``PUT building-load`` responde 410 (consumo simulado removido);
 * rebalanceamento ao vivo: a cada avanço do relógio da demo, com o posto ligado, as sessões em
   recarga recebem o alvo da decisão; o equipamento simulado confirma na hora (aplicada = alvo) e a
   energia passa a ser contada na potência nova;
 * ``POST stations/{id}/demo-traffic`` (só na demo): coloca carros de motoristas fictícios no posto,
   um carregando e um que terminou a recarga e continua na vaga (permanência), mais uma recarga paga
-  já encerrada no histórico. Com o limite padrão (75 kW) e a loja simulada, os dois carros dividem o
-  que sobra.
+  já encerrada no histórico. Com o limite padrão (75 kW) e a margem da loja (22 kW), os carros dividem
+  os 53 kW que sobram.
 
 A permanência simulada segue ``chargegrid_core.overstay`` com os termos que valiam no posto quando o
 carro começou (taxa desligada = ``no_fee``) e termina quando o motorista fictício "desconecta".
 """
 
-from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from chargegrid_core import balancing, billing, pricing, site_load
@@ -30,7 +29,6 @@ ALLOCATED = ('starting', 'charging')
 ENVELOPED = ('starting', 'charging', 'stopping')
 TENTH = Decimal('0.1')
 SITE_MAX_KW = Decimal(10000)
-MANUAL_LOAD_TTL = timedelta(minutes=30)  # como a API: valor do simulador vale 30 min
 DECISIONS_KEPT = 20
 # Motoristas fictícios do movimento simulado (primeiro nome + veículo, como ``driver_label`` da API).
 VISITORS = ('Ana · BYD Dolphin', 'Carlos · Renault Kwid E-Tech', 'Marina · Volvo EX30', 'Rafael · GWM Ora 03')
@@ -59,35 +57,26 @@ def _round_kw(value):
 
 
 def site(station):
-    """Colunas do posto (``stations``) do rebalanceamento, com o padrão da API (ligado, limite padrão)."""
+    """Colunas do posto (``stations``) dos limites, com o padrão da API (ligado, limite e loja padrão)."""
     station.setdefault('rebalance_enabled', True)
     station.setdefault('site_limit_kw', None)
-    station.setdefault('building_load_kw', None)
-    station.setdefault('building_load_source', None)
-    station.setdefault('building_load_updated_at', None)
-    station.setdefault('building_profile', None)
-    station.setdefault('building_size', None)
+    station.setdefault('store_min_kw', None)
+    station.setdefault('store_peak_kw', None)
+    station.setdefault('max_power_kw', None)
+    station.setdefault('power_limit_notify', False)
     return station
 
 
 def inputs(api, station):
-    """Limite efetivo e consumo da loja (SIMULADO) agora, como ``power.service.site_inputs`` da API."""
+    """Limite efetivo e margem ESTIMADA da loja, como ``power.service.site_inputs`` da API."""
     site(station)
-    moment = api._now()
-    limit, is_default = site_load.effective_site_limit(_kw(station['site_limit_kw']), station['building_profile'],
-                                                       station['building_size'])
-    until = None
-    if station['building_load_kw'] is not None and station['building_load_source'] == 'simulated' \
-            and station['building_load_updated_at']:
-        until = datetime.fromisoformat(station['building_load_updated_at']) + MANUAL_LOAD_TTL
-    if until is not None and until > moment:
-        load, mode, at = Decimal(station['building_load_kw']), 'manual', station['building_load_updated_at']
-    else:
-        load = site_load.simulate(station['id'], moment, station['building_profile'], station['building_size'],
-                                  site_limit_kw=limit)
-        mode, at, until = 'profile', site_load.window_start(moment).isoformat(), None
-    return {'site_limit_kw': limit, 'site_limit_default': is_default, 'building_load_kw': load,
-            'building_load_mode': mode, 'building_load_at': at, 'manual_until': until.isoformat() if until else None}
+    return site_load.site_inputs(_kw(station['site_limit_kw']), _kw(station['store_min_kw']),
+                                 _kw(station['store_peak_kw']))
+
+
+def _ratings(api, station):
+    return [p['power_kw'] for p in api._points.values()
+            if p['station_id'] == station['id'] and p.get('active', True) and not p.get('retired')]
 
 
 # ------------------------------------------------------------------ sessões do posto
@@ -125,7 +114,7 @@ def _decide(api, station):
             order=(session['created_at'], session['id'])))
     now = inputs(api, station)
     return balancing.decide(participants, site_limit_kw=now['site_limit_kw'],
-                            building_load_kw=now['building_load_kw'], station_cap_kw=station.get('max_power_kw'))
+                            store_reserve_kw=now['store_reserve_kw'], station_cap_kw=station.get('max_power_kw'))
 
 
 def _labels(api, station_id):
@@ -207,7 +196,7 @@ def start_check(api, station, point):
                                               order=('~', probe)))
     now = inputs(api, station)
     decision = balancing.decide(participants, site_limit_kw=now['site_limit_kw'],
-                                building_load_kw=now['building_load_kw'], station_cap_kw=station.get('max_power_kw'))
+                                store_reserve_kw=now['store_reserve_kw'], station_cap_kw=station.get('max_power_kw'))
     if decision['sessions'][probe]['target_kw'] <= 0:
         reason = balancing.explain(decision, probe)['text'].removeprefix('Pausado: ')
         _fail('Sem potência disponível agora: ' + reason + ' Tente novamente em alguns minutos.',
@@ -242,20 +231,20 @@ def view(api, station):
         points.append(entry)
     total = sum(envelopes.values(), Decimal(0))
     log = api._power_decisions.get(station['id'], [])
-    profile = site_load.profile_key(station['building_profile'])
-    size = site_load.size_key(station['building_size'])
+    ratings = _ratings(api, station)
     return {
         'station_id': station['id'], 'rebalance_enabled': station['rebalance_enabled'],
         'site_limit_kw': _text(now['site_limit_kw']), 'site_limit_default': now['site_limit_default'],
         'site_limit_configured_kw': station['site_limit_kw'],
-        'site_limit_default_kw': _text(site_load.default_site_limit_kw(profile, size)),
-        'building_load_kw': _text(now['building_load_kw']), 'building_load_source': 'simulated',
-        'building_load_simulated': True, 'building_load_mode': now['building_load_mode'],
-        'building_load_updated_at': now['building_load_at'], 'building_load_manual_until': now['manual_until'],
-        'building_profile': profile, 'building_size': size,
-        'building_profile_label': site_load.profile_label(profile, size),
-        'building_peak_kw': _text(site_load.peak_kw(profile, size)),
-        'station_cap_kw': station.get('max_power_kw'),
+        'site_limit_default_kw': _text(site_load.default_site_limit_kw(now['store_peak_kw'])),
+        'store_min_kw': _text(now['store_min_kw']), 'store_peak_kw': _text(now['store_peak_kw']),
+        'store_reserve_kw': _text(now['store_reserve_kw']), 'store_estimate_default': now['store_estimate_default'],
+        'store_estimate_label': site_load.LABEL, 'building_load_kw': _text(now['store_reserve_kw']),
+        'station_cap_kw': _text(_kw(station.get('max_power_kw'))),
+        'power_limit_notify': bool(station.get('power_limit_notify')),
+        'connectors_total_kw': _text(sum((Decimal(str(value)) for value in ratings), Decimal(0))),
+        'charger_floor_kw': _text(site_load.charger_floor(ratings)),
+        'chargers_floor_total_kw': _text(sum((power_rules.floor_for(value) for value in ratings), Decimal(0))),
         'available_kw': _text(decision['available_kw']), 'allocated_kw': _text(decision['allocated_kw']),
         'envelope_kw': _text(total),
         'exceeded_kw': _text(balancing.exceeded(envelopes.values(), decision['available_kw'])),
@@ -275,11 +264,17 @@ def _decimal_input(value, message):
     return number
 
 
+SITE_FIELDS = {'site_limit_kw', 'rebalance_enabled', 'store_min_kw', 'store_peak_kw', 'max_power_kw',
+               'power_limit_notify', 'building_profile', 'building_size'}
+
+
 def set_site(api, station, body):
-    allowed = {'site_limit_kw', 'rebalance_enabled', 'building_profile', 'building_size'}
-    if not isinstance(body, dict) or set(body) - allowed:
-        _fail('Envie site_limit_kw, rebalance_enabled, building_profile e/ou building_size.', 'validation_error', 422)
+    """``PUT power-site``: Limites num só salvamento, validados no estado final (como a API)."""
+    if not isinstance(body, dict) or set(body) - SITE_FIELDS:
+        _fail('Envie site_limit_kw, store_min_kw, store_peak_kw, max_power_kw, power_limit_notify e/ou '
+              'rebalance_enabled.', 'validation_error', 422)
     site(station)
+    changes = {}
     if 'site_limit_kw' in body:
         value = body['site_limit_kw']
         if value is not None:
@@ -290,37 +285,38 @@ def set_site(api, station, body):
             if value > SITE_MAX_KW:
                 _fail('O limite contratado deve ser de até 10.000 kW.', 'invalid_power_limit', 422)
             value = str(value)
-        station['site_limit_kw'] = value
-    if 'rebalance_enabled' in body:
-        if not isinstance(body['rebalance_enabled'], bool):
-            _fail('Campo não aceita null', 'null_not_allowed', 422)
-        station['rebalance_enabled'] = body['rebalance_enabled']
-    for key, options in (('building_profile', site_load.PROFILES), ('building_size', site_load.SIZES)):
+        changes['site_limit_kw'] = value
+    for key in ('store_min_kw', 'store_peak_kw'):
         if key in body:
-            if body[key] is not None and body[key] not in options:
-                _fail('Tipo ou porte do estabelecimento inválido.', 'validation_error', 422)
-            station[key] = body[key]
-    _refresh(api, station)
-
-
-def set_building_load(api, station, body):
-    if not isinstance(body, dict) or set(body) != {'building_load_kw'}:
-        _fail('Envie building_load_kw.', 'validation_error', 422)
-    site(station)
-    if body['building_load_kw'] is None:  # volta à curva simulada do tipo/porte
-        station.update(building_load_kw=None, building_load_source=None, building_load_updated_at=api._iso())
-        _refresh(api, station)
-        return
-    value = _decimal_input(body['building_load_kw'], 'Informe o consumo da loja em kW.')
-    if not Decimal(0) <= value <= SITE_MAX_KW:
-        _fail('O consumo da loja vai de 0 a 10.000 kW.', 'validation_error', 422)
-    station.update(building_load_kw=str(_round_kw(value)), building_load_source='simulated',
-                   building_load_updated_at=api._iso())
+            value = body[key]
+            if value is not None:
+                value = str(_round_kw(_decimal_input(value, 'Informe a estimativa da loja em kW.')))
+            changes[key] = value
+    for key in ('rebalance_enabled', 'power_limit_notify'):
+        if key in body:
+            if not isinstance(body[key], bool):
+                _fail('Campo não aceita null', 'null_not_allowed', 422)
+            changes[key] = body[key]
+    ratings = _ratings(api, station)
+    if 'max_power_kw' in body:
+        try:
+            cap = power_rules.validate_station_max(body['max_power_kw'], ratings)
+        except ValueError as exc:
+            _fail(str(exc), 'invalid_power_limit', 422)
+        changes['max_power_kw'] = None if cap is None else format(cap.quantize(Decimal('0.001')), 'f')
+    final = {**station, **changes}
+    if {'site_limit_kw', 'store_min_kw', 'store_peak_kw'} & set(changes):
+        try:
+            site_load.validate(_kw(final['site_limit_kw']), _kw(final['store_min_kw']), _kw(final['store_peak_kw']),
+                               ratings)
+        except ValueError as exc:
+            _fail(str(exc), 'invalid_store_estimate', 422)
+    station.update(changes)  # building_profile/building_size: descontinuados, ignorados
     _refresh(api, station)
 
 
 def route(api, method, parts, body):
-    """``stations/{id}/power|power-site|building-load|demo-traffic`` da demo."""
+    """``stations/{id}/power|power-site|demo-traffic`` da demo (``building-load``: 410, como a API)."""
     station = api._owned(parts[1])
     action = parts[2]
     if (method, action) == ('GET', 'power'):
@@ -329,8 +325,8 @@ def route(api, method, parts, body):
         set_site(api, station, body)
         return view(api, station)
     if (method, action) == ('PUT', 'building-load'):
-        set_building_load(api, station, body)
-        return view(api, station)
+        _fail('A loja agora é uma margem estimada: informe o mínimo e o pico estimados em Limites.',
+              'store_load_removed', 410)
     if (method, action) == ('POST', 'demo-traffic'):
         traffic(api, station)
         return view(api, station)

@@ -99,7 +99,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Estação CG-001', texts(screen))
         for label, expected in (('Dados da estação', ('station_admin', {'station_id': sid, 'page': 'data'})),
                                 ('Carregadores', ('station_admin', {'station_id': sid, 'page': 'connectors'})),
-                                ('Limite 75 kW (padrão)', ('station_admin', {'station_id': sid, 'page': 'power'})),
+                                ('Até 53 kW para os carregadores', ('station_admin', {'station_id': sid, 'page': 'power'})),
                                 ('Tarifa base, por horário', ('tariffs', {'station_id': sid}))):
             await press(screen, label)(None)
             self.assertEqual((app.go.await_args.args[0], app.go.await_args.kwargs), expected)

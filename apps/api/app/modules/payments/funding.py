@@ -128,6 +128,7 @@ def prepare_settlement_for_session(db, session):
     plan = billing.settle_amounts(
         amount_cents=payment.amount_cents, energy_cents=energy, fixed_fee_cents=payment.fixed_fee_cents,
         overstay_cents=overstay, captured_upfront=payment.captured_cents > 0,
+        energy_cap_cents=payment.energy_cap_cents,
     )
     payment.energy_cents = energy
     payment.overstay_cents = overstay

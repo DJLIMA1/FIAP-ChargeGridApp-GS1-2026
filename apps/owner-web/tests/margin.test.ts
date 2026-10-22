@@ -51,6 +51,26 @@ describe('cascata do resultado', () => {
     expect(net - cost).toBe(margin)
   })
 
+  it('com aluguel das centrais: repasse das recargas → aluguel → repasse líquido → custo → resultado', () => {
+    const steps = buildCascade(totals({ central_rent: '99.00', centrals: 1, owner_net_after_rent: '261.00', result: '48.50' }), '25%')
+    expect(steps.map((s) => s.key)).toEqual(['gross', 'discount', 'revenue_total', 'platform_fee', 'owner_net', 'central_rent', 'owner_net_after_rent', 'energy_cost', 'result'])
+    expect(steps.find((s) => s.key === 'central_rent')).toMatchObject({ label: 'Aluguel das centrais (1 central)', kind: 'minus', value: '99.00' })
+    expect(steps.find((s) => s.key === 'owner_net')?.label).toBe('Repasse das recargas')
+    expect(steps.find((s) => s.key === 'result')).toMatchObject({ label: 'Resultado estimado', value: '48.50' })
+    expect(steps.find((s) => s.key === 'result')?.hint).toContain('Margem de contribuição antes do aluguel')
+    const c = (v: string | null) => Math.round(Number(v) * 100)
+    const value = (key: string) => c(steps.find((s) => s.key === key)!.value)
+    expect(value('owner_net') - value('central_rent')).toBe(value('owner_net_after_rent'))
+    expect(value('owner_net_after_rent') - value('energy_cost')).toBe(value('result'))
+  })
+
+  it('ajuste do pagamento fecha receita bruta → receita cobrada', () => {
+    const steps = buildCascade(totals({ payment_adjustment: '-0.40', revenue_total: '479.60' }), '25%')
+    expect(steps.map((s) => s.key)).toEqual(['gross', 'discount', 'payment_adjustment', 'revenue_total', 'platform_fee', 'owner_net', 'energy_cost', 'margin'])
+    expect(steps.find((s) => s.key === 'payment_adjustment')).toMatchObject({ kind: 'minus', value: '0.40' })
+    expect(buildCascade(totals({ payment_adjustment: '0.00' }), '25%').some((s) => s.key === 'payment_adjustment')).toBe(false)
+  })
+
   it('inclui permanência e tarifa do provedor só quando existem', () => {
     const steps = buildCascade(totals({ overstay_revenue: '15.00', revenue_total: '495.00', provider_fee: '9.90', platform_fee: '123.75', owner_net: '361.35' }), '25%')
     expect(steps.map((s) => s.key)).toEqual(['gross', 'discount', 'overstay', 'revenue_total', 'platform_fee', 'provider_fee', 'owner_net', 'energy_cost', 'margin'])

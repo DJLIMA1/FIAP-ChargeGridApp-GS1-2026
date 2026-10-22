@@ -81,13 +81,13 @@ describe('potência e resultado: corpos e rotas', () => {
   it('power-site e economics usam as chaves dos schemas da API', async () => {
     const { ep, calls } = client()
     await ep.putPowerSite('st-1', { site_limit_kw: '75.5' })
-    await ep.putPowerSite('st-1', { rebalance_enabled: false, building_profile: 'farmacia', building_size: 'pequeno' })
+    await ep.putPowerSite('st-1', { rebalance_enabled: false, store_min_kw: '5.0', store_peak_kw: '12.0', max_power_kw: '40.0', power_limit_notify: true })
     await ep.putPowerSite('st-1', { site_limit_kw: null })
     await ep.putEconomics('st-1', null)
     await ep.power('st-1')
     expect(calls).toEqual([
       { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { site_limit_kw: '75.5' } },
-      { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { rebalance_enabled: false, building_profile: 'farmacia', building_size: 'pequeno' } },
+      { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { rebalance_enabled: false, store_min_kw: '5.0', store_peak_kw: '12.0', max_power_kw: '40.0', power_limit_notify: true } },
       { url: '/v1/stations/st-1/power-site', method: 'PUT', body: { site_limit_kw: null } },
       { url: '/v1/stations/st-1/economics', method: 'PUT', body: { energy_cost_per_kwh: null } },
       { url: '/v1/stations/st-1/power', method: 'GET', body: undefined },
