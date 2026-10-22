@@ -705,6 +705,8 @@ class ChargeGridApp:
         self._chat_account_id = None
         self._chat_pending = None
         self.driver_state = {}
+        # O carro do perfil (Início, recarga) é da conta: a próxima conta lê o dela.
+        self.vehicle_cache = None
 
     async def enter_demo(self):
         if not demo_enabled():

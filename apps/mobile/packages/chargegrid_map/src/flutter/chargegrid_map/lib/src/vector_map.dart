@@ -7,6 +7,17 @@ import 'package:maplibre/maplibre.dart';
 import 'map_attribution.dart';
 import 'runtime_stub.dart' if (dart.library.js_interop) 'runtime_web.dart';
 
+/// Marker colours: demonstration stations (presentation mode, ``tone: 'demo'``) are white with
+/// dark ink; every real station keeps the brand red with white ink.
+({Color fill, Color ink, BoxBorder? edge}) markerPalette(Object? tone) =>
+    tone == 'demo'
+    ? (
+        fill: Colors.white,
+        ink: const Color(0xff111111),
+        edge: Border.all(color: const Color(0xffcfd4d8)),
+      )
+    : (fill: const Color(0xffd72b32), ink: Colors.white, edge: null);
+
 class VectorMapControl extends StatefulWidget {
   const VectorMapControl({super.key, required this.control});
   final Control control;
@@ -111,6 +122,7 @@ class _VectorMapControlState extends State<VectorMapControl> {
     return rows.map((row) {
       final name = row['name']?.toString() ?? 'Estação de recarga';
       final active = row['id'] == selected;
+      final (:fill, :ink, :edge) = markerPalette(row['tone']);
       final width = (38 + name.length * 6.3).clamp(118, 205).toDouble();
       return Marker(
         point: Geographic(
@@ -131,7 +143,8 @@ class _VectorMapControlState extends State<VectorMapControl> {
                   height: active ? 42 : 38,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xffd72b32),
+                    color: fill,
+                    border: edge,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
@@ -145,20 +158,16 @@ class _VectorMapControlState extends State<VectorMapControl> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.ev_station_rounded,
-                        color: Colors.white,
-                        size: 17,
-                      ),
+                      Icon(Icons.ev_station_rounded, color: ink, size: 17),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'InterBold',
-                            color: Colors.white,
+                            color: ink,
                             fontSize: 11,
                             height: 1.2,
                           ),
@@ -171,8 +180,9 @@ class _VectorMapControlState extends State<VectorMapControl> {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                    color: Color(0xffd72b32),
+                  decoration: BoxDecoration(
+                    color: fill,
+                    border: edge,
                     shape: BoxShape.circle,
                   ),
                 ),
