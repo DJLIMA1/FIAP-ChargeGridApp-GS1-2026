@@ -11,6 +11,55 @@ import './landing.css'
 /** Endereço do painel do vendedor (o app React roda sob este prefixo). */
 const DASHBOARD = '/dashboard'
 
+/** Visão geral logo abaixo do hero: as quatro partes que formam o sistema. */
+const OVERVIEW: { icon: IconName; title: string; text: string }[] = [
+  { icon: 'phone', title: 'App do motorista', text: 'Busca, reserva e acompanha a recarga.' },
+  { icon: 'chart', title: 'Painel do vendedor', text: 'Opera postos, tarifas e resultados.' },
+  { icon: 'zap', title: 'API central', text: 'Aplica as regras e guarda o histórico.' },
+  { icon: 'power', title: 'Totem no ponto', text: 'Confirma cada comando no local.' },
+]
+
+const PAINS: { icon: IconName; who: string; items: string[] }[] = [
+  {
+    icon: 'user',
+    who: 'Quem dirige',
+    items: [
+      'Não sabe se o ponto está livre ou funcionando antes de chegar.',
+      'Descobre o preço final só depois da recarga.',
+      'Fica sem retorno quando algo falha no meio da sessão.',
+    ],
+  },
+  {
+    icon: 'station',
+    who: 'Quem vende energia',
+    items: [
+      'Opera sem ver ocupação, energia e margem de cada sessão.',
+      'Perde receita com ociosidade, não comparecimento e carro parado após encher.',
+      'Define tarifa sem dado de demanda por dia e hora.',
+    ],
+  },
+]
+
+const ANSWERS = [
+  'Disponibilidade, tarifa e conector visíveis antes de reservar.',
+  'Recibo que explica energia, tarifa, descontos e taxas.',
+  'Cada comando confirmado pelo totem, com parada local se a conexão cair.',
+  'Painel com receita, margem, ocupação, previsão e Insights IA.',
+]
+
+/** Integrantes da equipe FFIVE. */
+const TEAM: { name: string; linkedin: string }[] = [
+  { name: 'Murillo Carvalho', linkedin: 'https://www.linkedin.com/in/omurillocarvalho/' },
+  { name: 'Augusto Avila', linkedin: 'https://www.linkedin.com/in/augusto-avila-926524295' },
+  { name: 'João Pedro Sousa', linkedin: 'https://www.linkedin.com/in/jo%C3%A3o-pedro-sousa-8b9768414' },
+  { name: 'Matheus Silva', linkedin: 'https://br.linkedin.com/in/matheus-silva-885132322' },
+]
+
+function initials(name: string) {
+  const parts = name.split(' ').filter(Boolean)
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
+}
+
 const AUDIENCES: { icon: IconName; title: string; text: string }[] = [
   {
     icon: 'user',
@@ -70,10 +119,11 @@ export default function Landing() {
             <Logo height={22} />
           </a>
           <nav className="lp-nav" aria-label="Seções">
+            <a href="#contexto">Contexto</a>
             <a href="#projeto">Projeto</a>
             <a href="#como-funciona">Como funciona</a>
-            <a href="#componentes">Componentes</a>
             <a href="#painel">Painel</a>
+            <a href="#equipe">Equipe</a>
           </nav>
           <a className="btn btn-primary lp-cta-sm" href={DASHBOARD}>
             Acessar painel
@@ -98,8 +148,8 @@ export default function Landing() {
                   Acessar painel do vendedor
                   <Icon name="chevronRight" size={18} />
                 </a>
-                <a className="btn btn-secondary lp-btn" href="#como-funciona">
-                  Como funciona
+                <a className="btn btn-secondary lp-btn" href="#contexto">
+                  Entenda o projeto
                 </a>
               </div>
               <p className="lp-note">O painel é exclusivo para contas de vendedor.</p>
@@ -119,9 +169,72 @@ export default function Landing() {
               </div>
             </div>
           </div>
+          <div className="lp-wrap">
+            <ul className="lp-overview" aria-label="Visão geral do sistema">
+              {OVERVIEW.map((item) => (
+                <li key={item.title}>
+                  <span className="lp-icon">
+                    <Icon name={item.icon} size={20} />
+                  </span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <span>{item.text}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
-        <section id="projeto" className="lp-section">
+        <section id="contexto" className="lp-section">
+          <div className="lp-wrap">
+            <p className="lp-kicker">Contexto</p>
+            <h2>A frota elétrica cresce mais rápido que a confiança no ponto de recarga</h2>
+            <p className="lp-section-lead">
+              Carros elétricos chegam às ruas em ritmo acelerado, mas a experiência no eletroposto ainda é cheia de
+              incertezas. Para quem dirige e para quem investe em pontos de recarga, faltam informação confiável e controle
+              sobre o que acontece no equipamento.
+            </p>
+            <div className="lp-context">
+              {PAINS.map((pain) => (
+                <article key={pain.who} className="lp-card lp-pain">
+                  <header>
+                    <span className="lp-icon">
+                      <Icon name={pain.icon} size={22} />
+                    </span>
+                    <h3>{pain.who}</h3>
+                  </header>
+                  <ul>
+                    {pain.items.map((text) => (
+                      <li key={text}>
+                        <Icon name="alert" size={16} />
+                        {text}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+              <article className="lp-card lp-answer">
+                <header>
+                  <span className="lp-icon">
+                    <Icon name="check" size={22} />
+                  </span>
+                  <h3>O que o ChargeGrid entrega</h3>
+                </header>
+                <ul>
+                  {ANSWERS.map((text) => (
+                    <li key={text}>
+                      <Icon name="check" size={16} />
+                      {text}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="projeto" className="lp-section lp-section-alt">
           <div className="lp-wrap">
             <p className="lp-kicker">O projeto</p>
             <h2>Um sistema, três pontas da recarga</h2>
@@ -144,7 +257,7 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="como-funciona" className="lp-section lp-section-alt">
+        <section id="como-funciona" className="lp-section">
           <div className="lp-wrap">
             <p className="lp-kicker">Como funciona</p>
             <h2>Nada acontece sem a confirmação do ponto</h2>
@@ -171,7 +284,7 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="componentes" className="lp-section">
+        <section id="componentes" className="lp-section lp-section-alt">
           <div className="lp-wrap">
             <p className="lp-kicker">Componentes</p>
             <h2>O que foi construído</h2>
@@ -194,7 +307,7 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="painel" className="lp-section lp-section-alt">
+        <section id="painel" className="lp-section">
           <div className="lp-wrap">
             <p className="lp-kicker">Painel do vendedor</p>
             <h2>A operação inteira em uma tela</h2>
@@ -220,6 +333,29 @@ export default function Landing() {
               <img src={insightsShot} alt="Tela de Insights IA com recomendações de preço e operação" width={1440} height={900} loading="lazy" decoding="async" />
               <figcaption>Insights IA: recomendações geradas a partir dos dados do posto.</figcaption>
             </figure>
+          </div>
+        </section>
+
+        <section id="equipe" className="lp-section lp-section-alt">
+          <div className="lp-wrap">
+            <p className="lp-kicker">Equipe FFIVE</p>
+            <h2>Quem construiu o ChargeGrid</h2>
+            <p className="lp-section-lead">
+              Estudantes da FIAP que desenharam e implementaram app, painel, API e totem físico para a Global Solution 2026.
+            </p>
+            <ul className="lp-team">
+              {TEAM.map((member) => (
+                <li key={member.name} className="lp-member">
+                  <span className="lp-avatar">{initials(member.name)}</span>
+                  <h3>{member.name}</h3>
+                  <p>Equipe FFIVE · FIAP</p>
+                  <a className="lp-linkedin" href={member.linkedin} target="_blank" rel="noopener noreferrer" aria-label={`LinkedIn de ${member.name}`}>
+                    <Icon name="linkedin" size={16} />
+                    LinkedIn
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
@@ -257,7 +393,9 @@ export default function Landing() {
       <footer className="lp-footer">
         <div className="lp-wrap lp-footer-row">
           <Logo height={18} />
-          <span>Protótipo acadêmico da equipe FFIVE · FIAP 2026</span>
+          <span>
+            Protótipo acadêmico da <a href="#equipe">equipe FFIVE</a> · FIAP 2026
+          </span>
         </div>
       </footer>
     </div>
