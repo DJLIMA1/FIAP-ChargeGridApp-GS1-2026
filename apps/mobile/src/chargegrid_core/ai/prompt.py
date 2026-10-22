@@ -4,9 +4,28 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .context import render_context
 from .insights import LOCAL_TZ
 
 _WEEKDAYS = ("segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo")
+
+DRIVER_RULES = """Modo motorista:
+- O carro, a bateria, a carteira e os postos mais usados do usuário estão em DADOS DA CONTA. Para custo ou tempo
+  de recarga chame estimate_charge (ou compare_charge_options): ela já usa a bateria útil e o limite AC/DC do carro.
+  Nunca peça a capacidade da bateria ou o modelo do carro quando estiverem nos dados; pergunte só o que faltar.
+- Se o usuário não disser de quanto parte a bateria, use o nível atual dos dados e diga que é o "nível estimado pelo
+  app". Cite o carro e as premissas principais em uma frase.
+- Fale só do preço final por kWh. Não mencione multiplicador, acréscimo, ajuste ou tarifa por demanda, nem diga que o
+  preço sobe no pico; para horários, diga apenas que um horário deve ser mais barato ou mais vazio.
+- Para entender uma recarga (valor, cupom, permanência, pagamento) use explain_my_session."""
+
+OWNER_RULES = """Modo dono de posto (somente os postos do próprio usuário):
+- Use get_owner_overview, get_owner_ranking, get_owner_timeseries, get_peak_hours, get_owner_alerts, get_owner_live,
+  get_margin_report, get_coupon_performance, get_tariff_suggestions e explain_owner_session para qualquer número.
+  Diga sempre o período considerado. Se a pergunta não disser o período, use os últimos 30 dias.
+- Sugestões de tarifa vêm de get_tariff_suggestions; você não altera tarifas, cupons nem equipamentos: indique o botão
+  abaixo da resposta para o dono revisar e aplicar.
+- Nunca fale de motoristas individualmente (nome, e-mail, carro); trate recargas de forma agregada ou pelo ponto."""
 
 BASE_PROMPT = """Você é o Assistente ChargeGrid, um app brasileiro de recarga de veículos elétricos.
 Responda sempre em português do Brasil, de forma curta (até 5 frases ou 6 itens), cordial e objetiva.
@@ -35,15 +54,18 @@ Regras:
 
 
 def system_prompt(*, role: str = "driver", demo: bool = False, now: datetime | None = None,
-                  user_name: str | None = None, location_label: str | None = None, extra: str | None = None) -> str:
+                  user_name: str | None = None, location_label: str | None = None, extra: str | None = None,
+                  context: dict | None = None) -> str:
     lines = [BASE_PROMPT.strip(), ""]
     if now is not None:
         local = now.astimezone(LOCAL_TZ)
         lines.append(f"Agora: {_WEEKDAYS[local.weekday()]}, {local:%d/%m/%Y %H:%M} (horário de Brasília).")
     if role == "owner":
-        lines.append("O usuário é dono de posto: pode consultar indicadores dos próprios postos (get_owner_indicators).")
+        lines.append("O usuário é dono de posto e está no modo dono: pode consultar indicadores dos próprios postos.")
+        lines.append(OWNER_RULES)
     else:
         lines.append("O usuário está no modo motorista.")
+        lines.append(DRIVER_RULES)
     if user_name:
         lines.append(f"Nome do usuário: {user_name[:40]}.")
     if location_label:
@@ -52,4 +74,7 @@ def system_prompt(*, role: str = "driver", demo: bool = False, now: datetime | N
         lines.append("Esta é a conta de demonstração: postos, reservas e recargas são simulados.")
     if extra:
         lines.append(extra)
+    block = render_context(context)
+    if block:
+        lines += ["", block]
     return "\n".join(lines)

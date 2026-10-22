@@ -70,6 +70,12 @@ def amenity_from_text(text: str) -> list[str]:
             if any(f" {word}" in query for word in synonyms)]
 
 
+def point_price(point: dict) -> float | None:
+    """Preço por kWh cobrado agora: ``dynamic_price_per_kwh`` (horário × demanda) ou a tarifa do ponto."""
+    final = _float(point.get("dynamic_price_per_kwh"))
+    return final if final is not None else _float(point.get("price_per_kwh"))
+
+
 def compact_point(point: dict) -> dict:
     status = point.get("availability_status") or ("available" if point.get("available") else "unknown")
     if point.get("active") is False or point.get("retired"):
@@ -81,7 +87,9 @@ def compact_point(point: dict) -> dict:
         "code": clean(point.get("public_code"), 50),
         "connector_type": clean(point.get("connector_type"), 50),
         "power_kw": _float(point.get("power_kw")),
-        "price_per_kwh": _float(point.get("price_per_kwh")),
+        # Preço final que o motorista paga agora (o mesmo da tela do posto). O acréscimo por
+        # demanda é dado interno do dono: nunca sai daqui como multiplicador ou rótulo.
+        "price_per_kwh": point_price(point),
         "max_duration_minutes": point.get("max_duration_minutes"),
         "status": status,
         "available_now": point_available(point),
@@ -113,7 +121,7 @@ def _matching_points(station: dict, filters: dict) -> list[dict]:
             if point.get("active") is not False and not point.get("retired")
             and (wanted is None or normalize_connector(point.get("connector_type")) == wanted)
             and (minimum is None or (_float(point.get("power_kw"), 0) >= minimum))
-            and (maximum is None or (_float(point.get("price_per_kwh"), math.inf) <= maximum))
+            and (maximum is None or ((point_price(point) if point_price(point) is not None else math.inf) <= maximum))
             and (not filters.get("available_only") or point_available(point))]
 
 
@@ -143,7 +151,8 @@ def filter_stations(stations: list[dict], filters: dict, *, origin: dict | None 
         compact = compact_station(station, points=points, origin=center)
         if center and radius and compact.get("distance_km", 0) > radius:
             continue
-        compact["_best_price"] = min((_float(p.get("price_per_kwh"), math.inf) for p in points), default=math.inf)
+        compact["_best_price"] = min((point_price(p) if point_price(p) is not None else math.inf for p in points),
+                                      default=math.inf)
         compact["_best_power"] = max((_float(p.get("power_kw"), 0) for p in points), default=0)
         results.append(compact)
     sort = filters.get("sort") or ("distance" if center else "default")
