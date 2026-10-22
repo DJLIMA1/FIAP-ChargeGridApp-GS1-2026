@@ -29,8 +29,9 @@ class HistoryRedesignTests(unittest.IsolatedAsyncioTestCase):
     async def test_vendor_dashboard_uses_real_numbers_in_pt_br(self):
         text = texts(await history.build(self.app, manage=True))
         for expected in ('Receita total', 'Energia vendida', 'Consumo de Energia', 'Recargas', 'Ticket médio',
-                         'Estações ativas', 'Últimos 7 dias', 'Fale com o ChatBot'):
+                         'Estações ativas', 'Últimos 7 dias'):
             self.assertIn(expected, text)
+        self.assertNotIn('Fale com o ChatBot', text)  # sem atalho solto para o chat
         self.assertRegex(text, r'R\$ [\d.]+\n')
         self.assertRegex(text, r'\d+ de \d+')
 
@@ -44,8 +45,9 @@ class HistoryRedesignTests(unittest.IsolatedAsyncioTestCase):
         screen = await history.build(self.app, manage=True, page='energy')
         text = texts(screen)
         for expected in ('Consumo de energia', 'Últimos 7 dias', 'Energia total', 'Pico de consumo',
-                         'Energia entregue - kWh', 'Fale com o ChatBot'):
+                         'Energia entregue - kWh'):
             self.assertIn(expected, text)
+        self.assertNotIn('Fale com o ChatBot', text)
         self.assertRegex(text, r'\d[\d.]* kWh')
         self.assertTrue(any(type(c).__name__ == 'Canvas' for c in descendants(screen)))
 

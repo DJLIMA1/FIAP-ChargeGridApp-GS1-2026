@@ -255,7 +255,7 @@ class BehaviorTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         screen = coupons.form(app)
         fields = [item for item in descendants(screen) if isinstance(item, ft.TextField)]
-        by_label = {field.label: field for field in fields}
+        by_label = {field.label or field.data: field for field in fields}
         by_label['Código'].value = 'DEMO'
         by_label['Desconto %'].value = '10.5'
         with self.assertRaisesRegex(ApiError, 'inteiro'):

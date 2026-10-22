@@ -132,14 +132,20 @@ def test_owner_tools_only_for_operator(factory, seed):
         db.add(ChargingSession(user_id=seed["a"], connector_id=seed["point"], status="completed", max_duration_minutes=30,
                                price_per_kwh=2, energy_wh=5000, cost_estimate=10, created_at=now() - timedelta(hours=2),
                                started_at=now() - timedelta(hours=2), ended_at=now() - timedelta(hours=1)))
-    llm = FakeLLM(reply(calls=[("get_owner_indicators", {"days": 30})]), reply("Receita de R$ 10,00."))
+    # No modo dono, os indicadores vêm dos mesmos serviços do painel (get_owner_overview substitui
+    # o antigo get_owner_indicators, que segue no core para a prévia sem esses serviços).
+    llm = FakeLLM(reply(calls=[("get_owner_overview", {"period": "30d"}), ("get_owner_alerts", {})]),
+                  reply("Receita de R$ 10,00."))
     client, _ = client_for(factory, seed["owner"], llm)
     body = ask(client, "como está meu posto?", mode="owner").json()
-    assert "get_owner_indicators" in [t["function"]["name"] for t in llm.calls[0]["tools"]]
-    data = json.loads(llm.calls[1]["messages"][-1]["content"])
-    assert data["sessions"] == 1 and data["revenue_brl"] == 10 and data["base_recommendations"]
+    names = [t["function"]["name"] for t in llm.calls[0]["tools"]]
+    assert "get_owner_overview" in names and "get_owner_indicators" not in names
+    overview, alerts = [json.loads(m["content"]) for m in llm.calls[1]["messages"] if m["role"] == "tool"]
+    assert overview["kpis"]["sessions"] == 1 and overview["kpis"]["revenue"] == "10.00"
+    assert alerts["total"] >= 0
     assert "dono de posto" in llm.calls[0]["messages"][0]["content"]
-    assert body["suggested_actions"] == [{"type": "open_operator", "label": "Abrir meus postos"}]
+    assert body["suggested_actions"] == [{"type": "open_owner_history", "label": "Ver histórico dos postos"},
+                                         {"type": "open_operator", "label": "Abrir meus postos"}]
 
 
 def test_chat_unavailable_and_errors_are_friendly(factory, seed):

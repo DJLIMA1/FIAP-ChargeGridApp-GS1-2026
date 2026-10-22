@@ -77,14 +77,20 @@ class ChatAiTests(unittest.IsolatedAsyncioTestCase):
         screen = await chat.build(app)
         self.assertIn('IA com dados da sua conta', texts(screen))
         self.assertIn('Respostas geradas por IA podem conter erros', texts(screen))
-        self.assertIn('Postos rápidos perto da Paulista', texts(screen))
+        self.assertIn('Quanto custa carregar de 20% a 80%?', texts(screen))
+        self.assertNotIn('turno', texts(screen))  # Modo motorista descontinuado
         field = next(c for c in descendants(screen) if isinstance(c, ft.TextField))
         field.value = 'Quero um CCS2 perto da Paulista'
         await field.on_submit(None)
         method, path, body = request.await_args.args
         self.assertEqual((method, path), ('POST', 'ai/chat'))
-        self.assertEqual(body, {'messages': [{'role': 'user', 'content': 'Quero um CCS2 perto da Paulista'}],
-                                'context': {'mode': 'driver'}})
+        self.assertEqual(body['messages'], [{'role': 'user', 'content': 'Quero um CCS2 perto da Paulista'}])
+        # A bateria que o app já usa vai junto (sorteada 15–60% fora do modo apresentação); sem GPS
+        # permitido neste ambiente, nenhuma posição é enviada.
+        context = body['context']
+        self.assertEqual((context['mode'], context['soc_source']), ('driver', 'simulated'))
+        self.assertTrue(15 <= context['soc_percent'] <= 60)
+        self.assertNotIn('lat', context)
         last = app.chat_messages[-1]
         self.assertEqual(last['source'], 'ai')
         # "Modo motorista" foi descontinuado: a ação da IA não vira botão.
@@ -101,7 +107,7 @@ class ChatAiTests(unittest.IsolatedAsyncioTestCase):
         app = ChatApp(AiApi(request))
         app.browsing_mode = 'vendor'
         screen = await chat.build(app)
-        self.assertIn('Como foram meus postos este mês?', texts(screen))
+        self.assertIn('Quais carregadores renderam menos este mês?', texts(screen))
         app.chat_messages += [{'role': 'user', 'content': f'q{i}', 'actions': []} if i % 2 == 0 else
                               {'role': 'assistant', 'content': 'r' * 900, 'actions': []} for i in range(12)]
         await chat.ai_answer(app, app.chat_messages + [{'role': 'user', 'content': 'nova'}])
@@ -277,7 +283,11 @@ class AiScreensTests(unittest.IsolatedAsyncioTestCase):
     async def test_history_session_insight_and_operator_insights(self):
         with patch.dict('os.environ', {'CHARGEGRID_ENABLE_DEMO': '1'}), \
                 patch('httpx.AsyncClient', side_effect=AssertionError('network')):
-            screen = await history.build(self.app)
+            # O resumo inteligente fica nos detalhes da recarga (não no cartão da lista).
+            listing = await history.build(self.app)
+            self.assertNotIn('Resumo inteligente da recarga', texts(listing))
+            first = (await self.app.api.request('GET', 'me/charging-sessions'))['items'][0]
+            screen = await history.build(self.app, session=first['id'])
             await by_tooltip(screen, 'Resumo inteligente da recarga')(None)
             self.assertIn('Recarga de 2,40 kWh', texts(screen))
             self.assertIn('Valores estimados', texts(screen))

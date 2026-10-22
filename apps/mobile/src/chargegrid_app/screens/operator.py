@@ -28,7 +28,7 @@ def _plural(count, one, many):
 
 async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None,
                 claim=False, onboarding=False, point_id=None, step=1, existing_station=False, edited=False,
-                show_real=False, **_):
+                show_real=False, scan=False, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
     prefetch = getattr(app.api,'prefetch',None)
     if prefetch is not None and not (claim or onboarding or connector_id or station_id == 'new'):
@@ -41,7 +41,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
         return title('Gestão de postos','Entre com uma conta de operador para vincular equipamentos.')
     if claim:
-        return await ownership.build(app, station_id=station_id, show_real=show_real)
+        return await ownership.build(app, station_id=station_id, show_real=show_real, scan=scan)
     if onboarding:
         return await onboarding_screen.build(app, station_id=station_id, point_id=point_id,
                                              step=step, existing_station=existing_station)
@@ -110,6 +110,8 @@ def text_button(text, on_click, *, primary=True, height=48):
 ADD_STATION = 'Adicionar nova estação'
 ADD_STATION_HINT = 'Pelo QR de uma central sem dono'
 ADD_STATION_DEMO = 'Com uma central simulada'
+MANAGE_COUPONS = 'Gerenciar cupons'
+MANAGE_COUPONS_HINT = 'Criar e acompanhar descontos'
 
 
 async def station_list(app, offset, is_demo):
@@ -121,12 +123,15 @@ async def station_list(app, offset, is_demo):
     add_label = 'Adicionar central simulada' if is_demo else 'Escanear QR da central'
     rows = [menu_row(station['name'], _station_state(station), '/design/icon_station_charge.svg',
                      app.link('station_admin', station_id=station['id']), tile=44) for station in stations]
+    coupons_row = menu_row(MANAGE_COUPONS, MANAGE_COUPONS_HINT, ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
+                           app.link('coupons', manage=True), tile=44)
     body = [ft.Container(height=8)]
     if rows:
         # Nova estação = o fluxo de vínculo que já cria o posto: QR da central sem dono (ou equipamento
         # simulado na demo) -> Localização (nome e endereço) -> Ponto e tarifa -> Revisão -> esta lista.
         rows.append(menu_row(ADD_STATION, ADD_STATION_DEMO if is_demo else ADD_STATION_HINT, ft.Icons.ADD,
                              app.link('operator', claim=True), tile=44))
+        rows.append(coupons_row)  # na 1ª tela, logo após "Adicionar nova estação" (antes ficava escondido no fim)
         body.append(ft.Column(rows, spacing=22))
     else:
         body.append(design.card_box(ft.Column([
@@ -139,16 +144,15 @@ async def station_list(app, offset, is_demo):
                        '1. Ligue a central e configure o Wi-Fi, se necessário.\n2. Escaneie o QR com sua conta de operador.\n'
                        '3. Defina nome, local e tarifa; revise e publique.', 11, 'regular', theme.GRAY_TEXT)], spacing=8)))
         body.append(text_button(add_label, app.link('operator', claim=True)))
+        body.append(coupons_row)
     if offset + 100 < result['total']:
         body.append(text_button('Mais postos', app.link('operator', offset=offset + 100), primary=False))
     if offset:
         body.append(text_button('Postos anteriores', app.link('operator', offset=max(0, offset - 100)), primary=False))
-    body += [ft.Container(height=16), chatbot_button(app, 38), ft.Container(height=560),  # opções extras: abaixo da 1ª tela
-             design.section_label('Mais opções'),
-             menu_row('Gerenciar cupons', 'Criar e acompanhar descontos', ft.Icons.CONFIRMATION_NUMBER_OUTLINED,
-                      app.link('coupons', manage=True))]
+    body += [ft.Container(height=16), chatbot_button(app, 38)]
     if ai_supported(app):
-        body.append(owner_insights_control(app))
+        body += [ft.Container(height=560),  # opções extras: abaixo da 1ª tela
+                 design.section_label('Mais opções'), owner_insights_control(app)]
     return design.page(*body, title='Suas Estações', title_size=22, gap=16)
 
 

@@ -19,7 +19,6 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
-from chargegrid_core.pricing import multiplier_label
 from chargegrid_core.receipt import END_REASONS as RECEIPT_END_REASONS
 
 from ..api_client import ApiError
@@ -326,13 +325,8 @@ def details_card(session, *, demo=False):
     if limits:
         rows.append(_detail_row('Limite',' · '.join(limits)))
     if session.get('price_per_kwh') is not None:
-        tariff = f"{money(session['price_per_kwh'])}/kWh"
-        try:
-            if session.get('demand_multiplier') is not None and Decimal(str(session['demand_multiplier'])) != 1:
-                tariff += f" · demanda {multiplier_label(session['demand_multiplier'])}"
-        except (InvalidOperation,ValueError):
-            pass
-        rows.append(_detail_row('Tarifa',tariff))
+        # Só o preço final travado: o acréscimo por demanda é informação do vendedor.
+        rows.append(_detail_row('Tarifa',f"{money(session['price_per_kwh'])}/kWh"))
     if session.get('power_tier') == 'reduced':  # a máxima é o padrão: só a escolha econômica aparece
         rows.append(_detail_row('Velocidade','Reduzida · mais econômica'))
     if session.get('discount_percent'):
@@ -468,6 +462,11 @@ def _autonomy(draft):
                                      _point_limit(draft))
     except (ValueError,ArithmeticError) as exc:
         raise ApiError(str(exc) or 'Informe a autonomia em km inteiros (ex.: 120).') from exc
+
+
+def _maxima(draft):
+    """Máximos de cada modo neste ponto (``services.booking.amount_limits``, o mesmo do assistente)."""
+    return rules.amount_limits(_power(draft) or 0,_tariff(draft),_point_limit(draft),draft.get('car'))
 
 
 def _limits(draft):
@@ -653,9 +652,9 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                 app.api.clear_operation('charging-sessions')
                 app.charging_draft = None
                 await app.go('charging')
-            # Atalho para o recibo explicável (subpágina do histórico).
+            # Atalho para os detalhes da recarga com o recibo (subpágina do histórico).
             extra.insert(extra.index(offline),
-                         ft.Container(button('Ver recibo',app.link('history',receipt=session['id']),secondary=True),
+                         ft.Container(button('Ver detalhes da recarga',app.link('history',session=session['id']),secondary=True),
                                       data='receipt-shortcut'))
             if getattr(app,'charging_draft',None):
                 extra.insert(0,button('Retomar preparação da recarga',app.link('charging'),secondary=True))
@@ -745,6 +744,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             draft['power_tier'] = intention['power_tier']
         if intention and intention.get('max_power_kw'):
             draft['max_power_kw'] = str(intention['max_power_kw'])
+        if intention and intention.get('coupon_code'):
+            draft['coupon_code'] = str(intention['coupon_code'])  # cupom aplicado na revisão do assistente
         if intention and intention.get('mode') == 'autonomy':
             draft.update(mode='autonomy', autonomy_km=str(intention.get('km') or ''))
         elif intention:
@@ -819,7 +820,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         async def capture_code(event=None):
             draft['presence_digits'] = presence.value or ''
             draft['furthest'] = 1
-            presence.error_text = None
+            presence.error = None
             saved()
         presence.on_change = capture_code
         async def continue_code():
@@ -827,7 +828,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             try:
                 _code(draft)
             except ApiError as exc:
-                presence.error_text = str(exc)
+                presence.error = str(exc)
                 app.page.update()
                 raise
             if planned:
@@ -851,31 +852,39 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         for control in (duration,cost,safety,coupon,autonomy):
             control.width = None
         duration.keyboard_type = cost.keyboard_type = safety.keyboard_type = autonomy.keyboard_type = ft.KeyboardType.NUMBER
-        # One-tap durations: typing minutes on a phone keyboard is the slowest step.
-        limit_minutes = _point_limit(draft)
-        presets = sorted({minutes for minutes in (15,30,60) if minutes < limit_minutes} | {min(limit_minutes,1440)})
+        # Unidade fixa em cada campo (como nos demais cartões do app).
+        affix = ft.TextStyle(size=13,color=theme.GRAY_TEXT)
+        for control,unit in ((duration,'min'),(safety,'min'),(autonomy,'km')):
+            control.suffix = ft.Text(f' {unit}',style=affix)
+        cost.prefix = ft.Text('R$ ',style=affix)
+        if not draft.get('car') and not uncertain:
+            # Carro + SoC escondido: limitam os máximos de valor e autonomia (o SoC nunca aparece).
+            draft['car'] = await vehicle_state.snapshot(app)
+        inputs = {'time':duration,'value':cost,'autonomy':autonomy}
+        # Máximos de cada modo, visíveis antes de continuar (tempo do ponto, tarifa final, potência, bateria).
+        max_lines = {mode:ft.Text(size=12,color=theme.GRAY_TEXT,data=f'max-{mode}') for mode in inputs}
+        preset_rows = {mode:ft.Row(wrap=True,spacing=8,run_spacing=8,data=f'presets-{mode}') for mode in inputs}
 
-        def choose_duration(minutes):
+        # One-tap amounts: typing on a phone keyboard is the slowest step.
+        def choose_amount(control,text):
             async def choose():
-                duration.value = str(minutes)
+                control.value = text
                 await changed()
             return choose
-        preset_row = ft.Row([d.chip_option(f'{minutes} min' if minutes != limit_minutes else f'Máx. {minutes} min',
-                                           on_click=app.action(choose_duration(minutes)))
-                             for minutes in presets],wrap=True,spacing=8,run_spacing=8)
-        time_panel = ft.Column([duration,preset_row],visible=draft['mode']=='time',spacing=10,
+        time_panel = ft.Column([duration,max_lines['time'],preset_rows['time']],visible=draft['mode']=='time',spacing=10,
                                horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         safety_section,safety_summary = disclosure_field('Ajustar tempo máximo','',[
             safety,ft.Text('A recarga para ao atingir o valor ou o tempo máximo, o que acontecer primeiro.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('safety_expanded',False),on_toggle=lambda value:draft.update(safety_expanded=value),on_update=app.page.update)
-        # Cupons ficam fora da área do motorista: o campo segue no rascunho, mas não é exibido.
+        # Cupom opcional (validado pela API no início; "Revisar" mostra o código enviado).
         coupon_section,coupon_summary = disclosure_field('Cupom de desconto','Opcional',[
             coupon,ft.Text('O código será validado ao solicitar o início. Informar um cupom não confirma o desconto.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('coupon_expanded',bool(draft['coupon_code'])),on_toggle=lambda value:draft.update(coupon_expanded=value),on_update=app.page.update)
-        value_panel = ft.Column([cost,safety_section],
+        value_panel = ft.Column([cost,max_lines['value'],preset_rows['value'],safety_section],
                                spacing=12,visible=draft['mode']=='value',horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         autonomy_note = ft.Text(size=12,color=theme.GRAY_TEXT,visible=False)
-        autonomy_panel = ft.Column([autonomy,autonomy_note],spacing=10,visible=draft['mode']=='autonomy',
+        autonomy_panel = ft.Column([autonomy,autonomy_note,max_lines['autonomy'],preset_rows['autonomy']],spacing=10,
+                                   visible=draft['mode']=='autonomy',
                                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         estimate = ft.Text(size=13,color=theme.GRAY_TEXT)
         mode_toggle = ft.Container()
@@ -930,11 +939,25 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             speed_note.value = (f"{'Mais econômica' if tier == 'reduced' else 'Mais rápida'} · "
                                 f"{money(_tariff(draft))}/kWh · até {rules.fmt_number(_power(draft))} kW")
             estimate.value = _estimate(draft)
+            refresh_maxima()
+
+        def refresh_maxima():
+            """Linha "Máx.: …", atalhos até o máximo e o erro inline do modo atual (velocidade muda o máximo)."""
+            limits = _maxima(draft)
+            for name,control in inputs.items():
+                hint = rules.amount_hint(name,limits)
+                max_lines[name].value,max_lines[name].visible = hint or '',bool(hint)
+                preset_rows[name].controls = [d.chip_option(label,on_click=app.action(choose_amount(control,text)),
+                                                            width=rules.chip_width(label))
+                                              for label,text in rules.amount_presets(name,limits)]
+                control.error = rules.amount_error(name,control.value,limits) if name == draft['mode'] else None
+            if draft['mode'] == 'autonomy' and autonomy.error:
+                autonomy_note.visible = False  # um aviso por vez: o erro já diz o que fazer
 
         async def changed(event=None):
             capture_limits()
             for control in (duration,cost,safety,coupon,autonomy):
-                control.error_text = None
+                control.error = None
             refresh_mode()
             app.page.update()
 
@@ -950,12 +973,18 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         refresh_mode()
         async def continue_limits():
             capture_limits()
+            target = inputs[draft['mode']]
+            problem = rules.amount_error(draft['mode'],target.value,_maxima(draft))
+            if problem:  # acima do máximo mostrado: bloqueia aqui, antes da revisão
+                target.error = problem
+                app.page.update()
+                raise ApiError(problem)
             try:
                 _limits(draft)
             except ApiError as exc:
                 target = (duration if draft['mode']=='time' else autonomy if draft['mode']=='autonomy'
                           else safety if 'duração' in str(exc) else cost)
-                target.error_text = str(exc)
+                target.error = str(exc)
                 app.page.update()
                 raise
             draft['furthest'] = 3
@@ -965,7 +994,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await navigate(1)
         controls += [mode_toggle,
                      time_panel,value_panel,autonomy_panel,d.txt('Velocidade da recarga',12,'bold'),
-                     speed_toggle,speed_note,estimate,
+                     speed_toggle,speed_note,estimate,coupon_section,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]
     else:
         pending_message = ft.Text('A resposta do pedido anterior não chegou. Confira o estado ou repita o mesmo pedido; os limites ficam protegidos até confirmar o resultado.',
@@ -1123,6 +1152,14 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     return
                 if exc.code == 'payment_required' and not payments.enabled(app):
                     raise ApiError(payments.PRESENTATION_PREPAY,exc.status,exc.code) from None
+                if definite and exc.code == 'invalid_coupon' and (draft.get('coupon_code') or '').strip():
+                    # O cupom deixou de valer (desativado/vencido): tira do pedido e volta à revisão.
+                    code = draft['coupon_code'].strip().upper()
+                    draft['coupon_code'] = ''
+                    await navigate(3)
+                    app.notice(f'O cupom {code} não vale mais para este ponto e foi removido. '
+                               'Confira e solicite o início de novo.')
+                    return
                 if definite and exc.code == 'overstay_terms_changed':
                     draft.update(overstay_loaded=False,overstay_version=None,overstay=None)
                     await navigate(3)

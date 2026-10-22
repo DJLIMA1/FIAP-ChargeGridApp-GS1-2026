@@ -160,6 +160,13 @@ class CouponInput(Input):
     valid_until: datetime
 
 
+class CouponCheckInput(Input):
+    """Código digitado pelo motorista e o ponto onde vai carregar (validação antes de pagar/iniciar)."""
+
+    code: str = Field(min_length=1, max_length=50)
+    connector_id: UUID
+
+
 class CouponPatch(Input):
     description: str | None = Field(default=None, max_length=200)
     discount_percent: int | None = Field(default=None, ge=0, le=100)

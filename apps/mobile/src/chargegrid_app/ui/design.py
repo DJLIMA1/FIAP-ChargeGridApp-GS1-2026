@@ -19,7 +19,9 @@ Rotas do consumidor
   booking         assistente de recarga          (aba Recarga) params: step (1..N),
                   station_id, connector_id, mode, ...
   reservations / charging   fluxos já existentes (aba Recarga)
-  history, chat, profile (Conta), coupons
+  history         histórico; ``session=<id>`` abre os detalhes da recarga (``screens/charge_detail.py``;
+                  ``receipt=<id>`` é o nome antigo); voltar -> a mesma lista
+  chat, profile (Conta), coupons
   wallet          saldo do consumidor (aba Conta) params: step, page, ... ; voltar -> profile
   notifications   lista de notificações (sem aba ativa; voltar -> home)
 
@@ -95,12 +97,13 @@ Campos
   labeled(label, control, gap=8, *, strong=True)       # rótulo acima de qualquer controle
 Mídia
   avatar(app=None, size=25)                            # foto de demonstração ou inicial
-  car_image(width=None), totem_image(height=None), map_image(height=160, radius=16, src=None)
+  car_image(width=None, vehicle=None), totem_image(height=None), map_image(height=160, radius=16, src=None)
   logo()                                               # marca do cabeçalho
 Shell (usado por app.py)
   app_header(app), bottom_nav(app, entries, active)
   demo_note(app)                                       # linha discreta "DEMONSTRAÇÃO..." p/ a tela Conta
 Imagens ficam em ``assets/design/`` (``/design/<nome>``): avatar_joao.jpg, car_byd_dolphin.png,
+car_hatch.svg / car_sedan.svg / car_suv.svg / car_compact.svg (silhuetas por carroceria),
 totem_goodwe.png, map_villa_lobos.jpg, qr_pix_demo.png, icon_station_pin.svg, nav_*.svg.
 """
 
@@ -124,6 +127,13 @@ ASSET_DIR = '/design/'
 AVATAR_SRC = ASSET_DIR + 'avatar_joao.jpg'
 CAR_SRC = ASSET_DIR + 'car_byd_dolphin.png'
 TOTEM_SRC = ASSET_DIR + 'totem_goodwe.png'
+# Carro do motorista (preset do perfil): foto do BYD Dolphin (a do design) ou silhueta da carroceria
+# para os modelos sem foto própria; carro personalizado = hatch; sem carro/desconhecido = Dolphin.
+CAR_BODY_SRC = {body: f'{ASSET_DIR}car_{body}.svg' for body in ('hatch', 'sedan', 'suv', 'compact')}
+CAR_PHOTOS = {'byd_dolphin': CAR_SRC, 'byd_dolphin_mini': CAR_SRC}
+CAR_BODIES = {'byd_seal': 'sedan', 'byd_yuan_plus': 'suv', 'volvo_ex30': 'suv', 'chevrolet_spark_euv': 'suv',
+              'gwm_ora_03': 'hatch', 'chevrolet_bolt': 'hatch', 'renault_kwid_etech': 'compact',
+              'jac_ej1': 'compact', 'custom': 'hatch'}
 QR_SRC = ASSET_DIR + 'qr_pix_demo.png'
 STATION_PIN_SRC = ASSET_DIR + 'icon_station_pin.svg'
 WORDMARK_SRC = '/figma/wordmark-dark.svg'
@@ -457,8 +467,21 @@ def centered(control):
     return ft.Row([control], alignment=ft.MainAxisAlignment.CENTER)
 
 
-def car_image(width=None, height=None):
-    return ft.Image(src=CAR_SRC, width=width, height=height, fit=ft.BoxFit.CONTAIN, exclude_from_semantics=True)
+def car_src(vehicle=None):
+    """Imagem do carro do perfil (``{'preset': ...}`` de ``GET driver/profile``)."""
+    if not isinstance(vehicle, dict) or not vehicle:
+        return CAR_SRC
+    key = vehicle.get('preset') or vehicle.get('key')
+    if not key and vehicle.get('usable_battery_kwh') is not None:
+        key = 'custom'
+    if key in CAR_PHOTOS:
+        return CAR_PHOTOS[key]
+    return CAR_BODY_SRC[CAR_BODIES[key]] if key in CAR_BODIES else CAR_SRC
+
+
+def car_image(width=None, height=None, vehicle=None):
+    return ft.Image(src=car_src(vehicle), width=width, height=height, fit=ft.BoxFit.CONTAIN,
+                    exclude_from_semantics=True)
 
 
 def totem_image(width=None, height=None):

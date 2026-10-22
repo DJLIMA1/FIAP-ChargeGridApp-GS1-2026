@@ -2,31 +2,15 @@ import asyncio
 
 import flet as ft
 
-from chargegrid_core.formatting import kwh
-
 from ..services import owner_sessions
 from ..ui import theme
-from ..ui.ai_features import ai_supported, session_insight_control
-from ..ui.components import button, date_time, money, title
+from ..ui.components import button, date_time, title
 from ..ui.design import card_box, icon_tile, page_title, section_label, txt
 from ..ui.design import page as layout
-from ..ui.point_summary import event_disclosure, point_summary
-from ..ui.states import SESSION_TONES, empty_state, status_chip
-from . import history_export, history_owner
-from . import receipt as receipt_screen
-from .charging import DEMO_LABELS, LABELS, session_card
+from ..ui.states import empty_state
+from . import charge_detail, history_export, history_owner
 
 PAGE = 20
-
-
-def _area(address):
-    """'Av. X, 10, Pinheiros, São Paulo - SP' -> 'Pinheiros - São Paulo' (subtítulo da referência)."""
-    text = str(address or '').strip()
-    head, _, uf = text.rpartition(' - ')
-    if head and len(uf.strip()) == 2:
-        text = head
-    parts = [part.strip() for part in text.split(',') if part.strip()]
-    return f'{parts[-2]} - {parts[-1]}' if len(parts) >= 3 else text
 
 
 def _when(value):
@@ -53,69 +37,41 @@ def money_lines(session):
     return lines
 
 
-def _summary(app, session, *, demo, events):
-    """Cabeçalho "DATA: dd/mm/aaaa" + cartão da estação; o recibo completo abre ao tocar."""
-    labels = DEMO_LABELS if demo else LABELS
+def detail_link(app, session, scope):
+    """Toque no cartão: abre os detalhes da recarga (``history?session=<id>``) no mesmo escopo da lista."""
+    return app.link('history', session=session['id'], **scope)
+
+
+def _summary(app, session, *, seller, scope):
+    """Cabeçalho "DATA: dd/mm/aaaa" + cartão da estação; o toque abre os detalhes da recarga."""
     connector = session.get('connector') or {}
     identity = ' · '.join(str(value) for value in (connector.get('public_code'), connector.get('connector_type')) if value)
     day, hour = _when(session.get('started_at') or session.get('created_at'))
-    details = [point_summary(session, 'Local da recarga'), session_card(session, demo=demo),
-               ft.Text('Início: '+date_time(session.get('started_at')), size=12, color=theme.GRAY_TEXT),
-               ft.Text('Fim: '+date_time(session.get('ended_at')), size=12, color=theme.GRAY_TEXT)]
-    insight = []
-    if events:
-        details.extend(event_disclosure(app, session['id']))
-        if ai_supported(app) and session.get('status') in ('completed', 'interrupted'):
-            # Visible on the card (not inside the details): the AI summary is one tap away.
-            insight.append(session_insight_control(app, session['id']))
-    panel = ft.Container(ft.Column([
-        ft.Row([status_chip(labels.get(session['status'], session['status']), SESSION_TONES.get(session['status'], 'SLATE')),
-                ft.Text(f"{kwh(float(session.get('energy_wh') or 0)/1000, 2)} · {money(session.get('cost_estimate'))}",
-                        size=12, color=theme.GRAY_TEXT)],
-               alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True, run_spacing=6),
-        *([ft.Text(identity, size=12, color=theme.GRAY_TEXT)] if identity else []),
-        *insight, *details], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        visible=False, padding=ft.Padding(left=0, right=0, top=12, bottom=0))
-
-    def toggle(_):
-        panel.visible = not panel.visible
-        panel.update()
-
     head = ft.Row([txt(f'DATA: {day}', 11.8, 'regular'), txt(hour, 11.8, 'regular')],
                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-    # Recibo explicável (só o titular da recarga: histórico do motorista).
-    trailing = [receipt_link(app, session['id'])] if events and session.get('id') else []
     row = ft.Row([icon_tile(None, size=46),
                   ft.Column([txt(session.get('station_name') or 'Posto não identificado', 13.5, 'semibold'),
-                             txt(_area(session.get('station_address')) or identity or '—', 10.5, 'regular', theme.GRAY_TEXT,
-                                 max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)],
+                             txt(charge_detail.area(session.get('station_address')) or identity or '—', 10.5, 'regular',
+                                 theme.GRAY_TEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)],
                             spacing=4, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                  *trailing],
+                  ft.Icon(ft.Icons.CHEVRON_RIGHT, size=24, color=theme.TEXT_COLOR)],
                  spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     # Vendedor (histórico dos postos): pagamento e permanência visíveis sem abrir os detalhes.
-    extra = [] if events else money_lines(session)
+    extra = money_lines(session) if seller else []
     money_box = [ft.Container(ft.Column(extra, spacing=3), data='session-money',
                               padding=ft.Padding(left=60, right=0, top=10, bottom=0))] if extra else []
-    return ft.Column([head, card_box(ft.Column([ft.Container(row, on_click=toggle, ink=False,
-                                                              tooltip='Detalhes da sessão'), *money_box, panel],
-                                               spacing=0),
-                                     padding=16, radius=18)], spacing=12.5)
+    open_detail = detail_link(app, session, scope) if session.get('id') else None
+    return ft.Column([head, card_box(ft.Column([row, *money_box], spacing=0), padding=16, radius=18,
+                                     on_click=open_detail, tooltip=charge_detail.TITLE, data='session-card')],
+                     spacing=12.5)
 
 
-RECEIPT_LABEL = 'Ver recibo'
-
-
-def receipt_link(app, session_id):
-    """Atalho "Ver recibo" no cartão da recarga (abre ``history?receipt=<id>``)."""
-    return ft.Container(txt(RECEIPT_LABEL, 11, 'semibold', theme.BTN_PRIMARY_FG), bgcolor=theme.BTN_PRIMARY,
-                        border_radius=10, padding=ft.Padding(left=11, right=11, top=7, bottom=7),
-                        on_click=app.link('history', receipt=session_id), ink=True, tooltip='Recibo explicável')
-
-
-async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, receipt=None, **_):
+async def build(app, station_id=None, offset=0, manage=False, page=None, days=7, chart=True, receipt=None,
+                session=None, **_):
     demo = getattr(app.api,'is_demo',False) is True
-    if receipt and not manage and not station_id:
-        return await receipt_screen.build(app, receipt)
+    if session or receipt:
+        return await charge_detail.build(app, session or receipt, manage=bool(manage), station_id=station_id,
+                                         offset=offset)
     demo_controls = [ft.Column([txt('CONTA DEMO · HISTÓRICO SIMULADO', 10, 'bold', theme.ACCENT),
                                 txt('Sessões de exemplo e testes feitos nesta conta. Estes valores não são cobranças ou medições reais.',
                                     10, 'regular', theme.GRAY_TEXT)], spacing=2)] if demo else []
@@ -147,8 +103,14 @@ async def build(app, station_id=None, offset=0, manage=False, page=None, days=7,
             controls.append(section_label('Recargas recentes'))
     elif station_id:
         controls.append(title('Histórico do posto', f'{total} {"sessão" if total == 1 else "sessões"} · valores estimados, sem cobrança real.'))
-    for session in result['items']:
-        controls.append(_summary(app, session, demo=demo, events=not manage and not station_id))
+    seller = bool(manage or station_id)
+    # Os detalhes reaproveitam o item da listagem: o vendedor não tem recibo (documento do motorista) e o
+    # motorista evita um GET da sessão além do recibo.
+    app.history_sessions = {item['id']: item for item in result['items'] if item.get('id')}
+    scope = {key: value for key, value in (('manage', True if manage else None), ('station_id', station_id),
+                                           ('offset', offset or None)) if value}
+    for item in result['items']:
+        controls.append(_summary(app, item, seller=seller, scope=scope))
     if not result['items']:
         if offset:
             controls.append(empty_state(ft.Icons.HISTORY, 'Nada nesta página',

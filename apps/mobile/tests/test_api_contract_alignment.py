@@ -14,7 +14,7 @@ import flet as ft
 from chargegrid_app import navigation
 from chargegrid_app.api_client import ApiError
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
-from chargegrid_app.screens import booking, charging, receipt
+from chargegrid_app.screens import booking, charge_detail, charging
 from chargegrid_app.services import tariffs as tariff_service
 from chargegrid_app.services import wallet
 from chargegrid_core import overstay as overstay_rules
@@ -92,7 +92,7 @@ class ReceiptShapeTests(unittest.TestCase):
     def test_payment_situation_comes_from_payment_status(self):
         data = api_receipt(payment=STRIPE_PAYMENT)
         self.assertEqual((data['payment']['status'], data['payment']['payment_status']), ('available', 'completed'))
-        text = all_texts(receipt.payment_block(data['payment']))
+        text = all_texts(charge_detail.payment_section(data['payment']))
         self.assertIn('Situação', text)
         self.assertIn('Concluído', text)
         self.assertIn('Cobrado', text)
@@ -101,17 +101,17 @@ class ReceiptShapeTests(unittest.TestCase):
     def test_overstay_section_reads_phase_cap_and_partial_value(self):
         data = api_receipt(overstay=overstay_extra())
         self.assertEqual((data['overstay']['status'], data['overstay']['phase']), ('available', 'billing'))
-        text = all_texts(receipt.overstay_block(data['overstay']))
+        text = all_texts(charge_detail.payment_section(None, data['overstay']))
         for expected in ('Em cobrança (carro conectado)', 'Teto por recarga', 'R$ 30,00', 'R$ 4,00',
                          'Valor parcial'):
             self.assertIn(expected, text)
-        closed = all_texts(receipt.overstay_block(api_receipt(overstay=overstay_extra('closed', True))['overstay']))
+        closed = all_texts(charge_detail.payment_section(None, api_receipt(overstay=overstay_extra('closed', True))['overstay']))
         self.assertIn('Encerrada', closed)
         self.assertNotIn('Valor parcial', closed)
 
     def test_overstay_without_terms_says_no_fee(self):
         data = api_receipt(overstay=overstay_extra('closed', True, terms=False))
-        text = all_texts(receipt.overstay_block(data['overstay']))
+        text = all_texts(charge_detail.payment_section(None, data['overstay']))
         self.assertIn('Sem taxa', text)
         self.assertNotIn('—', text.split('Taxa de permanência', 1)[1])
 
@@ -122,13 +122,18 @@ class ReceiptShapeTests(unittest.TestCase):
                   'source': 'rebalance', 'direction': 'reduce', 'failure_code': 'unconfirmed',
                   'failure_label': 'O equipamento não confirmou o ajuste a tempo'}
         data = api_receipt(changes=[change])
-        text = all_texts(receipt.power_block(data['power']))
+        text = all_texts(charge_detail.session_section({'power': data['power']}))
         self.assertIn('Não aplicada', text)
         self.assertIn('O equipamento não confirmou o ajuste a tempo', text)
 
 
 class NavigationAndShortcutTests(unittest.IsolatedAsyncioTestCase):
-    def test_native_back_from_receipt_returns_to_history(self):
+    def test_native_back_from_charge_detail_returns_to_the_same_history_list(self):
+        self.assertEqual(navigation.parent_route('history', {'session': 's1'}), ('history', {}))
+        self.assertEqual(navigation.parent_route('history', {'session': 's1', 'manage': True, 'offset': 20}),
+                         ('history', {'manage': True, 'offset': 20}))
+        self.assertEqual(navigation.parent_route('history', {'session': 's1', 'station_id': 'st'}),
+                         ('history', {'station_id': 'st'}))
         self.assertEqual(navigation.parent_route('history', {'receipt': 's1'}), ('history', {}))
         self.assertEqual(navigation.parent_route('history', {'receipt': 's1', 'offset': 50}),
                          ('history', {'offset': 50}))
@@ -148,10 +153,10 @@ class NavigationAndShortcutTests(unittest.IsolatedAsyncioTestCase):
             screen = await charging.build(app, session_id='s9')
         shortcut = by_data(screen, 'receipt-shortcut')
         self.assertIsNotNone(shortcut)
-        self.assertIn('Ver recibo', texts(shortcut))
+        self.assertIn('Ver detalhes da recarga', texts(shortcut))
         clickable = next(item for item in descendants(shortcut) if getattr(item, 'on_click', None))
         await clickable.on_click(None)
-        app.go.assert_awaited_with('history', receipt='s9')
+        app.go.assert_awaited_with('history', session='s9')
 
     async def test_running_charge_has_no_receipt_shortcut(self):
         row = {'id': 's9', 'status': 'charging', 'connector': {'power_kw': '22.000'}, 'max_duration_minutes': 60,
@@ -280,7 +285,7 @@ class DemoMirrorsApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payment['authorized_amount'], created['amount'])
         self.assertEqual(payment['net_amount'], settled['settlement']['charged'])
         self.assertEqual(data['charges']['revenue_basis'], 'paid')
-        self.assertIn('Concluído', all_texts(receipt.payment_block(payment)))
+        self.assertIn('Concluído', all_texts(charge_detail.payment_section(payment)))
 
 
 if __name__ == '__main__':

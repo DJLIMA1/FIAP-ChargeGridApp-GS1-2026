@@ -103,10 +103,11 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                         and isinstance(item.content,ft.Column)
                         and isinstance(item.content.controls[0],ft.Semantics)
                         and label in texts(item.content.controls[0]))
-        # Cupons não aparecem na área do motorista.
-        self.assertFalse(any('Cupom de desconto' in texts(item) for item in descendants(screen)
-                             if isinstance(item,ft.Semantics)))
-        for label,field_label,key in [('Ajustar tempo máximo','Tempo máximo de segurança (min)','safety_expanded')]:
+        # Cupom opcional de volta na etapa de limites (validado pela API no início).
+        self.assertTrue(any('Cupom de desconto' in texts(item) for item in descendants(screen)
+                            if isinstance(item,ft.Semantics)))
+        for label,field_label,key in [('Ajustar tempo máximo','Tempo máximo de segurança (min)','safety_expanded'),
+                                      ('Cupom de desconto','Cupom (opcional)','coupon_expanded')]:
             with self.subTest(label=label):
                 card = section(label)
                 semantic,body = card.content.controls
@@ -128,7 +129,7 @@ class ChargingWizardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(field.value,'8' if key == 'safety_expanded' else 'PROMO')
         resumed = await charging.build(app)
         self.assertIn('8 min',texts(resumed))
-        self.assertNotIn('Cupom (opcional)',fields(resumed))
+        self.assertEqual(fields(resumed)['Cupom (opcional)'].value,'PROMO')
         self.assertEqual(app.posts,[])
 
     async def test_three_steps_show_only_current_form_and_only_review_posts(self):

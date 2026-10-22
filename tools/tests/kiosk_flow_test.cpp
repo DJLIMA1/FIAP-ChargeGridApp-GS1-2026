@@ -231,9 +231,15 @@ void testHappySimulated() {
   const KioskView& review = h.view();
   assert(review.screen == Screen::Review && text(review.label) == "SIMULADO");
   assert(text(review.metrics[0].value) == "R$ 2,30/kWh");
-  assert(text(review.metrics[1].value) == "R$ 2,00 x 1,15 Alta demanda");
-  assert(text(review.metrics[2].name) == "VALOR MÁXIMO" && text(review.metrics[2].value) == "R$ 50,00");
-  assert(text(review.metrics[3].value) == "8,7 kWh" && text(review.metrics[4].value) == "73 min");
+  // O acréscimo por demanda (base x multiplicador) não aparece para o motorista: só o preço final.
+  for (int i = 0; i < review.metricCount; ++i) {
+    assert(text(review.metrics[i].name) != "DEMANDA");
+    assert(text(review.metrics[i].value).find("demanda") == std::string::npos);
+    assert(text(review.metrics[i].value).find("x 1,15") == std::string::npos);
+  }
+  assert(text(review.metrics[1].name) == "VALOR MÁXIMO" && text(review.metrics[1].value) == "R$ 50,00");
+  assert(text(review.metrics[2].value) == "8,7 kWh" && text(review.metrics[3].value) == "73 min");
+  assert(review.metricCount == 5);
   assert(text(review.context).find("R$ 1,00 por minuto") != std::string::npos);
   assert(review.primary.action == Action::Accept && review.primary.enabled);
   h.acceptOrder();

@@ -22,7 +22,7 @@ from .api_client import ApiError
 
 SAMPLE_SECONDS = 60
 DEMO_PROVIDER = 'Conta demo (simulado)'
-PDF_ONLY_REAL = 'O PDF só é gerado na conta real. Na demo, use o CSV ou veja o recibo na tela.'
+PDF_ONLY_REAL = 'O PDF do histórico só é gerado na conta real. Na demo, use o CSV ou exporte o recibo de cada recarga.'
 
 
 def _fail(message, code='not_found', status=404):
@@ -219,17 +219,23 @@ def history_rows(api, params=None):
         if session.get('user_id') != api._profile.get('id') or ended is None or not start <= ended < end:
             continue
         point = api._points[session['connector_id']]
+        payment = _payment(api, session)  # mesmo total do recibo: com pagamento acertado, o capturado
         rows.append(receipts.history_row({**session, 'station_name': api._stations[point['station_id']]['name'],
-                                          'public_code': point['public_code']}, now))
+                                          'public_code': point['public_code']}, now,
+                                         {'payment': payment} if payment else None))
     rows.sort(key=lambda row: (row['ended_at'] or '', row['id']), reverse=True)
     return rows
 
 
 def download(api, path, params=None):
-    """``me/charging-sessions/export.csv`` local; PDFs (recibo e histórico) só na conta real."""
+    """``me/charging-sessions/export.csv`` e o PDF do recibo (Pillow) locais; o PDF do histórico só na conta real."""
     if not api.session.access_token:
         _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
     name = path.strip('/').removeprefix('v1/')
+    parts = name.split('/')
+    if len(parts) == 3 and parts[0] == 'charging-sessions' and parts[2] == 'receipt.pdf':
+        from .demo_receipt_pdf import receipt_pdf  # Pillow só ao exportar
+        return receipt_pdf(receipt(api, parts[1]))
     if name.endswith('.pdf'):
         _fail(PDF_ONLY_REAL, 'demo_pdf_unavailable', 404)
     if name != 'me/charging-sessions/export.csv':

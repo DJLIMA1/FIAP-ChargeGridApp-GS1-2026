@@ -11,7 +11,7 @@ import { formatCurrency, formatNumber, toNumber } from './format'
 
 export const NOT_PROFIT_TITLE = 'Receita bruta não é lucro'
 export const NOT_PROFIT_TEXT =
-  'A margem de contribuição é o que sobra da receita cobrada depois da comissão da plataforma, da tarifa do provedor de pagamento e do custo estimado da energia. Ela não inclui custos fixos (equipamento, aluguel, manutenção) nem a tarifa de demanda (R$/kW).'
+  'A margem de contribuição é o que sobra da receita cobrada depois da comissão da plataforma, da tarifa do provedor de pagamento e do custo estimado da energia. Ela não inclui custos fixos (equipamento, manutenção) nem a tarifa de demanda (R$/kW). O aluguel das centrais é descontado do repasse e do resultado.'
 
 export type CascadeKind = 'total' | 'minus' | 'plus' | 'result'
 
@@ -41,8 +41,9 @@ function hasValue(value: string | null | undefined): value is string {
 
 /**
  * Passos da cascata, na ordem da tela e do PDF:
- * Receita bruta → − Descontos/cupons → (+ Permanência) → = Receita cobrada →
- * − Comissão → (− Tarifa do provedor) → = Repasse → − Custo da energia → = Margem.
+ * Receita bruta → − Descontos/cupons → (+ Permanência) → (± Ajuste do pagamento) → = Receita cobrada →
+ * − Comissão → (− Tarifa do provedor) → = Repasse → (− Aluguel das centrais → = Repasse líquido) →
+ * − Custo da energia → = Margem (ou Resultado, com aluguel).
  */
 export function buildCascade(totals: MarginTotals, fee: string): CascadeStep[] {
   const steps: CascadeStep[] = [
@@ -52,12 +53,29 @@ export function buildCascade(totals: MarginTotals, fee: string): CascadeStep[] {
   if (hasValue(totals.overstay_revenue)) {
     steps.push({ key: 'overstay', label: 'Taxa de permanência', kind: 'plus', value: totals.overstay_revenue })
   }
+  const adjustment = toNumber(totals.payment_adjustment)
+  if (adjustment) {
+    // Valor capturado no pagamento diferente do calculado (perdoado acima do teto, abaixo do mínimo...).
+    steps.push({
+      key: 'payment_adjustment',
+      label: 'Ajuste do pagamento',
+      kind: adjustment < 0 ? 'minus' : 'plus',
+      value: Math.abs(adjustment).toFixed(2),
+      hint: 'Perdoado ou não cobrado no pagamento confirmado',
+    })
+  }
   steps.push({ key: 'revenue_total', label: 'Receita cobrada', kind: 'total', value: totals.revenue_total })
   steps.push({ key: 'platform_fee', label: `Comissão da plataforma (${fee})`, kind: 'minus', value: totals.platform_fee })
   if (hasValue(totals.provider_fee)) {
     steps.push({ key: 'provider_fee', label: 'Tarifa do provedor de pagamento', kind: 'minus', value: totals.provider_fee })
   }
-  steps.push({ key: 'owner_net', label: 'Repasse', kind: 'total', value: totals.owner_net, hint: 'O que a plataforma repassa ao posto' })
+  const rent = hasValue(totals.central_rent) ? totals.central_rent : null
+  steps.push({ key: 'owner_net', label: rent ? 'Repasse das recargas' : 'Repasse', kind: 'total', value: totals.owner_net, hint: rent ? undefined : 'O que a plataforma repassa ao posto' })
+  if (rent) {
+    const count = totals.centrals ?? 0
+    steps.push({ key: 'central_rent', label: `Aluguel das centrais (${formatNumber(count)} ${count === 1 ? 'central' : 'centrais'})`, kind: 'minus', value: rent, hint: 'Valor mensal por central, rateado pelos dias de vínculo' })
+    steps.push({ key: 'owner_net_after_rent', label: 'Repasse líquido', kind: 'total', value: totals.owner_net_after_rent ?? null, hint: 'O que a plataforma repassa ao posto (descontado da folha)' })
+  }
   const { missing_energy_cost: missing, sessions } = totals.coverage
   steps.push({
     key: 'energy_cost',
@@ -67,6 +85,17 @@ export function buildCascade(totals: MarginTotals, fee: string): CascadeStep[] {
     missingCost: missing > 0,
     hint: missing ? `${formatNumber(missing)} de ${formatNumber(sessions)} sessão(ões) sem custo do kWh informado` : 'kWh × custo do kWh informado no posto',
   })
+  if (rent) {
+    steps.push({
+      key: 'result',
+      label: 'Resultado estimado',
+      kind: 'result',
+      value: missing ? null : (totals.result ?? null),
+      missingCost: missing > 0,
+      hint: missing ? undefined : `Margem de contribuição antes do aluguel: ${formatCurrency(totals.margin)}`,
+    })
+    return steps
+  }
   steps.push({
     key: 'margin',
     label: 'Margem estimada',
@@ -114,6 +143,17 @@ function slug(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
+}
+
+/** "10/2026" a partir de "2026-10". */
+export function monthLabel(month: string): string {
+  const [year, number] = month.split('-')
+  return number ? `${number}/${year}` : month
+}
+
+/** "chargegrid-aluguel-centrais-20261020-1405[-villa-lobos].csv". */
+export function rentExportFilename(now: Date = new Date(), stationName?: string | null): string {
+  return marginExportFilename('csv', now, stationName).replace('chargegrid-resultado-', 'chargegrid-aluguel-centrais-')
 }
 
 /** "chargegrid-resultado-20261020-1405[-villa-lobos].csv" no horário de São Paulo. */

@@ -68,7 +68,8 @@ def me_summary(user=Depends(current_user), db=Depends(db_session)):
         select(
             func.count(ChargingSession.id),
             func.coalesce(func.sum(ChargingSession.energy_wh), 0),
-            func.coalesce(func.sum(ChargingSession.cost_estimate), 0),
+            # Ao centavo por sessão (mesma regra do histórico e do recibo), depois somado.
+            func.coalesce(func.sum(func.round(ChargingSession.cost_estimate, 2)), 0),
         ).where(
             ChargingSession.user_id == user.id,
             ChargingSession.status.in_(("completed", "interrupted")),

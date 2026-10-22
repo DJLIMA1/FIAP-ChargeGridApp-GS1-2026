@@ -20,7 +20,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(isinstance(item,ft.Row) and dropdown in item.controls for item in descendants(screen)))
         self.assertEqual([(item.key,item.text) for item in dropdown.options],[('__all__','Todos os meus postos'),('station-id','Posto Central')])
         self.assertFalse(next(item for item in descendants(screen) if isinstance(item,ft.Switch)).visible)
-        fields = {item.label:item for item in descendants(screen) if isinstance(item,ft.TextField)}
+        fields = {(item.label or item.data):item for item in descendants(screen) if isinstance(item,ft.TextField)}
         self.assertNotIn('ID do posto (opcional)',fields)
         fields['Código'].value = 'WELCOME'
         dropdown.value = 'station-id'
@@ -32,7 +32,7 @@ class OperatorUxTests(unittest.IsolatedAsyncioTestCase):
     async def test_all_station_coupon_does_not_send_fake_identifier(self):
         app = HandlerApp()
         screen = coupons.form(app,stations=[{'id':'s','name':'Posto'}])
-        code = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and item.label == 'Código')
+        code = next(item for item in descendants(screen) if isinstance(item,ft.TextField) and (item.label or item.data) == 'Código')
         code.value = 'ALL'
         await click(screen,'Salvar cupom')(None)
         self.assertNotIn('station_id',app.api.request.call_args.args[2])

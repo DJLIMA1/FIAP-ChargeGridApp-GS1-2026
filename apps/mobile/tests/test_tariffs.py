@@ -232,7 +232,7 @@ class DriverDynamicPriceTests(unittest.IsolatedAsyncioTestCase):
     async def test_driver_sees_the_dynamic_price_and_the_session_locks_it(self):
         from chargegrid_app.screens import booking
         from chargegrid_app.services import booking as rules
-        from chargegrid_app.ui.point_summary import point_context
+        from chargegrid_app.ui.point_summary import point_context, point_summary
 
         app = await demo_app()
         real = app.api._demand
@@ -248,7 +248,14 @@ class DriverDynamicPriceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((context['connector']['price_per_kwh'], context['connector']['base_price_per_kwh'],
                           context['demand_multiplier']), (point['dynamic_price_per_kwh'], point['price_per_kwh'], '1.30'))
         screen = await booking.build(app, step=1, station_id=station['id'])
-        self.assertIn('Demanda alta agora: tarifa 1,3× a base', texts(screen))
+        # O acréscimo por demanda é do vendedor: o motorista vê só o preço final (etapa de potência).
+        self.assertNotIn('demanda', texts(screen).lower())
+        self.assertNotIn('1,3×', texts(screen))
+        self.assertNotIn('demand-note', [getattr(item, 'data', None) for item in descendants(screen)])
+        summary = texts(point_summary(context))
+        self.assertIn('/kWh', summary)
+        self.assertNotIn('demanda', summary)
+        self.assertNotIn('1,3', summary)
         session = await app.api.request('POST', 'charging-sessions', {
             'presence_code': '#F12345', 'public_code': point['public_code'], 'max_duration_minutes': 30}, key='surge')
         self.assertEqual((session['demand_multiplier'], session['price_per_kwh'], session['base_price_per_kwh']),

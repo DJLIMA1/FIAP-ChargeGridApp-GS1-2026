@@ -43,7 +43,10 @@ class ExplorerMap:
     def fit(self, reference=None, *, initial=False):
         points = [point for item in self.records if (point := coordinates(item))]
         if initial:
-            points = points[:3]
+            # Enquadramento inicial nos postos reais; os de demonstração (Modo apresentação) aparecem
+            # ao afastar o mapa ou em "Mostrar estações no mapa".
+            real = [point for item in self.records if not item.get('demo') and (point := coordinates(item))]
+            points = (real or points)[:3]
         if reference:
             self.center, self.zoom = reference, 14
         elif points:

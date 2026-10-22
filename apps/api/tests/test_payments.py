@@ -409,6 +409,21 @@ def test_cost_above_cap_captures_only_the_cap(flow, stripe):
     assert (settlement["charged"], settlement["waived"], settlement["returned"]) == ("20.00", "1.00", "0.00")
 
 
+def test_cost_above_cap_is_waived_even_with_overstay_reserve(flow, stripe, factory, seed):
+    # Taxa de permanência ligada: a autorização reserva o teto dela (R$ 30), mas a energia acima do
+    # teto aceito (R$ 20) continua perdoada — antes saía da reserva e o motorista pagava R$ 21,00.
+    with factory.begin() as db:
+        db.get(Station, seed["station"]).pricing = {"rotation": {
+            "enabled": True, "start_after_min": 0, "interval_min": 1, "amount": "1.00", "max_amount": "30.00"}}
+    payment = _paid(flow, stripe)
+    assert payment["amount"] == "50.00"
+    session = _start_paid(flow, payment)
+    flow.charge(session["id"], 5000)
+    flow.stop(session["id"], 10500)
+    settlement = flow.get(payment["id"])["settlement"]
+    assert (settlement["charged"], settlement["waived"], settlement["returned"]) == ("20.00", "1.00", "30.00")
+
+
 def test_settlement_retry_after_provider_timeout(flow, stripe, factory):
     payment = _paid(flow, stripe)
     session = _start_paid(flow, payment)

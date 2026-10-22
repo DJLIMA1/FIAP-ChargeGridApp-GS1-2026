@@ -5,6 +5,7 @@ prompt, as ferramentas, a validação e o laço são os mesmos nos dois lados.
 """
 
 from .completion import LLMUnavailable, build_payload, extract_json, parse_completion
+from .context import build_context, render_context
 from .features import (
     RULES_MODEL,
     natural_search,
@@ -22,12 +23,15 @@ from .insights import (
     session_tips,
 )
 from .loop import ChatOutcome, run_chat, sanitize_history
+from .periods import previous_period, resolve_period
 from .prompt import system_prompt
+from .schema import ToolArgumentError, ToolDataError
 from .search import filters_from_tool, parse_search_rules, screen_params, search_request
 from .tools import Toolbox
 
 __all__ = [
-    "RULES_MODEL", "ChatOutcome", "LLMUnavailable", "Toolbox", "indicators_from_dashboard", "natural_search", "owner_insights",
+    "RULES_MODEL", "ChatOutcome", "LLMUnavailable", "ToolArgumentError", "ToolDataError", "Toolbox",
+    "build_context", "previous_period", "render_context", "resolve_period", "indicators_from_dashboard", "natural_search", "owner_insights",
     "owner_insights_from_indicators", "session_insight", "build_payload", "extract_json", "filters_from_tool",
     "owner_indicators", "owner_recommendations", "owner_summary", "parse_completion", "parse_search_rules",
     "run_chat", "sanitize_history", "screen_params", "search_request", "session_facts", "session_summary",

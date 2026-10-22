@@ -709,7 +709,8 @@ def test_seller_history_and_exports_carry_channel_and_method(http, presentation,
     # Resultado do dono: CSV com as colunas no fim e PDF com a coluna Canal.
     margin = list(csv.DictReader(io.StringIO(owner.get("/v1/owner/export/margin.csv").text)))
     margin_rows = {row["ID da sessão"]: row for row in margin}
-    assert list(margin[0])[-3:] == ["Base da receita", "Canal", "Pagamento"]
+    assert list(margin[0])[-5:] == ["Base da receita", "Canal", "Pagamento", "Efeito da velocidade (R$)",
+                                    "Ajuste do pagamento (R$)"]
     assert (margin_rows[totem_session]["Canal"], margin_rows[totem_session]["Pagamento"]) == ("Totem", "Simulado")
     assert (margin_rows[app_session]["Canal"], margin_rows[app_session]["Pagamento"]) == ("App", "")
     screen = {item["session_id"]: item for item in owner.get("/v1/owner/margin").json()["items"]}
@@ -767,3 +768,65 @@ def test_owner_station_carries_effective_totem_status(factory, seed, base_url):
         assert "kiosk_status" not in driver.get(url).json()  # só o dono
     finally:
         clear_overrides()
+
+
+# ---------------------------------------------------------------------------- bateria simulada (SoC)
+
+
+def test_kiosk_battery_default_is_deterministic_and_in_app_range():
+    from types import SimpleNamespace
+
+    from app.modules.payments.service import kiosk_battery
+
+    values = set()
+    for _ in range(300):
+        payment = SimpleNamespace(id=uuid.uuid4(), quote={})
+        first = kiosk_battery(payment)
+        assert first == kiosk_battery(payment)  # repetição do START: mesmo corpo idempotente
+        assert first["soc_source"] == "simulated" and first["battery_kwh"] == Decimal("44.9")
+        assert Decimal(15) <= first["soc_percent"] <= Decimal(60)
+        assert first["soc_percent"] == first["soc_percent"].quantize(Decimal("0.1"))
+        values.add(first["soc_percent"])
+    assert len(values) > 50  # cada visitante é um carro diferente
+
+
+def test_kiosk_battery_keeps_account_car_and_redraws_full_inherited_soc():
+    from types import SimpleNamespace
+
+    from app.modules.payments.service import kiosk_battery
+
+    payment_id = uuid.uuid4()
+    drawn = kiosk_battery(SimpleNamespace(id=payment_id, quote=None))["soc_percent"]
+    inherited = kiosk_battery(SimpleNamespace(id=payment_id, quote={"vehicle": {"battery_kwh": 82.5,
+                                                                               "soc_percent": "94.99"}}))
+    assert inherited == {"battery_kwh": Decimal("82.5"), "soc_percent": Decimal("94.99"), "soc_source": "simulated"}
+    for full in ("95", "95.00", "100", "100.00"):
+        result = kiosk_battery(SimpleNamespace(id=payment_id, quote={"vehicle": {"battery_kwh": 82.5,
+                                                                                "soc_percent": full}}))
+        assert result == {"battery_kwh": Decimal("82.5"), "soc_percent": drawn, "soc_source": "simulated"}
+    unknown = kiosk_battery(SimpleNamespace(id=payment_id, quote={"vehicle": {"battery_kwh": 82.5,
+                                                                             "soc_percent": None}}))
+    assert unknown["soc_percent"] == drawn and unknown["battery_kwh"] == Decimal("82.5")
+
+
+def test_guest_totem_charge_simulates_the_car_battery_like_the_app(http, presentation, factory, seed):
+    """Visitante sem celular: START leva a bateria (padrão do app) e o SoC sobe com a energia."""
+    bench = Bench(http)
+    bench.sync()
+    order = bench.order().json()
+    paid = bench.pay(order["id"])
+    assert paid.status_code == 200, paid.text
+    session_id, synced = bench.apply_start()
+    start = next(cmd for cmd in synced["commands"] if cmd["type"] == "START")["parameters"]
+    assert start["soc_source"] == "simulated" and start["battery_kwh"] == 44.9
+    assert 15 <= start["soc_percent"] <= 60
+    authorized = synced["authorized"]["session"]
+    assert authorized["soc_source"] == "simulated" and authorized["start_soc_percent"] == start["soc_percent"]
+    bench.sync(session_id=session_id, physical_state="charging", connected=True, energy_wh=2500)
+    with factory() as db:
+        session = db.get(ChargingSession, uuid.UUID(session_id))
+        begin = Decimal(str(start["soc_percent"]))
+        assert (session.soc_source, session.start_soc_percent, session.battery_kwh) == (
+            "simulated", begin, Decimal("44.90"))
+        expected = (begin + Decimal("2.5") / Decimal("44.9") * 100).quantize(Decimal("0.01"))
+        assert session.soc_percent == expected

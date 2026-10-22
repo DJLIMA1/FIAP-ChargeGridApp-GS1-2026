@@ -17,6 +17,10 @@ class ChatContext(Input):
     screen: str | None = Field(default=None, max_length=40)
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
+    # Nível da bateria que o app usa (sorteado e guardado no aparelho, ou a bateria do celular no
+    # modo apresentação). Só serve de padrão para estimativas do próprio usuário.
+    soc_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    soc_source: Literal["simulated", "phone"] | None = None
 
 
 class ChatInput(Input):

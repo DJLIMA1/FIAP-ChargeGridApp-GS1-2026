@@ -131,6 +131,8 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     }
     case '/owner/margin':
       return json(ops.marginReport(p))
+    case '/owner/export/central-rent.csv':
+      return new Response(ops.rentCsv(p), { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } })
     case '/owner/export/margin.csv':
       return new Response(ops.marginCsv(p), { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } })
     case '/owner/export/margin.pdf':

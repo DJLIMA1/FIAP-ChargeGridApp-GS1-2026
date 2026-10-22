@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from chargegrid_core import power as power_rules
-from chargegrid_core.charge_plan import autonomy_energy
+from chargegrid_core.charge_plan import autonomy_energy, charge_maxima
 from chargegrid_core.charge_plan import autonomy_note as autonomy_note
 from chargegrid_core.charge_plan import parse_km as parse_km
 from chargegrid_core.chargers import link as charger_link
@@ -208,6 +208,12 @@ def total(cost, reserving):
     return (to_decimal(cost) + (RESERVATION_FEE if reserving else 0)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def discounted(cost, percent):
+    """Custo da energia com o cupom (``percent`` 0–100), arredondado ao centavo como o recibo."""
+    rate = Decimal(100 - max(0, min(100, int(percent or 0)))) / 100
+    return (to_decimal(cost) * rate).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
 def parse_minutes(text):
     raw = str(text or '').strip()
     if not raw.isascii() or not raw.isdigit() or int(raw) < 1:
@@ -248,6 +254,133 @@ def parse_value(text):
     if number <= 0:
         raise ValueError('Informe um valor maior que zero.')
     return number.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+# ---------------------------------------------------------------------- máximos por modo
+# Atalhos (chips) de cada modo; o último chip é sempre o máximo ("Máx. 120 min"). Atalhos acima do
+# máximo não aparecem (mesma regra dos atalhos de duração da etapa "Definir limites").
+TIME_PRESETS = (15, 30, 60)
+VALUE_PRESETS = (20, 50, 100)
+KM_PRESETS = (50, 100, 200)
+UNITS = {'time': ('', 'min'), 'value': ('R$', ''), 'autonomy': ('', 'km')}  # (prefixo, sufixo)
+
+
+def point_minutes(point):
+    """Duração máxima do ponto (``max_duration_minutes``); sem o dado, 24 h (teto da API)."""
+    try:
+        return max(1, min(1440, int((point or {}).get('max_duration_minutes') or 1440)))
+    except (TypeError, ValueError):
+        return 1440
+
+
+def selected_point(group, connector_id=None):
+    pool = group.get('free') or group.get('connectors') or []
+    return next((p for p in pool if p.get('id') == connector_id),
+                next((p for p in group.get('connectors') or [] if p.get('id') == connector_id),
+                     pool[0] if pool else {}))
+
+
+def amount_limits(power_kw, price_per_kwh, max_minutes, car=None):
+    """Máximos (``charge_plan.charge_maxima``) com a potência e a tarifa final (velocidade, horário e
+    demanda já aplicados pela API) e o carro do perfil (``vehicle_state.snapshot``; SoC escondido)."""
+    car = car or {}
+    result = charge_maxima(power_kw, price_per_kwh, max_minutes, consumption=car.get('consumption'),
+                           soc=car.get('soc'), usable_kwh=car.get('usable_kwh'))
+    if to_decimal(power_kw) <= 0:  # potência desconhecida: só o tempo do ponto tem máximo
+        result.update(value=None, km=None)
+    return {**result, 'power_kw': to_decimal(power_kw), 'price_per_kwh': to_decimal(price_per_kwh)}
+
+
+def group_limits(group, tier='max', connector_id=None, car_power=None, car=None):
+    """Máximos do assistente para o conector escolhido, na velocidade ``tier``."""
+    tier = tier or 'max'
+    return amount_limits(power_options(group, car_power)[tier][0], group_price(group, tier, connector_id),
+                         point_minutes(selected_point(group, connector_id)), car)
+
+
+def _reason(limits):
+    if limits['bound'] == 'battery':
+        return 'o que cabe na bateria do seu carro'
+    return f"o que cabe em {limits['minutes']} min a {fmt_number(limits['power_kw'])} kW"
+
+
+def _value_text(value):
+    return f"{to_decimal(value).quantize(CENT):f}".replace('.', ',')
+
+
+def amount_max_label(by, limits):
+    """``120 min`` · ``R$ 61,15`` · ``192 km`` (ou ``None`` quando o modo não tem máximo)."""
+    if by == 'value':
+        return money(limits['value']).replace('R$', 'R$ ') if limits.get('value') is not None else None
+    if by == 'autonomy':
+        return f"{limits['km']} km" if limits.get('km') is not None else None
+    return f"{limits['minutes']} min"
+
+
+def amount_hint(by, limits):
+    """Linha "Máx.: …" mostrada antes de o motorista digitar."""
+    if by == 'value' and limits.get('value') is None:
+        free = limits.get('price_per_kwh') is not None and limits['price_per_kwh'] <= 0
+        return 'Este ponto não cobra pela energia: defina a recarga por tempo.' if free else None
+    if by == 'autonomy' and limits.get('km') is not None and limits['km'] < 1:
+        return 'A bateria do carro já está cheia: não há autonomia para adicionar agora.'
+    label = amount_max_label(by, limits)
+    if label is None:
+        return None
+    if by == 'time':
+        return f'Máx.: {label} (limite deste carregador)'
+    return f'Máx.: {label} · {_reason(limits)}'
+
+
+def amount_presets(by, limits):
+    """Chips ``[(rótulo, texto do campo)]``: atalhos abaixo do máximo e, por último, ``Máx. …``."""
+    if by == 'value':
+        top = limits.get('value')
+        if top is None or top < CENT:
+            return []
+        chips = [(f'R$ {value}', f'{value},00') for value in VALUE_PRESETS if value < top]
+        return chips + [(f'Máx. {amount_max_label(by, limits)}', _value_text(top))]
+    if by == 'autonomy':
+        top = limits.get('km')
+        if top is None or top < 1:
+            return []
+        return [(f'{km} km', str(km)) for km in KM_PRESETS if km < top] + [(f'Máx. {top} km', str(top))]
+    top = limits['minutes']
+    return [(f'{minutes} min', str(minutes)) for minutes in TIME_PRESETS if minutes < top] + \
+        [(f'Máx. {top} min', str(top))]
+
+
+def chip_width(label):
+    """Largura do chip pelo texto (como os atalhos do cadastro de ponto): o ``Row`` com quebra não estica."""
+    return max(66, len(label) * 8 + 32)
+
+
+def amount_error(by, text, limits):
+    """Erro do campo enquanto o motorista digita (``None`` = ok ou ainda vazio)."""
+    if not str(text or '').strip():
+        return None
+    try:
+        if by == 'value':
+            amount, top = parse_value(text), limits.get('value')
+        elif by == 'autonomy':
+            if limits.get('km') is not None and limits['km'] < 1:
+                return 'A bateria do carro já está cheia: não há autonomia para adicionar agora.'
+            amount, top = parse_km(text), limits.get('km')
+        else:
+            amount, top = parse_minutes(text), limits['minutes']
+    except (ValueError, ArithmeticError) as exc:
+        return str(exc)
+    if top is not None and amount > top:
+        return f'Acima do máximo ({amount_max_label(by, limits)}). Toque em Máx. ou diminua.'
+    return None
+
+
+def clamp_text(by, text, limits):
+    """Texto padrão (ex.: ``30``) limitado ao máximo do modo."""
+    label = amount_presets(by, limits)
+    if amount_error(by, text, limits) is None or not label:
+        return text
+    return label[-1][1]
 
 
 def reservation_code(reservation_id):

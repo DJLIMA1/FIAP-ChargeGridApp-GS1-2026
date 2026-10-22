@@ -469,8 +469,7 @@ HISTORY_EXPORT_COLUMNS = (
     ("ended_at", "Fim"),
     ("duration_minutes", "Duração (min)"),
     ("energy_kwh", "Energia (kWh)"),
-    ("price_per_kwh", "Preço travado (R$/kWh)"),
-    ("demand_multiplier", "Multiplicador de demanda"),
+    ("price_per_kwh", "Preço travado (R$/kWh)"),  # o motorista nunca vê o ajuste por demanda
     ("discount_percent", "Desconto (%)"),
     ("total", "Valor (R$)"),
     ("source", "Origem da medição"),
@@ -478,9 +477,14 @@ HISTORY_EXPORT_COLUMNS = (
 )
 
 
-def history_row(session: Mapping, now: datetime | None = None) -> dict:
-    """Linha do histórico do motorista (somente os dados dele; strings decimais)."""
+def history_row(session: Mapping, now: datetime | None = None, extras: Mapping | None = None) -> dict:
+    """Linha do histórico do motorista (somente os dados dele; strings decimais).
+
+    ``total`` é o mesmo total do recibo: energia + taxa de permanência ou, com pagamento
+    acertado, o valor capturado (``extras``: ``{"payment": {...}, "overstay": {...}}``).
+    """
     minutes = duration_minutes(session, now)
+    total = economics.session_economics(session, extras=extras or {})["revenue_total"]
     return {
         "id": str(session.get("id") or ""),
         "station_name": session.get("station_name") or "",
@@ -494,7 +498,7 @@ def history_row(session: Mapping, now: datetime | None = None) -> dict:
         "price_per_kwh": _text(to_decimal(session.get("price_per_kwh")), "0.0001"),
         "demand_multiplier": _text(_dec(session.get("demand_multiplier")) or Decimal(1)),
         "discount_percent": int(session.get("discount_percent") or 0),
-        "total": _text(economics.charged_amount(session.get("cost_estimate"))),
+        "total": _text(total),
         "source": session.get("source"),
         "end_reason": session.get("end_reason"),
         "end_reason_label": END_REASONS.get(session.get("end_reason"), session.get("end_reason")),
