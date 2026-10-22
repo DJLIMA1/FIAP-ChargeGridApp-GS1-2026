@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recorder import PACE, WebSession  # noqa: E402
 
 with WebSession(url='http://localhost:5179/dashboard/', port=9160) as s:
-    s.pause()  # login + esqueletos fora de câmera
+    s.pause()  # login fora de câmera
     s.type_into('input[type="email"]', 'joao@postosilva.com.br')
     s.type_into('input[type="password"]', 'chargegrid2026')
     s.click_text('Entrar', exact=True, wait=0.5)
@@ -14,13 +14,15 @@ with WebSession(url='http://localhost:5179/dashboard/', port=9160) as s:
         s.hold(0.3)
     s.hold(1.5)
     s.navigated()
-    s.cdp.frames.clear()
-    s.resume()
+    s.resume(clear=True)
     s.move(900, 400, 0.3)
     s.hold(PACE.intro)
-    s.click_text('Cupons', exact=True, wait=0.3)
+    s.click_text('Cupons', exact=True, wait=0.0)
+    s.pause()  # esqueleto fora de câmera
     while not s.cdp.js("document.body.innerText.includes('VERAO10')"):
         s.hold(0.1)
+    s.hold(0.4)
+    s.resume()
     s.hold(PACE.read)
     s.click_text('Novo cupom', exact=True, wait=PACE.after_tap)
     s.click_css('input.input-big')

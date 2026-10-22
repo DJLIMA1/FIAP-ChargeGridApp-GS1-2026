@@ -15,6 +15,7 @@ drawing the same touch ripple as the app videos (white ring + translucent white 
 Coordinates are panel pixels (800x480). Timing defaults come from recorder.PACE.
 """
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -59,10 +60,16 @@ def build(steps, out):
     work = Path(tempfile.mkdtemp(prefix='cg_totem_'))
     try:
         index = 0
+        cache = {}
 
         def emit(image):
+            # Held screens repeat the same image: write it once (JPEG q95) and hard-link the repeats.
             nonlocal index
-            image.save(work / f'{index:06d}.png')
+            key = id(image)
+            if key not in cache:
+                cache[key] = (work / f'u{len(cache):05d}.jpg', image)
+                image.save(cache[key][0], quality=95, subsampling=0)
+            os.link(cache[key][0], work / f'{index:06d}.jpg')
             index += 1
 
         for step in steps:
@@ -73,12 +80,13 @@ def build(steps, out):
                 ticks = round(0.52 * FPS)
                 for tick in range(ticks):
                     emit(_ripple(frame, *step.tap, tick / ticks))
-        last = Image.open(work / f'{index - 1:06d}.png')
+        last = Image.open(work / f'{index - 1:06d}.jpg')
+        last.load()
         for _ in range(round(PACE.outro * FPS)):
             emit(last)
         target = ROOT / out
         target.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(FPS), '-i', str(work / '%06d.png'),
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(FPS), '-i', str(work / '%06d.jpg'),
                         '-vf', 'format=yuv420p', '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-profile:v', 'high',
                         '-movflags', '+faststart', '-an', str(target)], check=True)
         print(f'{target}  ({index / FPS:.1f}s)')

@@ -36,9 +36,13 @@ with AppSession(port=8955, route='booking', mode='consumer',
     s.tap_text('Continuar', exact=True, wait=1.5)
     dbg('p8')
     s.hold(PACE.read)
-    s.tap_text('Solicitar início', wait=2.0)
+    s.tap_text('Solicitar início', wait=0.5)
+    s.pause()                                   # o início é confirmado pelo simulador; só gravamos a recarga já em curso
+    s.find('Recarga em andamento', timeout=60)
+    s.hold(1.0)
+    s.resume()
     dbg('p9')
-    s.hold(4)
+    s.hold(5)
     dbg('p10')
     s.hold(PACE.outro)
     if not DEBUG:

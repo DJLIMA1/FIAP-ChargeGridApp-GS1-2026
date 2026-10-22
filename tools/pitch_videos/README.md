@@ -22,4 +22,4 @@ Regras de estilo (iguais para todos os fluxos):
 - Toque = anel branco com preenchimento translúcido (app e totem); no painel, cursor de seta com pulso no clique.
 - Cada vídeo mostra um fluxo completo e termina na tela de resultado; 8–35 s.
 - Preparações fora de câmera com `pause()`/`resume()`; nunca editar o app para gravar.
-- Até `CG_PITCH_SLOTS` (padrão 4) gravações ao mesmo tempo; as demais esperam a vez.
+- Até `CG_PITCH_SLOTS` (padrão 3) gravações ao mesmo tempo; as demais esperam a vez.

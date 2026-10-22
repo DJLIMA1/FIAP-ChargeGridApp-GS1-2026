@@ -168,6 +168,7 @@ class CDP:
         self.frames = []          # (timestamp, jpeg bytes)
         self.recording = False
         self.offset = 0.0         # seconds cut out by pause()/resume()
+        self.since = 0.0          # wall time of the last (re)start; older screencast frames are ignored
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
 
@@ -184,8 +185,9 @@ class CDP:
                     slot['event'].set()
             elif message.get('method') == 'Page.screencastFrame':
                 params = message['params']
-                if self.recording:
-                    self.frames.append((params['metadata']['timestamp'] - self.offset, base64.b64decode(params['data'])))
+                stamp = params['metadata']['timestamp']
+                if self.recording and stamp >= self.since:   # drop stale frames captured during a pause
+                    self.frames.append((stamp - self.offset, base64.b64decode(params['data'])))
                 threading.Thread(target=self.call, args=('Page.screencastFrameAck',),
                                  kwargs={'sessionId': params['sessionId']}, daemon=True).start()
 
@@ -215,7 +217,7 @@ class CDP:
             pass
 
 
-SLOTS = int(os.environ.get('CG_PITCH_SLOTS', '4'))   # recordings allowed at once on this machine
+SLOTS = int(os.environ.get('CG_PITCH_SLOTS', '3'))   # recordings allowed at once on this machine
 SLOT_DIR = Path(tempfile.gettempdir()) / 'cg-pitch-slots'
 
 
@@ -280,6 +282,7 @@ class _Session:
         time.sleep(0.15)
         first = self.cdp.call('Page.captureScreenshot', format='jpeg', quality=95)['data']
         self.cdp.frames.clear()
+        self.cdp.since = time.time()
         self.cdp.frames.append((time.time() - self.cdp.offset, base64.b64decode(first)))
         self.cdp.recording = True
 
@@ -288,9 +291,13 @@ class _Session:
         self.cdp.recording = False
         self._paused_at = time.time()
 
-    def resume(self):
+    def resume(self, clear=False):
+        """clear=True also drops everything recorded before (setup done at the very start, e.g. a login)."""
         time.sleep(0.15)
+        if clear:
+            self.cdp.frames.clear()
         self.cdp.offset += time.time() - self._paused_at
+        self.cdp.since = time.time()
         shot = self.cdp.call('Page.captureScreenshot', format='jpeg', quality=95)['data']
         self.cdp.frames.append((time.time() - self.cdp.offset, base64.b64decode(shot)))
         self.cdp.recording = True
@@ -427,11 +434,12 @@ class AppSession(_Session):
     route=None  -> the real login screen (nobody signed in)
     route='home', mode='consumer'|'vendor', params={...}, setup=[[method, path, body], ...]
                 -> demo account already signed in, opened on that route (see app.capture_boot)
+    ai=True     -> the demo chat answers with the real AI (OPENROUTER_API_KEY from the repo .env)
     """
     width, height, scale = 402, 874, 3
     out_size = (1080, 2348)
 
-    def __init__(self, port, route=None, mode='consumer', params=None, setup=None, theme='dark'):
+    def __init__(self, port, route=None, mode='consumer', params=None, setup=None, theme='dark', ai=False):
         super().__init__(port)
         if not free(port):
             raise SystemExit(f'port {port} is already in use')
@@ -447,6 +455,10 @@ class AppSession(_Session):
             if setup:
                 env['CHARGEGRID_CAPTURE_SETUP'] = json.dumps(setup)
         env.pop('OPENROUTER_API_KEY', None)
+        if ai:   # real AI answers in the demo chat (services/demo_ai.py): key from the repo .env, process env only
+            for line in (ROOT / '.env').read_text().splitlines() if (ROOT / '.env').is_file() else []:
+                if line.startswith('OPENROUTER_API_KEY='):
+                    env['OPENROUTER_API_KEY'] = line.split('=', 1)[1].strip().strip('"\'')
         self.log = open(self.workdir / 'server.log', 'w')  # noqa: SIM115
         self.server = subprocess.Popen([sys.executable, '-c', SERVER_CODE.format(port=port)], env=env, cwd=ROOT,
                                        stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
