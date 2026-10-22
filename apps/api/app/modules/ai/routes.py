@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from chargegrid_core.ai import (
     LLMUnavailable,
     Toolbox,
+    build_context,
     indicators_from_dashboard,
     natural_search,
     owner_insights_from_indicators,
@@ -21,6 +22,7 @@ from chargegrid_core.ai import (
     session_insight,
     system_prompt,
 )
+from chargegrid_core.ai.loop import BUDGET_SECONDS
 
 from ...database import db_session
 from ...errors import fail
@@ -72,13 +74,22 @@ async def chat(data: ChatInput, user=Depends(current_user), db=Depends(db_sessio
     origin = ({"lat": data.context.lat, "lng": data.context.lng}
               if data.context.lat is not None and data.context.lng is not None else None)
     now = _now()
-    toolbox = Toolbox(DbSource(db, user), owner=owner, now=now, origin=origin)
-    system = system_prompt(role="owner" if owner and data.context.mode == "owner" else "driver", now=now,
-                           user_name=(user.name or "").split(" ")[0] or None,
-                           location_label="localização atual do aparelho" if origin else None)
+    role = "owner" if owner and data.context.mode == "owner" else "driver"
+    source = DbSource(db, user)
     started = time.monotonic()
+    # Cartão da conta (carro, bateria, carteira, postos mais usados / KPIs do dono): responde as
+    # perguntas comuns sem rodada extra de ferramenta. Só dados do próprio usuário.
+    context = await build_context(source, role=role, now=now,
+                                  client={"soc_percent": data.context.soc_percent,
+                                          "soc_source": data.context.soc_source})
+    toolbox = Toolbox(source, owner=owner, now=now, origin=origin, role=role, context=context)
+    system = system_prompt(role=role, now=now, user_name=(user.name or "").split(" ")[0] or None,
+                           location_label="localização atual do aparelho" if origin else None, context=context)
     try:
-        outcome = await run_chat(_released(db, llm), toolbox, [m.model_dump() for m in data.messages], system=system)
+        # O tempo do cartão sai do mesmo orçamento (limite de 30 s da função na Vercel).
+        budget = max(8.0, BUDGET_SECONDS - _elapsed_ms(started) / 1000)
+        outcome = await run_chat(_released(db, llm), toolbox, [m.model_dump() for m in data.messages], system=system,
+                                 budget_seconds=budget)
     except LLMUnavailable as error:
         record_usage(db, user, "chat", "error", latency_ms=_elapsed_ms(started), commit=True)
         fail(error.code, str(error) or "Assistente de IA indisponível no momento.", 504 if error.code == "ai_timeout" else 503)
