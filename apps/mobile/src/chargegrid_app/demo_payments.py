@@ -69,15 +69,19 @@ def _quote(api, point, body):
     power = power if power > 0 else Decimal(point['power_kw'])
     if tier == 'reduced':
         power = min(power,effective / 2)
+    coupon = api._find_coupon(point, body['coupon_code']) if body.get('coupon_code') else None
+    discount = int(coupon['discount_percent']) if coupon else 0
     try:
-        cap = billing.quote_cap(body.get('mode'), power_kw=power, price_per_kwh=price, minutes=body.get('minutes'),
+        cap = billing.quote_cap(body.get('mode'), power_kw=power, price_per_kwh=price, discount_percent=discount,
+                                minutes=body.get('minutes'),
                                 max_cost=body.get('max_cost'), energy_kwh=body.get('energy_kwh'),
                                 max_minutes=point['max_duration_minutes'])
     except (ValueError, ArithmeticError) as exc:
         _fail(str(exc), 'invalid_quote', 422)
     return {'amount_cents': cap['energy_cap_cents'], 'price': price, 'base': base,
             'multiplier': status['multiplier'], 'power': power, 'minutes': cap['max_duration_minutes'],
-            'energy_kwh': cap['energy_kwh'], 'driver': driver, 'power_tier':tier, 'overstay': overstay_terms(api, station)}
+            'energy_kwh': cap['energy_kwh'], 'driver': driver, 'power_tier':tier, 'overstay': overstay_terms(api, station),
+            'discount': discount, 'coupon_code': coupon['code'] if coupon else None}
 
 
 def overstay_terms(api, station):
@@ -113,7 +117,8 @@ def create(api, body):
         'method': None, 'currency': billing.CURRENCY, 'amount': str(billing.money(amount)),
         'energy_cap': str(billing.money(energy)), 'fixed_fee': '0.00', 'overstay_reserve': str(billing.money(reserve)),
         'price_per_kwh': str(quote['price']), 'base_price_per_kwh': str(quote['base']),
-        'demand_multiplier': str(quote['multiplier']), 'discount_percent': 0, 'coupon_code': None,
+        'demand_multiplier': str(quote['multiplier']), 'discount_percent': quote['discount'],
+        'coupon_code': quote['coupon_code'],
         'max_duration_minutes': quote['minutes'], 'power_tier':quote['power_tier'],
         'max_power_kw': str(quote['power']) if quote['driver'] is not None or quote['power_tier']=='reduced' else None,
         'connector_id': point['id'], 'session_id': None,
@@ -217,7 +222,8 @@ def attach(payment, session):
                    max_duration_minutes=payment['max_duration_minutes'],
                    price_per_kwh=str(Decimal(payment['price_per_kwh'])),
                    base_price_per_kwh=payment.get('base_price_per_kwh'),
-                   demand_multiplier=payment.get('demand_multiplier'),power_tier=payment.get('power_tier','max'),discount_percent=0)
+                   demand_multiplier=payment.get('demand_multiplier'),power_tier=payment.get('power_tier','max'),
+                   discount_percent=int(payment.get('discount_percent') or 0))  # cupom travado no orçamento
 
 
 def for_session(api, session_id):

@@ -208,6 +208,12 @@ def total(cost, reserving):
     return (to_decimal(cost) + (RESERVATION_FEE if reserving else 0)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def discounted(cost, percent):
+    """Custo da energia com o cupom (``percent`` 0–100), arredondado ao centavo como o recibo."""
+    rate = Decimal(100 - max(0, min(100, int(percent or 0)))) / 100
+    return (to_decimal(cost) * rate).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
 def parse_minutes(text):
     raw = str(text or '').strip()
     if not raw.isascii() or not raw.isdigit() or int(raw) < 1:

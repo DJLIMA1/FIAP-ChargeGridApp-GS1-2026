@@ -744,6 +744,8 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             draft['power_tier'] = intention['power_tier']
         if intention and intention.get('max_power_kw'):
             draft['max_power_kw'] = str(intention['max_power_kw'])
+        if intention and intention.get('coupon_code'):
+            draft['coupon_code'] = str(intention['coupon_code'])  # cupom aplicado na revisão do assistente
         if intention and intention.get('mode') == 'autonomy':
             draft.update(mode='autonomy', autonomy_km=str(intention.get('km') or ''))
         elif intention:
@@ -874,7 +876,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
         safety_section,safety_summary = disclosure_field('Ajustar tempo máximo','',[
             safety,ft.Text('A recarga para ao atingir o valor ou o tempo máximo, o que acontecer primeiro.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('safety_expanded',False),on_toggle=lambda value:draft.update(safety_expanded=value),on_update=app.page.update)
-        # Cupons ficam fora da área do motorista: o campo segue no rascunho, mas não é exibido.
+        # Cupom opcional (validado pela API no início; "Revisar" mostra o código enviado).
         coupon_section,coupon_summary = disclosure_field('Cupom de desconto','Opcional',[
             coupon,ft.Text('O código será validado ao solicitar o início. Informar um cupom não confirma o desconto.',size=12,color=theme.GRAY_TEXT)],
             expanded=draft.get('coupon_expanded',bool(draft['coupon_code'])),on_toggle=lambda value:draft.update(coupon_expanded=value),on_update=app.page.update)
@@ -992,7 +994,7 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
             await navigate(1)
         controls += [mode_toggle,
                      time_panel,value_panel,autonomy_panel,d.txt('Velocidade da recarga',12,'bold'),
-                     speed_toggle,speed_note,estimate,
+                     speed_toggle,speed_note,estimate,coupon_section,
                      button('Continuar',app.action(continue_limits)),button('Voltar',app.action(back),secondary=True)]
     else:
         pending_message = ft.Text('A resposta do pedido anterior não chegou. Confira o estado ou repita o mesmo pedido; os limites ficam protegidos até confirmar o resultado.',
@@ -1150,6 +1152,14 @@ async def build(app, public_code='', reservation_id=None, session_id=None, max_d
                     return
                 if exc.code == 'payment_required' and not payments.enabled(app):
                     raise ApiError(payments.PRESENTATION_PREPAY,exc.status,exc.code) from None
+                if definite and exc.code == 'invalid_coupon' and (draft.get('coupon_code') or '').strip():
+                    # O cupom deixou de valer (desativado/vencido): tira do pedido e volta à revisão.
+                    code = draft['coupon_code'].strip().upper()
+                    draft['coupon_code'] = ''
+                    await navigate(3)
+                    app.notice(f'O cupom {code} não vale mais para este ponto e foi removido. '
+                               'Confira e solicite o início de novo.')
+                    return
                 if definite and exc.code == 'overstay_terms_changed':
                     draft.update(overstay_loaded=False,overstay_version=None,overstay=None)
                     await navigate(3)

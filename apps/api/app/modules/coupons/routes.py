@@ -9,6 +9,7 @@ from ...errors import fail
 from ...http_helpers import page, update
 from ...models import ChargingSession, Connector, Coupon, Station, now
 from ...schemas import (
+    CouponCheckInput,
     CouponInput,
     CouponPatch,
 )
@@ -18,6 +19,8 @@ from ...service import (
     owned,
     row,
 )
+from ..auth.routes import limit
+from ..charging.service import find_coupon
 
 router = APIRouter()
 
@@ -85,6 +88,27 @@ def coupons(
         )
     # Gestão (``mine``): cada cupom traz o uso (``uses``, ``last_used_at``, ``discount_total_approx``).
     return page(db, query.order_by(Coupon.id), limit, offset, many=with_usage(db, user.id) if mine else None)
+
+
+# Tentativas de código por motorista: adivinhar cupons por força bruta fica inviável.
+CHECK_LIMIT, CHECK_WINDOW_SECONDS = 10, 300
+
+
+@router.post("/coupons/check")
+def check_coupon(data: CouponCheckInput, user=Depends(current_user), db=Depends(db_session)):
+    """Confere o código para o ponto escolhido sem pagar nem iniciar (a mesma regra do início).
+
+    Devolve só o que o motorista precisa ver; 422 ``invalid_coupon`` quando não vale aqui.
+    O desconto continua sendo aplicado e travado pela API no pagamento ou no início."""
+    limit(db, f"coupon-check:{user.id}", maximum=CHECK_LIMIT, seconds=CHECK_WINDOW_SECONDS)
+    connector = db.get(Connector, data.connector_id)
+    station = db.get(Station, connector.station_id) if connector else None
+    if not connector or connector.removed_at or not connector.active or not station or not station.active:
+        fail("not_found", "Ponto não encontrado", 404)
+    coupon = find_coupon(db, connector, data.code)
+    return {"code": coupon.code, "discount_percent": int(coupon.discount_percent),
+            "description": coupon.description, "valid_until": coupon.valid_until.isoformat(),
+            "station_id": str(coupon.station_id) if coupon.station_id else None}
 
 
 @router.post("/coupons", status_code=201)

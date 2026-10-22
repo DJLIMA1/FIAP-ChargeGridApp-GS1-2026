@@ -1208,7 +1208,24 @@ class DemoApi(OwnerApiMixin):
                       * int(session.get('discount_percent') or 0) / 100)
         return {'uses': uses, 'last_used_at': last, 'discount_total_approx': str(total.quantize(Decimal('0.01')))}
 
+    def _find_coupon(self, point, code):
+        """Cupom digitado válido para este ponto (mesma regra de ``find_coupon`` da API); 422 se não vale."""
+        typed = str(code or '').strip().upper()
+        coupon = next((c for c in self._coupons.values() if c['code'].upper() == typed), None)
+        if (not typed or not coupon or not coupon['active'] or _date(coupon['valid_until']) <= self._now()
+                or coupon['operator_id'] != self._stations[point['station_id']]['owner_id']
+                or coupon['station_id'] not in (None, point['station_id'])):
+            _fail('Cupom inválido para este posto.', 'invalid_coupon')
+        return coupon
+
     def _coupon_route(self, method, parts, body, params):
+        if parts == ['coupons', 'check'] and method == 'POST':
+            _fields(body, ('code', 'connector_id'))
+            point = self._get(self._points, body.get('connector_id'), 'Ponto não encontrado')
+            coupon = self._find_coupon(point, body.get('code'))
+            return {'code': coupon['code'], 'discount_percent': coupon['discount_percent'],
+                    'description': coupon.get('description') or '', 'valid_until': coupon['valid_until'],
+                    'station_id': coupon['station_id']}
         if len(parts) == 1 and method == 'GET':
             mine = str(params.get('mine', False)).lower() == 'true'
             station = self._get(self._stations, params['station_id']) if params.get('station_id') else None
@@ -1341,14 +1358,8 @@ class DemoApi(OwnerApiMixin):
             if Decimal(maximum) <= 0:
                 _fail('O valor máximo deve ser maior que zero.')
         discount = 0
-        if body.get('coupon_code'):
-            typed = str(body['coupon_code']).strip().upper()
-            coupon = next((c for c in self._coupons.values() if c['code'].upper() == typed), None)
-            if (not coupon or not coupon['active'] or _date(coupon['valid_until']) <= self._now()
-                    or coupon['operator_id'] != self._stations[point['station_id']]['owner_id']
-                    or coupon['station_id'] not in (None, point['station_id'])):
-                _fail('Cupom inválido para este ponto simulado.', 'invalid_coupon')
-            discount = coupon['discount_percent']
+        if body.get('coupon_code') and not payment:  # pré-pago: vale o cupom travado no pagamento (como a API)
+            discount = self._find_coupon(point, body['coupon_code'])['discount_percent']
         multiplier = ((reservation or {}).get('demand_multiplier')
                       or self._demand(self._stations[point['station_id']])['multiplier'])
         # Base do horário: a do momento da reserva ou a de agora (como a API).
@@ -1374,7 +1385,8 @@ class DemoApi(OwnerApiMixin):
         session['power_limit_kw'] = _decimal(applied, '0.001') if applied > 0 else None
         if payment:
             demo_payments.attach(payment, session)  # termos e teto travados no orçamento pago
-        demo_receipt.lock_session(self, session, point, reservation, body.get('coupon_code'))
+        demo_receipt.lock_session(self, session, point, reservation,
+                                  (payment or {}).get('coupon_code') if payment else body.get('coupon_code'))
         self._sessions[sid] = session
         self._event(sid, 'start_requested')
         self._session_runtime[sid] = {'start_at': self._elapsed + 1,

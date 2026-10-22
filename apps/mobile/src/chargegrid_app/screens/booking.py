@@ -65,7 +65,7 @@ def _state(app, station_id, keep_done=False):
     if not isinstance(state, dict) or state.get('station_id') != station_id or (state.get('done') and not keep_done):
         state = {'station_id': station_id, 'mode': 'reserve', 'by': 'time', 'power': 'max', 'pay': 'balance',
                  'minutes_text': '', 'value_text': '', 'km_text': '', 'car': None, 'group': None, 'connector_id': None, 'slot': None,
-                 'key': None, 'result': None, 'done': False}
+                 'key': None, 'result': None, 'done': False, 'coupon': None, 'coupon_text': ''}
         app.booking = state
     return state
 
@@ -77,6 +77,8 @@ def _apply_presets(state, group_keys, presets):
             state['mode' if name == 'kind' else name] = None if value == 'none' else value
     if presets.get('amount') is not None:
         state[_amount_key(state['by'])] = str(presets['amount'])
+    if presets.get('coupon'):  # atalho/captura: o código já digitado (aplicado ao abrir a revisão)
+        state['coupon_text'] = str(presets['coupon']).strip().upper()
 
 
 def _amount_key(by):
@@ -290,6 +292,86 @@ def overstay_box(terms):
                spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=theme.CARD, border_radius=design.RADIUS_BTN + 2, data='overstay-terms',
         padding=ft.Padding(left=13, right=13, top=10, bottom=10))
+
+
+def coupon_totals(estimate, coupon, by, stripe, reserving):
+    """``(cheio, com cupom)`` do total da revisão. O desconto vale só sobre a energia (a taxa de reserva
+    fica igual); em "Por valor" o total é o valor escolhido e o cupom rende mais energia."""
+    full_energy = rules.to_decimal(estimate['cost'])
+    percent = int((coupon or {}).get('discount_percent') or 0)
+    energy = full_energy if by == 'value' or not percent else rules.discounted(full_energy, percent)
+    if stripe:
+        return full_energy, energy
+    return rules.total(full_energy, reserving), rules.total(energy, reserving)
+
+
+def _coupon_value_note(estimate, coupon):
+    percent = int(coupon.get('discount_percent') or 0)
+    if percent >= 100:
+        return f"Cupom {coupon['code']}: a energia sai sem custo até o tempo máximo."
+    kwh = rules.to_decimal(estimate['energy_kwh']) * 100 / (100 - percent)
+    return (f"Cupom {coupon['code']}: o mesmo valor rende cerca de {rules.fmt_number(kwh)} kWh "
+            f"(sem o cupom, {rules.fmt_number(estimate['energy_kwh'])} kWh).")
+
+
+def coupon_card(app, state, connector_id, reload):
+    """Bloco "Cupom de desconto" da revisão: campo + Aplicar (``POST coupons/check``) ou o cupom aplicado.
+
+    A validação aqui só mostra o desconto; ele é aplicado e travado pela API no pagamento ou no início."""
+    coupon = state.get('coupon')
+    if coupon:
+        async def drop():
+            state['coupon'] = None
+            await reload()
+        note = 'Mais energia pelo mesmo valor' if state.get('by') == 'value' else 'Desconto sobre a energia'
+        remove = ft.Container(design.txt('Remover', 11.5, 'bold', text_align=ft.TextAlign.CENTER),
+                              on_click=app.action(drop), ink=True, border_radius=design.RADIUS_BTN,
+                              bgcolor='#262626' if theme.is_dark() else theme.TILE,
+                              padding=ft.Padding(left=12, right=12, top=8, bottom=8))
+        return ft.Container(
+            ft.Row([design.icon_tile(ft.Icons.CONFIRMATION_NUMBER_OUTLINED, size=42),
+                    ft.Column([design.txt(f"{coupon['code']} · {coupon['discount_percent']}% OFF", 12.6, 'bold'),
+                               design.txt(note, 9.6, 'regular', theme.GRAY_TEXT)], spacing=4, expand=True,
+                              alignment=ft.MainAxisAlignment.CENTER), remove],
+                   spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.Padding(left=9.8, right=10, top=10.3, bottom=10.3), border_radius=design.RADIUS_CARD,
+            bgcolor=theme.CARD, border=ft.Border.all(1.2, '#FFFFFF' if theme.is_dark() else theme.BORDER),
+            data='coupon-applied')
+
+    field = design.input_field(state.get('coupon_text') or '', 'Código do cupom', height=43,
+                               capitalization=ft.TextCapitalization.CHARACTERS)
+    field.data = 'coupon-code'
+    error = design.txt('', 11, 'regular', theme.ERROR, visible=False, data='coupon-error')
+
+    def typed(event=None):
+        state['coupon_text'] = (field.value or '').strip().upper()
+        error.visible = False
+    field.on_change = typed
+
+    async def apply():
+        typed()
+        if not state['coupon_text']:
+            error.value, error.visible = 'Digite o código do cupom.', True
+            app.page.update()
+            return
+        try:
+            result = await app.api.request('POST', 'coupons/check',
+                                           {'code': state['coupon_text'], 'connector_id': connector_id})
+        except ApiError as exc:
+            if exc.code not in ('invalid_coupon', 'rate_limited'):
+                raise
+            error.value = 'Cupom inválido para este posto.' if exc.code == 'invalid_coupon' else str(exc)
+            error.visible = True
+            app.page.update()
+            return
+        state['coupon'] = {'code': result['code'], 'discount_percent': int(result['discount_percent'])}
+        await reload()
+
+    button = ft.Container(design.txt('Aplicar', 12.8, 'bold', theme.BTN_PRIMARY_FG, text_align=ft.TextAlign.CENTER),
+                          on_click=app.action(apply), ink=True, height=43, width=96, alignment=ft.Alignment(0, 0),
+                          bgcolor=theme.BTN_PRIMARY, border_radius=design.RADIUS_BTN)
+    return ft.Column([ft.Row([ft.Container(field, expand=True), button], spacing=8,
+                             vertical_alignment=ft.CrossAxisAlignment.CENTER), error], spacing=6)
 
 
 async def build(app, step=1, station_id=None, connector_id=None, **presets):
@@ -585,10 +667,19 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
 
     estimate = quote()
     stripe = state['pay'] == 'stripe'
-    # Stripe (teste): a taxa de reserva simulada não é cobrada; o valor final é o teto calculado pela API.
-    amount = estimate['cost'] if stripe else rules.total(estimate['cost'], reserving)
     connector = next((p for p in group['connectors'] if p.get('id') == state['connector_id']),
                      (group['free'] or group['connectors'])[0])
+    if step == 6 and presets.get('coupon') and state['coupon_text'] and not state.get('coupon'):
+        try:  # atalho/captura com ``coupon``: aplica o código como o botão Aplicar faria (antes do total)
+            result = await app.api.request('POST', 'coupons/check',
+                                           {'code': state['coupon_text'], 'connector_id': connector['id']})
+            state['coupon'] = {'code': result['code'], 'discount_percent': int(result['discount_percent'])}
+        except ApiError:
+            pass
+    # Stripe (teste): a taxa de reserva simulada não é cobrada; o valor final é o teto calculado pela API.
+    # Cupom (validado na revisão): desconto só sobre a energia; a API aplica e trava no pagamento/início.
+    full_amount, amount = coupon_totals(estimate, state.get('coupon'), state['by'], stripe, reserving)
+    energy_amount = amount - (rules.RESERVATION_FEE if reserving and not stripe else 0)  # parte devolvível
     overstay = overstay_terms(station)
 
     def charging_intent():
@@ -601,6 +692,8 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
         # Potência escolhida (conector efetivo ∩ carro ∩ opção): a API aplica no início da recarga.
         intent['power_tier'] = state['power'] or 'max'
         intent['max_power_kw'] = str(rules.power_options(group, car_power)[state['power'] or 'max'][0])
+        if state.get('coupon'):
+            intent['coupon_code'] = state['coupon']['code']
         return intent
 
     async def finish(payment=None):
@@ -618,7 +711,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             # Termos mostrados na revisão: a API recusa (409) se o dono mudou a taxa depois.
             intent['overstay_terms_version'] = overstay['version']
         paid_amount = payment.get('amount') if payment else amount
-        paid = dict(amount=amount, energy_amount=estimate['cost'], method=state['pay'], station_id=station_id,
+        paid = dict(amount=amount, energy_amount=energy_amount, method=state['pay'], station_id=station_id,
                     station_name=station.get('name', ''), connector_id=connector['id'])
         if reserving:
             state['key'] = state['key'] or app.api.new_key()
@@ -691,6 +784,7 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                        14, 36)
         third = block('Potência e Velocidade', row(rules.power_title(group, state['power'] or 'max', car_power), power_note,
                                                    ft.Icons.OFFLINE_BOLT_OUTLINED, 4), 14, 36)
+        fourth = block('Cupom de desconto', coupon_card(app, state, connector['id'], nav(6)), 14, 36)
         place = ft.Container(ft.Column([design.txt(f"Estação: {station.get('name', '')}", 13.4, 'bold'),
                                         design.txt(', '.join(str(station.get('address') or '').split(', ')[:2]), 12.4, 'regular',
                                                   theme.GRAY_TEXT, max_lines=1,
@@ -698,8 +792,19 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
                                        spacing=1), margin=ft.Margin(left=0, top=31.5, right=0, bottom=0))
         # Sem linha extra de taxa na tela (a taxa de reserva já foi mostrada na etapa 2 e entra no total).
         total_lines = [ft.Container(design.txt('Total estimado' if stripe else 'Total', 17, 'bold'), height=18,
-                                    alignment=ft.Alignment(-1, -1)),
-                       design.txt(rules.money(amount), 32.5, 'bold')]
+                                    alignment=ft.Alignment(-1, -1))]
+        coupon = state.get('coupon')
+        if coupon and amount < full_amount:
+            # Total cheio riscado acima do total com o cupom (desconto só sobre a energia).
+            total_lines.append(design.txt(rules.money(full_amount), 15, 'regular', theme.GRAY_TEXT,
+                                          style=ft.TextStyle(decoration=ft.TextDecoration.LINE_THROUGH),
+                                          data='total-full'))
+        total_lines.append(design.txt(rules.money(amount), 32.5, 'bold', data='total-amount'))
+        if coupon and amount < full_amount:
+            total_lines.append(design.txt(f"Cupom {coupon['code']}: − {rules.money(full_amount - amount)} na energia",
+                                          11, 'semibold', data='total-coupon'))
+        elif coupon and state['by'] == 'value':
+            total_lines.append(design.txt(_coupon_value_note(estimate, coupon), 11, 'semibold', data='total-coupon'))
         if stripe:
             note = 'Pré-autorização na Stripe (teste): cobramos só a energia confirmada pelo equipamento.'
             if reserving:
@@ -718,16 +823,27 @@ async def build(app, step=1, station_id=None, connector_id=None, **presets):
             extra.append(ft.Container(prepay_note(False, presentation=True),
                                       margin=ft.Margin(left=0, top=18, right=0, bottom=0)))
 
-        async def confirm():
-            if blocked:
-                raise failing(payments.PRESENTATION_PREPAY)
+        async def proceed():
             if stripe:
                 await open_payment()
             elif state['pay'] in ('pix', 'card'):
                 await app.go('booking', step=7, station_id=station_id)  # Pix/cartão simulados (0.6.x)
             else:
                 await finish()
-        return _page(first, second, third, place, total_block, *extra, title='Revisar Dados', on_back=app.back,
+
+        async def confirm():
+            if blocked:
+                raise failing(payments.PRESENTATION_PREPAY)
+            try:
+                await proceed()
+            except ApiError as exc:
+                if exc.code != 'invalid_coupon' or not state.get('coupon'):
+                    raise
+                # O cupom deixou de valer desde a revisão (desativado/vencido): tira e mostra o total cheio.
+                state['coupon'] = None
+                app.notice('O cupom não vale mais para este posto e foi removido. Confira o total.')
+                await app.go('booking', step=6, station_id=station_id)
+        return _page(first, second, third, fourth, place, total_block, *extra, title='Revisar Dados', on_back=app.back,
                      steps=1, step=1, gap=0, edge='c6',
                      footer=[design.primary_button('Confirmar reserva' if reserving else 'Confirmar e iniciar no ponto',
                                                    app.action(confirm), height=55, size=16, weight='bold')])

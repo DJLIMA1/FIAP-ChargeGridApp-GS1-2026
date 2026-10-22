@@ -80,6 +80,8 @@ def request_body(connector_id, intent, energy_kwh=None):
         body['power_tier'] = intent['power_tier']
     if intent.get('max_power_kw') is not None:
         body['max_power_kw'] = str(intent['max_power_kw'])
+    if intent.get('coupon_code'):
+        body['coupon_code'] = intent['coupon_code']  # a API aplica o desconto no teto e trava o cupom
     return body
 
 

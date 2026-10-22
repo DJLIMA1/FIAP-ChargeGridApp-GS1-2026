@@ -829,3 +829,45 @@ def test_owner_coupon_list_reports_usage_by_code(factory, seed):
         assert public and all("uses" not in item for item in public)  # motorista não vê o uso
     finally:
         clear_overrides()
+
+
+def test_driver_checks_coupon_for_the_chosen_point_with_attempt_limit(factory, seed):
+    """``POST /coupons/check``: mesma regra do início, sem pagar/iniciar, e limite de tentativas."""
+    future = now() + timedelta(days=3)
+    with factory.begin() as db:
+        stranger = Profile(id=uuid4(), name="Other owner", operator_enabled=True)
+        db.add(stranger)
+        db.flush()
+        other_station = Station(owner_id=seed["owner"], name="Other", address="X", latitude=0, longitude=0)
+        db.add(other_station)
+        db.flush()
+        db.add_all([
+            Coupon(operator_id=seed["owner"], code="BEMVINDO10", description="Boas-vindas", discount_percent=10,
+                   valid_until=future),
+            Coupon(operator_id=seed["owner"], code="SOOUTRO", description="", discount_percent=20,
+                   valid_until=future, station_id=other_station.id),
+            Coupon(operator_id=stranger.id, code="ALHEIO", description="", discount_percent=30, valid_until=future),
+            Coupon(operator_id=seed["owner"], code="PAUSADO", description="", discount_percent=5,
+                   valid_until=future, active=False),
+            Coupon(operator_id=seed["owner"], code="VENCIDO", description="", discount_percent=5,
+                   valid_until=now() - timedelta(minutes=1)),
+        ])
+    client, _ = client_for(factory, seed["a"])
+    point = str(seed["point"])
+    try:
+        ok = client.post("/v1/coupons/check", json={"code": " bemvindo10 ", "connector_id": point})
+        assert ok.status_code == 200
+        assert ok.json()["code"] == "BEMVINDO10" and ok.json()["discount_percent"] == 10
+        assert ok.json()["description"] == "Boas-vindas"
+        assert "uses" not in ok.json() and "operator_id" not in ok.json()
+        for code in ("SOOUTRO", "ALHEIO", "PAUSADO", "VENCIDO", "NAOEXISTE"):
+            refused = client.post("/v1/coupons/check", json={"code": code, "connector_id": point})
+            assert refused.status_code == 422 and refused.json()["error"]["code"] == "invalid_coupon", code
+        missing = client.post("/v1/coupons/check", json={"code": "BEMVINDO10", "connector_id": str(uuid4())})
+        assert missing.status_code == 404
+        # 7 tentativas até aqui (recusadas também contam); a 11ª na janela é recusada sem dizer se o código vale.
+        statuses = [client.post("/v1/coupons/check", json={"code": "BEMVINDO10", "connector_id": point}).status_code
+                    for _ in range(4)]
+        assert statuses == [200, 200, 200, 429]
+    finally:
+        clear_overrides()
