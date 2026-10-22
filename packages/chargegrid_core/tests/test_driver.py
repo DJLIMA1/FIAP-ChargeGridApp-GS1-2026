@@ -366,7 +366,7 @@ def test_weather_summary_one_line_and_rain_note():
     assert '18h (Open-Meteo)' in rain_note(signal, at(14))['message']
     assert rain_note(WeatherSignal({at(14): (0.0, 20.0)}), at(14)) is None
     demo = simulated_weather(at(12))
-    assert demo.source == 'simulado' and weather_summary(demo, at(12))['label'] == '23° · nublado · chuva às 18h (simulado)'
+    assert demo.source == 'simulado' and weather_summary(demo, at(12))['label'] == '23° · nublado · chuva às 18h (estimado)'
     assert weather_summary(demo, at(12))['status'] == 'simulado'
 
 
@@ -402,7 +402,7 @@ def test_context_and_plan_expose_weather_and_earnings_source():
     assert context['shift_source'] == 'auto' and context['earnings']['estimated']
     assert context['demand']['source'] == 'heuristica+simulado' and context['demand']['level'] == 'normal'
     assert context['demand']['peaks'][0]['start'] == '16:45'
-    assert context['weather']['label'].endswith('(simulado)')
+    assert context['weather']['label'].endswith('(estimado)')
     night = build_context(profile, at(23), ())
     assert not night['in_shift'] and night['window']['start'] == '10:00' and night['weather'] is None
     plan = build_plan({'soc_percent': 50, 'mode': 'auto'}, profile, [], at(14), (simulated_weather(at(14)),))

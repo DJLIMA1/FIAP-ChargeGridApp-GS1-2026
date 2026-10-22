@@ -47,7 +47,7 @@ def move(db, user, cents, title, key):
                 fail("idempotency_conflict", "Esta operação já foi usada com outro valor", 409)
             return obj
     if obj.balance_cents + cents < 0:
-        fail("insufficient_balance", "Saldo simulado insuficiente. Escolha Pix ou cartão.", 402)
+        fail("insufficient_balance", "Saldo insuficiente. Escolha Pix ou cartão.", 402)
     obj.balance_cents += cents
     obj.transactions = [*obj.transactions, {"key": key, "signed_cents": cents,
         "kind": "credit" if cents > 0 else "debit", "title": title,
@@ -91,7 +91,7 @@ def simulate_move(db, user, data, key):
             return wallet_view(obj)
         obj.legacy_imported = True
         if cents:
-            move(db, user, cents, "Saldo simulado importado do aplicativo", "legacy-import")
+            move(db, user, cents, "Saldo importado do aplicativo", "legacy-import")
     else:
         move(db, user, cents if data.kind == "credit" else -cents, data.title, key)
     return wallet_view(obj)

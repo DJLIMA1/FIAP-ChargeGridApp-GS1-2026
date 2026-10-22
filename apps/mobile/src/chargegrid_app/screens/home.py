@@ -238,7 +238,8 @@ async def build(app, **_):
 
     def describe_state(reservation, session):
         if session:
-            source = SOURCE.get(session.get('source'), 'origem não informada')
+            # Sem ``source``, a conta de exemplo usa o mesmo rótulo do equipamento que calcula a energia.
+            source = SOURCE.get(session.get('source') or ('simulated' if demo else None), 'origem não informada')
             battery_label = 'Bateria'
             battery = '' if session.get('soc_percent') is None else f" · {battery_label} {float(session['soc_percent']):.0f}%"
             labels = DEMO_CHARGING_LABELS if demo else CHARGING_LABELS

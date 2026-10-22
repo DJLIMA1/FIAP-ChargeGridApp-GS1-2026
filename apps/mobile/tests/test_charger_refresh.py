@@ -119,19 +119,19 @@ class ChargerRefreshTests(unittest.IsolatedAsyncioTestCase):
             await app.api.login(DEMO_EMAIL, DEMO_PASSWORD)
             claimed = await app.api.request('POST', 'ownership/claim', {'token': app.api.new_claim_token()})
             page = await station_admin.build(app, station_id=claimed['station_id'], page='data')
-            self.assertIn('Central DEMO-', texts(page))  # status e manutenção num só cartão por central
+            self.assertIn('Central CG-', texts(page))  # status e manutenção num só cartão por central
             self.assertNotIn('Central da estação', texts(page))
             self.assertIsNone(app.poll)
             await click(page, 'Restaurar')(None)
             dialog = app.page.show_dialog.call_args.args[0]
-            self.assertIn('Nenhum dispositivo físico ou Wi-Fi será alterado', dialog.content.value)
+            self.assertIn('O Wi-Fi não será alterado', dialog.content.value)
             await dialog.actions[1].on_click(None)
             self.assertIsNotNone(app.poll)
             name = next(c for c in descendants(page) if isinstance(c, ft.TextField))
             name.value = 'Still typing'
             clock[0] += 3
             await app.poll()
-            self.assertIn('Restauração simulada confirmada', texts(page))
+            self.assertIn('Restauração confirmada', texts(page))
             self.assertIs(name, next(c for c in descendants(page) if isinstance(c, ft.TextField)))
             self.assertEqual(name.value, 'Still typing')
             fresh = await app.api.request('GET', f"stations/{claimed['station_id']}")

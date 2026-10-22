@@ -5,6 +5,28 @@ from unittest.mock import AsyncMock, patch
 
 import flet as ft
 from chargegrid_map import VectorMap
+
+from chargegrid_app.api_client import ApiError
+from chargegrid_app.demo import (
+    DEMO_EMAIL,
+    DEMO_LOCATIONS,
+    DEMO_PASSWORD,
+    DEMO_PRESENCE_CODE,
+    DemoApi,
+)
+from chargegrid_app.screens import (
+    charge_detail,
+    charging,
+    history,
+    home,
+    reservations,
+    stations,
+)
+from chargegrid_app.services import maps
+from chargegrid_app.services.location import geocode_demo_address
+from chargegrid_app.services.search_location import SearchLocation
+from chargegrid_app.ui.wording import FORBIDDEN
+from test_behavior import HandlerApp, click, descendants, station_responses
 from test_consumer_flows import (
     CONTEXT,
     STATION,
@@ -16,20 +38,6 @@ from test_consumer_flows import (
     texts,
 )
 from test_station_ux import search_box
-
-from chargegrid_app.api_client import ApiError
-from chargegrid_app.demo import (
-    DEMO_EMAIL,
-    DEMO_LOCATIONS,
-    DEMO_PASSWORD,
-    DEMO_PRESENCE_CODE,
-    DemoApi,
-)
-from chargegrid_app.screens import charge_detail, charging, history, home, reservations, stations
-from chargegrid_app.services import maps
-from chargegrid_app.services.location import geocode_demo_address
-from chargegrid_app.services.search_location import SearchLocation
-from test_behavior import HandlerApp, click, descendants, station_responses
 
 
 class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
@@ -52,12 +60,12 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             point = next(p for p in first_station['connectors'] if p.get('available'))
             await app.api.request('POST','reservations',{'connector_id':point['id']},key='demo-reserve')
             reservation_screen = await reservations.build(app,detail=True)
-            self.assertIn('Aguardando confirmação simulada',texts(reservation_screen))
+            self.assertIn('Aguardando confirmação do posto',texts(reservation_screen))
             clock[0] += 2
             await app.poll()
             app.go.assert_awaited_with('reservations',detail=True)
             reservation_screen = await reservations.build(app,detail=True)
-            self.assertIn('Reserva simulada confirmada',texts(reservation_screen))
+            self.assertIn('Reserva confirmada',texts(reservation_screen))
             await click(reservation_screen,'Cheguei: informar código')(None)
             start_screen = await charging.build(app,**app.go.call_args.kwargs)
             self.assertEqual(fields(start_screen)['Código temporário do posto'].value,'12345')
@@ -85,7 +93,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(kinds,['start_requested','start_applied','stop_requested','ended'])
             history_screen = await history.build(app)
             self.assertIn('Villa Lobos',texts(history_screen))
-            self.assertIn('HISTÓRICO SIMULADO',texts(history_screen))
+            self.assertNotRegex(texts(history_screen),FORBIDDEN)
             self.assertIsNone(await app.api.request('GET','charging-sessions/current'))
             await app.api.close()
 
@@ -139,7 +147,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         screen = await stations.build(app)
         search_box(screen).value = 'Um endereço particular desconhecido'
         with patch.object(stations,'geocode_address',new=AsyncMock(side_effect=AssertionError('online geocoder'))) as geocode:
-            with self.assertRaisesRegex(ApiError,'conta demo'):
+            with self.assertRaisesRegex(ApiError,'Busque um destes locais'):
                 await search_box(screen).on_submit(None)
         geocode.assert_not_called()
         app.go.assert_not_called()
@@ -150,7 +158,7 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         screen = await charging.build(app,public_code='CG-ONE',point_context=CONTEXT)
         self.assertEqual(fields(screen)['Código temporário do posto'].value,DEMO_PRESENCE_CODE[2:])
         self.assertIn(DEMO_PRESENCE_CODE,texts(screen))
-        self.assertIn('não é necessário um equipamento real',texts(screen))
+        self.assertIn('Use o código #F12345 para confirmar este ponto.',texts(screen))
         screen = await next_charging_step(app,screen)
         screen = await next_charging_step(app,screen)
         await click(screen,'Solicitar início')(None)
@@ -194,17 +202,18 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         app.api.is_demo = True
         app.api.request.return_value = reservation()
         reservation_screen = await reservations.build(app,detail=True)
-        self.assertIn('Reserva simulada confirmada',texts(reservation_screen))
+        self.assertIn('Reserva confirmada',texts(reservation_screen))
         self.assertIn(DEMO_PRESENCE_CODE,texts(reservation_screen))
         item = {**CONTEXT,'id':'demo-session','status':'completed','max_duration_minutes':10,'soc_percent':45,
                 'source':'simulated'}
         app.api.request.return_value = {'items':[item],'total':1}
         history_screen = await history.build(app)
-        self.assertIn('HISTÓRICO SIMULADO',texts(history_screen))
+        self.assertNotRegex(texts(history_screen),FORBIDDEN)
         app.api.request.return_value = receipt_for(item,demo=True)
         detail = await history.build(app,session='demo-session')
-        for expected in ('CONTA DEMO','SIMULADO','Bateria simulada','45%',charge_detail.EXPORT_DEMO_NOTE):
+        for expected in ('Bateria','45%',charge_detail.EXPORT_DEMO_NOTE):
             self.assertIn(expected,texts(detail))
+        self.assertNotRegex(texts(detail),FORBIDDEN)
 
     async def test_demo_home_labels_simulated_state_without_duplicate_banner(self):
         app = HandlerApp()
@@ -216,9 +225,8 @@ class DemoConsumerTests(unittest.IsolatedAsyncioTestCase):
         app.api.request.side_effect = lambda method,path,**kwargs: responses[path]
         screen = await home.build(app)
         self.assertNotIn('Demonstração · sem cobrança real.',texts(screen))
-        self.assertIn('Recarga simulada em andamento',texts(screen))
-        self.assertIn('Bateria simulada 31%',texts(screen))
-        self.assertIn('Simulação local',texts(screen))
+        self.assertIn('Recarga confirmada · Bateria 31% · Calculada pelo equipamento',texts(screen))
+        self.assertNotRegex(texts(screen).replace('Demonstração',''),FORBIDDEN)  # o nome do perfil é do teste
 
 
 class DemoGeocodingTests(unittest.TestCase):

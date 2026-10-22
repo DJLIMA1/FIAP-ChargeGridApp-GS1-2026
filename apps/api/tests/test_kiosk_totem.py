@@ -2,7 +2,7 @@
 
 Modo apresentação do dono → pagamento simulado (sem Stripe); conta oficial → Stripe (FakeStripe, sem rede).
 """
-
+import re
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -301,7 +301,7 @@ def test_presentation_owner_simulated_flow_without_any_stripe(http, presentation
     assert paid.status_code == 200, paid.text
     body = paid.json()
     assert body["status"] == "charging" and body["session_id"]
-    assert body["payment"]["method"] == "simulated" and body["payment"]["label"] == "Pago (simulado) · em uso"
+    assert body["payment"]["method"] == "simulated" and body["payment"]["label"] == "Pago · em uso"
     assert body["payment"]["qr_url"] is None
     # Repetir (mesma chave ou outra) não cria outro pagamento nem outro START.
     assert bench.pay(order["id"], key=key).json()["session_id"] == body["session_id"]
@@ -320,14 +320,15 @@ def test_presentation_owner_simulated_flow_without_any_stripe(http, presentation
     assert receipt["final"] is True and receipt["energy_kwh"] == "2.500"
     assert (receipt["total"], receipt["returned"], receipt["return_kind"]) == ("5.00", "15.00", "simulated")
     assert receipt["end_reason"] == "requested_stop" and receipt["url"] == order["receipt_url"]
-    assert stopped["kiosk_order"]["payment"]["label"] == "Cobrado R$ 5,00 (simulado) · Devolvido R$ 15,00"
+    assert stopped["kiosk_order"]["payment"]["label"] == "Cobrado R$ 5,00 · Devolvido R$ 15,00"
     with factory() as db:
         payment = db.query(Payment).one()
         assert (payment.settlement_status, payment.status, payment.charge_cents, payment.captured_cents,
                 payment.refunded_cents) == ("done", "completed", 500, 500, 0)
         assert db.get(ChargingSession, uuid.UUID(session_id)).user_id == payment.user_id
     page = http.get(urlparse(order["receipt_url"]).path + "?" + urlparse(order["receipt_url"]).query)
-    assert page.status_code == 200 and "SIMULADO" in page.text and "Pagamento simulado" in page.text
+    assert page.status_code == 200 and "Nenhum valor é cobrado nesta recarga." in page.text
+    assert not re.search(r"simulad|demonstra|\bteste\b|modo teste|ambiente de teste|modo apresenta", page.text, re.IGNORECASE)
     assert "Recibo" in page.text and "2.500 kWh" in page.text and 'http-equiv="refresh"' not in page.text
     token = order["receipt_url"].split("t=")[1]
     pdf = http.get(f"/pay/r/{order['id']}.pdf?t={token}")
@@ -364,7 +365,7 @@ def test_simulated_start_waits_for_point_and_sync_resumes_it(http, presentation,
         db.get(Device, seed["device"]).reconciled = False
     paid = bench.pay(order["id"]).json()
     assert paid["status"] == "paid" and paid["session_id"] is None
-    assert paid["payment"]["label"] == "Pago (simulado)"
+    assert paid["payment"]["label"] == "Pago"
     synced = bench.sync()  # reconcilia; o START sai depois de gravar o sync
     assert synced["kiosk_order"]["status"] == "charging"
     session_id, _ = bench.apply_start()
@@ -424,7 +425,7 @@ def test_official_owner_stripe_qr_confirmation_start_partial_capture(http, strip
         assert db.query(Command).filter(Command.type == "START").count() == 1
     session_id, synced = bench.apply_start()
     assert synced["kiosk_order"]["status"] == "charging"
-    assert synced["kiosk_order"]["payment"]["label"] == "Pago (teste) · em uso"
+    assert synced["kiosk_order"]["payment"]["label"] == "Pago · em uso"
     assert _qr_checkout(http, qr).headers["location"].startswith("/pay/r/")
     stopped = bench.charge_and_stop_locally(session_id)
     receipt = stopped["kiosk_order"]["receipt"]
@@ -432,7 +433,7 @@ def test_official_owner_stripe_qr_confirmation_start_partial_capture(http, strip
         "5.00", "15.00", "released", True)
     assert stripe.intents[intent["id"]]["amount_received"] == 500  # captura parcial
     page = http.get(f"/pay/r/{order['id']}?t={order['receipt_url'].split('t=')[1]}")
-    assert "AMBIENTE DE TESTE" in page.text and "Pagamento simulado" not in page.text
+    assert "Pagamento processado com segurança pela Stripe" in page.text and not re.search(r"simulad|demonstra|\bteste\b|modo teste|ambiente de teste|modo apresenta", page.text, re.IGNORECASE)
 
 
 def test_stripe_pix_returns_the_difference(http, stripe, factory, seed):
@@ -701,24 +702,24 @@ def test_seller_history_and_exports_carry_channel_and_method(http, presentation,
     header = rows[0]
     assert len(header) == 18 and header[15] == "Taxa de permanência (R$)" and header[-2:] == ["Canal", "Pagamento"]
     by_id = {row[0]: row for row in rows[1:]}
-    assert by_id[totem_session][-2:] == ["Totem", "Simulado"] and by_id[app_session][-2:] == ["App", ""]
+    assert by_id[totem_session][-2:] == ["Totem", "Sem cobrança"] and by_id[app_session][-2:] == ["App", ""]
     envelope = owner.get("/v1/owner/export/sessions.json").json()
     json_items = {item["id"]: item for item in envelope["items"]}
     assert (json_items[totem_session]["payment_channel"], json_items[totem_session]["payment_method"]) == (
-        "Totem", "Simulado")
+        "Totem", "Sem cobrança")
     # Resultado do dono: CSV com as colunas no fim e PDF com a coluna Canal.
     margin = list(csv.DictReader(io.StringIO(owner.get("/v1/owner/export/margin.csv").text)))
     margin_rows = {row["ID da sessão"]: row for row in margin}
     assert list(margin[0])[-5:] == ["Base da receita", "Canal", "Pagamento", "Efeito da velocidade (R$)",
                                     "Ajuste do pagamento (R$)"]
-    assert (margin_rows[totem_session]["Canal"], margin_rows[totem_session]["Pagamento"]) == ("Totem", "Simulado")
+    assert (margin_rows[totem_session]["Canal"], margin_rows[totem_session]["Pagamento"]) == ("Totem", "Sem cobrança")
     assert (margin_rows[app_session]["Canal"], margin_rows[app_session]["Pagamento"]) == ("App", "")
     screen = {item["session_id"]: item for item in owner.get("/v1/owner/margin").json()["items"]}
     assert screen[totem_session]["payment_channel"] == "Totem"
     monkeypatch.setattr(pdf, "COMPRESS", False)
     document = owner.get("/v1/owner/export/margin.pdf")
     assert document.status_code == 200 and b"Canal" in document.content
-    assert b"Totem \\267 Simulado" in document.content
+    assert b"Totem \\267" in document.content and b"cobran\\347a" in document.content  # a célula pode quebrar a linha
 
 
 def test_owner_live_shows_point_held_by_totem(http, presentation, factory, seed):

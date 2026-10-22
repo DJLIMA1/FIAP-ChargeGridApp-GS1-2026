@@ -33,7 +33,7 @@ CHARGER_OFFLINE = 'charger_offline'
 SCREEN_OFFLINE = 'screen_offline'
 CHARGER_OFFLINE_MESSAGE = 'Carregador offline — use outro ponto desta estação'
 CHARGER_OFFLINE_SHORT = 'Carregador offline'
-STATUS_LABEL = f'{LABEL} (simulado)' if SIMULATED else LABEL
+STATUS_LABEL = LABEL  # ``SIMULATED`` segue como flag interna; o texto visível não leva a marca
 EMPTY_ADDRESS_MESSAGE = 'Endereço do carregador não pode ficar vazio: informe um número de 1 a 247'
 
 

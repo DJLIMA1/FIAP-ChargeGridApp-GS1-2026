@@ -13,7 +13,7 @@ from .demand import WeatherSignal
 
 RAIN_MM = 0.2
 CURRENT_MAX_AGE_MINUTES = 75
-SOURCE_LABELS = {'open-meteo': 'Open-Meteo', 'simulado': 'simulado'}
+SOURCE_LABELS = {'open-meteo': 'Open-Meteo', 'simulado': 'estimativa'}
 # Códigos de tempo WMO (Open-Meteo) → texto curto em português.
 _CONDITIONS = (
     ((0,), 'céu limpo'), ((1,), 'poucas nuvens'), ((2,), 'parcialmente nublado'), ((3,), 'nublado'),
@@ -68,7 +68,7 @@ def weather_summary(signal: WeatherSignal, now: datetime, horizon_hours: int = 1
             parts.append(condition)
         parts.append(f'chuva às {next_rain.hour}h' if next_rain else 'sem chuva prevista')
     simulated = signal.source == 'simulado'
-    label = ' · '.join(parts) + (' (simulado)' if simulated else '')
+    label = ' · '.join(parts) + (' (estimado)' if simulated else '')
     return {'status': 'simulado' if simulated else 'ok', 'source': signal.source,
             'temperature_c': None if temperature is None else round(temperature, 1), 'condition': condition,
             'rain_now': bool(rain_now), 'next_rain_at': next_rain.strftime('%H:%M') if next_rain else None,

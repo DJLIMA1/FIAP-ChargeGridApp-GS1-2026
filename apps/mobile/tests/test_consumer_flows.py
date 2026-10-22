@@ -148,7 +148,7 @@ class ConsumerFlowsTests(unittest.IsolatedAsyncioTestCase):
         await inputs['Limite de custo estimado (R$)'].on_change(None)
         self.assertIn('0,75 kWh',texts(screen))
         screen = await next_charging_step(app,screen)
-        self.assertIn('nenhuma cobrança real',texts(screen).lower())
+        self.assertIn('o início depende da confirmação dele',texts(screen).lower())
         await click(screen,'Solicitar início')(None)
         body = app.api.request.call_args.args[2]
         self.assertEqual(body['max_cost'],'1.50')

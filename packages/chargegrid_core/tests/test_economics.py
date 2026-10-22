@@ -177,13 +177,13 @@ def test_clean_fee_percent():
 
 
 def test_margin_csv_appends_channel_and_method_at_the_end():
-    rows = [{**e.session_economics(session()), "payment_channel": "Totem", "payment_method": "Simulado"},
+    rows = [{**e.session_economics(session()), "payment_channel": "Totem", "payment_method": "Sem cobrança"},
             e.session_economics(session(id="s2"))]
     parsed = list(csv.reader(io.StringIO(e.margin_csv(rows))))
     # O formato anterior continua igual coluna a coluna; colunas novas entram sempre no fim.
     assert parsed[0][-5:] == ["Base da receita", "Canal", "Pagamento", "Efeito da velocidade (R$)",
                               "Ajuste do pagamento (R$)"]
-    assert parsed[1][-4:-2] == ["Totem", "Simulado"] and parsed[2][-4:-2] == ["", ""]
+    assert parsed[1][-4:-2] == ["Totem", "Sem cobrança"] and parsed[2][-4:-2] == ["", ""]
     assert parsed[1][-1] == "0.00"
 
 

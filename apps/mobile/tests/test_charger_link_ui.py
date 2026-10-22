@@ -78,7 +78,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
         field = fields(screen)[operator.CHARGER_FIELD]
         self.assertEqual(field.value, '2')
         copy = texts(screen)
-        for expected in ('Editar carregador', 'Carregador 2', 'GoodWe HCA G2 (simulado) · Tipo 2 · 22 kW (limite 11 kW)',
+        for expected in ('Editar carregador', 'Carregador 2', 'GoodWe HCA G2 · Tipo 2 · 22 kW (limite 11 kW)',
                          'publicado', 'Última leitura', 'Potência lida', '7,2 kW', 'CG_ADDR'):
             self.assertIn(expected, copy)
         for removed in ('Carregador externo', 'simulação da tela', 'Conexão do equipamento', 'Voltar aos conectores',
@@ -146,7 +146,7 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_taken_address_from_the_api_is_shown_inline(self):
         app = HandlerApp()
-        message = 'O carregador 2 já está ligado ao ponto DEMO-9 deste posto. Escolha outro endereço.'
+        message = 'O carregador 2 já está ligado ao ponto CG-9 deste posto. Escolha outro endereço.'
         screen = await self.form(app, point(charger_address=1, charger_link=ONLINE),
                                  ApiError(message, 409, 'charger_address_taken'))
         field = fields(screen)[operator.CHARGER_FIELD]
@@ -177,9 +177,9 @@ class ChargerFieldTests(unittest.IsolatedAsyncioTestCase):
 
     def test_status_text(self):
         self.assertEqual(operator.charger_status(point(charger_address=1, charger_link=ONLINE)),
-                         'Carregador 1 · GoodWe HCA G2 (simulado) · online')
+                         'Carregador 1 · GoodWe HCA G2 · online')
         self.assertEqual(operator.charger_status(point(charger_address=2, online=False)),
-                         'Carregador 2 · GoodWe HCA G2 (simulado) · offline')
+                         'Carregador 2 · GoodWe HCA G2 · offline')
         self.assertEqual(operator.charger_status(point()), '')  # payload de motorista
 
     def test_charger_pill_follows_the_link(self):
@@ -400,29 +400,29 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((block['address'], block['host']),
                              (item['charger_address'], f"cg-hca-{item['charger_address']}.local"))
             if not item['screen_online']:
-                continue  # DEMO-15: a tela dele está offline (o ponto offline de sempre da demo)
+                continue  # CG-15: a tela dele está offline (o ponto offline de sempre da demo)
             self.assertEqual(block['link'], 'online')
             self.assertTrue(item['online'])
             self.assertIsNone(item['unavailable_reason'])
             self.assertIsNotNone(block['last_online_at'])
             self.assertEqual(block['measured_power_w'], 0)
             self.assertEqual(operator.charger_status(item),
-                             f"Carregador {item['charger_address']} · GoodWe HCA G2 (simulado) · online")
+                             f"Carregador {item['charger_address']} · GoodWe HCA G2 · online")
 
     async def test_one_screen_commands_two_chargers(self):
-        screen, extra = self.by_code['DEMO-11'], self.by_code['DEMO-13']
+        screen, extra = self.by_code['CG-11'], self.by_code['CG-13']
         self.assertEqual(screen['screen']['role'], 'screen')
         self.assertEqual(extra['screen']['role'], 'charger')
         self.assertEqual(extra['screen']['device_id'], screen['screen']['device_id'])
-        self.assertEqual(extra['screen']['public_code'], 'DEMO-11')
+        self.assertEqual(extra['screen']['public_code'], 'CG-11')
         self.assertTrue(self.station['screen_online'])
         shared = next(s for s in self.station['screens'] if s['connector_id'] == screen['id'])
         self.assertEqual(sorted(shared['charger_ids']), sorted([screen['id'], extra['id']]))
-        self.assertFalse(self.by_code['DEMO-15']['screen_online'])
-        self.assertEqual(self.by_code['DEMO-15']['unavailable_reason'], 'screen_offline')
+        self.assertFalse(self.by_code['CG-15']['screen_online'])
+        self.assertEqual(self.by_code['CG-15']['unavailable_reason'], 'screen_offline')
 
     async def test_both_chargers_of_the_screen_start_and_the_power_is_read(self):
-        for code in ('DEMO-13', 'DEMO-11'):
+        for code in ('CG-13', 'CG-11'):
             session = await self.api.request('POST', 'charging-sessions', {
                 'presence_code': DEMO_PRESENCE_CODE, 'public_code': code, 'max_duration_minutes': 30},
                 key=self.api.new_key())
@@ -436,15 +436,15 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
             self.clock[0] += 3
 
     async def test_add_charger_creates_the_next_address_inactive_on_the_same_screen(self):
-        created = await self.api.request('POST', f"connectors/{self.by_code['DEMO-13']['id']}/chargers")
+        created = await self.api.request('POST', f"connectors/{self.by_code['CG-13']['id']}/chargers")
         self.assertEqual(created['charger_address'], 4)
         self.assertFalse(created['active'])
-        self.assertEqual(created['screen']['public_code'], 'DEMO-11')
+        self.assertEqual(created['screen']['public_code'], 'CG-11')
         self.assertEqual(created['screen']['role'], 'charger')
         self.assertEqual(created['charger_link']['link'], 'online')
         self.assertEqual((created['connector_type'], created['power_kw'], created['max_duration_minutes']),
                          ('CCS2', '60.000', 120))
-        retired = self.by_code['DEMO-15']
+        retired = self.by_code['CG-15']
         self.api._devices[next(d for d in self.api._devices if self.api._devices[d]['connector_id'] == retired['id'])
                           ]['revoked'] = True
         with self.assertRaises(ApiError) as caught:
@@ -462,7 +462,7 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(p['charger_address'] for p in station['connectors']), [1, 2, 3, 4])
 
     async def test_offline_charger_is_refused_with_alternatives_and_others_keep_working(self):
-        extra = self.by_code['DEMO-13']
+        extra = self.by_code['CG-13']
         self.api.set_charger_online(extra['id'], False)
         listing = await self.api.request('GET', 'stations')
         row = next(p for s in listing['items'] for p in s['connectors'] if p['id'] == extra['id'])
@@ -474,20 +474,20 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(owner['screen_online'])  # a estação (tela) continua online
         with self.assertRaises(ApiError) as caught:
             await self.api.request('POST', 'charging-sessions', {
-                'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'DEMO-13'}, key=self.api.new_key())
+                'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'CG-13'}, key=self.api.new_key())
         error = caught.exception
         self.assertEqual((error.status, error.code, error.reason), (409, 'point_unavailable', 'charger_offline'))
         self.assertTrue(str(error).startswith(OFFLINE))
-        self.assertIn('DEMO-11', str(error))
-        self.assertIn('DEMO-11', [item['public_code'] for item in error.alternatives])
+        self.assertIn('CG-11', str(error))
+        self.assertIn('CG-11', [item['public_code'] for item in error.alternatives])
         session = await self.api.request('POST', 'charging-sessions', {
-            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'DEMO-11'}, key=self.api.new_key())
+            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'CG-11'}, key=self.api.new_key())
         self.assertEqual(session['status'], 'starting')
 
     async def test_charger_that_drops_during_start_ends_with_charger_offline(self):
         session = await self.api.request('POST', 'charging-sessions', {
-            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'DEMO-13'}, key=self.api.new_key())
-        self.api.set_charger_online(self.by_code['DEMO-13']['id'], False)
+            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'CG-13'}, key=self.api.new_key())
+        self.api.set_charger_online(self.by_code['CG-13']['id'], False)
         ended = await self.api.request('GET', f"charging-sessions/{session['id']}")
         self.assertEqual((ended['status'], ended['end_reason']), ('failed', 'charger_offline'))
         self.assertEqual(charging.END_REASONS[ended['end_reason']], OFFLINE)
@@ -569,13 +569,13 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(field.error_text, EMPTY)
 
     async def test_demo_removes_an_additional_charger_and_frees_its_address(self):
-        extra, own = self.by_code['DEMO-13'], self.by_code['DEMO-11']
-        for target in (own, self.by_code['DEMO-15']):
+        extra, own = self.by_code['CG-13'], self.by_code['CG-11']
+        for target in (own, self.by_code['CG-15']):
             with self.assertRaises(ApiError) as caught:
                 await self.api.request('DELETE', f"connectors/{target['id']}")
             self.assertEqual((caught.exception.status, caught.exception.code), (409, 'screen_charger'))
         session = await self.api.request('POST', 'charging-sessions', {
-            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'DEMO-13', 'max_duration_minutes': 30},
+            'presence_code': DEMO_PRESENCE_CODE, 'public_code': 'CG-13', 'max_duration_minutes': 30},
             key=self.api.new_key())
         with self.assertRaises(ApiError) as caught:
             await self.api.request('DELETE', f"connectors/{extra['id']}")
@@ -584,7 +584,7 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
         self.clock[0] += 5
         self.assertIsNone(await self.api.request('DELETE', f"connectors/{extra['id']}"))
         station = await self.api.request('GET', f"stations/{self.station['id']}")
-        self.assertEqual(sorted(p['public_code'] for p in station['connectors']), ['DEMO-11', 'DEMO-15'])
+        self.assertEqual(sorted(p['public_code'] for p in station['connectors']), ['CG-11', 'CG-15'])
         # A recarga antiga continua no histórico e o endereço 2 volta a ser o próximo livre.
         history = await self.api.request('GET', 'me/charging-sessions')
         self.assertIn(session['id'], [item['id'] for item in history['items']])
@@ -598,8 +598,8 @@ class DemoChargerTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.api = self.api
         app.page.show_dialog, app.page.pop_dialog = Mock(), Mock()
-        extra = self.by_code['DEMO-13']
-        own = await operator.connector_form(app, self.station['id'], dict(self.by_code['DEMO-11']))
+        extra = self.by_code['CG-13']
+        own = await operator.connector_form(app, self.station['id'], dict(self.by_code['CG-11']))
         self.assertNotIn(chargers.REMOVE_LABEL, buttons(own))
         screen = await operator.connector_form(app, self.station['id'], dict(extra))
         await click(screen, chargers.REMOVE_LABEL)(None)

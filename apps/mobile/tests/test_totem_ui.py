@@ -77,9 +77,9 @@ class AccountModeSyncTests(StorageCase):
         self.assertTrue(vehicle_state.presentation_mode(app))
         self.assertIs(app.profile['presentation_mode'], True)
         self.assertEqual(app.api.calls[-1][:3], ('PATCH', 'me', {'presentation_mode': True}))
-        self.assertEqual(account_mode.totem_caption(app), 'Totem: pagamento simulado')
+        self.assertEqual(account_mode.totem_caption(app), 'Totem: sem cobrança')
         await account_mode.toggle(app, False)
-        self.assertEqual(account_mode.totem_caption(app), 'Totem: Stripe (teste)')
+        self.assertEqual(account_mode.totem_caption(app), 'Totem: Stripe')
 
     async def test_owner_reverts_when_the_account_is_not_saved(self):
         app = fake_app({**OWNER, 'presentation_mode': False},
@@ -137,13 +137,13 @@ class AccountModeSyncTests(StorageCase):
         vehicle_state.set_presentation_mode(app, False)
         screen = await profile.build(app)
         caption = by_data(screen, 'presentation-totem')
-        self.assertEqual(caption.value, 'Totem: Stripe (teste)')
+        self.assertEqual(caption.value, 'Totem: Stripe')
         self.assertIn('O totem de autoatendimento dos seus postos segue este modo da conta.', texts(screen))
         switch = by_data(screen, 'presentation')
         switch.value = True
         await switch.on_change(SimpleNamespace(control=switch))
         self.assertTrue(switch.value and not switch.disabled)
-        self.assertEqual(caption.value, 'Totem: pagamento simulado')
+        self.assertEqual(caption.value, 'Totem: sem cobrança')
         self.assertIs((await app.api.request('GET', 'me'))['presentation_mode'], True)
         await app.api.close()
 
@@ -169,9 +169,9 @@ class KioskSwitchTests(StorageCase):
         station = {'id': 's1', 'active': True, 'kiosk_mode': True}
         simulated = station_ops.kiosk_status(station, True, {'enabled': False})
         self.assertEqual((simulated['method'], simulated['label'], simulated['reason']), ('simulated', 'SIMULADO', None))
-        self.assertEqual(simulated['text'], 'Pagamento simulado (Modo apresentação)')
+        self.assertEqual(simulated['text'], 'Pagamento: sem cobrança')
         stripe = station_ops.kiosk_status(station, False, {'enabled': True})
-        self.assertEqual((stripe['method'], stripe['label'], stripe['text']), ('stripe', 'TESTE', 'Pagamento: Stripe (teste)'))
+        self.assertEqual((stripe['method'], stripe['label'], stripe['text']), ('stripe', 'TESTE', 'Pagamento: Stripe'))
         missing = station_ops.kiosk_status(station, False, {'enabled': False})
         self.assertEqual((missing['enabled'], missing['reason']), (False, 'payments_unavailable'))
         self.assertEqual(missing['text'], 'Indisponível: pagamentos Stripe não configurados no servidor')
@@ -193,7 +193,7 @@ class KioskSwitchTests(StorageCase):
         self.assertIn('Nome, endereço, status, central e totem (desligado)', texts(menu))
         screen = await station_admin.build(app, station_id=station['id'], page='data')
         self.assertIn('Totem de autoatendimento', texts(screen))
-        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento: Stripe (teste)')
+        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento: Stripe')
         await segment(screen, 'kiosk_mode', 'Ligado')(None)
         self.assertEqual(app.notices[-1], 'Totem de autoatendimento ligado')
         self.assertTrue((await app.api.request('GET', f"stations/{station['id']}"))['kiosk_mode'])
@@ -206,7 +206,7 @@ class KioskSwitchTests(StorageCase):
         # Conta em Modo apresentação: o totem usa o pagamento simulado.
         app.profile['presentation_mode'] = True
         screen = await station_admin.build(app, station_id=station['id'], page='data')
-        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento simulado (Modo apresentação)')
+        self.assertEqual(by_data(screen, 'kiosk-status').value, 'Pagamento: sem cobrança')
         await app.api.close()
 
     async def test_unavailable_without_stripe_and_no_optimistic_update(self):
@@ -339,13 +339,13 @@ class SessionChannelTests(StorageCase):
     def test_payment_source_by_channel(self):
         simulated = {'status_label': 'Pago (simulado) · em uso', 'provider': 'simulated', 'method': 'simulated',
                      'environment': 'test', 'origin': 'kiosk', 'channel': 'kiosk_totem'}
-        self.assertEqual(owner_sessions.payment_source(simulated), 'Totem · Simulado')
-        self.assertEqual(owner_sessions.payment_summary(simulated)[0], 'Pago (simulado) · em uso')
+        self.assertEqual(owner_sessions.payment_source(simulated), 'Totem · Sem cobrança')
+        self.assertEqual(owner_sessions.payment_summary(simulated)[0], 'Pago · em uso')  # sem a marca da API antiga
         self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'channel': 'kiosk_qr', 'provider': 'stripe'}),
                          'QR do painel · Stripe')
         self.assertEqual(owner_sessions.payment_source({'origin': 'app', 'provider': 'stripe'}), 'Stripe')
         # Sem ``channel`` (API antiga): simulado só existe no totem.
-        self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'provider': 'simulated'}), 'Totem · Simulado')
+        self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'provider': 'simulated'}), 'Totem · Sem cobrança')
         self.assertEqual(owner_sessions.payment_source({'origin': 'kiosk', 'provider': 'stripe'}), 'Painel · Stripe')
 
     async def test_demo_totem_sale_in_seller_history(self):
@@ -356,9 +356,9 @@ class SessionChannelTests(StorageCase):
         await app.api.request('PATCH', f"stations/{station['id']}", {'kiosk_mode': True})
         await app.api.request('POST', f"stations/{station['id']}/demo-traffic", {})
         copy = texts(await history.build(app, manage=True, chart=False))
-        self.assertIn('Pagamento: Totem · Simulado · Cobrado R$', copy)
-        self.assertIn('(simulado)', copy)
-        self.assertIn('Pagamento: Stripe · Pago (teste) · em uso', copy)  # visitantes do app continuam iguais
+        self.assertIn('Pagamento: Totem · Sem cobrança · Cobrado R$', copy)
+        self.assertNotIn('(simulado)', copy)
+        self.assertIn('Pagamento: Stripe · Pago · em uso', copy)  # visitantes do app continuam iguais
         await app.api.close()
 
 

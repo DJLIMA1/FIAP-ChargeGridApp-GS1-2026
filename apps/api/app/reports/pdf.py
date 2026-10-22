@@ -264,7 +264,6 @@ def receipt_pdf(receipt: dict) -> bytes:
     story.append(kit.p("Pagamento", "h2"))
     if payment.get("status") == "available":
         story.append(kit.pairs([
-            ("Ambiente", labels.get("payment_environment_label") or payment.get("environment") or "—"),
             ("Provedor", payment.get("provider") or "—"),
             ("Identificador", payment.get("provider_reference") or "—"),
             ("Situação", payment.get("status_label") or payment.get("payment_status") or "—"),
@@ -311,7 +310,7 @@ def _period(period) -> str:
 
 
 def _channel(item) -> str:
-    """Canal e método (totem 0.8.0), ex.: "Totem · Simulado"; "—" em relatórios sem a informação."""
+    """Canal e método (totem 0.8.0), ex.: "Totem · Sem cobrança"; "—" em relatórios sem a informação."""
     parts = [item.get("payment_channel"), item.get("payment_method")]
     return " · ".join(part for part in parts if part) or "—"
 
@@ -422,7 +421,7 @@ def history_pdf(report: dict) -> bytes:
     notes = ["Valor de cada recarga igual ao do recibo: energia e taxa de permanência ou, com pagamento "
              "confirmado, o valor cobrado."]
     if totals["sources"].get("simulated"):
-        notes.insert(0, "SIMULADO: há recargas com energia calculada pelo simulador do equipamento, não por medidor.")
+        notes.insert(0, "Há recargas com energia calculada pelo equipamento, sem medidor.")
     story = [kit.p(title, "title"), kit.p(_period(report["period"]), "small"), kit.Spacer(1, 4), kit.banner(notes),
              kit.p("Resumo", "h2"), kit.pairs([
                  ("Recargas encerradas com energia", str(totals["sessions"])),
@@ -436,7 +435,7 @@ def history_pdf(report: dict) -> bytes:
         [[when(item["ended_at"], "%d/%m/%Y %H:%M"), item["station_name"], item["public_code"],
           _number(item["energy_kwh"], 3), per_kwh(item["price_per_kwh"]),
           f"{item['discount_percent']}%" if item["discount_percent"] else "—", money(item["total"]),
-          {"simulated": "Simulada", "measured": "Medida", "estimated": "Estimada"}.get(item["source"], "—"),
+          {"simulated": "Calculada", "measured": "Medida", "estimated": "Estimada"}.get(item["source"], "—"),
           item.get("status_label") or "—"] for item in items[:MAX_DETAIL_ROWS]],
         widths=[27 * kit.mm, None, 18 * kit.mm, 15 * kit.mm, 23 * kit.mm, 12 * kit.mm, 19 * kit.mm, 17 * kit.mm,
                 27 * kit.mm]))

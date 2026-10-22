@@ -207,15 +207,15 @@ class OwnerSessionTextTests(unittest.TestCase):
                                                       'returned': '18.17', 'return_kind': 'released',
                                                       'overstay_amount': '0.00'}}
         self.assertEqual(owner_sessions.payment_summary(done),
-                         ('Cobrado R$ 21,83 (teste) · Devolvido R$ 18,17', 'Capturado R$ 21,83 · liberado R$ 18,17'))
+                         ('Cobrado R$ 21,83 · Devolvido R$ 18,17', 'Capturado R$ 21,83 · liberado R$ 18,17'))
         refunded = {'status': 'completed', 'status_label': 'Cobrado', 'environment': 'test',
                     'settlement': {'status': 'done', 'captured': '10.00', 'returned': '5.00',
                                    'return_kind': 'refunded', 'overstay_amount': '2.00'}}
         self.assertEqual(owner_sessions.payment_summary(refunded),
-                         ('Cobrado (teste)', 'Capturado R$ 10,00 · devolvido R$ 5,00 · inclui R$ 2,00 de permanência'))
+                         ('Cobrado', 'Capturado R$ 10,00 · devolvido R$ 5,00 · inclui R$ 2,00 de permanência'))
         self.assertEqual(owner_sessions.payment_summary({'status': 'in_use', 'status_label': 'Pago (teste) · em uso',
                                                          'amount': '40.00', 'settlement': None}),
-                         ('Pago (teste) · em uso', 'Teto autorizado R$ 40,00'))
+                         ('Pago · em uso', 'Teto autorizado R$ 40,00'))
 
 
 # ---------------------------------------------------------------- demo (mesmas rotas da API)
@@ -414,7 +414,7 @@ class PowerPageTests(unittest.IsolatedAsyncioTestCase):
                          'Carros agora', 'Rebalanceamento', sp.REBALANCE_HELP, 'Por carregador',
                          'CCS2 · Carregador 1', '60 kW configurados', 'Ajustes', 'Limites',
                          'Contratado 75 kW · loja até 22 kW · carregadores até 53 kW', 'Loja (estimativa)',
-                         'Simular carros no posto (demo)'):
+                         'Colocar carros de exemplo no posto'):
             self.assertIn(expected, copy)
         for gone in ('Loja agora', 'SIMULADO', 'Teto dos carregadores', 'Valor do simulador', 'Últimas decisões'):
             self.assertNotIn(gone, copy)
@@ -651,7 +651,7 @@ class SellerHistoryTests(unittest.IsolatedAsyncioTestCase):
         await app.api.request('POST', f"stations/{station['id']}/demo-traffic", {})
         screen = await history.build(app, manage=True, chart=False)
         copy = texts(screen)
-        self.assertIn('Pagamento: Stripe · Pago (teste) · em uso', copy)
+        self.assertIn('Pagamento: Stripe · Pago · em uso', copy)
         self.assertIn('Pagamento: Stripe · Cobrado R$', copy)
         self.assertIn('Capturado R$', copy)
         self.assertIn('liberado R$', copy)

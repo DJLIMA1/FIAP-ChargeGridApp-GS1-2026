@@ -205,7 +205,7 @@ class ScreenTests(unittest.IsolatedAsyncioTestCase):
             visit(control)
             return ' '.join(found)
         self.assertNotIn('42%',texts(without_soc))
-        self.assertIn('Bateria 61% · Simulada pelo equipamento',texts(with_soc))
+        self.assertIn('Bateria 61% · Calculada pelo equipamento',texts(with_soc))
 
     async def test_real_app_builds_login_with_desktop_width_limit(self):
         page = type('Page', (), {})()

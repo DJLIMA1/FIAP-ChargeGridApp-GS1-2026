@@ -166,14 +166,14 @@ class DemoOwner:
         if path.startswith('stations/') and path.endswith('/economics'):
             return self.economics(method, path.split('/')[1], body)
         if method != 'GET':
-            _fail('Operação não disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Operação não disponível nesta conta.', 'demo_route_not_supported', 404)
         resource = path.split('/', 1)[1]
         handler = {'overview': self.overview, 'timeseries': self.timeseries, 'heatmap': self.heatmap,
                    'sessions': self.sessions, 'reservations': self.reservations, 'alerts': self.alerts,
                    'live': self.live, 'forecast': self.forecast, 'occupancy-history': self.occupancy_history,
                    'margin': self.margin}.get(resource)
         if handler is None:
-            _fail('Esta operação não está disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Esta operação não está disponível nesta conta.', 'demo_route_not_supported', 404)
         return handler(params)
 
     def _forecast_station(self, params):
@@ -182,7 +182,7 @@ class DemoOwner:
             return station_id
         owned = sorted(s['id'] for s in self.api._stations.values() if s['owner_id'] == self.api._profile.get('id'))
         if not owned:
-            _fail('Posto demonstrativo não encontrado.', 'not_found', 404)
+            _fail('Posto não encontrado.', 'not_found', 404)
         return owned[0]
 
     def forecast(self, params):
@@ -412,7 +412,7 @@ class DemoOwner:
                 except ValueError as error:
                     _fail(str(error), 'invalid_economics')
         elif method != 'GET':
-            _fail('Operação não disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Operação não disponível nesta conta.', 'demo_route_not_supported', 404)
         return self._station_economics(station)
 
     def margin_report(self, params):
@@ -452,15 +452,15 @@ class DemoOwner:
         dataset, _, fmt = name.partition('.')
         if dataset == 'margin':
             if not self.api.session.access_token:
-                _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+                _fail('Entre na sua conta para continuar.', 'unauthorized', 401)
             if fmt != 'csv':
-                _fail('O PDF só é gerado na conta real. Na demo, exporte o CSV.', 'demo_pdf_unavailable', 404)
+                _fail('PDF indisponível nesta conta; exporte o CSV.', 'demo_pdf_unavailable', 404)
             self.api._advance()
             return economics.margin_csv(self.margin_report(dict(params or {}))['items']).encode('utf-8')
         if dataset not in ('sessions', 'reservations') or fmt not in ('csv', 'json'):
-            _fail('Exportação não disponível na demonstração.', 'demo_route_not_supported', 404)
+            _fail('Exportação não disponível nesta conta.', 'demo_route_not_supported', 404)
         if not self.api.session.access_token:
-            _fail('Entre na conta de demonstração para continuar.', 'unauthorized', 401)
+            _fail('Entre na sua conta para continuar.', 'unauthorized', 401)
         self.api._advance()
         params = dict(params or {})
         rows = self.session_rows(params) if dataset == 'sessions' else self.reservation_rows(params)
@@ -472,7 +472,7 @@ class DemoOwner:
         envelope = analytics.export_envelope(rows, dataset=dataset, generated_at=self.api._now(), filters={
             'from': start.isoformat(), 'to': end.isoformat(), 'station_id': params.get('station_id'),
             'status': params.get('status'), 'q': params.get('q')})
-        envelope['notes'] = 'Conta demonstração: dados fictícios e simulados. ' + envelope['notes']
+        envelope['notes'] = 'Conta de exemplo: dados fictícios. ' + envelope['notes']
         return json.dumps(envelope, ensure_ascii=False).encode('utf-8')
 
     # ------------------------------------------------------------- insights
@@ -488,7 +488,7 @@ class DemoOwner:
         peaks = ', '.join(f"{item['hour']:02d}h" for item in heat['peak_hours']) or 'sem pico definido'
         recommendations = [{
             'title': 'Tarifa diferenciada nos horários de pico',
-            'detail': f'A maior procura ocorre por volta de {peaks}. Teste um acréscimo leve nesses horários '
+            'detail': f'A maior procura ocorre por volta de {peaks}. Experimente um acréscimo leve nesses horários '
                       'e um cupom fora do pico para distribuir a demanda.',
             'impact': 'high', 'kind': 'pricing',
         }]
@@ -515,7 +515,7 @@ class DemoOwner:
         occupancy = (kpis['occupancy_percent'] or '0').replace('.', ',')
         summary = (f"No período analisado foram {kpis['sessions']} recargas concluídas, "
                    f"{brl(Decimal(kpis['revenue'] or 0))} estimados e ocupação de {occupancy}%. "
-                   'Exemplo gerado localmente na conta demo, sem chamar um modelo de IA.')
+                   'Resumo gerado no aparelho, sem chamar um modelo de IA.')
         return {'summary': summary, 'recommendations': recommendations, 'generated_at': end.isoformat(),
                 'model': SAMPLE_INSIGHT_MODEL}
 

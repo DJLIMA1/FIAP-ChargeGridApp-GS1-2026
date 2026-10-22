@@ -79,7 +79,8 @@ def test_sync_exposes_kiosk_url_only_when_enabled(http, factory, seed, stripe):
 
 def test_kiosk_page_checks_presence_code_and_option(http, factory, seed):
     page = http.get(f"/pay/k/CG-01?c={_digits(factory, seed)}")
-    assert page.status_code == 200 and "AMBIENTE DE TESTE" in page.text
+    assert page.status_code == 200 and "Pagamento processado com segurança pela Stripe" in page.text
+    assert not re.search(r"simulad|demonstra|\bteste\b|modo teste|ambiente de teste|modo apresenta", page.text, re.I)
     assert re.findall(r'name="amount" value="(\d+)"', page.text) == ["1000", "2000", "4000"]
     assert "4242 4242 4242 4242" in page.text
     wrong = http.get("/pay/k/CG-01?c=abc")
@@ -139,7 +140,7 @@ def test_kiosk_payment_starts_once_and_guest_can_stop(http, factory, seed, strip
     _sync(http, 6, session_id=str(session.id), physical_state="stopped", energy_wh=2500,
           acks=[{"command_id": stop_cmd["id"], "status": "applied", "error": None}])
     final = http.get(f"{path}?t={token}")
-    assert "Cobrado R$ 5,00 (teste)" in final.text and 'http-equiv="refresh"' not in final.text
+    assert "Cobrado R$ 5,00" in final.text and "(teste)" not in final.text and 'http-equiv="refresh"' not in final.text
     assert stripe.intents[intent["id"]]["amount_received"] == 500
 
 

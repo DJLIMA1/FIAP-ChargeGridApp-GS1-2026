@@ -383,8 +383,7 @@ def warnings(totals: Mapping, sources: Mapping) -> list[str]:
     if totals.get("margin") is not None and totals["margin"] < 0:
         result.append("Margem negativa no período: o repasse não cobre o custo estimado da energia.")
     if sources.get("simulated"):
-        result.append(f"{sources['simulated']} sessão(ões) com energia simulada pelo equipamento: não é medição "
-                      "de medidor.")
+        result.append(f"{sources['simulated']} sessão(ões) com energia calculada pelo equipamento, sem medidor.")
     estimated = totals.get("estimated_sessions", 0)
     if totals["sessions"] and estimated == totals["sessions"]:
         result.append("Sem pagamento confirmado: receitas estimadas pela energia registrada.")

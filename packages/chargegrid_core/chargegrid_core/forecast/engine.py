@@ -18,7 +18,7 @@ from .gbm import predict_occupancy
 from .series import StationSeries
 
 FALLBACK_EFFICIENCY = 0.85
-SYNTHETIC_NOTE = "Inclui histórico sintético (rotulado), usado para demonstração."
+SYNTHETIC_NOTE = "Inclui histórico sintético (rotulado)."
 
 
 def default_model():

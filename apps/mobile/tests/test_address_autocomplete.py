@@ -45,7 +45,7 @@ class AddressAutocompleteTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.05)
         self.assertTrue(panel_of(screen).visible)
         self.assertIn('Avenida Paulista, 1000', texts(panel_of(screen)))
-        self.assertIn('demonstração', texts(panel_of(screen)))
+        self.assertIn('Endereços sugeridos', texts(panel_of(screen)))
         await suggestion_rows(screen)[0].on_click(None)
         self.assertEqual(field.value, 'Avenida Paulista, 1000, Bela Vista, São Paulo - SP')
         self.assertFalse(panel_of(screen).visible)

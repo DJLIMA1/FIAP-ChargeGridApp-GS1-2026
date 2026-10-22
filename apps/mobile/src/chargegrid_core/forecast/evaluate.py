@@ -99,7 +99,7 @@ def choose(result: dict, model: dict | None, offline_selected: str | None) -> tu
     if result["origins"] < MIN_ORIGINS:
         return "baseline", "Histórico insuficiente para medir o acerto do modelo neste posto; usando a média."
     if model is None or offline_selected != "gbm":
-        return "baseline", "O modelo não venceu a média no teste offline; usando a média."
+        return "baseline", "O modelo não venceu a média na validação offline; usando a média."
     if model_wins(result["gbm"], result["baseline"]):
         return "gbm", "O modelo errou menos que a média nos últimos dias deste posto."
     return "baseline", "A média errou menos que o modelo nos últimos dias deste posto."

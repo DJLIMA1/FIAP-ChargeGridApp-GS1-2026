@@ -92,7 +92,7 @@ class RecoveredAccountTests(unittest.IsolatedAsyncioTestCase):
         question.value = 'Como funcionam tempo, valor e cupons?'
         await question.on_submit(None)
         texts = ' '.join(str(c.value) for c in descendants(screen) if isinstance(c, ft.Text))
-        self.assertIn('nenhuma cobrança real', texts)
+        self.assertIn('limite de duração de segurança', texts)
         app.api.request.assert_not_called()
         self.assertNotIn('chamado registrado',texts.casefold())
 

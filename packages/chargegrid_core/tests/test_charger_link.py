@@ -59,12 +59,12 @@ def test_owner_block_and_status_text():
     assert block['host'] == 'cg-hca-1.local' and block['link'] == 'online' and block['simulated'] is True
     assert block['reported'] == {'model': 'goodwe_hca_g2', 'transport': 'modbus_tcp', 'address': 1, 'link': 'online'}
     assert block['last_online_at'] == '2026-10-21T16:00:00+00:00' and block['measured_power_w'] == 3600
-    assert link.status_text(block) == 'Carregador 1 · GoodWe HCA G2 (simulado) · online'
-    assert link.status_text(link.owner_block(3, None, False)) == 'Carregador 3 · GoodWe HCA G2 (simulado) · offline'
-    waiting = 'Carregador 3 · GoodWe HCA G2 (simulado) · aguardando a central'
+    assert link.status_text(block) == 'Carregador 1 · GoodWe HCA G2 · online'
+    assert link.status_text(link.owner_block(3, None, False)) == 'Carregador 3 · GoodWe HCA G2 · offline'
+    waiting = 'Carregador 3 · GoodWe HCA G2 · aguardando a central'
     assert link.status_text(link.owner_block(3, None, True)) == waiting  # tela não confirmou
     offline = link.owner_block(3, _reported(address=3, state='offline'), True)
-    assert link.status_text(offline) == 'Carregador 3 · GoodWe HCA G2 (simulado) · offline'
+    assert link.status_text(offline) == 'Carregador 3 · GoodWe HCA G2 · offline'
     assert offline['last_online_at'] is None and offline['measured_power_w'] is None
     assert link.owner_block(None, _reported(), True) is None
     assert link.status_text(None) == ''

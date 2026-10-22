@@ -1,6 +1,6 @@
 """Pagamento Stripe em modo teste (teto pré-pago) — sempre com FakeStripe, sem rede."""
-
 import json
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -174,7 +174,8 @@ def test_create_payment_quote_is_server_side_and_idempotent(flow, stripe, client
                                                      "unit_amount": 2000}
     assert params["success_url"] == f"https://api.chargegrid.test/pay/return?p={payment['id']}"
     assert params["payment_intent_data"]["metadata"]["payment_id"] == payment["id"]
-    assert "(teste)" in params["line_items"][0]["price_data"]["product_data"]["name"]
+    assert params["line_items"][0]["price_data"]["product_data"]["name"].startswith("Recarga ChargeGrid ")
+    assert "(teste)" not in params["line_items"][0]["price_data"]["product_data"]["name"]
     # Repetição com a mesma chave: mesmo pagamento, uma única Checkout.
     assert flow.pay()["id"] == payment["id"]
     assert stripe.calls.count("create_checkout_session") == 1
@@ -217,7 +218,7 @@ def test_server_side_verification_without_webhook(flow, stripe):
     assert throttled["status"] == "awaiting_payment"
     _set(flow.factory, payment["id"], last_provider_check_at=now() - timedelta(seconds=4))
     confirmed = flow.get(payment["id"])
-    assert confirmed["status"] == "authorized" and confirmed["status_label"] == "Pago (teste)"
+    assert confirmed["status"] == "authorized" and confirmed["status_label"] == "Pago"
     assert confirmed["method"] == "card" and confirmed["provider_ref"].startswith("pi_")
     assert confirmed["start_deadline"] and confirmed["checkout_url"] is None
 
@@ -236,11 +237,11 @@ def test_return_page_never_confirms_by_itself(flow, stripe):
     payment = flow.pay()
     page = flow.http.get(f"/pay/return?p={payment['id']}")
     assert page.status_code == 200 and "Confirmando com a Stripe" in page.text
-    assert "AMBIENTE DE TESTE" in page.text and "default-src 'none'" in page.headers["content-security-policy"]
+    assert not re.search(r"simulad|demonstra|\bteste\b|modo teste|ambiente de teste|modo apresenta", page.text, re.IGNORECASE) and "default-src 'none'" in page.headers["content-security-policy"]
     assert flow.get(payment["id"])["status"] == "awaiting_payment"
     stripe.pay(_checkout(stripe, payment)["id"])
     _set(flow.factory, payment["id"], last_provider_check_at=None)
-    assert "Pagamento confirmado (teste)" in flow.http.get(f"/pay/return?p={payment['id']}").text
+    assert "Pagamento confirmado" in flow.http.get(f"/pay/return?p={payment['id']}").text
 
 
 # ---------------------------------------------------------------------------- START
@@ -307,7 +308,7 @@ def test_full_card_flow_captures_only_consumed(flow, stripe, factory, seed, clie
         assert db.get(Payment, payment["id"]).settlement_status == "due"
     done = flow.get(payment["id"])
     assert done["status"] == "completed"
-    assert done["status_label"] == "Cobrado R$ 12,40 (teste) · Devolvido R$ 7,60"
+    assert done["status_label"] == "Cobrado R$ 12,40 · Devolvido R$ 7,60"
     settlement = done["settlement"]
     assert (settlement["energy_amount"], settlement["charged"], settlement["returned"]) == ("12.40", "12.40", "7.60")
     assert settlement["return_kind"] == "released" and settlement["captured"] == "12.40"
@@ -365,7 +366,7 @@ def test_battery_full_releases_surplus(flow, stripe):
 
 def test_pix_refunds_the_difference(flow, stripe):
     payment = _paid(flow, stripe, method="pix")
-    assert payment["status_label"] == "Pago (teste)"
+    assert payment["status_label"] == "Pago"
     session = _start_paid(flow, payment)
     flow.charge(session["id"], 3000)
     flow.stop(session["id"], 6200)
@@ -386,7 +387,7 @@ def test_start_that_never_began_returns_everything(flow, stripe):
     flow.sync(session_id=session["id"], physical_state="stopped",
               acks=[{"command_id": stop_cmd["id"], "status": "applied", "error": None}])
     done = flow.get(payment["id"])
-    assert done["settlement"]["charged"] == "0.00" and done["status_label"] == "Devolvido (teste)"
+    assert done["settlement"]["charged"] == "0.00" and done["status_label"] == "Devolvido"
     assert stripe.intents[done["provider_ref"]]["status"] == "canceled"
 
 

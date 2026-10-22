@@ -41,7 +41,7 @@ def claim_for_start(db, user, connector, payment_id, power_tier="max", reservati
 
             base, _, _ = current_price_terms(db, connector, reservation, power_tier)
             if base > 0:
-                fail("payment_required", "Este posto exige pagamento antes de iniciar. Pague pelo app (teste) "
+                fail("payment_required", "Este posto exige pagamento antes de iniciar. Pague pelo app "
                      "e tente de novo.", 402)
         return None
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
@@ -52,7 +52,7 @@ def claim_for_start(db, user, connector, payment_id, power_tier="max", reservati
     if payment.session_id is not None or payment.status in ("in_use", "completed"):
         fail("payment_used", "Este pagamento já foi usado em uma recarga", 409)
     if payment.status in PRE_START:
-        fail("payment_not_ready", "Pagamento ainda não confirmado pela Stripe (teste)", 409)
+        fail("payment_not_ready", "Pagamento ainda não confirmado pela Stripe", 409)
     if payment.status not in FUNDED or (payment.start_deadline and payment.start_deadline <= now()):
         fail("payment_expired", "Pagamento expirado ou cancelado; faça um novo pagamento", 409)
     return payment
@@ -196,16 +196,15 @@ def _iso(value):
 
 
 def status_label(payment):
-    """Rótulo do pagamento; o simulado do totem (Modo apresentação) diz "(simulado)", nunca "(teste)"."""
-    label = _status_label(payment)
-    return label.replace("(teste)", "(simulado)") if payment.provider == "simulated" else label
+    """Rótulo do pagamento (o mesmo texto para Stripe e para o pagamento sem cobrança do totem)."""
+    return _status_label(payment)
 
 
 def _status_label(payment):
     if payment.settlement_status == "failed":
-        return "Em revisão (teste)"
+        return "Em revisão"
     if payment.status == "in_use" and payment.settlement_status in ("due", "settling"):
-        return "Pago (teste) · acertando o valor"
+        return "Pago · acertando o valor"
     returned = payment.amount_cents - payment.charge_cents if payment.charge_cents is not None else None
     if payment.status in ("expired", "canceled") and payment.settlement_status in ("due", "settling"):
         return billing.STATUS_LABELS[payment.status] + " · devolvendo"

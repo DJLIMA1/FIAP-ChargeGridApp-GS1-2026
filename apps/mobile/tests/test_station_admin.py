@@ -44,11 +44,11 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         screen = await operator.build(app)
         copy = texts(screen)
         self.assertIn('Suas Estações', copy)
-        self.assertIn('Fale com o ChatBot', copy)
+        self.assertNotIn('Fale com o ChatBot', copy)  # o chat fica só na aba Chat
         self.assertIn('Gerenciar cupons', copy)
         self.assertIn('Adicionar nova estação', copy)
         self.assertIn(operator.ADD_STATION_DEMO, copy)
-        self.assertNotIn('Adicionar central simulada', copy)  # sem a linha repetida em "Mais opções"
+        self.assertNotIn('Adicionar central', copy)  # sem a linha repetida em "Mais opções"
         await press(screen, 'Marginal Pinheiros')(None)
         self.assertEqual(app.go.await_args.args[0], 'station_admin')
         await press(screen, 'Adicionar nova estação')(None)
@@ -73,8 +73,8 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app.go.await_args.kwargs, {'claim': True})
         first = await operator.build(app, claim=True)  # primeiro passo: o vínculo que já existe (Vincular Central)
         self.assertIn('Vincular Central', texts(first))
-        self.assertIn('Será um novo local simulado', texts(first))
-        await press(first, 'Adicionar central simulada')(None)
+        self.assertIn('Será um novo local', texts(first))
+        await press(first, 'Adicionar central')(None)
         target = app.go.await_args.kwargs
         self.assertEqual((target['onboarding'], target['step']), (True, 1))
         location = await onboarding.build(app, target['station_id'], target['point_id'], step=1)
@@ -110,9 +110,9 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(removed, texts(screen) + texts(data))
         connectors = await station_admin.build(app, station_id=sid, page='connectors')
         self.assertIn('Adicionar carregador', texts(connectors))
-        self.assertNotIn('Adicionar central simulada a este posto', texts(connectors))
-        self.assertIn('Adicionar central simulada a este posto', texts(data))
-        self.assertIn('Central DEMO-11', texts(data))
+        self.assertNotIn('Adicionar central a este posto', texts(connectors))
+        self.assertIn('Adicionar central a este posto', texts(data))
+        self.assertIn('Central CG-11', texts(data))
         self.assertIn('A tarifa fica em Tarifa.', texts(connectors))
         await app.api.close()
 
@@ -136,8 +136,8 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         sid = (await app.api.request('GET', 'operator/stations'))['items'][0]['id']
         copy = texts(await station_admin.build(app, station_id=sid, page='data'))
         order = ['Status', 'Totem de autoatendimento', 'Centrais da estação',
-                 'Um carregador offline não derruba a estação.', 'Central DEMO-11', 'ID da central', 'Rotacionar',
-                 'Restaurar', 'Adicionar central simulada a este posto']
+                 'Um carregador offline não derruba a estação.', 'Central CG-11', 'ID da central', 'Rotacionar',
+                 'Restaurar', 'Adicionar central a este posto']
         positions = [copy.index(label) for label in order]
         self.assertEqual(positions, sorted(positions))
         self.assertNotIn('Central da estação', copy)
@@ -148,7 +148,7 @@ class StationAdminTests(unittest.IsolatedAsyncioTestCase):
         app = await demo_app()
         sid = (await app.api.request('GET', 'operator/stations'))['items'][0]['id']
         self.assertNotIn('Fale com o ChatBot', texts(await station_admin.build(app, station_id=sid)))
-        self.assertIn('Fale com o ChatBot', texts(await operator.build(app)))  # a lista ainda tem o atalho
+        self.assertNotIn('Fale com o ChatBot', texts(await operator.build(app)))  # nem a lista: só a aba Chat
         await app.api.close()
 
     def test_status_only_central_card_uses_the_maintenance_header(self):

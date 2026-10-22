@@ -488,7 +488,7 @@ def payment_export_fields(payment: Mapping | None) -> dict:
     channel = payment.get("channel") or "app"
     simulated = payment.get("provider") == "simulated" or payment.get("method") == "simulated"
     return {"payment_channel": PAYMENT_CHANNEL_LABELS.get(channel, channel),
-            "payment_method": "Simulado" if simulated else "Stripe (teste)"}
+            "payment_method": "Sem cobrança" if simulated else "Stripe"}
 
 
 def session_export_row(session: Mapping, now: datetime | None = None) -> dict:
@@ -576,6 +576,6 @@ def export_envelope(rows: list, *, dataset: str, filters: Mapping, generated_at:
         "units": {"energy": "kWh", "duration": "min"},
         "filters": {key: value for key, value in filters.items() if value not in (None, "")},
         "total": len(rows),
-        "notes": "Valores estimados; energia pode ser simulada, medida ou estimada (coluna source).",
+        "notes": "Valores estimados; energia pode ser calculada, medida ou estimada (coluna source).",
         "items": rows,
     }

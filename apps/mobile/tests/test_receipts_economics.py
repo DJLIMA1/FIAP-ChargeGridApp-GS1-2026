@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import flet as ft
 import httpx
-from chargegrid_core import analytics
 
 from chargegrid_app import demo_receipt_pdf
 from chargegrid_app.api_client import ApiClient, ApiError
@@ -17,6 +16,8 @@ from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, D
 from chargegrid_app.screens import charge_detail, history, history_owner
 from chargegrid_app.screens import payout as payout_screen
 from chargegrid_app.services import files, payout
+from chargegrid_app.ui.wording import FORBIDDEN
+from chargegrid_core import analytics
 from test_behavior import HandlerApp, descendants
 
 SECTIONS = ('Custos', 'Sessão e bateria', 'Pagamento', 'Estação e carregador')
@@ -142,10 +143,11 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         text = texts(screen)
         for section in SECTIONS:
             self.assertIn(section, text)
-        for expected in (charge_detail.TITLE, 'SIMULADO', 'CONTA DEMO', 'Desconto do cupom BEMVINDO10', 'Travado às',
-                         'Energia confirmada pelo equipamento às', 'Pico 22,0 kW', 'Pagamento simulado',
-                         'Bateria simulada', charge_detail.EXPORT_LABEL, charge_detail.EXPORT_DEMO_NOTE):
+        for expected in (charge_detail.TITLE, 'Desconto do cupom BEMVINDO10', 'Travado às',
+                         'Energia confirmada pelo equipamento às', 'Pico 22,0 kW', 'Energia calculada pelo equipamento',
+                         'Bateria', charge_detail.EXPORT_LABEL, charge_detail.EXPORT_DEMO_NOTE):
             self.assertIn(expected, text)
+        self.assertNotRegex(text, FORBIDDEN)  # sem selos "CONTA DEMO"/"SIMULADO" nem "pagamento simulado"
         self.assertIsNotNone(tapper(screen, charge_detail.EXPORT_LABEL).on_click)
 
     async def test_seeded_session_receipt_is_honest_without_payment_or_reason(self):
@@ -181,7 +183,7 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
             await tapper(screen, charge_detail.EXPORT_LABEL).on_click(None)
         data, filename = deliver.await_args.args[1:]
         self.assertTrue(data.startswith(b'%PDF'))
-        self.assertRegex(filename, r'^chargegrid-recibo-demo\d{4}\.pdf$')
+        self.assertRegex(filename, r'^chargegrid-recibo-cg\d{4}\.pdf$')
         self.assertEqual(self.app.notices, ['ok'])
 
     def test_demo_pdf_is_marked_and_never_shows_demand(self):
@@ -194,7 +196,8 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         for hidden in ('demanda', 'Tarifa do horário', 'Tarifa base', '1,3×'):
             self.assertNotIn(hidden, flat)
         self.assertTrue(demo_receipt_pdf.receipt_pdf(data).startswith(b'%PDF'))
-        self.assertEqual(demo_receipt_pdf.MARK, 'CONTA DEMO · SIMULADO · sem valor fiscal')
+        self.assertEqual(demo_receipt_pdf.MARK, 'Documento sem valor fiscal')
+        self.assertNotRegex(flat, FORBIDDEN)
 
 
 class ChargeDetailScreenTests(unittest.IsolatedAsyncioTestCase):
@@ -229,10 +232,10 @@ class ChargeDetailScreenTests(unittest.IsolatedAsyncioTestCase):
         for expected in ('Posto Central', 'Recarga concluída', '12,50 kWh', 'R$ 32,64', '40 min', 'Nº 1A2B3C4D'):
             self.assertIn(expected, texts(hero))
         for expected in ('R$ 2,4570/kWh', 'na reserva', 'Desconto do cupom', 'R$ 3,07',
-                         'Valor pago (líquido)', 'SIMULADO', 'Pico 22,0 kW', 'Redução de potência: carga da loja subiu',
+                         'Valor pago (líquido)', 'Energia calculada pelo equipamento', 'Pico 22,0 kW', 'Redução de potência: carga da loja subiu',
                          'Aplicada', '20% → 100%', 'Bateria do veículo 60 kWh', 'Reduzida · mais econômica',
-                         '60 min · até R$ 40,00', 'Limite de potência no início', 'Pagamento de teste (sandbox)',
-                         'TESTE', 'pi_test_123', 'R$ 40,00', 'R$ 27,64', 'Sobra da pré-autorização liberada',
+                         '60 min · até R$ 40,00', 'Limite de potência no início',
+                         'pi_test_123', 'R$ 40,00', 'R$ 27,64', 'Sobra da pré-autorização liberada',
                          'Tolerância', 'R$ 5,00', 'CG-001', 'CCS2', '60,0 kW', 'Ver estação', 'Linha do tempo',
                          'Início confirmado pelo ponto', 'Documento sem valor fiscal.', charge_detail.EXPORT_LABEL):
             self.assertIn(expected, text)
@@ -241,6 +244,8 @@ class ChargeDetailScreenTests(unittest.IsolatedAsyncioTestCase):
                        'Como o preço foi calculado', 'Ver recibo', 'Ver eventos da sessão', 'Custo estimado:'):
             self.assertNotIn(hidden, text)
         self.assertNotIn(charge_detail.EXPORT_DEMO_NOTE, text)
+        # O recibo do fixture ainda traz "SIMULADO"/"(sandbox)" (API antiga): a tela não mostra nada disso.
+        self.assertNotRegex(text, FORBIDDEN)
         await tapper(screen, 'Ver estação').on_click(None)
         app.go.assert_awaited_with('stations', station_id='st-1')
 
@@ -351,7 +356,7 @@ class SellerChargeDetailTests(unittest.IsolatedAsyncioTestCase):
         app.history_sessions = {'own-1': session}
         text = texts(await history.build(app, manage=True, session='own-1'))
         app.api.request.assert_not_awaited()
-        for expected in ('Ajuste por demanda', '1,3×', 'R$ 2,4570/kWh', 'Totem · Simulado', 'Capturado R$ 24,57',
+        for expected in ('Ajuste por demanda', '1,3×', 'R$ 2,4570/kWh', 'Totem · Sem cobrança', 'Capturado R$ 24,57',
                          '10 min na vaga · taxa R$ 4,00', '10,00 kWh'):
             self.assertIn(expected, text)
         self.assertNotIn(charge_detail.EXPORT_LABEL, text)
@@ -380,7 +385,7 @@ class HistoryReceiptLinkTests(unittest.IsolatedAsyncioTestCase):
         for hidden in ('Ver recibo', 'Ver eventos da sessão', 'Resumo inteligente da recarga', 'Custo estimado:'):
             self.assertNotIn(hidden, texts(screen))
         self.assertIn('Exportar (PDF/CSV)', texts(screen))
-        self.assertIn('PDF disponível só na conta real', texts(screen))
+        self.assertIn('PDF indisponível nesta conta', texts(screen))
         # CSV na demo: gerado localmente e entregue ao usuário.
         with patch.object(files, 'deliver', AsyncMock(return_value='ok')) as deliver:
             await tapper(screen, 'CSV').on_click(None)
@@ -448,7 +453,7 @@ class OwnerResultTests(unittest.IsolatedAsyncioTestCase):
         text = texts(screen)
         for expected in ('Resultado do período', 'Últimos 14 dias', 'Custo da energia', 'Marginal Pinheiros',
                          'Custo do kWh pago à distribuidora', 'Comissão da plataforma: 25% · definida em contrato (só leitura).',
-                         'Exportar resultado (PDF/CSV)', 'PDF disponível só na conta real'):
+                         'Exportar resultado (PDF/CSV)', 'PDF indisponível nesta conta'):
             self.assertIn(expected, text)
         field = next(c for c in descendants(screen) if isinstance(c, ft.TextField)
                      and str(c.data or '').startswith('energy-cost-'))

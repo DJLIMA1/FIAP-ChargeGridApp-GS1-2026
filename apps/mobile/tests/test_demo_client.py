@@ -237,12 +237,12 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_device_credentials_and_reset_are_fake_and_clock_driven(self):
         device = await self.client.request('GET', f"connectors/{self.point['id']}/device")
         rotated = await self.client.request('POST', f"devices/{device['device_id']}/rotate-key")
-        self.assertIn('FAKE', rotated['device_key'])
+        self.assertTrue(rotated['device_key'].startswith('cgk-'))
         self.assertNotIn('device_key', await self.client.request('GET', f"connectors/{self.point['id']}/device"))
         await self.client.request('POST', f"devices/{device['device_id']}/revoke")
         await self.assert_error('GET', f"connectors/{self.point['id']}/device", code='not_found')
         provisioned = await self.client.request('POST', f"connectors/{self.point['id']}/device")
-        self.assertIn('FAKE', provisioned['device_key'])
+        self.assertTrue(provisioned['device_key'].startswith('cgk-'))
         endpoint = f"devices/{provisioned['device_id']}/factory-reset"
         reset = await self.client.request('POST', endpoint)
         self.assertEqual(reset['status'], 'pending')

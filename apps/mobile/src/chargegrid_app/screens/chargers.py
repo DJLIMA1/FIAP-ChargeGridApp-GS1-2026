@@ -156,7 +156,7 @@ def charger_subtitle(connector, price_text=None):
 
 
 def screen_line(screen, count=None):
-    """``DEMO-11 · 2 carregadores``."""
+    """``CG-11 · 2 carregadores``."""
     parts = [screen.get('public_code') or 'Central']
     if count is not None:
         parts.append(plural(count, 'carregador', 'carregadores'))

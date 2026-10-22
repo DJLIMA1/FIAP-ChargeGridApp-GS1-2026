@@ -107,9 +107,9 @@ def test_settle_fixed_fee_is_kept():
     assert (result['charge_cents'], result['return_cents']) == (490, 2000)
 
 
-def test_status_labels_are_honest_test_labels():
-    assert billing.status_label('authorized') == 'Pago (teste)'
+def test_status_labels_reach_the_driver_without_test_marks():
+    assert billing.status_label('authorized') == 'Pago'
     assert billing.status_label('completed', charge_cents=140, return_cents=1860) == \
-        'Cobrado R$ 1,40 (teste) · Devolvido R$ 18,60'
-    assert billing.status_label('completed', charge_cents=0, return_cents=2000) == 'Devolvido (teste)'
+        'Cobrado R$ 1,40 · Devolvido R$ 18,60'
+    assert billing.status_label('completed', charge_cents=0, return_cents=2000) == 'Devolvido'
     assert billing.status_label('expired', method='card') == 'Expirado · valor devolvido'

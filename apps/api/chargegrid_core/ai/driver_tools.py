@@ -79,7 +79,7 @@ DRIVER_SPECS = {
         "roles": ("driver",), "requires": ("session_receipt",),
     },
     "get_my_wallet": {
-        "description": "Saldo e últimas movimentações da carteira simulada do usuário (sem dinheiro real).",
+        "description": "Saldo e últimas movimentações da carteira do usuário no app.",
         "parameters": {"type": "object", "properties": {}},
         "roles": ("driver",), "requires": ("wallet",),
     },
@@ -375,7 +375,7 @@ class DriverTools:
                 "recent": [{"title": clean(t.get("title"), 60), "kind": "entrada" if t.get("kind") == "credit" else "saída",
                             "amount_brl": _money(t.get("amount")), "date": _local(t.get("created_at"), "%d/%m")}
                            for t in items if isinstance(t, dict)],
-                "note": "Carteira simulada: nenhum dinheiro real."}
+                "note": "Saldo do app ChargeGrid."}
 
     async def period_history(self, period: str | None, from_date=None, to_date=None) -> dict:
         window = resolve_period(period, self.now, from_date=from_date, to_date=to_date, default="month")

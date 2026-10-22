@@ -174,11 +174,11 @@ def summary_card(view):
 def _demo_traffic(app, sid):
     async def simulate():
         await app.api.request('POST', f'stations/{sid}/demo-traffic', {})
-        app.notice('Movimento simulado no posto: carros fictícios carregando e na vaga.')
+        app.notice('Carros de exemplo carregando e na vaga.')
         await app.go('station_admin', station_id=sid, page='power')
     return ft.Column([
-        design.secondary_button('Simular carros no posto (demo)', app.action(simulate), height=46),
-        design.txt('Só na demonstração: carros fictícios carregando para ver a divisão da potência.', 10.5,
+        design.secondary_button('Colocar carros de exemplo no posto', app.action(simulate), height=46),
+        design.txt('Carros de exemplo carregando para ver a divisão da potência.', 10.5,
                    'regular', theme.GRAY_TEXT)], spacing=6, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
 

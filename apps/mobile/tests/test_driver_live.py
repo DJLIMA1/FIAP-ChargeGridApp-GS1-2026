@@ -133,12 +133,12 @@ class OverstayEndTests(StorageCase):
         app = PollApp()
         app.api = api
         screen = await charging.build(app, session_id='s9')
-        self.assertIn('Acertando o valor com a Stripe (teste)…', texts(screen))
+        self.assertIn('Acertando o valor com a Stripe…', texts(screen))
         payment['row'] = done
         await app.poll()
         self.assertIn(('GET', 'payments/p1', None, None), api.calls)  # o GET dispara o acerto no servidor
         copy = texts(screen)
-        self.assertIn('Cobrado R$ 15,00 · Devolvido R$ 42,00 (teste)', copy)
+        self.assertIn('Cobrado R$ 15,00 · Devolvido R$ 42,00', copy)
         self.assertTrue(any('Inclui R$ 2,00 de taxa de permanência.' in text for text in copy))
         self.assertEqual(app.poll_interval, 60)
 

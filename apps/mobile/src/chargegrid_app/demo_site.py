@@ -330,7 +330,7 @@ def route(api, method, parts, body):
     if (method, action) == ('POST', 'demo-traffic'):
         traffic(api, station)
         return view(api, station)
-    _fail('Operação não disponível na demonstração.', 'demo_route_not_supported', 404)
+    _fail('Operação não disponível nesta conta.', 'demo_route_not_supported', 404)
 
 
 # ------------------------------------------------------------------ permanência simulada

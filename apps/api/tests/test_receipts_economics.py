@@ -146,7 +146,7 @@ def test_receipt_pdf_contains_honest_labels(factory, seed, monkeypatch):
     assert response.headers["content-disposition"].startswith('attachment; filename="chargegrid-recibo-')
     body = response.content
     assert body.startswith(b"%PDF") and b"%%EOF" in body[-64:]
-    for text in (b"Recibo de recarga", b"SIMULADO", b"Documento sem valor fiscal", b"Pre\\347o por kWh",
+    for text in (b"Recibo de recarga", b"Documento sem valor fiscal", b"Pre\\347o por kWh",
                  b"n\\343o muda durante a recarga"):
         assert text in body, text
     # O motorista nunca vê ajuste por demanda nem tarifa base/do horário no recibo.
@@ -321,7 +321,7 @@ def test_margin_report_totals_effects_stations_and_basis(factory, margin_data):
     bases = sorted(item["cost_basis"] for item in report["items"])
     assert bases == ["current", "current", "current", "snapshot"]
     assert {item["station_name"] for item in report["by_station"]} == {"Demo", "Segundo"}
-    assert any("simulada" in warning for warning in report["warnings"])
+    assert any("calculada pelo equipamento" in warning for warning in report["warnings"])
     assert report["methodology"][0].startswith("Receita bruta não é lucro")
     page = owner.get("/v1/owner/margin", params=_window(margin_data, limit=1, offset=1)).json()
     assert len(page["items"]) == 1 and page["totals"] == totals and page["total"] == 4

@@ -54,17 +54,17 @@ font-size:17px;font-weight:700;text-align:center;text-decoration:none;cursor:poi
 """
 
 
-TEST_FOOTER = "Pagamento processado pela Stripe em modo de teste: nenhum valor real é cobrado."
-SIMULATED_FOOTER = "Pagamento simulado (Modo apresentação do posto): nenhum valor é cobrado nem movimentado."
+TEST_FOOTER = "Pagamento processado com segurança pela Stripe."
+SIMULATED_FOOTER = "Nenhum valor é cobrado nesta recarga."
 
 
-def page(title, body, *, refresh=None, status=200, tag="AMBIENTE DE TESTE", footer=TEST_FOOTER):
+def page(title, body, *, refresh=None, status=200, tag="", footer=TEST_FOOTER):
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">' if refresh else ""
     html = (
         '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"{meta}<title>{escape(title)}</title><style>{STYLE}</style></head><body><main>"
-        f'<div class="brand"><b>ChargeGrid</b><span class="tag">{escape(tag)}</span></div>'
+        '<div class="brand"><b>ChargeGrid</b>' + (f'<span class="tag">{escape(tag)}</span>' if tag else '') + '</div>'
         f"{body}"
         f'<p class="muted">{escape(footer)}</p>'
         "</main></body></html>"
@@ -137,7 +137,7 @@ def _kiosk_view(db, public_code, code):
         f'<option value="reduced">Reduzida · R$ {_comma(prices["reduced"], "0.0001")}/kWh</option></select>'
         f'<div class="amounts">{buttons}</div></form></div>'
         '<div class="notice">Pré-autorizamos o valor mostrado no botão e cobramos só a energia confirmada pelo '
-        "equipamento (e a taxa de permanência, se houver); o restante é liberado. Teste: cartão 4242 4242 4242 4242, "
+        "equipamento (e a taxa de permanência, se houver); o restante é liberado. Cartão: 4242 4242 4242 4242, "
         "validade futura e CVC qualquer.</div>"
         f"{overstay_note}"
     )
@@ -247,12 +247,12 @@ def _order_page(db, order_id, token):
     order = totem.refresh_order(db, db.get(KioskOrder, order.id))
     db.commit()
     simulated = order.method == "simulated"
-    labels = {"tag": "SIMULADO", "footer": SIMULATED_FOOTER} if simulated else {}
+    labels = {"footer": SIMULATED_FOOTER} if simulated else {}
     connector = db.get(Connector, order.connector_id)
     station = db.get(Station, connector.station_id)
     payment = db.get(Payment, order.payment_id) if order.payment_id else None
     session = db.get(ChargingSession, order.session_id) if order.session_id else None
-    status_text = totem.STATUS_LABELS[order.status] + (" · SIMULADO" if simulated else "")
+    status_text = totem.STATUS_LABELS[order.status]
     parts = [f'<div class="card"><p class="muted">Totem · Ponto {escape(connector.public_code)} · '
              f'{escape(station.name)}</p><h1>{escape(status_text)}</h1>']
     if payment is not None:
@@ -272,7 +272,7 @@ def _order_page(db, order_id, token):
             ("Tarifa", f"R$ {_comma(session.price_per_kwh, '0.0001')}/kWh"),
             ("Total", f"R$ {_comma(charges['total'], '0.01')}")]
     if payment is not None and payment.settlement_status == "done" and payment.charge_cents is not None:
-        returned = "Devolvido (simulado)" if simulated else "Devolvido/liberado"
+        returned = "Devolvido" if simulated else "Devolvido/liberado"
         rows.append((returned, money(payment.amount_cents - payment.charge_cents)))
     overstay_section = receipt.get("overstay") or {}
     if overstay_section.get("status") == "available" and overstay_section.get("summary"):
@@ -327,10 +327,10 @@ def totem_checkout(order_id: UUID, t: str = Query(default="", max_length=100), d
         body = (
             '<div class="card"><p class="muted">Pagamento da recarga</p>'
             f'<h1>{escape(money(amount))}</h1><p>Ponto {escape(connector.public_code)}</p>'
-            '<p>Este posto está em Modo apresentação. O pagamento desta demonstração não gera cobrança real.</p>'
+            '<p>Nesta recarga nenhum valor é cobrado.</p>'
             '<p>Volte à tela do posto e toque em <b>Já efetuei o pagamento</b> para continuar.</p></div>'
         )
-        return page("Pagamento da recarga", body, tag="MODO APRESENTAÇÃO", footer=SIMULATED_FOOTER)
+        return page("Pagamento da recarga", body, footer=SIMULATED_FOOTER)
     if order.status == "awaiting_payment" and payment is not None and payment.status in PRE_START \
             and payment.checkout_url:
         return RedirectResponse(payment.checkout_url, status_code=303, headers={"Cache-Control": "no-store"})
@@ -346,7 +346,7 @@ def app_return(p: UUID, cancel: int = 0, db=Depends(db_session)):
         return page("ChargeGrid", '<div class="card"><h1>Pagamento não encontrado</h1></div>', status=404)
     payment = service.advance(db, p)
     if payment.status in FUNDED:
-        text = ("Pagamento confirmado (teste)", "Volte ao app ChargeGrid e informe o código do painel para iniciar.")
+        text = ("Pagamento confirmado", "Volte ao app ChargeGrid e informe o código do painel para iniciar.")
     elif payment.status in PRE_START and not cancel:
         text = ("Confirmando com a Stripe…", "Esta página atualiza sozinha. Você também pode voltar ao app.")
     elif payment.status in PRE_START:

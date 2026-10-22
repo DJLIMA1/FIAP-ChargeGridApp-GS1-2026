@@ -319,7 +319,7 @@ class BookingFlowTests(unittest.IsolatedAsyncioTestCase):
         self.app.booking.update(mode='now', minutes_text='20', pay='card')  # atalho antigo vira Stripe
         options = texts(await self.screen(5))
         self.assertIn('Saldo Disponível', options)  # Saldo: só na conta demo
-        self.assertIn('Cartão ou Pix · Stripe (teste)', options)
+        self.assertIn('Cartão ou Pix · Stripe', options)
         for removed in ('Pix', 'Cartão de Crédito / Débito'):
             self.assertNotIn(removed, options)
         self.assertEqual(self.app.booking['pay'], 'stripe')

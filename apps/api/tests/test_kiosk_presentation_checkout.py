@@ -1,4 +1,5 @@
 """QR de apresentação aponta para o pedido real, sem confirmar cobrança por GET."""
+import re
 from urllib.parse import urlsplit
 
 from test_kiosk_totem import Bench
@@ -15,7 +16,8 @@ def test_presentation_checkout_qr_is_real_read_only_and_signed(http, presentatio
     response = http.get(f'{url.path}?{url.query}', follow_redirects=False)
     assert response.status_code == 200
     assert 'R$ 20,00' in response.text and 'Já efetuei o pagamento' in response.text
-    assert 'não gera cobrança real' in response.text
+    assert 'Nesta recarga nenhum valor é cobrado.' in response.text
+    assert not re.search(r"simulad|demonstra|\bteste\b|modo teste|ambiente de teste|modo apresenta", response.text, re.I)
     assert response.headers['cache-control'] == 'no-store'
     assert bench.get(order['id']).json()['payment'] is None
     assert bench.get(order['id']).json()['status'] == 'held'

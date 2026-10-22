@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -78,7 +79,10 @@ def test_receipt_v1_explains_price_energy_and_charges():
                                   "calculated_total": "14.04", "revenue_basis": "estimated",
                                   "note": "Valor estimado pela energia registrada; sem pagamento confirmado."}
     assert receipt["payment"]["status"] == "not_applicable" and receipt["overstay"]["status"] == "not_applicable"
-    assert receipt["labels"]["simulated"] and any("SIMULADO" in note for note in receipt["labels"]["notes"])
+    assert receipt["labels"]["simulated"]  # a flag continua; o texto visível não fala em simulação
+    assert receipt["energy"]["source_label"] == "Energia calculada pelo equipamento"
+    assert not any(re.search(r"simulad|\bdemo\b|demonstra|\bteste\b", note, re.IGNORECASE)
+                   for note in receipt["labels"]["notes"])
     assert "Documento sem valor fiscal." in receipt["labels"]["notes"]
     assert receipt["times"]["end_reason_label"] == "Parada solicitada"
     assert receipt["times"]["duration_minutes"] == "40.0"

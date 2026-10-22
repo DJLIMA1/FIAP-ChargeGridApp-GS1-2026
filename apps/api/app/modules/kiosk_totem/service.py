@@ -80,7 +80,7 @@ STATUS_LABELS = {
     "failed": "Não foi possível iniciar; valor devolvido",
 }
 REASON_LABELS = {
-    "payments_unavailable": "Pagamento indisponível: Stripe (teste) não configurada",
+    "payments_unavailable": "Pagamento indisponível: Stripe não configurada",
     "point_disabled": "Ponto desativado",
     "kiosk_in_use": "Ponto em uso no totem",
     "reserved": "Ponto reservado",
@@ -626,9 +626,9 @@ def pay(db, device, order_id, data, key, request_base="", user=None):
         if not user or user.id != order.guest_id:
             fail("login_required", "Saldo exige login na conta do pedido", 401)
         if method != "simulated":
-            fail("method_unavailable", "O saldo é simulado e só vale em postos de apresentação", 409)
+            fail("method_unavailable", "Saldo do app indisponível neste ponto", 409)
         account.move(db, guest, -order.quote["fields"]["amount_cents"],
-                     "Recarga no totem (simulada)", f"kiosk-debit:{order.id}")
+                     "Recarga no totem", f"kiosk-debit:{order.id}")
     if method == "simulated":
         payment = Payment(id=uuid.uuid4(), user_id=guest.id, connector_id=connector.id, origin="kiosk",
                           provider=payments.SIMULATED, method=payments.SIMULATED, status="paid",

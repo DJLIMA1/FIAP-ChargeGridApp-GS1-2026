@@ -141,7 +141,7 @@ function SessionsTable({ items }: { items: MarginRow[] }) {
                 <td className="right tabular">{formatEnergy(row.energy_kwh)}</td>
                 <td className="right tabular">
                   {formatCurrency(row.revenue_total)}
-                  {row.revenue_basis === 'captured' ? <div className="dim" style={{ fontSize: 11.5 }}>pago (teste)</div> : null}
+                  {row.revenue_basis === 'captured' ? <div className="dim" style={{ fontSize: 11.5 }}>pago</div> : null}
                 </td>
                 <td className="right tabular muted">− {formatCurrency(row.platform_fee)}</td>
                 <td className="right tabular">{formatCurrency(row.owner_net)}</td>

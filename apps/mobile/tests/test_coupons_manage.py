@@ -39,17 +39,16 @@ class OperatorShortcutTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         station_settings.reset_demo()
 
-    async def test_manage_coupons_sits_right_after_add_station_before_the_chatbot(self):
+    async def test_manage_coupons_sits_right_after_add_station_without_a_chatbot_button(self):
         app = await demo_app()
         screen = await operator.build(app)
         copy = texts(screen)
-        add, manage, chat = (copy.index(operator.ADD_STATION), copy.index(operator.MANAGE_COUPONS),
-                             copy.index('Fale com o ChatBot'))
+        add, manage = copy.index(operator.ADD_STATION), copy.index(operator.MANAGE_COUPONS)
         self.assertLess(add, manage)
-        self.assertLess(manage, chat)
+        self.assertNotIn('Fale com o ChatBot', copy)
         self.assertEqual(copy[manage + 1], operator.MANAGE_COUPONS_HINT)
         if 'Mais opções' in copy:  # só os insights de IA continuam abaixo da 1ª tela
-            self.assertGreater(copy.index('Mais opções'), chat)
+            self.assertGreater(copy.index('Mais opções'), manage)
             self.assertEqual(copy.count(operator.MANAGE_COUPONS), 1)
         await press(screen, operator.MANAGE_COUPONS)(None)
         app.go.assert_awaited_with('coupons', manage=True)

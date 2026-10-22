@@ -31,16 +31,16 @@ MIN_CHARGE_CENTS = 50
 CENT = Decimal('0.01')
 MODES = ('time', 'value', 'energy')
 
-# Rótulos (pt-BR) dos estados de pagamento; o ambiente é sempre de teste.
+# Rótulos (pt-BR) dos estados de pagamento (sem marca de ambiente: o texto chega ao motorista).
 STATUS_LABELS = {
     'awaiting_payment': 'Aguardando pagamento',
     'declined': 'Recusado',
-    'authorized': 'Pago (teste)',
-    'paid': 'Pago (teste)',
-    'in_use': 'Pago (teste) · em uso',
+    'authorized': 'Pago',
+    'paid': 'Pago',
+    'in_use': 'Pago · em uso',
     'expired': 'Expirado',
     'canceled': 'Cancelado',
-    'completed': 'Cobrado (teste)',
+    'completed': 'Cobrado',
 }
 
 
@@ -174,11 +174,11 @@ def format_money(cents) -> str:
 
 
 def status_label(status, *, charge_cents=None, return_cents=None, method=None) -> str:
-    """Rótulo do pagamento para o motorista, sempre identificado como teste."""
+    """Rótulo do pagamento para o motorista."""
     if status == 'completed':
         if not charge_cents:
-            return 'Devolvido (teste)'
-        text = f'Cobrado {format_money(charge_cents)} (teste)'
+            return 'Devolvido'
+        text = f'Cobrado {format_money(charge_cents)}'
         if return_cents:
             text += f' · Devolvido {format_money(return_cents)}'
         return text

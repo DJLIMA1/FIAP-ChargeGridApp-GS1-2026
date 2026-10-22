@@ -331,7 +331,7 @@ class ProfileToggleTests(StorageCase):
         app.logout = AsyncMock()
         screen = await profile.build(app)
         visible = [str(c.value) for c in descendants(screen) if isinstance(c, ft.Text)]
-        self.assertIn('Bateria do celular como a do carro e pagamento simulado (sem Stripe)', visible)
+        self.assertIn('Bateria do celular como a do carro e pagamento sem Stripe', visible)
         self.assertLess(visible.index('Tema escuro'), visible.index('Modo apresentação'))
         switch = next(c for c in descendants(screen) if isinstance(c, ft.Switch) and c.data == 'presentation')
         self.assertFalse(switch.value)

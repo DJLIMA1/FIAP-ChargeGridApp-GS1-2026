@@ -77,7 +77,7 @@ def enabled():
 def require_gateway():
     gateway = gateways.current()
     if gateway is None:
-        fail("payments_unavailable", "Pagamento indisponível no momento (Stripe em modo teste não configurada)", 503)
+        fail("payments_unavailable", "Pagamento indisponível no momento (Stripe não configurada)", 503)
     return gateway
 
 
@@ -162,7 +162,7 @@ def quote(db, user, connector, data):
 
 
 def _checkout_params(payment, connector, success_url, cancel_url):
-    name = f"Recarga ChargeGrid {connector.public_code} (teste)"
+    name = f"Recarga ChargeGrid {connector.public_code}"
     params = {
         "mode": "payment",
         "locale": "pt-BR",
@@ -175,7 +175,7 @@ def _checkout_params(payment, connector, success_url, cancel_url):
                 "product_data": {
                     "name": name,
                     "description": "Pré-autorização do teto. Cobramos só a energia confirmada pelo equipamento; "
-                                   "o restante é liberado ou devolvido. Ambiente de teste: nenhum valor real.",
+                                   "o restante é liberado ou devolvido.",
                 },
             },
         }],
@@ -214,7 +214,7 @@ def ensure_checkout(db, payment, success_url, cancel_url):
         if not exc.retryable:
             payment.status = "canceled"
         db.commit()
-        fail("payment_provider_error", "Não foi possível abrir o pagamento na Stripe (teste). Tente de novo.", 502)
+        fail("payment_provider_error", "Não foi possível abrir o pagamento na Stripe. Tente de novo.", 502)
     payment = db.scalar(select(Payment).where(Payment.id == payment.id).with_for_update())
     payment.provider_checkout_id = session["id"]
     payment.checkout_url = session.get("url")
@@ -460,7 +460,7 @@ def _settle_simulated(db, payment):
             surplus = payment.amount_cents - (payment.charge_cents or 0)
             if surplus > 0:
                 account.move(db, db.get(Profile, payment.user_id), surplus,
-                    "Crédito de recarga não utilizada (simulado)", f"payment-refund:{payment.id}")
+                    "Crédito de recarga não utilizada", f"payment-refund:{payment.id}")
         _finish(payment, captured=payment.charge_cents or 0, refunded=0, fee=None)
         db.commit()
     return payment

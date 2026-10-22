@@ -48,7 +48,7 @@ def test_card_partial_capture_drives_receipt_total_and_margin(flow, stripe, fact
     assert charges["difference"] == "0.00" and charges["adjustments"] == [] and charges["note"] is None
     labels = receipt["labels"]
     assert labels["payment_environment"] == "sandbox"
-    assert "Pagamento de teste (sandbox): nenhum dinheiro real foi movimentado." in labels["notes"]
+    assert labels["notes"] == ["Documento sem valor fiscal."]  # sem aviso de sandbox no texto
     with factory() as db:
         assert db.get(Payment, payment["id"]).environment == "test"  # valor armazenado não muda
     row = _margin_row(factory, seed, session["id"])
@@ -130,9 +130,9 @@ def test_receipt_pdf_shows_calculated_difference_and_paid_total(flow, stripe, fa
     response = flow.http.get(f"/v1/charging-sessions/{session['id']}/receipt.pdf")
     assert response.status_code == 200, response.text
     body = response.content
-    for text in (b"Calculado pela energia", b"Acima do valor pr\\351-pago", b"Total pago",
-                 b"sandbox"):
+    for text in (b"Calculado pela energia", b"Acima do valor pr\\351-pago", b"Total pago"):
         assert text in body, text
+    assert b"sandbox" not in body
 
 
 # ------------------------------------------------------------------ potência

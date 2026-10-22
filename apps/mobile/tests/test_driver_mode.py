@@ -143,8 +143,8 @@ class DemoDriverRoutesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((plan['window']['start'], plan['window']['end']), ('14:00', '22:00'))
         self.assertTrue(plan['estimate'])
         self.assertEqual(plan['demand']['signals'][0]['status'], 'simulado')
-        self.assertEqual(plan['demand']['weather']['label'], '23° · nublado · chuva às 18h (simulado)')
-        self.assertTrue(any(alert['code'] == 'rain' and 'simulado' in alert['message'] for alert in plan['alerts']))
+        self.assertEqual(plan['demand']['weather']['label'], '23° · nublado · chuva às 18h (estimado)')
+        self.assertTrue(any(alert['code'] == 'rain' and 'estimativa' in alert['message'] for alert in plan['alerts']))
         dinner = [stop for stop in plan['stops'] if stop['meal'] == 'Jantar']
         self.assertTrue(dinner and dinner[0]['amenity']['kind'] in ('restaurante', 'shopping'))
         self.assertFalse(any(stop['in_peak'] for stop in plan['stops']))
@@ -208,7 +208,7 @@ class DriverScreenTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(text.endswith('%') for text in visible))  # the hidden SoC is never a number here
         for label in ('BYD Dolphin - 321 km de autonomia', 'O APP JÁ CONSIDERA',
                       'No turno até 22:00 · demanda normal, pico 16h45–20h', 'Perto de Villa Lobos',
-                      '23° · nublado · chuva às 18h (simulado)', 'R$ 38/h estimado', 'Ajustes',
+                      '23° · nublado · chuva às 18h (estimado)', 'R$ 38/h estimado', 'Ajustes',
                       'Próxima parada agora'):
             self.assertIn(label, visible)
         self.assertLess(visible.index('R$ 38/h estimado'), visible.index('Planejar meu turno'))

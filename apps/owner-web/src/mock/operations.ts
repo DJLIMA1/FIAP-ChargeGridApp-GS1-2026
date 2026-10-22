@@ -490,7 +490,7 @@ export function putPricing(stationId: string, body: Record<string, unknown>): St
 /* ---------------------------------------------- A/D · sessões decoradas */
 
 const PAID_LABEL = (charged: number, returned: number) =>
-  returned > 0 ? `Cobrado ${formatCurrency(charged / 100)} (teste) · Devolvido ${formatCurrency(returned / 100)}` : `Cobrado ${formatCurrency(charged / 100)} (teste)`
+  returned > 0 ? `Cobrado ${formatCurrency(charged / 100)} · Devolvido ${formatCurrency(returned / 100)}` : `Cobrado ${formatCurrency(charged / 100)}`
 
 /** `overstay_fee`/`overstay_minutes` de `/owner/sessions` (sem bloco `overstay`, como a API). */
 function overstayFor(session: SessionItem): Pick<SessionItem, 'overstay_fee' | 'overstay_minutes'> {
@@ -511,7 +511,7 @@ function paymentFor(session: SessionItem, overstayCents: number): SessionPayment
   const amount = Math.max(2000, Math.ceil((energy + overstayCents + 1000) / 1000) * 1000)
   const station = S.find((s) => s.id === session.station_id)
   // Canal: app, QR do painel (/pay/k) ou pedido do totem (só com o totem ligado); o totem de conta em
-  // Modo apresentação paga simulado (acerto local, rótulo "(simulado)").
+  // Modo apresentação paga simulado (acerto local; o rótulo é o mesmo da API, sem marca de ambiente).
   const kiosk = h % 7 === 0 || (station?.kiosk_mode === true && h % 4 === 1)
   const channel = !kiosk ? 'app' : station?.kiosk_mode && h % 2 === 1 ? 'kiosk_totem' : 'kiosk_qr'
   const simulated = channel === 'kiosk_totem' && h % 3 !== 0
@@ -520,14 +520,13 @@ function paymentFor(session: SessionItem, overstayCents: number): SessionPayment
     id: `pay-${session.id.slice(0, 8)}`, environment: 'test', provider: simulated ? 'simulated' : 'stripe', origin: kiosk ? 'kiosk' : 'app', channel,
     method, currency: 'BRL', amount: money(amount),
   }
-  const tag = (label: string) => (simulated ? label.replace(/\(teste\)/g, '(simulado)') : label)
-  if (session.status === 'charging') return { ...base, status: 'in_use', status_label: tag('Pago (teste) · em uso'), settlement: null }
+  if (session.status === 'charging') return { ...base, status: 'in_use', status_label: 'Pago · em uso', settlement: null }
   const charged = energy + overstayCents
   const returned = amount - charged
   return {
     ...base,
     status: 'completed',
-    status_label: tag(PAID_LABEL(charged, returned)),
+    status_label: PAID_LABEL(charged, returned),
     settlement: {
       status: 'done', energy_amount: money(energy), overstay_amount: money(overstayCents), fixed_fee: '0.00', charged: money(charged), returned: money(returned),
       return_kind: method === 'pix' ? 'refunded' : 'released', captured: money(charged), refunded: method === 'pix' ? money(returned) : '0.00', waived: '0.00',
@@ -736,7 +735,7 @@ export function marginPdf(params: URLSearchParams): Uint8Array {
   const t = totalsOf(marginRows(params), rent.total, rent.centrals)
   const ascii = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[()\\]/g, '')
   const lines = [
-    'ChargeGrid - Resultado do posto (DEMONSTRACAO, dados ficticios)',
+    'ChargeGrid - Resultado do posto (dados de exemplo)',
     'Receita bruta nao e lucro.',
     `Receita bruta: R$ ${t.gross}`,
     `Descontos e cupons: - R$ ${t.discount}`,

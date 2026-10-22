@@ -199,12 +199,12 @@ def test_payment_channel_and_method_columns_are_appended_at_the_end():
     assert [label for _, label in a.SESSION_EXPORT_COLUMNS][-2:] == ["Canal", "Pagamento"]
     assert a.payment_export_fields(None) == {"payment_channel": "App", "payment_method": ""}
     assert a.payment_export_fields({"channel": "kiosk_totem", "provider": "simulated", "method": "simulated"}) == {
-        "payment_channel": "Totem", "payment_method": "Simulado"}
+        "payment_channel": "Totem", "payment_method": "Sem cobrança"}
     assert a.payment_export_fields({"channel": "kiosk_qr", "provider": "stripe", "method": "card"}) == {
-        "payment_channel": "QR do painel", "payment_method": "Stripe (teste)"}
+        "payment_channel": "QR do painel", "payment_method": "Stripe"}
     assert a.payment_export_fields({"channel": "app", "provider": "stripe"})["payment_channel"] == "App"
     row = {**a.session_export_row(session()), **a.payment_export_fields({"channel": "kiosk_totem",
                                                                           "provider": "simulated"})}
     parsed = list(csv.reader(io.StringIO(a.to_csv([row, a.session_export_row(session())]))))
     assert parsed[0][-2:] == ["Canal", "Pagamento"]
-    assert parsed[1][-2:] == ["Totem", "Simulado"] and parsed[2][-2:] == ["", ""]
+    assert parsed[1][-2:] == ["Totem", "Sem cobrança"] and parsed[2][-2:] == ["", ""]

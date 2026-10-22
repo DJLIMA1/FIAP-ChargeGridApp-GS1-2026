@@ -265,24 +265,21 @@ class VendorHomeTests(unittest.IsolatedAsyncioTestCase):
         visible = text_values(screen, visible_only=True)
         self.assertEqual(visible[:3], ['Olá, João!', 'SALDO A RECEBER', 'R$ 2485,90'])
         self.assertLess(visible.index('Suas estações'), visible.index('Marginal Pinheiros'))
-        self.assertLess(visible.index('Marginal Pinheiros'), visible.index('Fale com o ChatBot'))
+        self.assertNotIn('Fale com o ChatBot', visible)  # o chat fica só na aba Chat
         self.assertIn('R$ 2,00/kWh', visible)
 
-    async def test_vendor_links_go_to_payout_station_admin_and_chat(self):
+    async def test_vendor_links_go_to_payout_and_station_admin(self):
         app = self.vendor_app([station(name='Marginal Pinheiros')])
         screen = await home.build_vendor(app)
         row = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
-                   and 'Marginal Pinheiros' in text_values(item) and 'Fale com o ChatBot' not in text_values(item))
+                   and 'Marginal Pinheiros' in text_values(item))
         await row.on_click(None)
         app.go.assert_awaited_with('station_admin', station_id='station')
         balance = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
                        and 'SALDO A RECEBER' in text_values(item))
         await balance.on_click(None)
         app.go.assert_awaited_with('payout')
-        chat = next(item for item in descendants(screen) if getattr(item, 'on_click', None)
-                    and 'Fale com o ChatBot' in text_values(item))
-        await chat.on_click(None)
-        app.go.assert_awaited_with('chat')
+        self.assertFalse(any('Fale com o ChatBot' in text_values(item) for item in descendants(screen)))
 
     async def test_vendor_without_stations_offers_to_scan_the_claim_qr(self):
         app = self.vendor_app([])
@@ -291,7 +288,7 @@ class VendorHomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Configure sua primeira central', visible)
         self.assertNotIn('SALDO A RECEBER', visible)
         await click(screen, 'Escanear QR Code')(None)
-        app.go.assert_awaited_once_with('operator', claim=True)
+        app.go.assert_awaited_once_with('operator', claim=True, scan=True)  # câmera direto
 
     async def test_vendor_poll_refreshes_rows_in_place(self):
         app = self.vendor_app([station(name='Primeiro')])

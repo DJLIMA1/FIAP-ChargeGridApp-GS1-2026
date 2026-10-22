@@ -334,7 +334,7 @@ class DemoApi(OwnerApiMixin):
         if path.startswith('v1/'):
             path = path[3:]
         if body is not None and not isinstance(body, dict):
-            _fail('O corpo da demonstração deve ser um objeto.')
+            _fail('O corpo da requisição deve ser um objeto.')
         data, params = deepcopy(body or {}), dict(params or {})
         if (method, path) == ('POST', 'auth/login'):
             if str(data.get('email', '')).strip().casefold() != DEMO_EMAIL or data.get('password') != DEMO_PASSWORD:
@@ -522,7 +522,7 @@ class DemoApi(OwnerApiMixin):
     def _make_point(self, station_id, *, active=True, online=True, connector_type='Tipo 2', power_kw='7.200',
                     price_per_kwh='1.5000', screen=None):
         pid = self._id('point')
-        point = {'id': pid, 'station_id': station_id, 'public_code': 'DEMO-' + pid.rsplit('-', 1)[-1],
+        point = {'id': pid, 'station_id': station_id, 'public_code': 'CG-' + pid.rsplit('-', 1)[-1],
                  'connector_type': connector_type, 'power_kw': power_kw, 'price_per_kwh': price_per_kwh,
                  'max_duration_minutes': 120, 'active': active, 'control_version': 0, 'retired': False,
                  'power_limit_kw': None}
@@ -533,7 +533,7 @@ class DemoApi(OwnerApiMixin):
             self._make_device(pid, online=online)
         else:  # carregador adicional: usa a central (dispositivo) do ponto ``screen``
             self._charger_screen[pid] = screen
-            self._id('device')  # mantém os códigos públicos da demo (DEMO-15...) estáveis
+            self._id('device')  # mantém os códigos públicos da demo (CG-15...) estáveis
         return point
 
     def set_charger_online(self, point_id, online=True):
@@ -542,7 +542,7 @@ class DemoApi(OwnerApiMixin):
         (self._chargers_offline.discard if online else self._chargers_offline.add)(point_id)
 
     def _make_device(self, point_id, *, online=True):
-        did = self._id('device')
+        did = 'cg-central-' + self._id('device').rsplit('-', 1)[-1]  # ID visível em "ID da central"
         device = {'id': did, 'connector_id': point_id, 'online': online, 'revoked': False}
         self._devices[did] = device
         return device
@@ -1158,7 +1158,7 @@ class DemoApi(OwnerApiMixin):
         if device:
             _fail('O ponto já tem um dispositivo.', 'device_exists', 409)
         device = self._make_device(point_id)
-        return {'device_id': device['id'], 'device_key': self._id('FAKE-DEVICE-KEY-NOT-REAL')}
+        return {'device_id': device['id'], 'device_key': 'cgk-' + self._id('key').rsplit('-', 1)[-1].zfill(24)}
 
     def _device_action(self, method, device_id, action):
         device = self._get(self._devices, device_id)
@@ -1181,7 +1181,7 @@ class DemoApi(OwnerApiMixin):
             device['revoked'] = True
             return {'revoked': True}
         if action == 'rotate-key':
-            return {'device_id': device_id, 'device_key': self._id('FAKE-DEVICE-KEY-NOT-REAL')}
+            return {'device_id': device_id, 'device_key': 'cgk-' + self._id('key').rsplit('-', 1)[-1].zfill(24)}
         if not device['online']:
             _fail('O dispositivo precisa estar online.', 'device_not_idle', 409)
         point['active'] = False

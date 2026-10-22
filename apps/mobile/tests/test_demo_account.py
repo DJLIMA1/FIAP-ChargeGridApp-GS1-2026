@@ -95,7 +95,7 @@ class DemoAccountTests(unittest.IsolatedAsyncioTestCase):
         app = HandlerApp()
         app.enter_demo = AsyncMock()
         screen = await auth.build(app)
-        await click(screen, 'Entrar na conta demo')(None)
+        await click(screen, 'Entrar na conta de exemplo')(None)
         app.enter_demo.assert_awaited_once_with()
         app.api.request.assert_not_called()
 
@@ -105,7 +105,7 @@ class DemoAccountTests(unittest.IsolatedAsyncioTestCase):
             app = HandlerApp()
             screen = await auth.build(app)
             copy = ' '.join(str(c.value) for c in descendants(screen) if isinstance(c, ft.Text))
-            self.assertNotIn('Entrar na conta demo', copy)
+            self.assertNotIn('Entrar na conta de exemplo', copy)
             self.assertNotIn(DEMO_EMAIL, copy)
             self.assertNotIn(DEMO_PASSWORD, copy)
             with self.assertRaises(ApiError):
@@ -135,7 +135,7 @@ class DemoAccountTests(unittest.IsolatedAsyncioTestCase):
                 screen = await auth.build(app, mode=mode, email_value=DEMO_EMAIL)
                 await click(screen, label)(None)
                 app.api.request.assert_not_called()
-                self.assertIn('demo', ' '.join(str(c.value) for c in descendants(screen) if isinstance(c, ft.Text)))
+                self.assertIn('conta de exemplo', ' '.join(str(c.value) for c in descendants(screen) if isinstance(c, ft.Text)))
 
     async def test_demo_password_form_cannot_change_real_credentials(self):
         app = HandlerApp()

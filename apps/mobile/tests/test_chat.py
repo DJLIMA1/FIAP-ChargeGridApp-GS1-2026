@@ -16,6 +16,7 @@ from chargegrid_app.api_client import ApiError
 from chargegrid_app.app import ChargeGridApp
 from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_PRESENCE_CODE, DemoApi
 from chargegrid_app.screens import chat
+from chargegrid_app.ui.wording import FORBIDDEN
 
 
 def descendants(item):
@@ -327,6 +328,14 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Pago', response)
         self.assertIn('não comprovantes de pagamento', response)
         await click(screen, 'Ver detalhes da recarga')(None)
+        # Recarga encerrada: abre o detalhe unificado do histórico, não a tela ao vivo.
+        self.app.go.assert_awaited_once_with('history', session='session-real')
+
+    async def test_last_session_still_running_opens_the_live_charging_screen(self):
+        self.app.api.request.return_value = {'items': [session_record(status='charging')]}
+        screen = await chat.build(self.app)
+        await click(screen, 'Resumo da última recarga')(None)
+        await click(screen, 'Ver detalhes da recarga')(None)
         self.app.go.assert_awaited_once_with('charging', session_id='session-real')
 
     async def test_vendor_summary_scopes_history_and_honors_explicit_personal_intent(self):
@@ -471,10 +480,10 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('0.883 kWh', self.app.chat_messages[-1]['content'])
             self.assertIn('R$ 1,89', self.app.chat_messages[-1]['content'])
             self.assertEqual(completed['energy_wh'], '883.333')
-            self.assertIn('Dados da demonstração', self.app.chat_messages[-1]['content'])
+            self.assertNotRegex(self.app.chat_messages[-1]['content'], FORBIDDEN)
             await click(screen, 'Iniciar uma recarga')(None)
             self.assertIn('#F12345', self.app.chat_messages[-1]['content'])
-            self.assertIn('nenhum equipamento real', self.app.chat_messages[-1]['content'])
+            self.assertNotRegex(self.app.chat_messages[-1]['content'], FORBIDDEN)
             await demo.close()
 
 

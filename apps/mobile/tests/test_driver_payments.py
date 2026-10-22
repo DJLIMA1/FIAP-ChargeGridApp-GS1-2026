@@ -18,6 +18,7 @@ from chargegrid_app.demo import DEMO_EMAIL, DEMO_PASSWORD, DemoApi
 from chargegrid_app.screens import booking, charging
 from chargegrid_app.services import payments, prepaid, wallet
 from chargegrid_app.session import Session
+from chargegrid_app.ui.wording import FORBIDDEN
 from test_behavior import HandlerApp, descendants
 from test_booking import STATION, tap
 
@@ -98,18 +99,18 @@ class PaymentServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_settlement_badge_and_deadline_texts(self):
         done = payment('completed', settlement={'status': 'done', 'charged': '12.40', 'returned': '44.60',
                                                 'return_kind': 'released', 'overstay_amount': '2.00'})
-        self.assertEqual(payments.settlement_text(done), 'Cobrado R$ 12,40 · Devolvido R$ 44,60 (teste)')
+        self.assertEqual(payments.settlement_text(done), 'Cobrado R$ 12,40 · Devolvido R$ 44,60')
         self.assertIn('Inclui R$ 2,00 de taxa de permanência.', payments.settlement_note(done))
         self.assertEqual(payments.settlement_text(payment('completed', settlement={'status': 'done', 'charged': '0.00',
                                                                                     'returned': '57.00'})),
-                         'Nada cobrado · Devolvido R$ 57,00 (teste)')
+                         'Nada cobrado · Devolvido R$ 57,00')
         self.assertIsNone(payments.settlement_text(payment('in_use')))
         self.assertTrue(payments.pending_settlement(payment('in_use')))
         self.assertTrue(payments.pending_settlement(payment('in_use', settlement={'status': 'due'})))
         self.assertFalse(payments.pending_settlement(done))
-        self.assertEqual(payments.badge_text({'status_label': 'Pago (teste) · em uso'}), 'Stripe · Pago (teste) · em uso')
+        self.assertEqual(payments.badge_text({'status_label': 'Pago (teste) · em uso'}), 'Stripe · Pago · em uso')
         self.assertEqual(payments.badge_text({'status_label': 'Aguardando pagamento'}),
-                         'Stripe · Aguardando pagamento (teste)')
+                         'Stripe · Aguardando pagamento')
         now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
         self.assertEqual(payments.seconds_left({'status': 'awaiting_payment',
                                                 'expires_at': '2026-10-20T12:01:15+00:00'}, now), 75)
@@ -118,7 +119,7 @@ class PaymentServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
-    """Conta real com Stripe (teste) ligada: só "Cartão ou Pix · Stripe (teste)"; nada de Saldo."""
+    """Conta real com Stripe ligada: só "Cartão ou Pix · Stripe"; nada de Saldo."""
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -164,10 +165,10 @@ class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
         await self.screen(1, kind='reserve', pick=1)
         fee = await self.screen(2)
         spans = [span.text for item in descendants(fee) if isinstance(item, ft.Text) for span in item.spans or []]
-        self.assertEqual(spans, ['Taxa de reserva: ', 'sem cobrança no pagamento de teste'])
+        self.assertEqual(spans, ['Taxa de reserva: ', 'sem cobrança no pagamento pela Stripe'])
         self.app.booking['minutes_text'] = '30'
         options = texts(await self.screen(5))
-        self.assertIn('Cartão ou Pix · Stripe (teste)', options)
+        self.assertIn('Cartão ou Pix · Stripe', options)
         self.assertNotIn('Saldo Disponível', options)
         self.assertEqual(self.app.booking['pay'], 'stripe')
 
@@ -186,8 +187,8 @@ class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.app.go.await_args.kwargs['step'], 7)
         waiting = await self.screen(7)
         copy = texts(waiting)
-        for expected in ('Aguardando pagamento', 'R$ 57,00', 'Cartão de teste: 4242 4242 4242 4242',
-                         'Abrir pagamento seguro', 'Aguardando a confirmação da Stripe (teste)…'):
+        for expected in ('Aguardando pagamento', 'R$ 57,00', 'Cartão: 4242 4242 4242 4242',
+                         'Abrir pagamento seguro', 'Aguardando a confirmação da Stripe…'):
             self.assertIn(expected, copy)
         self.assertTrue(any(text.startswith('Expira em 29:') or text.startswith('Expira em 30:') for text in copy))
         self.assertFalse([c for c in descendants(waiting) if isinstance(c, ft.TextField)])  # nada de cartão no app
@@ -206,7 +207,7 @@ class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
         self.payment = payment('declined')
         await self.app.poll()
         copy = texts(waiting)
-        self.assertIn('Pagamento recusado. Tente de novo com outro cartão de teste na mesma página.', copy)
+        self.assertIn('Pagamento recusado. Tente de novo com outro cartão na mesma página.', copy)
         self.assertIn('Tentar de novo', copy)  # recusado não é final: reabre a mesma Checkout
         self.assertEqual(self.app.go.await_count, 1)
         self.payment = payment('authorized', start_deadline=iso(minutes=15), checkout_url=None)
@@ -246,7 +247,7 @@ class RealAccountBookingTests(unittest.IsolatedAsyncioTestCase):
         self.app.booking['minutes_text'] = '30'
         options = texts(await self.screen(5))
         self.assertIn('Saldo Disponível', options)
-        self.assertNotIn('Cartão ou Pix · Stripe (teste)', options)
+        self.assertNotIn('Cartão ou Pix · Stripe', options)
 
 
 class DemoStripeJourneyTests(unittest.IsolatedAsyncioTestCase):
@@ -280,7 +281,7 @@ class DemoStripeJourneyTests(unittest.IsolatedAsyncioTestCase):
         self.app.booking.update(minutes_text='30', pay='stripe')
         options = texts(await booking.build(self.app, step=5, station_id=self.sid))
         self.assertIn('Saldo Disponível', options)  # demo: Saldo e Stripe simulada
-        self.assertIn('Cartão ou Pix · Stripe (teste)', options)
+        self.assertIn('Cartão ou Pix · Stripe', options)
         await tap(await booking.build(self.app, step=6, station_id=self.sid), 'Confirmar e iniciar no ponto')()
         waiting = await booking.build(self.app, step=7, station_id=self.sid)
         launcher = AsyncMock()
@@ -300,7 +301,7 @@ class DemoStripeJourneyTests(unittest.IsolatedAsyncioTestCase):
         start = await charging.build(self.app, **handoff)
         await tap(start, 'Continuar')()
         review = await charging.build(self.app, **{**handoff, 'step': 3})
-        self.assertTrue(any(text.startswith('Stripe (teste) · R$ ') for text in texts(review)))
+        self.assertTrue(any(text.startswith('Stripe · R$ ') for text in texts(review)))
         await tap(review, 'Solicitar início')()
         posts = [call for call in self.app.api.request.await_args_list
                  if call.args[:2] == ('POST', 'charging-sessions')]
@@ -309,14 +310,14 @@ class DemoStripeJourneyTests(unittest.IsolatedAsyncioTestCase):
 
         self.clock[0] = 10
         running = await charging.build(self.app, session_id=session_id)
-        self.assertIn('Stripe · Pago (teste) · em uso', texts(running))
+        self.assertIn('Stripe · Pago · em uso', texts(running))
         self.clock[0] = 4000  # passa do teto/duração: a recarga simulada termina
         ended = await charging.build(self.app, session_id=session_id)
         await self.app.poll()  # primeira consulta do fim: busca o pagamento (o servidor acerta)
         copy = texts(ended)
         settled = [text for text in copy if text.startswith('Cobrado R$ ')]
         self.assertEqual(len(settled), 1)
-        self.assertTrue(settled[0].endswith('(teste)'))
+        self.assertNotRegex(' '.join(copy), FORBIDDEN)
         current = await self.app.api.request('GET', f'payments/{payment_id}')
         settlement = current['settlement']
         self.assertEqual(Decimal(settlement['charged']) + Decimal(settlement['returned']), Decimal(current['amount']))

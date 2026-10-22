@@ -113,7 +113,7 @@ def owner_indicators(stations: list[dict], sessions: list[dict], *, now: datetim
         "peak_hours": [h for h in busiest[:3] if by_hour[h]],
         "peak_window_sessions": sum(by_hour[h] for h in PEAK_HOURS),
         "per_station": sorted(stations_out, key=lambda s: (-s["revenue_brl"], s["station_id"]))[:10],
-        "source": "estimativas do ChargeGrid a partir das sessões registradas (energia simulada na bancada)",
+        "source": "estimativas do ChargeGrid a partir das sessões registradas",
     }
 
 
@@ -275,5 +275,5 @@ def indicators_from_dashboard(overview: dict, heatmap: dict, alerts: list[dict])
                                                          "sessions", "occupancy_percent")}
                         for item in (overview.get("ranking") or [])[:10]],
         "alerts": [alert.get("detail") or alert.get("title") for alert in (alerts or [])[:6]],
-        "source": "chargegrid_core.analytics (mesmos indicadores do dashboard; energia simulada na bancada)",
+        "source": "chargegrid_core.analytics (mesmos indicadores do dashboard)",
     }

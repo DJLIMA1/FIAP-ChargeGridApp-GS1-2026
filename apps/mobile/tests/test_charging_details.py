@@ -28,7 +28,7 @@ class ChargingDetailsTests(unittest.IsolatedAsyncioTestCase):
     async def test_active_session_shows_compact_details_only(self):
         text = await render(max_cost='20.00', demand_multiplier='1.30', discount_percent=10)
         for expected in ('Encerrar recarga', 'Detalhes', 'Energia entregue', '1,234 kWh', 'Tarifa',
-                         '30 min · até R$ 20,00', '10%', 'Dados simulados nesta conta'):
+                         '30 min · até R$ 20,00', '10%'):
             self.assertIn(expected, text)
         # Só o preço final travado: o multiplicador de demanda é informação do vendedor.
         self.assertIn('R$ 1,89/kWh', text)
@@ -40,7 +40,7 @@ class ChargingDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('offline', text)
 
     async def test_offline_active_session_shows_alert(self):
-        self.assertIn('Equipamento simulado offline', await render(online=False))
+        self.assertIn('parada física não confirmada', await render(online=False))
         self.assertIn('parada física não confirmada', await render(demo=False, online=False))
 
     async def test_ended_session_shows_reason(self):

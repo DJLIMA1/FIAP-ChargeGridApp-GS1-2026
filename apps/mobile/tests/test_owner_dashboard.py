@@ -122,9 +122,9 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         await other.close()
 
     async def test_tables_filter_search_paginate_and_export(self):
-        page = await self.client.owner_sessions({'limit': 5, 'q': 'demo-11'})
+        page = await self.client.owner_sessions({'limit': 5, 'q': 'cg-11'})
         self.assertEqual(len(page['items']), 5)
-        self.assertTrue(all(item['public_code'] == 'DEMO-11' for item in page['items']))
+        self.assertTrue(all(item['public_code'] == 'CG-11' for item in page['items']))
         self.assertNotIn('user_id', page['items'][0])
         failed = await self.client.owner_sessions({'status': 'failed', 'limit': 100})
         self.assertTrue(all(item['status'] == 'failed' for item in failed['items']))
@@ -165,10 +165,10 @@ class DemoOwnerTests(unittest.IsolatedAsyncioTestCase):
         # Potência nominal (60 kW) sem o rebalanceamento, que é ligado por padrão.
         await self.client.request('PUT', f"stations/{station['id']}/power-site", {'rebalance_enabled': False})
         before = (await self.client.owner_overview({'to': (START + timedelta(hours=2)).isoformat()}))['kpis']
-        await self.client.request('POST', 'charging-sessions', {'presence_code': '#F12345', 'public_code': 'DEMO-11',
+        await self.client.request('POST', 'charging-sessions', {'presence_code': '#F12345', 'public_code': 'CG-11',
                                                                 'max_duration_minutes': 5}, key='k')
         self.clock.value = 3
-        charging = next(item for item in (await self.client.request('GET', 'owner/live'))['items'] if item['public_code'] == 'DEMO-11')
+        charging = next(item for item in (await self.client.request('GET', 'owner/live'))['items'] if item['public_code'] == 'CG-11')
         self.assertEqual(charging['availability_status'], 'charging')
         self.assertEqual(charging['session']['power_w'], '60000')
         self.clock.value = 400

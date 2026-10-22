@@ -57,7 +57,11 @@ function withoutComments(source: string): string {
 
 function offenders(path: string): string[] {
   const code = withoutComments(SOURCES[`../src/${path}`]).replace(/'(?:SIMULADO|TESTE)'/g, "''")
-  return code.split('\n').filter((line) => FORBIDDEN.test(line)).map((line) => `${path}: ${line.trim()}`)
+  // Logs de console (ex.: o aviso do modo de desenvolvimento do mock) não aparecem na tela.
+  return code
+    .split('\n')
+    .filter((line) => FORBIDDEN.test(line) && !/^\s*console\.\w+\(/.test(line))
+    .map((line) => `${path}: ${line.trim()}`)
 }
 
 describe('textos visíveis do painel', () => {
@@ -71,11 +75,21 @@ describe('textos visíveis do painel', () => {
     expect(withoutComments("s.replace(/\\((?:teste)\\)/g, '')")).toBe("s.replace(/x/g, '')")
   })
 
-  it('páginas, cartões e textos do painel sem simulado/demo/teste (fora dos arquivos de outras frentes)', () => {
-    const skip = /^(mock\/|pages\/Result\.tsx$|lib\/margin\.ts$|lib\/power\.ts$|components\/station\/(PowerCard|EconomicsCard)\.tsx$)/
-    const files = Object.keys(SOURCES).map((key) => key.replace('../src/', '')).filter((path) => !skip.test(path))
-    expect(files).toContain('pages/Sessions.tsx')
+  it('páginas, cartões, textos e o mock do painel sem simulado/demo/teste', () => {
+    const files = Object.keys(SOURCES).map((key) => key.replace('../src/', ''))
+    for (const path of ['pages/Sessions.tsx', 'pages/Result.tsx', 'lib/power.ts', 'lib/margin.ts', 'components/station/PowerCard.tsx',
+      'components/station/EconomicsCard.tsx', 'mock/operations.ts', 'mock/index.ts']) expect(files).toContain(path)
     expect(files.flatMap(offenders)).toEqual([])
+  })
+
+  it('mock: rótulos de pagamento das sessões e o PDF do Resultado', async () => {
+    const ops = await import('../src/mock/operations')
+    const labels = data.SESSION_POOL.slice(0, 400).map(ops.decorateSession).flatMap((s) => (s.payment ? [s.payment.status_label ?? ''] : []))
+    expect(labels.length).toBeGreaterThan(0)
+    expect(labels.filter((label) => FORBIDDEN.test(label))).toEqual([])
+    const pdf = new TextDecoder('latin1').decode(ops.marginPdf(new URLSearchParams()))
+    expect(pdf).toContain('dados de exemplo')
+    expect(pdf).not.toMatch(FORBIDDEN)
   })
 
   it('apresentação (raiz do site) renderizada', async () => {

@@ -80,10 +80,10 @@ describe('selo de pagamento', () => {
     expect(paymentBadge(null)).toBeNull()
     expect(paymentBadge(undefined)).toBeNull()
     const done = paymentBadge({
-      id: 'p', status: 'completed', status_label: 'Cobrado R$ 32,10 (teste) · Devolvido R$ 7,90', environment: 'test', amount: '40.00',
+      id: 'p', status: 'completed', status_label: 'Cobrado R$ 32,10 · Devolvido R$ 7,90', environment: 'test', amount: '40.00',
       settlement: { status: 'done', energy_amount: '32.10', overstay_amount: '0.00', fixed_fee: '0.00', charged: '32.10', returned: '7.90', return_kind: 'released', captured: '32.10', refunded: '0.00', waived: '0.00', uncollected: '0.00', below_minimum: false, provider_fee: '1.67', settled_at: null },
     })
     expect(done).toEqual({ label: 'Cobrado R$ 32,10 · Devolvido R$ 7,90', tone: 'green', test: true, detail: 'Capturado R$ 32,10 · liberado R$ 7,90' })
-    expect(paymentBadge({ id: 'p', status: 'in_use', status_label: 'Pago (teste) · em uso', environment: 'test', amount: '20.00', settlement: null })).toMatchObject({ tone: 'blue', detail: null })
+    expect(paymentBadge({ id: 'p', status: 'in_use', status_label: 'Pago · em uso', environment: 'test', amount: '20.00', settlement: null })).toMatchObject({ tone: 'blue', detail: null })
   })
 })

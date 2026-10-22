@@ -103,7 +103,7 @@ describe('mock do painel (totem 0.8.0)', () => {
       channels.add(String(decorated.payment.channel))
       if (decorated.payment.provider === 'simulated') {
         simulatedSeen = true
-        expect(decorated.payment.status_label).toContain('(simulado)')
+        expect(decorated.payment.status_label).not.toMatch(/teste|simulado/i)
         expect(decorated.payment.channel).toBe('kiosk_totem')
       }
     }

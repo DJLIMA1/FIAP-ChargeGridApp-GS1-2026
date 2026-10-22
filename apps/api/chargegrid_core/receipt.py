@@ -66,13 +66,13 @@ EVENT_LABELS = {
     "start_applied": "Início confirmado pelo ponto", "stop_applied": "Parada confirmada pelo ponto",
     "offline_reconciled": "Estado conciliado após período offline", "ended": "Fim da sessão observado",
 }
-EVENT_SOURCES = {"api": "servidor", "device_sync": "sincronização do ponto", "simulator": "simulador local"}
+EVENT_SOURCES = {"api": "servidor", "device_sync": "sincronização do ponto", "simulator": "equipamento"}
 SOURCE_LABELS = {
-    "simulated": "Energia simulada pelo equipamento (não é medição de medidor)",
+    "simulated": "Energia calculada pelo equipamento",
     "measured": "Energia medida pelo equipamento",
     "estimated": "Energia estimada pelo equipamento",
 }
-PAYMENT_ENVIRONMENTS = {"none": "Sem pagamento", "mock": "Pagamento simulado", "sandbox": "Pagamento de teste (sandbox)",
+PAYMENT_ENVIRONMENTS = {"none": "Sem pagamento", "mock": "Pagamento", "sandbox": "Pagamento",
                         "production": "Pagamento real"}
 FISCAL_NOTE = "Documento sem valor fiscal."
 
@@ -316,8 +316,6 @@ def timeline_section(events: Iterable[Mapping]) -> list[dict]:
     result = []
     for event in events:
         label = EVENT_LABELS.get(event.get("kind"), "Evento registrado")
-        if event.get("source") == "simulator":
-            label = label.replace("pelo ponto", "na simulação")
         result.append({"kind": event.get("kind"), "label": label, "source": event.get("source"),
                        "source_label": EVENT_SOURCES.get(event.get("source"), "origem indisponível"),
                        "observed_at": _iso(event.get("observed_at"))})
@@ -389,16 +387,10 @@ def labels_section(session: Mapping, payment: Mapping | None, demo: bool) -> dic
     source = session.get("source")
     environment = (payment or {}).get("environment") or "none"
     notes = []
-    if demo:
-        notes.append("Conta demo: dados de exemplo, sem cobrança nem medição reais.")
-    if source == "simulated":
-        notes.append("SIMULADO: energia calculada pelo simulador do equipamento, não por medidor.")
-    elif source is None:
+    if source is None:
         notes.append("Origem da medição não informada.")
     if environment == "none":
         notes.append("Sem pagamento registrado: nenhum valor foi cobrado.")
-    elif environment in ("mock", "sandbox"):
-        notes.append(f"{PAYMENT_ENVIRONMENTS[environment]}: nenhum dinheiro real foi movimentado.")
     notes.append(FISCAL_NOTE)
     return {"measurement": source or "unknown", "measurement_label": SOURCE_LABELS.get(source, "Não informada"),
             "simulated": source == "simulated" or demo, "payment_environment": environment,
