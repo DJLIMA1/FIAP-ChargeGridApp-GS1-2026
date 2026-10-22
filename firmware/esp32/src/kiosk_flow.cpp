@@ -1280,13 +1280,7 @@ void Flow::render() {
         snprintf(text, sizeof(text), "%s/kWh", a);
         addMetric(next, str::kMetricPrice, text);
       }
-      if (quote_.multiplier > 0 && quote_.basePrice > 0) {
-        formatMoney(a, sizeof(a), static_cast<int32_t>(lroundf(quote_.basePrice * 100)));
-        formatDecimal(b, sizeof(b), quote_.multiplier, 2);
-        if (quote_.demandReason[0]) snprintf(text, sizeof(text), "%s x %s %s", a, b, quote_.demandReason);
-        else snprintf(text, sizeof(text), "%s x %s", a, b);
-        addMetric(next, str::kMetricDemand, text);
-      }
+      // Só o preço final: base x demanda (acréscimo de pico) é informação do vendedor, não do motorista.
       formatMoney(a, sizeof(a), quote_.amountCents);
       addMetric(next, str::kMetricCap, a);
       if (quote_.energyKwh > 0) {
