@@ -204,7 +204,7 @@ class DemoCouponTests(unittest.IsolatedAsyncioTestCase):
         point = next(p for s in stations['items'] for p in s['connectors'] if p['available'])
         session = await api.request('POST', 'charging-sessions', {
             'public_code': point['public_code'], 'presence_code': DEMO_PRESENCE_CODE,
-            'max_duration_minutes': 10, 'coupon_code': 'demo10'}, key='k1')
+            'max_duration_minutes': 10, 'coupon_code': 'bemvindo10'}, key='k1')
         self.assertEqual(session['discount_percent'], 10)
         created = await api.request('POST', 'coupons', {
             'code': 'verao', 'description': '', 'discount_percent': 5,
@@ -308,7 +308,8 @@ class CouponAndFilterUxTests(unittest.IsolatedAsyncioTestCase):
     async def test_coupon_form_uppercases_code_and_empty_list_explains_next_step(self):
         from chargegrid_app.screens import coupons
         from test_behavior import HandlerApp, click
-        from test_consumer_flows import fields, texts
+        from test_consumer_flows import texts
+        from test_seller_flow_fixes import fields  # campos do vendedor: identificados por ``.data``
         app = HandlerApp()
         app.api.request.return_value = {'items': [], 'total': 0}
         screen = await coupons.build(app)

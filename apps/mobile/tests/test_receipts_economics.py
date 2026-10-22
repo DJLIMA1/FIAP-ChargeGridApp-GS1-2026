@@ -110,7 +110,7 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         station = (await api.request('GET', 'operator/stations'))['items'][0]
         point = next(p for p in station['connectors'] if p['connector_type'] == 'Tipo 2')
         session = await api.request('POST', 'charging-sessions', {
-            'public_code': point['public_code'], 'presence_code': DEMO_PRESENCE_CODE, 'coupon_code': 'demo10',
+            'public_code': point['public_code'], 'presence_code': DEMO_PRESENCE_CODE, 'coupon_code': 'bemvindo10',
             'max_duration_minutes': 5}, key='receipt-test')
         api.chargegrid_prepaid = [{'id': 'abcdef1234', 'amount': '20.00', 'energy_amount': '18.00', 'method': 'pix',
                                    'session_id': session['id'], 'status': 'settled', 'credited': '15.00',
@@ -127,7 +127,7 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data['labels']['demo'] and data['labels']['simulated'])
         self.assertEqual(data['price']['locked_by'], 'start')
         self.assertTrue(data['price']['recorded'])
-        self.assertIn('Cupom DEMO10', [line['label'] for line in data['price']['lines']])
+        self.assertIn('Cupom BEMVINDO10', [line['label'] for line in data['price']['lines']])
         self.assertTrue(data['energy']['confirmed_by_device'])
         self.assertGreater(len(data['power']['samples']), 3)
         self.assertEqual(data['power']['peak_kw'], '22.00')
@@ -140,7 +140,7 @@ class DemoReceiptTests(unittest.IsolatedAsyncioTestCase):
         text = texts(screen)
         for section in SECTIONS:
             self.assertIn(section, text)
-        for expected in ('Recibo', 'SIMULADO', 'CONTA DEMO', 'Cupom DEMO10', 'Preço travado às',
+        for expected in ('Recibo', 'SIMULADO', 'CONTA DEMO', 'Cupom BEMVINDO10', 'Preço travado às',
                          'Confirmada pelo equipamento às', 'Mudanças de potência', 'Pagamento simulado',
                          'Sem taxa de permanência nesta recarga.', receipt.PDF_DEMO_NOTE):
             self.assertIn(expected, text)

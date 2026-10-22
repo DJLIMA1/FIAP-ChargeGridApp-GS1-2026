@@ -134,7 +134,7 @@ class DemoClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(next(p for p in points if p['id'] == self.point['id'])['available'])
 
     async def test_cost_limit_discount_and_snapshot_are_clock_based(self):
-        session = await self.start(max_cost='0.1000', coupon_code='DEMO10', max_duration_minutes=30)
+        session = await self.start(max_cost='0.1000', coupon_code='BEMVINDO10', max_duration_minutes=30)
         self.clock.advance(3)
         active = await self.client.request('GET', f"charging-sessions/{session['id']}")
         self.assertGreater(Decimal(active['energy_wh']), 0)

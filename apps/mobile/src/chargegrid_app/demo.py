@@ -239,7 +239,7 @@ class DemoApi(OwnerApiMixin):
         stations = list(self._stations.values())
         self._coupons['demo-coupon-welcome'] = {
             'id': 'demo-coupon-welcome', 'operator_id': _USER, 'station_id': None,
-            'code': 'DEMO10', 'description': '10% de desconto na recarga simulada',
+            'code': 'BEMVINDO10', 'description': '10% de desconto na recarga',
             'discount_percent': 10, 'valid_until': self._iso(30 * 86400), 'active': True,
         }
         for index in range(2):
@@ -1190,13 +1190,34 @@ class DemoApi(OwnerApiMixin):
         self._resets[device_id] = reset
         return {k: reset[k] for k in ('status', 'command_id')}
 
+    def _coupon_usage(self, code):
+        """``uses``/``last_used_at``/``discount_total_approx`` das recargas simuladas com o código."""
+        uses, last, total = 0, None, Decimal('0')
+        for session in self._sessions.values():
+            terms = demo_receipt.session_terms(self, session) or {}
+            coupon = terms.get('coupon') or {}
+            point = self._points.get(session['connector_id']) or {}
+            station = self._stations.get(point.get('station_id')) or {}
+            if (str(coupon.get('code') or '').upper() != code.upper() or session['status'] == 'failed'
+                    or station.get('owner_id') != _USER):
+                continue
+            uses += 1
+            if last is None or _date(session['created_at']) > _date(last):
+                last = session['created_at']
+            total += (Decimal(str(session['energy_wh'])) / 1000 * Decimal(str(session['price_per_kwh']))
+                      * int(session.get('discount_percent') or 0) / 100)
+        return {'uses': uses, 'last_used_at': last, 'discount_total_approx': str(total.quantize(Decimal('0.01')))}
+
     def _coupon_route(self, method, parts, body, params):
         if len(parts) == 1 and method == 'GET':
             mine = str(params.get('mine', False)).lower() == 'true'
             station = self._get(self._stations, params['station_id']) if params.get('station_id') else None
             records = [c for c in self._coupons.values() if (c['operator_id'] == _USER if mine else c['active'] and _date(c['valid_until']) > self._now())
                        and (not station or (c['operator_id'] == station['owner_id'] and c['station_id'] in (None, station['id'])))]
-            return self._page(records, params)
+            page = self._page(records, params)
+            if mine:  # como a API: a gestão traz o uso de cada cupom
+                page['items'] = [{**c, **self._coupon_usage(c['code'])} for c in page['items']]
+            return page
         creating = len(parts) == 1 and method == 'POST'
         if not creating and not (len(parts) == 2 and method == 'PATCH'):
             _fail('Operação de cupom não disponível na demonstração.', 'demo_route_not_supported', 404)

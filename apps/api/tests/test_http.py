@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -781,5 +781,51 @@ def test_expired_coupon_can_be_edited_or_disabled_but_needs_future_date_to_react
         rejected = client.post("/v1/coupons", json={"code": "ALREADY-EXPIRED", "description": "Expired",
             "discount_percent": 10, "valid_until": expires.isoformat()})
         assert rejected.status_code == 422
+    finally:
+        clear_overrides()
+
+
+def test_owner_coupon_list_reports_usage_by_code(factory, seed):
+    """Gestão: ``uses``/``last_used_at``/``discount_total_approx`` contam só recargas do dono com o código."""
+    with factory.begin() as db:
+        stranger = Profile(id=uuid4(), name="Other owner", operator_enabled=True)
+        db.add(stranger)
+        db.flush()
+        other_station = Station(owner_id=stranger.id, name="Other", address="X", latitude=0, longitude=0)
+        db.add(other_station)
+        db.flush()
+        other_point = Connector(station_id=other_station.id, public_code="CG-99", connector_type="bench",
+                                power_kw=1, price_per_kwh=2, max_duration_minutes=60)
+        db.add(other_point)
+        future = now() + timedelta(days=5)
+        used = Coupon(operator_id=seed["owner"], code="USADO10", description="", discount_percent=10,
+                      valid_until=future)
+        idle = Coupon(operator_id=seed["owner"], code="NUNCA", description="", discount_percent=5,
+                      valid_until=future)
+        db.add_all([used, idle])
+        db.flush()
+
+        def session(point, status, kwh, terms, created):
+            db.add(ChargingSession(user_id=seed["a"], connector_id=point, status=status, max_duration_minutes=30,
+                                   price_per_kwh=Decimal("2.0000"), discount_percent=10,
+                                   energy_wh=Decimal(kwh * 1000), price_terms=terms, created_at=created))
+
+        first, last = now() - timedelta(days=2), now() - timedelta(hours=1)
+        # Pré-pago Stripe grava o cupom sem id e o código pode vir em minúsculas de registros antigos.
+        session(seed["point"], "completed", 10, {"coupon": {"code": "USADO10", "discount_percent": 10}}, first)
+        session(seed["point"], "completed", 5, {"coupon": {"id": str(used.id), "code": "usado10"}}, last)
+        session(seed["point"], "failed", 50, {"coupon": {"code": "USADO10"}}, now())
+        session(seed["point"], "completed", 50, {}, now())
+        session(other_point.id, "completed", 50, {"coupon": {"code": "USADO10"}}, now())
+    client, _ = client_for(factory, seed["owner"])
+    try:
+        mine = {item["code"]: item for item in client.get("/v1/coupons", params={"mine": True}).json()["items"]}
+        assert mine["USADO10"]["uses"] == 2
+        assert datetime.fromisoformat(mine["USADO10"]["last_used_at"]) == last
+        assert mine["USADO10"]["discount_total_approx"] == "3.00"  # 15 kWh × R$ 2 × 10%
+        assert (mine["NUNCA"]["uses"], mine["NUNCA"]["last_used_at"], mine["NUNCA"]["discount_total_approx"]) == \
+            (0, None, "0.00")
+        public = client.get("/v1/coupons").json()["items"]
+        assert public and all("uses" not in item for item in public)  # motorista não vê o uso
     finally:
         clear_overrides()

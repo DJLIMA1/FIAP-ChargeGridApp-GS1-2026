@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -6,7 +7,7 @@ from sqlalchemy import func, select
 from ...database import db_session
 from ...errors import fail
 from ...http_helpers import page, update
-from ...models import Coupon, Station, now
+from ...models import ChargingSession, Connector, Coupon, Station, now
 from ...schemas import (
     CouponInput,
     CouponPatch,
@@ -23,6 +24,40 @@ router = APIRouter()
 
 def normalize_code(value):
     return value.strip().upper()
+
+
+def usage(db, owner_id, codes):
+    """Uso dos cupons do dono: recargas iniciadas com o código, a última e o desconto aproximado.
+
+    Casa pelo código (único, sem diferenciar maiúsculas) gravado em ``price_terms.coupon``: o
+    pré-pago Stripe grava o cupom sem ``id``. Só conta postos do dono e ignora recargas que
+    falharam. O desconto é ``kWh × preço × %``, sem o arredondamento do recibo (aproximado).
+    """
+    if not codes:
+        return {}
+    code = func.upper(ChargingSession.price_terms["coupon"]["code"].astext)
+    discount = func.sum(ChargingSession.energy_wh / 1000 * ChargingSession.price_per_kwh
+                        * ChargingSession.discount_percent / 100)
+    rows = db.execute(
+        select(code, func.count(ChargingSession.id), func.max(ChargingSession.created_at), discount)
+        .join(Connector, Connector.id == ChargingSession.connector_id)
+        .join(Station, Station.id == Connector.station_id)
+        .where(Station.owner_id == owner_id, ChargingSession.status != "failed", code.in_(codes))
+        .group_by(code)
+    ).all()
+    return {key: (uses, last, Decimal(total or 0).quantize(Decimal("0.01"))) for key, uses, last, total in rows}
+
+
+def with_usage(db, owner_id):
+    def render(items):
+        found = usage(db, owner_id, [item.code.upper() for item in items])
+        result = []
+        for item in items:
+            uses, last, total = found.get(item.code.upper(), (0, None, Decimal("0.00")))
+            result.append({**row(item), "uses": uses, "last_used_at": last.isoformat() if last else None,
+                           "discount_total_approx": str(total)})
+        return result
+    return render
 
 
 @router.get("/coupons")
@@ -48,7 +83,8 @@ def coupons(
             Coupon.operator_id == station.owner_id,
             (Coupon.station_id == station_id) | Coupon.station_id.is_(None),
         )
-    return page(db, query.order_by(Coupon.id), limit, offset)
+    # Gestão (``mine``): cada cupom traz o uso (``uses``, ``last_used_at``, ``discount_total_approx``).
+    return page(db, query.order_by(Coupon.id), limit, offset, many=with_usage(db, user.id) if mine else None)
 
 
 @router.post("/coupons", status_code=201)
