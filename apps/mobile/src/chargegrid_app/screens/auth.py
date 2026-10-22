@@ -309,8 +309,6 @@ async def build(app, mode='login', email_value='', account_type='consumer'):
             controls.extend([
                 ft.Divider(color=theme.LIGHT_GRAY),
                 auth_button('Entrar na conta de exemplo', app.action(lambda: app.enter_demo()), secondary=True),
-                ft.Text('demo@chargegrid.example · senha demo1234\nConta isolada, com postos e recargas de exemplo.',
-                        size=12,color=theme.GRAY_TEXT,text_align=ft.TextAlign.CENTER),
             ])
         spacing = 20
     elif mode == 'register':
