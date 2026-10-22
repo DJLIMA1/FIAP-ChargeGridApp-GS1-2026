@@ -175,7 +175,7 @@ def margin_rows(db, scope, window) -> list[dict]:
 
 
 def stations_config(db, scope) -> list[dict]:
-    stations = db.scalars(scope.stations(select(Station)).order_by(Station.name, Station.id)).all()
+    stations = db.scalars(scope.current(select(Station)).order_by(Station.name, Station.id)).all()
     ids = [station.id for station in stations]
     rates = rent_rates(db, ids) if ids else []
     counts = linked_centrals_count(db, ids) if ids else {}

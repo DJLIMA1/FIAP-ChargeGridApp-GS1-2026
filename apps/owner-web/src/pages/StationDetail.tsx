@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import type { StationPatch } from '../api/endpoints'
 import type { Amenity, Connector, Station } from '../api/types'
@@ -16,6 +16,9 @@ import { ScreenStatus } from '../components/station/ScreenStatus'
 import { Badge, Banner, Card, ConfirmDialog, EmptyState, ErrorBanner, Field, PageHead, Skeleton } from '../components/ui'
 import {
   REMOVE_CHARGER_HINT,
+  REMOVE_STATION_DETAIL,
+  REMOVE_STATION_HINT,
+  REMOVE_STATION_LABEL,
   STATION_SCREEN_META,
   addChargerErrorText,
   addChargerTarget,
@@ -26,6 +29,9 @@ import {
   removableCharger,
   removeChargerErrorText,
   removeChargerQuestion,
+  removeStationErrorText,
+  removeStationQuestion,
+  removedStationText,
   stationChargerSummary,
   stationScreenState,
 } from '../lib/charger'
@@ -296,6 +302,59 @@ export function ChargersCard({
   )
 }
 
+/* ----------------------------------------------------------- remover estação */
+/** Zona de perigo no fim da página: "Remover estação" com confirmação (`DELETE /stations/{id}`). */
+export function RemoveStationCard({ station, onRemoved }: { station: Station; onRemoved(): void }) {
+  const { ep } = useAuth()
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const remove = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await ep.removeStation(station.id)
+      toast(removedStationText(station))
+      setOpen(false)
+      onRemoved()
+    } catch (err) {
+      setError(removeStationErrorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title={<span className="red">{REMOVE_STATION_LABEL}</span>} sub={REMOVE_STATION_HINT} id="remove-station"
+      className="danger-zone"
+      action={
+        <button type="button" className="btn btn-danger" onClick={() => { setError(null); setOpen(true) }} data-testid="remove-station">
+          <Icon name="trash" size={16} /> {REMOVE_STATION_LABEL}
+        </button>
+      }
+    >
+      {open ? (
+        <ConfirmDialog
+          title={removeStationQuestion(station)}
+          confirmLabel="Remover"
+          busyLabel="Removendo…"
+          danger
+          busy={busy}
+          error={error}
+          errorTitle="Estação não removida"
+          onConfirm={() => void remove()}
+          onCancel={() => setOpen(false)}
+        >
+          {REMOVE_STATION_DETAIL}
+        </ConfirmDialog>
+      ) : null}
+    </Card>
+  )
+}
+
 /* --------------------------------------------------------------- comodidades */
 interface AmenityDraft {
   kind: Amenity['kind']
@@ -394,7 +453,8 @@ function AmenitiesEditor({ station, onSaved }: { station: Station; onSaved(next:
 /* ---------------------------------------------------------------------- page */
 export default function StationDetail() {
   const { id = '' } = useParams()
-  const { replaceStation } = useFilters()
+  const { replaceStation, reloadStations, stationId: selectedStation, setStationId } = useFilters()
+  const navigate = useNavigate()
   const { station, error, reload, update: acceptStation, lastRefresh } = useStationView(id)
   // Atalhos como /estacoes/:id#economics (do Resultado) rolam até o cartão.
   const { hash } = useLocation()
@@ -427,6 +487,13 @@ export default function StationDetail() {
       screens: previous.screens?.map((s) => ({ ...s, charger_ids: s.charger_ids.filter((id) => id !== removed.id) })),
     }))
     reload()
+  }
+
+  // Estação removida: sai do seletor do painel e volta para a lista (recarregada).
+  const stationRemoved = () => {
+    if (selectedStation === id) setStationId(null)
+    reloadStations()
+    navigate('/estacoes', { replace: true })
   }
 
   const back = (
@@ -494,6 +561,7 @@ export default function StationDetail() {
         <EconomicsCard stationId={station.id} />
         <OverstayCard station={station} />
         <AmenitiesEditor station={station} onSaved={update} />
+        <RemoveStationCard station={station} onRemoved={stationRemoved} />
       </div>
     </>
   )

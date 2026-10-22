@@ -160,7 +160,8 @@ def summary(user=Depends(current_user), db=Depends(db_session)):
         ).join(Connector).join(Station).where(Station.owner_id == user.id)
     ).one()
     return {
-        "stations": db.scalar(select(func.count()).select_from(Station).where(Station.owner_id == user.id)),
+        "stations": db.scalar(select(func.count()).select_from(Station).where(
+            Station.owner_id == user.id, Station.removed_at.is_(None))),
         "total_sessions": total_sessions,
         "total_energy_wh": str(energy_wh if energy_wh is not None else 0),
         "total_estimated_cost": str(estimated_cost if estimated_cost is not None else 0),

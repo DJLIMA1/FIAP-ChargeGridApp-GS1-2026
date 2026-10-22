@@ -147,6 +147,9 @@ def _fields(body, allowed):
         _fail('Este formulário contém campos não reconhecidos.')
 
 
+CENTRAL_ONLINE_MESSAGE = ('Restaure a central (Dados da estação → Restaurar) antes de remover a estação: '
+                          'ela volta ao QR de fábrica e pode ser usada em outro posto.')
+
 class _PointStore(dict):
     """Pontos da demo. Um carregador removido some das listas (``values``/``get``/``in``), mas
     ``store[id]`` ainda o encontra para o histórico, recibos e relatórios das recargas antigas."""
@@ -777,7 +780,7 @@ class DemoApi(OwnerApiMixin):
 
     def _owned(self, station_id):
         station = self._get(self._stations, station_id, 'Posto não encontrado.')
-        if station['owner_id'] != _USER:
+        if station['owner_id'] != _USER or station.get('removed_at'):
             _fail('Posto não encontrado.', 'not_found', 404)
         return station
 
@@ -829,7 +832,8 @@ class DemoApi(OwnerApiMixin):
                     'estimated_cost': _decimal(sum(Decimal(s['cost_estimate']) for s in records), '0.0001')}
         if (method, path) == ('GET', 'operator/summary'):
             records = [s for s in self._sessions.values() if self._stations[self._points[s['connector_id']]['station_id']]['owner_id'] == _USER]
-            return {'stations': sum(s['owner_id'] == _USER for s in self._stations.values()), 'total_sessions': len(records),
+            return {'stations': sum(s['owner_id'] == _USER and not s.get('removed_at') for s in self._stations.values()),
+                    'total_sessions': len(records),
                     'total_energy_wh': _decimal(sum(Decimal(s['energy_wh']) for s in records), '0.001'),
                     'total_estimated_cost': _decimal(sum(Decimal(s['cost_estimate']) for s in records), '0.0001')}
         if path in ('stations', 'operator/stations') and method == 'GET':
@@ -838,7 +842,9 @@ class DemoApi(OwnerApiMixin):
                 # parceira fictícia, não só depois do primeiro plano do Modo Motorista.
                 from .services.driver_demo import ensure_network
                 ensure_network(self)
-            stations = [s for s in self._stations.values() if s['owner_id'] == _USER] if path.startswith('operator/') else [s for s in self._stations.values() if s['active']]
+            stations = [s for s in self._stations.values() if not s.get('removed_at')]
+            stations = ([s for s in stations if s['owner_id'] == _USER] if path.startswith('operator/')
+                        else [s for s in stations if s['active']])
             if (params.get('lat') is None) != (params.get('lng') is None):
                 _fail('Informe latitude e longitude juntas.', 'coordinates_required')
             lat = lng = None
@@ -878,8 +884,12 @@ class DemoApi(OwnerApiMixin):
         if method == 'POST' and path == 'stations':
             changes = self._station_fields(body, creating=True)
             return self._station_row(self._make_station(changes))
+        if parts[0] == 'stations' and len(parts) == 2 and method == 'DELETE':
+            return self._remove_station(parts[1])
         if parts[0] == 'stations' and len(parts) == 2 and method in ('GET', 'PATCH'):
             station = self._get(self._stations, parts[1])
+            if station.get('removed_at'):
+                _fail('Posto não encontrado.', 'not_found', 404)
             if method == 'PATCH':
                 self._owned(station['id'])
                 changes = self._station_fields(body)
@@ -1099,6 +1109,29 @@ class DemoApi(OwnerApiMixin):
         self._charger_addresses.pop(point_id, None)
         self._charger_screen.pop(point_id, None)
         self._chargers_offline.discard(point_id)
+        return None
+
+    def _remove_station(self, station_id):
+        """``DELETE stations/{id}`` (204), como a API: recarga, reserva ou pedido do totem em andamento ->
+        ``station_busy``; central ligada -> ``central_online`` (restaurar antes). Os pontos saem das listas
+        mas continuam no histórico (``_PointStore``); a central desligada é revogada."""
+        station = self._owned(station_id)
+        points = [p for p in self._points.values() if p['station_id'] == station['id']]
+        if any(self._busy(p['id']) or p['id'] in self._kiosk_holds for p in points):
+            _fail('Há recarga, reserva ou pedido do totem em andamento. Encerre antes de remover.', 'station_busy', 409)
+        ids = {p['id'] for p in points}
+        devices = [d for d in self._devices.values() if d['connector_id'] in ids and not d['revoked']]
+        if any(d['online'] for d in devices):
+            _fail(CENTRAL_ONLINE_MESSAGE, 'central_online', 409)
+        for device in devices:
+            device['revoked'], device['online'] = True, False
+        for point_id in ids:
+            self._points.remove(point_id)
+            self._charger_addresses.pop(point_id, None)
+            self._charger_screen.pop(point_id, None)
+            self._chargers_offline.discard(point_id)
+        station['active'] = False
+        station['removed_at'] = self._iso()
         return None
 
     def _refuse_offline_charger(self, point):

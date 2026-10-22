@@ -65,7 +65,7 @@ def operator(user):
 def owned(db, user, station_id):
     operator(user)
     station = db.get(Station, station_id)
-    if not station or station.owner_id != user.id:
+    if not station or station.owner_id != user.id or station.removed_at is not None:
         fail("not_found", "Posto não encontrado", 404)
     return station
 

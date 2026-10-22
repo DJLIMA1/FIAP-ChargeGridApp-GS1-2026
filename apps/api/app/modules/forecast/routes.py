@@ -55,7 +55,7 @@ def best_times(
     db=Depends(db_session),
 ):
     station = db.get(Station, station_id)
-    if not station or not station.active or station.owner_id is None:
+    if not station or not station.active or station.removed_at is not None or station.owner_id is None:
         fail("not_found", "Posto não encontrado", 404)
     limit(db, f"best-times:{user.id}", maximum=DRIVER_LIMIT[0], seconds=DRIVER_LIMIT[1])
     return JSONResponse(service.best_times(db, station, hours), headers=NO_STORE)

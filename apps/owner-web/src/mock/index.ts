@@ -140,12 +140,14 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
     case '/owner/alerts':
       return json(data.alerts(station))
     case '/owner/forecast':
-      return json(forecastMock.forecast(station ?? data.STATIONS[0].id))
+      return json(forecastMock.forecast(station ?? (data.currentStations()[0] ?? data.STATIONS[0]).id))
     case '/owner/occupancy-history':
-      return json(forecastMock.history(station ?? data.STATIONS[0].id, Number(p.get('weeks') ?? 4)))
-    case '/operator/stations':
-      data.STATIONS.forEach((s) => ops.decorateChargers(s))
-      return json({ items: data.STATIONS, total: data.STATIONS.length, limit: 100, offset: 0 })
+      return json(forecastMock.history(station ?? (data.currentStations()[0] ?? data.STATIONS[0]).id, Number(p.get('weeks') ?? 4)))
+    case '/operator/stations': {
+      const items = data.currentStations()
+      items.forEach((s) => ops.decorateChargers(s))
+      return json({ items, total: items.length, limit: 100, offset: 0 })
+    }
     case '/coupons':
       if (method === 'POST') {
         const input = body as CouponInput
@@ -180,7 +182,7 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
   const opsMatch = /^\/stations\/([^/]+)\/(economics|power|power-site|pricing)$/.exec(path)
   if (opsMatch) {
     const [, stationId, resource] = opsMatch
-    if (!data.STATIONS.some((s) => s.id === stationId)) return fail(404, 'not_found', 'Posto não encontrado')
+    if (!data.STATIONS.some((s) => s.id === stationId) || data.isRemovedStation(stationId)) return fail(404, 'not_found', 'Posto não encontrado')
     try {
       const input = (body ?? {}) as Record<string, unknown>
       if (resource === 'economics') return json(method === 'PUT' ? ops.putEconomics(stationId, input) : ops.economics(stationId))
@@ -196,7 +198,16 @@ async function handle(method: string, url: URL, body: unknown, auth: string | nu
   const stationMatch = /^\/stations\/([^/]+)$/.exec(path)
   if (stationMatch) {
     const target = data.STATIONS.find((s) => s.id === stationMatch[1])
-    if (!target) return fail(404, 'not_found', 'Posto não encontrado')
+    if (!target || data.isRemovedStation(target.id)) return fail(404, 'not_found', 'Posto não encontrado')
+    if (method === 'DELETE') {
+      try {
+        ops.removeStation(target.id)
+        return json(null, 204)
+      } catch (error) {
+        if (error instanceof ops.MockFailure) return fail(error.status, error.code, error.message)
+        throw error
+      }
+    }
     if (method === 'PATCH') {
       const patch = body as Partial<typeof target>
       if (patch.active === false && target.connectors.some((c) => c.availability_status === 'charging')) {

@@ -184,7 +184,7 @@ class DemoSource:
         if not self.api._profile.get('operator_enabled'):
             return []
         return sorted(({'id': s['id'], 'name': s['name']} for s in self.api._stations.values()
-                       if s['owner_id'] == owner), key=lambda s: (s['name'], s['id']))
+                       if s['owner_id'] == owner and not s.get('removed_at')), key=lambda s: (s['name'], s['id']))
 
     @_owner_errors
     def owner_overview(self, start, end, station_id=None):

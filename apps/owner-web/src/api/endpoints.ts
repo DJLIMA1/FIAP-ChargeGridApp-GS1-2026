@@ -88,6 +88,12 @@ export function endpoints(api: ApiClient) {
      * próximo "Adicionar carregador". 409 `screen_charger` (o da própria central) / `point_busy`; 404.
      */
     removeCharger: (connectorId: string) => api.delete<void>(`/connectors/${encodeURIComponent(connectorId)}`),
+    /**
+     * Remover estação (204, sem corpo): o posto sai do mapa, das listas e do painel; sessões, recibos e
+     * relatórios continuam. 409 `station_busy` (recarga/reserva/pedido do totem) / `central_online`
+     * (restaurar a central antes); 404.
+     */
+    removeStation: (stationId: string) => api.delete<void>(`/stations/${encodeURIComponent(stationId)}`),
     // C · Resultado: custo do kWh do posto (comissão só leitura) e margem do período.
     economics: (id: string, signal?: AbortSignal) =>
       api.get<StationEconomics>(`/stations/${encodeURIComponent(id)}/economics`, undefined, signal),
