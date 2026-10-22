@@ -28,7 +28,7 @@ def _plural(count, one, many):
 
 async def build(app, station_id=None, connector_id=None, device_id=None, offset=0, connector=None,
                 claim=False, onboarding=False, point_id=None, step=1, existing_station=False, edited=False,
-                show_real=False, **_):
+                show_real=False, scan=False, **_):
     is_demo = bool(getattr(app.api,'is_demo',False))
     prefetch = getattr(app.api,'prefetch',None)
     if prefetch is not None and not (claim or onboarding or connector_id or station_id == 'new'):
@@ -41,7 +41,7 @@ async def build(app, station_id=None, connector_id=None, device_id=None, offset=
     if not profile.get('operator_enabled') and profile.get('account_type') != 'vendor':
         return title('Gestão de postos','Entre com uma conta de operador para vincular equipamentos.')
     if claim:
-        return await ownership.build(app, station_id=station_id, show_real=show_real)
+        return await ownership.build(app, station_id=station_id, show_real=show_real, scan=scan)
     if onboarding:
         return await onboarding_screen.build(app, station_id=station_id, point_id=point_id,
                                              step=step, existing_station=existing_station)
