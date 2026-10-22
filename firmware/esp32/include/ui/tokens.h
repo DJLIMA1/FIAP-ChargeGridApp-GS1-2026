@@ -1,5 +1,5 @@
 #pragma once
-// Tokens visuais das telas do totem (provisórias). O design entra trocando este arquivo,
+// Tokens visuais das telas do totem (do autoatendimento). O design entra trocando este arquivo,
 // widgets.cpp e view_*.cpp; a lógica (kiosk_flow) não muda.
 #include <lvgl.h>
 #include "panel_fonts.h"
@@ -22,13 +22,19 @@ inline lv_color_t ink() { return LV_COLOR_MAKE(0x10, 0x10, 0x10); }
 inline lv_color_t disabled() { return LV_COLOR_MAKE(0x26, 0x2B, 0x31); }
 
 // Espaçamentos e raios.
-constexpr int kMargin = 39;          // mesma margem das telas atuais
+constexpr int kMargin = 39;          // mesma margem da tela Pronto (painel)
 constexpr int kGap = 16;
 constexpr int kRadius = 14;
-constexpr int kMinTarget = 72;       // alvo de toque mínimo (px)
-constexpr int kKeyWidth = 104, kKeyHeight = 72;
+constexpr int kMinTarget = 52;       // alvo de toque mínimo (px)
+constexpr int kKeyWidth = 100, kKeyHeight = 54;
 // Faixas verticais: cabeçalho, título, subtítulo, conteúdo, barra de botões.
-constexpr int kHeaderY = 24, kTitleY = 72, kSubtitleY = 122, kContentY = 160, kBarY = 392;
+// A coluna da direita termina em x = 750, como o cartão do código da tela Pronto; o cartão
+// vai de 112 até 448 e a barra de botões fecha 16 px acima da borda dele.
+constexpr int kHeaderY = 40, kTitleY = 168, kSubtitleY = 250, kContentY = 160, kBarY = 380;
+constexpr int kCardX = 410, kCardY = 112, kCardW = 340, kCardH = 336;
+constexpr int kFormX = 426, kFormW = 308;
+constexpr int kColW = 146, kColStep = 162;   // duas colunas dentro do formulário
+constexpr int kLeftW = 350;                  // coluna do título (kMargin .. kCardX - 21)
 constexpr int kScreenW = 800, kScreenH = 480;
 
 // Fontes por papel. Títulos/botões: Barlow Bold (só ASCII + acentos pt-BR).

@@ -25,6 +25,7 @@ bool boldCovers(const char* utf8);
 struct Metric { lv_obj_t* box = nullptr; lv_obj_t* name = nullptr; lv_obj_t* value = nullptr; };
 Metric metric(lv_obj_t* parent, int x, int y, int width, int height);
 void setMetric(Metric& metric, const kiosk::ViewMetric* model);   // nullptr = oculta
+void resizeMetric(Metric& metric, int width, int height);
 
 // Teclado numérico 3x4 (1-9, vírgula, 0, apagar). Teclas de 104x72.
 lv_obj_t* keypad(lv_obj_t* parent, int x, int y);
@@ -42,6 +43,11 @@ struct Chrome {
   lv_obj_t* primary = nullptr; lv_obj_t* secondary = nullptr;
   lv_obj_t* modal = nullptr;   // "Ainda está aí?" (criado só quando aparece)
   lv_obj_t* root = nullptr;
+  lv_obj_t* context = nullptr; lv_obj_t* step = nullptr;
+  lv_obj_t* panel = nullptr;
+  // Coluna do título "flui": subtítulo, contexto e aviso logo abaixo do título, o bloco
+  // centrado na altura do cartão. Telas com posições próprias desligam.
+  bool flow = true;
 };
 void chrome(lv_obj_t* root, Chrome& chrome);
 void updateChrome(Chrome& chrome, const kiosk::KioskView& view);

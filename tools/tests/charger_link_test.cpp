@@ -114,6 +114,28 @@ void testAckOnlyAfterReadback() {
     assert(link.start(2000, now, &applied) == charger::Error::Offline);
     assert(!link.online() && !link.expectRunning() && !client.device.relayClosed());
     assert(link.lastError() == charger::Error::Offline);
+    // Recusa só depois de kStartAttempts tentativas, cada uma pedindo resolução imediata.
+    assert(client.count("R 10032x1") == charger::kStartAttempts && client.urgent == charger::kStartAttempts);
+  }
+  {  // 1ª tentativa sem resposta (conexão velha, mDNS lento após reboot), 2ª confirma: START ok.
+    FakeChargerClient client(&now);
+    charger::Link link;
+    link.setClient(&client);
+    link.configure(link1());
+    client.failNext = 1;
+    applied = -1;
+    assert(link.start(2000, now, &applied) == charger::Error::None && applied == 2000);
+    assert(client.urgent == 2 && client.device.relayClosed() && link.online() && link.expectRunning());
+    assert(client.writes() == "W 10032=0|W 10029=20|W 10060=2");
+  }
+  {  // Online na última leitura: a 1ª tentativa não força resolução; a recusa (0x0B) não repete.
+    FakeChargerClient client(&now, 3);
+    charger::Link link;
+    link.setClient(&client);
+    link.configure(link1());
+    link.poll(now);
+    assert(link.online() && client.urgent == 0);
+    assert(link.start(2000, now, &applied) == charger::Error::Rejected && client.urgent == 0);
   }
   {  // Escrita do 10029 perdida (eco ok, não aplicada): a releitura não bate → falha e desliga.
     FakeChargerClient client(&now);
@@ -141,6 +163,21 @@ void testAckOnlyAfterReadback() {
     client.dropWrites = 1;
     assert(link.stop(now) == charger::Error::ReadbackMismatch && link.pendingStop());
     assert(client.device.relayClosed());
+    // Outra escrita recebe eco sem aplicar: o poll não pode apagar a pendência.
+    client.dropWrites = 2;
+    client.log.clear();
+    now += charger::kPollMs;
+    link.poll(now);
+    assert(client.writes() == "W 10060=1 lost" && link.pendingStop() && client.device.relayClosed());
+    // STOP realmente aplicado, mas a última leitura do readback cai: ainda não confirmado.
+    client.dropWrites = 0;
+    client.failReadAt = hca::kStartStop; client.failReads = 1;
+    client.log.clear();
+    now += charger::kPollMs;
+    link.poll(now);
+    assert(client.writes() == "W 10060=1" && link.pendingStop() && !client.device.relayClosed());
+    assert(client.log.back() == "R 10060x1" && link.lastError() == charger::Error::Offline);
+    // Só a releitura completa libera a parada; sem retomada do carregador.
     client.log.clear();
     now += charger::kPollMs;
     link.poll(now);
@@ -154,7 +191,7 @@ void testAckOnlyAfterReadback() {
     assert(link.start(2000, now, &applied) == charger::Error::Rejected && link.online());
     assert(!client.device.relayClosed());
   }
-  puts("PASS: ACK applied só depois da releitura (offline, escrita perdida no START e no SET_POWER, STOP perdido → pendente, unit id errado)");
+  puts("PASS: ACK applied só depois da releitura (offline após 2 tentativas, 2ª tentativa ok, escrita perdida no START e no SET_POWER, STOP perdido e readback interrompido → pendente até confirmar, unit id errado sem repetir)");
 }
 
 void testPollingAndLoss() {
@@ -267,6 +304,31 @@ void testPollingAndLoss() {
   puts("PASS: leitura ~1 s, perda em 5 s (também pausada), alarme/reboot do carregador, desliga carregador órfão, recuo a 5 s ocioso");
 }
 
+void testBlockingClock() {
+  struct ClockedClient : FakeChargerClient {
+    unsigned long& time;
+    uint32_t readDelay = 1000;
+    explicit ClockedClient(unsigned long& value) : FakeChargerClient(&value), time(value) {}
+    uint32_t nowMs(uint32_t) const override { return time; }
+    bool readHolding(const charger::LinkConfig& config, uint16_t address, uint16_t count,
+                     uint16_t* out, uint8_t* exception) override {
+      time = uint32_t(time + readDelay);
+      return FakeChargerClient::readHolding(config, address, count, out, exception);
+    }
+  } client(now);
+  now = 0xfffffc00UL;
+  client.device.boot(now, 70, 0);
+  charger::Link link; link.setClient(&client); link.configure(link1());
+  assert(link.start(2000, now, nullptr) == charger::Error::None);
+  const uint32_t completed = now; // START atravessou wrap e demorou várias leituras.
+  client.offline = true; client.readDelay = 0;
+  now = uint32_t(completed + 4000); link.poll(now);
+  assert(!link.faulted(now, true)); // Conta da última resposta, não do início do START.
+  now = uint32_t(completed + 5000); link.poll(now);
+  assert(link.faulted(now, true));
+  puts("PASS: última resposta usa relógio após I/O bloqueante e atravessa wrap de millis");
+}
+
 }  // namespace
 
 int main() {
@@ -274,6 +336,7 @@ int main() {
   testCommands();
   testAckOnlyAfterReadback();
   testPollingAndLoss();
+  testBlockingClock();
   puts("PASS: tela ⇄ carregador HCA G2 (charger_link, cliente Modbus falso sobre a lógica real do simulado)");
   return 0;
 }

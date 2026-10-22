@@ -43,6 +43,14 @@ def main():
              "-DLV_FONT_MONTSERRAT_14=1", "-DLV_FONT_MONTSERRAT_28=1", "-DLV_USE_QRCODE=1", "-DLV_MEM_SIZE=65536U",
              "-I" + str(lvgl), "-I" + str(firmware / "include")]
     run_hca_tests(root, output)
+    api_test = output / "firmware_api_test"
+    subprocess.run(["clang++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-fsanitize=address,undefined",
+                    "-I" + str(root / "tools/tests/http_stubs"),
+                    "-I" + str(root / "tools/tests/firmware_stubs"),
+                    "-I" + str(firmware / "include"), "-I" + str(root / "firmware/shared/hca_g2/src"),
+                    "-I" + str(libraries / "ArduinoJson/src"),
+                    str(root / "tools/tests/firmware_api_test.cpp"), "-o", str(api_test)], check=True)
+    subprocess.run([str(api_test)], check=True)
     sources = sorted((lvgl / "src").rglob("*.c"))
     sources += sorted((firmware / "src").glob("panel_font*.c"))
     sources += [firmware / "src/chargegrid_logo.c"]
@@ -90,14 +98,14 @@ def main():
         base = "https://chargegrid-api-preview-djlima1s-projects.vercel.app"
         token = "?t=QUJDREVGR0hJSktMTU5PUFFSU1RVVldY"
         order = "7d0c9a52-3f1e-4b5a-9a51-2c0d5e8f1a10"
-        totem = {"kiosk-pay-stripe": f"{base}/pay/o/{order}{token}", "kiosk-receipt": f"{base}/pay/r/{order}{token}"}
+        totem = {"kiosk-pay-simulated": f"{base}/pay/o/{order}{token}", "kiosk-pay-stripe": f"{base}/pay/o/{order}{token}", "kiosk-receipt": f"{base}/pay/r/{order}{token}"}
         for name, expected_url in totem.items():
             found = zxingcpp.read_barcodes(Image.open(output / (name + ".ppm")))
             assert [result.text for result in found] == [expected_url], f"Unexpected totem QR in {name}: {found}"
-        for name in ("kiosk-ready", "kiosk-pay-simulated", "kiosk-live", "kiosk-review"):
+        for name in ("kiosk-ready", "kiosk-live", "kiosk-review", "kiosk-receipt-expired-connected"):
             assert not zxingcpp.read_barcodes(Image.open(output / (name + ".ppm"))), f"Unexpected QR in {name}"
         print("PASS: actual LVGL QR decoded offline/online, absent after ownership and for legacy owner")
-        print("PASS: totem order QR (Stripe, T4) and receipt QR (T8) decoded; no QR on simulated payment/live/review")
+        print("PASS: totem order QR (Stripe, T4) and receipt QR (T8) decoded; no QR on live/review")
         print("PASS: payment kiosk QR decoded on the Ready screen, absent without kiosk_url")
     if args.compare_panel:
         frames = sorted(path.name for path in output.glob("panel-*.ppm") if path.name != "panel-idle-after-kiosk.ppm")
@@ -130,6 +138,12 @@ def run_hca_tests(root, output):
         subprocess.run([*strict, str(root / "tools/tests" / (name + ".cpp")), *extra, *hca["sources"],
                         "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
+    transport = output / "charger_transport_test"
+    subprocess.run([*strict, "-I" + str(root / "tools/tests/transport_stubs"),
+                    str(root / "tools/tests/charger_transport_test.cpp"),
+                    str(root / "firmware/esp32/src/charger_link.cpp"), *hca["sources"],
+                    "-o", str(transport)], check=True)
+    subprocess.run([str(transport)], check=True)
     server = output / "hca_sim_host"
     subprocess.run(["clang++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", *hca["includes"],
                     str(root / "firmware/goodwe-hca-sim/host/hca_sim_host.cpp"), *hca["sources"],

@@ -26,16 +26,20 @@ bool panelReleased = false;
 kiosk::Screen current = kiosk::Screen::None;
 const ViewOps* ops = nullptr;
 uint32_t revision = 0;
+bool currentKeypad = false;
 
 const ViewOps* opsFor(kiosk::Screen screen) {
   switch (screen) {
     case kiosk::Screen::Choose: return &viewChoose;
+    case kiosk::Screen::Welcome: case kiosk::Screen::Connector:
+    case kiosk::Screen::Power: case kiosk::Screen::PaymentMethod: return &viewChoose;
+    case kiosk::Screen::Login: return &viewLogin;
     case kiosk::Screen::Amount: return &viewAmount;
     case kiosk::Screen::Review: return &viewReview;
     case kiosk::Screen::Pay: return &viewPay;
     case kiosk::Screen::Starting: return &viewStarting;
     case kiosk::Screen::Live: return &viewLive;
-    case kiosk::Screen::ConfirmStop: return &viewConfirmStop;
+    case kiosk::Screen::ConfirmStop: return &viewLive;
     case kiosk::Screen::Receipt: return &viewReceipt;
     case kiosk::Screen::Notice: case kiosk::Screen::Verifying: return &viewNotice;
     default: return nullptr;
@@ -70,15 +74,17 @@ bool routerUpdate(const kiosk::KioskView& view) {
     if (panelReleased && restore) { restore(); panelReleased = false; }
     return false;
   }
-  if (view.screen != current) {
+  if (next != ops || (view.screen == kiosk::Screen::Amount && view.keypad != currentKeypad)) {
     if (viewRoot) closeView();          // apaga a anterior antes de criar a nova (pico menor)
     if (!panelReleased && release) { release(); panelReleased = true; }
     viewRoot = nullptr;
     current = view.screen; ops = next;
+    currentKeypad = view.keypad;
     revision = view.revision - 1;
     viewRoot = root(screenObject);
     ops->create(viewRoot, view);
   }
+  current = view.screen;
   if (view.revision != revision) { ops->update(view); revision = view.revision; }
   return true;
 }

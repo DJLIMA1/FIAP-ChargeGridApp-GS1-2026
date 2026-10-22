@@ -5,8 +5,9 @@
 #include "sensors.h"
 #include "kiosk_flow.h"
 #include "charger_link.h"
+#include "sync_schedule.h"
 // Versão única do firmware (sync, CG_STATUS e pacote).
-#define CHARGEGRID_FIRMWARE_VERSION "0.8.0"
+#define CHARGEGRID_FIRMWARE_VERSION "0.9.4"
 extern Preferences store;
 extern SimulatedSensors sensors;
 extern Reading reading;
@@ -18,6 +19,11 @@ extern String panelClaimToken;
 extern bool panelOwned, connectorOwnershipKnown, connectorActive;
 extern uint32_t version, sequence;
 extern unsigned long lastContact, lastTick, started, nextSync, lastSaved, maxDurationMs;
+inline syncschedule::Requests syncRequests;
+inline void requestImmediateSync() {
+  syncRequests.request();
+  if (syncRequests.mayAdvance(millis())) nextSync = millis();
+}
 extern float maxCost, price, discount;
 // Potência simulada da sessão: min(7,2 kW nominal, max_power_kw do START). Sem o campo: nominal.
 extern float chargePowerW;
@@ -51,6 +57,8 @@ void persist();
 bool sessionSocKnown();
 float currentSessionSoc(float energyWh);
 void tick();
+void tickAllSessions();
+void serviceChargerLinks();
 bool apply(JsonDocument& response);
 void syncDevice();
 // Parada física local: segura e independente da UI/rede. Nunca inicia carga.
@@ -95,19 +103,22 @@ void applyBootSafety();
 // ---- 0.8.0: totem de autoatendimento (aditivo; API anterior = totem desligado) ----
 // Blocos do sync lidos em apply(): connector.kiosk, kiosk_order e authorized.session.origin.
 extern kiosk::SyncFacts kioskSync;
+#ifdef CHARGEGRID_KIOSK
+extern kiosk::Flow kioskFlow;
+#endif
 // Pedido do totem a guardar na NVS ("kord"); vazio apaga. Retomada após reboot/queda de rede.
 void kioskPersistOrder(const char* orderId);
 // Executa o próximo pedido do totem à API (laço principal; nunca durante charging).
 void kioskApiService();
 // Pedido salvo na NVS no boot (retomada pelo sync).
-void kioskResume(const char* orderId, uint32_t seed);
+void kioskResume(const char* orderId, uint32_t seed, uint8_t chargerAddress = 0);
 
 // ---- Carregador GoodWe HCA G2 do conector (todo conector é um carregador; aditivo) ----
 // Link Modbus TCP com o carregador (firmware/goodwe-hca-sim). Configurado pelo sync
 // (connector.charger_link); sem ele (API antiga) = igual a antes, só a simulação interna.
 extern charger::Link chargerLink;
-// Modo da sessão decidido no START: true = Modbus (carregador online); false = simulação
-// interna da tela. Não troca no meio da sessão.
+// Sessão no carregador GoodWe (Modbus): toda recarga com charger_link (START só confirmado
+// pela releitura; offline → ACK failed charger_offline). false = API antiga (simulação interna).
 extern bool sessionOnCharger;
 // Limite que o carregador instala para um pedido em W (0,1 kW para baixo, 1,4..7,0 kW; 0 = pausa).
 float chargerLinkLimitW(float requestedW);

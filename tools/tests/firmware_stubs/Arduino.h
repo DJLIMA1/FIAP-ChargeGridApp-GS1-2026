@@ -11,7 +11,10 @@ using std::max;
 template<class T> T constrain(T value, T low, T high) { return min(high, max(low, value)); }
 extern unsigned long testMillis;
 inline unsigned long millis() { return testMillis; }
-struct SerialStub { void println(const char*) {} };
+struct SerialStub {
+  void println(const char*) {}
+  template<class... Args> void printf(const char*, Args...) {}
+};
 inline SerialStub Serial;
 using portMUX_TYPE = int;
 #define portMUX_INITIALIZER_UNLOCKED 0

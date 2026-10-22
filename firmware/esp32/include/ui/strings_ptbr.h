@@ -9,10 +9,10 @@ namespace str {
 enum Role { TITLE, BODY };
 
 #define CG_KIOSK_STRINGS(X)                                                                  \
-  X(kStartButton, TITLE, "Carregar agora")                                                   \
+  X(kStartButton, TITLE, "Iniciar recarga")                                                    \
   X(kStartHint, BODY, "Pague aqui mesmo, sem app. Ou use o código ao lado no app ChargeGrid.") \
   X(kCodeCaption, BODY, "TEM O APP? CÓDIGO")                                                 \
-  X(kChooseTitle, TITLE, "Como você quer pagar?")                                           \
+  X(kChooseTitle, TITLE, "Defina sua recarga")                                           \
   X(kChooseCable, BODY, "Conecte o cabo ao carro antes de pagar.")                            \
   X(kModeValue, TITLE, "Por valor")                                                          \
   X(kModeTime, TITLE, "Por tempo")                                                           \
@@ -24,7 +24,7 @@ enum Role { TITLE, BODY };
   X(kAmountTimeTitle, TITLE, "Quanto tempo?")                                                \
   X(kAmountEnergyTitle, TITLE, "Quanta energia?")                                            \
   X(kOtherValue, TITLE, "Outro valor")                                                       \
-  X(kKeypadOk, TITLE, "OK")                                                                  \
+  X(kKeypadOk, TITLE, "Continuar")                                                                  \
   X(kKeypadClear, TITLE, "Limpar")                                                           \
   X(kEstimatePrefix, BODY, "Estimativa: ")                                                   \
   X(kEstimateNote, BODY, "Estimativa local. O valor final vem do servidor.")                  \
@@ -44,7 +44,7 @@ enum Role { TITLE, BODY };
   X(kMetricPrice, BODY, "PREÇO TRAVADO")                                                     \
   X(kMetricDemand, BODY, "DEMANDA")                                                          \
   X(kMetricCap, BODY, "VALOR MÁXIMO")                                                        \
-  X(kMetricEnergyEst, BODY, "ENERGIA ESTIMADA")                                              \
+  X(kMetricEnergyEst, BODY, "ESTIMATIVA")                                                    \
   X(kMetricTimeEst, BODY, "TEMPO MÁXIMO")                                                    \
   X(kMetricOverstay, BODY, "PERMANÊNCIA")                                                    \
   X(kMetricEnergy, BODY, "ENERGIA")                                                          \

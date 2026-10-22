@@ -62,7 +62,23 @@ Validação de host: `python tools/validate_firmware.py --decode-qr` compila `to
 
 ## Carregador GoodWe HCA G2 do conector
 
-Todo conector é um carregador GoodWe: a API manda `connector.charger_link` (endereço = `CG_ADDR` do carregador) e a tela é mestre Modbus TCP do carregador HCA G2 simulado num ESP32 DevKit (`firmware/goodwe-hca-sim`, guia em `docs/carregador-hca-simulado.md`, contrato na seção "Carregador GoodWe do conector" de `docs/esp32-protocol.md`). No START: carregador online → START/STOP/SET_POWER viram escritas nos registradores, o ACK `applied` só sai depois da releitura, a potência e a energia vêm do 10015 lido a cada ~1 s e carregador sumido por 5 s → parada segura `device_fault`; offline → a simulação interna de sempre até o fim da sessão (sync com `charger.link: "offline"`). Sem carregador online os frames do painel são idênticos (`--compare-panel`).
+Estação = a tela; cada ponto é um carregador GoodWe: a API manda `connector.charger_link` (endereço = `CG_ADDR` do carregador) e a tela é mestre Modbus TCP do carregador HCA G2 simulado num ESP32 DevKit (`firmware/goodwe-hca-sim`, guia em `docs/carregador-hca-simulado.md`, contrato em `docs/esp32-protocol.md`). Com `charger_link` toda recarga é no carregador: o START tenta o carregador na hora (2 tentativas) e só confirma depois da releitura; sem resposta, ACK `failed` `charger_offline` (sem simulação interna). Potência e energia vêm do 10015 lido a cada ~1 s; carregador sumido por 5 s → parada segura `device_fault`. Carregadores adicionais da mesma tela (`chargers` no sync, sync endereçado com `charger_address`): `src/extra_chargers.cpp`, até 3, sem interface na tela.
 
-- `src/charger_link.cpp` (C++ puro, testado em `tools/tests/charger_link_test.cpp` e no controlador real em `firmware_behavior.cpp`) e `src/charger_modbus_esp32.cpp` (WiFiClient, uma conexão, timeouts de 400/300 ms, mDNS `cg-hca-<n>.local` em cache). Mapa e Modbus TCP em `firmware/shared/hca_g2` (`lib_extra_dirs`).
+- `src/charger_link.cpp` (C++ puro, testado em `tools/tests/charger_link_test.cpp` e no controlador real em `firmware_behavior.cpp`) e `src/charger_modbus_esp32.cpp` (WiFiClient, uma conexão por carregador, timeouts de 400/400 ms, mDNS `cg-hca-<n>.local` com o último IP bom como reserva, Wi-Fi sem economia de energia). Mapa e Modbus TCP em `firmware/shared/hca_g2` (`lib_extra_dirs`).
 - Serial: `CG_CHARGER` (estado do link e leitura na hora) e `CG_CHARGER_IP <ip>|clear` (IP fixo na NVS quando o mDNS não funciona).
+
+## Firmware 0.9.0 — interface de autoatendimento
+
+Interface baseada nos mockups `Core (Projeto)-9`, com login opcional no início, seleção dos carregadores da central, valor/tempo/energia, autonomia condicionada ao login e ao carro cadastrado, potência máxima/reduzida, pagamento, revisão, acompanhamento e recibo. Os controles preenchem a largura dos cartões e os textos de revisão/recibo ajustam a fonte.
+
+Saldo compartilhado é **simulado** e exige o app atualizado e posto em modo apresentação. Cartão/Pix usam os meios que a API disponibiliza, com confirmação no servidor. Senha/JWT ficam somente em RAM e são apagados ao concluir, cancelar ou expirar por inatividade.
+
+O endereço selecionado acompanha pedidos, STOP local e retomada (`kord` + `kadr`). A integração atual da central multicarregadores foi preservada, incluindo START estrito e STOP confirmado por releitura. API anterior mantém o visitante compatível e informa a indisponibilidade do login.
+
+Contrato, validação, pacote e estado da gravação física: [autoatendimento-totem-0.9.0](../../docs/autoatendimento-totem-0.9.0.md).
+
+### Reconexão da central
+
+A central dá um giro nos carregadores mesmo com sync vencido e entre requisições HTTP do lote. As transições online/offline pedem envio imediato, uma vez por mudança; falhas HTTP mantêm o backoff e os ACKs pendentes. Os prazos periódicos começam ao concluir o lote, e o vigia de 45 s usa a hora atual após operações bloqueantes. START continua estrito; STOP pendente conserva o carregador/endereço até confirmação por releitura.
+
+Os intervalos continuam 1 s online e até 5 s ocioso/offline. Depois de o carregador voltar ao Wi-Fi e servir Modbus, a recuperação depende da próxima tentativa, da resolução mDNS e da API; a atualização no app ainda soma o intervalo de consulta do cliente. Falhas de transporte descartam a resolução em cache para redescobrir IP, preservando o último IP bom e o IP fixo configurado. O handshake TLS tem limite explícito de 3 s (API compartilhada e prova de identidade), com CA e validação TLS preservadas. DNS, transmissão do SDK e tempos da rede impedem prometer atualização instantânea ou um prazo máximo único; estes intervalos não incluem o boot/associação Wi-Fi do carregador.

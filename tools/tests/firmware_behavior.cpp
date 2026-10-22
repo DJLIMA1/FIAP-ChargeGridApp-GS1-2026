@@ -80,12 +80,14 @@ bool chargegridPanelHardwareSetup() { return true; }
 #include "../../firmware/esp32/src/sensors.cpp"
 #include "../../firmware/esp32/src/charging_controller.cpp"
 #include "../../firmware/esp32/src/charger_link.cpp"
+#include "../../firmware/esp32/src/extra_chargers.cpp"
 #include "fake_charger_client.h"
 #include "../../firmware/esp32/src/kiosk_flow.cpp"
 #include "../../firmware/esp32/src/panel_ui.cpp"
 #include "../../firmware/esp32/src/ui/widgets.cpp"
 #include "../../firmware/esp32/src/ui/router.cpp"
 #include "../../firmware/esp32/src/ui/view_choose.cpp"
+#include "../../firmware/esp32/src/ui/view_login.cpp"
 #include "../../firmware/esp32/src/ui/view_amount.cpp"
 #include "../../firmware/esp32/src/ui/view_review.cpp"
 #include "../../firmware/esp32/src/ui/view_pay.cpp"
@@ -262,6 +264,7 @@ static kiosk::ApiRequest kioskApi(int status, const std::string& body, kiosk::Re
   return request;
 }
 static void kioskTap(const char* text) {
+  refresh();
   lv_obj_t* button = findButton(lv_scr_act(), text);
   if (!button) { fprintf(stderr, "Button not found: %s\n", text); assert(false); }
   lv_event_send(button, LV_EVENT_CLICKED, nullptr);
@@ -275,8 +278,8 @@ static void kioskApply(const std::string& json) {
 static void runKioskScreens(const char* out) {
   const char* simulatedBlock = R"({"enabled":true,"method":"simulated","label":"SIMULADO","reason":null})";
   const char* stripeBlock = R"({"enabled":true,"method":"stripe","label":"TESTE","reason":null})";
-  const std::string offer = R"({"enabled":true,"available":true,"reason":null,"open_order_id":null,"method":"simulated","label":"SIMULADO",
-    "power_kw":"7.200","price":{"price_per_kwh":"2.3000","base_price_per_kwh":"2.0000","demand_multiplier":"1.15","reason_label":"Alta demanda"},
+  const std::string offer = R"({"ui_version":2,"enabled":true,"available":true,"reason":null,"open_order_id":null,"method":"simulated","label":"SIMULADO",
+    "power_kw":"7.200","speed_prices":{"max":"2.3000","reduced":"1.8400"},"price":{"price_per_kwh":"2.3000","base_price_per_kwh":"2.0000","demand_multiplier":"1.15","reason_label":"Alta demanda"},
     "limits":{"max_total":"200.00","overstay_reserve":"30.00"},
     "modes":{"value":{"shortcuts":["10.00","20.00","40.00","60.00"],"min":"5.00","max":"170.00"},
              "time":{"shortcuts":[15,30,60],"min":5,"max":60},"energy":{"shortcuts":["5.0","10.0","20.0"],"min":"1.0","max":"73.9","decimals":1}},
@@ -287,7 +290,7 @@ static void runKioskScreens(const char* out) {
     "overstay":{"enabled":true,"version":"ov-3","summary":"Após 10 min: R$ 1,00 por minuto, até R$ 30,00"},"method":"simulated","label":"SIMULADO"})";
   auto orderJson = [](const char* status, const char* method, const char* payment) {
     return std::string(R"({"id":")") + kKioskOrderId + R"(","status":")" + status + R"(","method":")" + method +
-        R"(","expires_in_seconds":300,"quote":{"total":"50.00"},"payment":)" + payment +
+        R"(","expires_in_seconds":300,"qr_url":")" + kKioskOrderQr + R"(","quote":{"total":"50.00"},"payment":)" + payment +
         R"(,"session_id":null,"receipt":null,"receipt_url":")" + kKioskReceiptUrl + R"(","error":null})";
   };
   auto syncOrder = [](const char* status, const char* receipt) {
@@ -301,7 +304,7 @@ static void runKioskScreens(const char* out) {
   lv_mem_monitor_t mon; lv_mem_monitor(&mon);
   kioskMem.push_back({"panel-ready (0.7.0 screens)", static_cast<unsigned>(mon.total_size - mon.free_size)});
 
-  // T0: totem ligado no posto -> botão "Carregar agora" na tela Pronto.
+  // T0: totem ligado no posto -> botão "Iniciar recarga" na tela Pronto.
   kioskApply(kioskSyncJson(simulatedBlock));
   stationPresenceCode = "#F12345"; presenceCodeReceivedAt = testMillis; presenceCodeTtlMs = 300000;
   kioskShot(out, "kiosk-ready");
@@ -311,37 +314,45 @@ static void runKioskScreens(const char* out) {
   assert(std::string(lv_label_get_text(codeLabel)) == "#F12345" && !lv_obj_has_flag(codeCard, LV_OBJ_FLAG_HIDDEN));
   assertGlyphs(darkRoot, "kiosk-ready");
   lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
-  assert(kioskFlow.state() == kiosk::State::LoadingOffer);
+  assert(kioskFlow.state() == kiosk::State::Welcome);
+  kioskShot(out, "kiosk-welcome");
+  kioskTap("Continuar sem login");
   kioskApi(200, offer, kiosk::RequestKind::Offer);
+  kioskShot(out, "kiosk-connector");
+  kioskTap("Próximo passo");
   kioskShot(out, "kiosk-choose");
   assert(darkRoot == nullptr && alertRoot == nullptr);   // telas atuais liberadas
-  assert(ui::routerScreen() == kiosk::Screen::Choose && hasLabel(ui::routerRoot(), "Como você quer pagar?"));
+  assert(ui::routerScreen() == kiosk::Screen::Choose && hasLabel(ui::routerRoot(), "Defina sua recarga"));
   kioskTap("Por valor");
   kioskShot(out, "kiosk-amount");
   assert(findButton(ui::routerRoot(), "R$ 20,00") && findButton(ui::routerRoot(), "R$ 60,00"));
   kioskTap("Outro valor");
   kioskTap("2"); kioskTap("5");
   kioskShot(out, "kiosk-keypad");
-  assert(hasLabel(ui::routerRoot(), "R$ 25"));
+  assert(hasLabel(ui::routerRoot(), "25 R$"));
   lv_obj_t* comma = findButton(ui::routerRoot(), ",");
   assert(comma && lv_obj_has_state(comma, LV_STATE_DISABLED));   // vírgula só em kWh
-  kioskTap(LV_SYMBOL_BACKSPACE); assert(hasLabel(ui::routerRoot(), "R$ 2"));
+  kioskTap(LV_SYMBOL_BACKSPACE); assert(hasLabel(ui::routerRoot(), "2 R$"));
   kioskTap("Voltar");
   kioskTap("R$ 20,00");
+  kioskShot(out, "kiosk-power");
+  kioskTap("Máxima - 7,2 kW - R$ 2,30/kWh");
   kioskApi(200, quote, kiosk::RequestKind::Quote);
+  kioskShot(out, "kiosk-payment-method");
+  kioskTap("Cartão de crédito / débito");
   kioskShot(out, "kiosk-review");
   assert(hasLabel(ui::routerRoot(), "R$ 2,00 x 1,15 Alta demanda") && hasLabel(ui::routerRoot(), "R$ 50,00"));
   kioskTap("Aceitar e pagar");
   kioskApi(201, orderJson("held", "simulated", "null"), kiosk::RequestKind::CreateOrder);
   assert(persistedOrder == kKioskOrderId);
   kioskShot(out, "kiosk-pay-simulated");
-  assert(findButton(ui::routerRoot(), "Simular pagamento de R$ 50,00 (sem cobrança)"));
+  assert(findButton(ui::routerRoot(), "Já efetuei o pagamento"));
   testMillis += 50000; lastContact = testMillis;
   kioskShot(out, "kiosk-still-there");
   assert(hasLabel(ui::routerRoot(), "Ainda está aí?"));
   kioskTap("Continuar");
   assert(!hasLabel(ui::routerRoot(), "Ainda está aí?"));
-  kioskTap("Simular pagamento de R$ 50,00 (sem cobrança)");
+  kioskTap("Já efetuei o pagamento");
   kioskApi(200, orderJson("paid", "simulated", R"({"status":"paid","method":"simulated"})"), kiosk::RequestKind::Pay);
   kioskShot(out, "kiosk-starting");
   assert(ui::routerScreen() == kiosk::Screen::Starting);
@@ -360,36 +371,130 @@ static void runKioskScreens(const char* out) {
   sessionAppliedPowerKw = 7.2f; powerReasonShort = "Máx. do carregador";
   kioskShot(out, "kiosk-live");
   assert(ui::routerScreen() == kiosk::Screen::Live && hasLabel(ui::routerRoot(), "kWh") && hasLabel(ui::routerRoot(), "7,2 kW"));
+  lv_obj_t* liveRoot = ui::routerRoot();
   kioskTap("Encerrar");
   kioskShot(out, "kiosk-confirm-stop");
+  assert(ui::routerRoot() == liveRoot && hasLabel(ui::routerRoot(), "7,2 kW"));
   assert(state == "charging" && ui::routerScreen() == kiosk::Screen::ConfirmStop);
   kioskTap("Sim, encerrar");
   assert(state == "stopped" && endReason == "requested");     // requestLocalSafeStop()
   kioskApply(kioskSyncJson(simulatedBlock, syncOrder("finished", (std::string(R"({"number":"1A2B3C4D","energy_kwh":"1.200","total":"2.76","returned":"47.24","return_kind":"simulated","final":true,"end_reason":"requested","url":")") + kKioskReceiptUrl + "\"}").c_str()).c_str()));
   kioskShot(out, "kiosk-receipt");
   assert(ui::routerScreen() == kiosk::Screen::Receipt && hasLabel(ui::routerRoot(), "1A2B3C4D") && hasLabel(ui::routerRoot(), "Simulado, sem cobrança"));
+  reading.connected = true;
+  testMillis += 30000; lastContact = testMillis;
+  kioskShot(out, "kiosk-receipt-expired-connected");
+  assert(kioskFlow.state() == kiosk::State::Receipt && !kioskFlow.view().qr[0]);
+  assert(hasLabel(ui::routerRoot(), "1,20 kWh") && hasLabel(ui::routerRoot(), "R$ 2,76"));
+  lv_obj_t* disconnect = findButton(ui::routerRoot(), "Desconectar");
+  assert(disconnect && lv_obj_is_visible(disconnect));
+  lv_obj_t* disconnectLabel = lv_obj_get_child(disconnect, 0);
+  assert(lv_obj_get_height(disconnectLabel) <= lv_obj_get_style_text_font(disconnectLabel, 0)->line_height);
+  assert(lv_obj_get_width(disconnectLabel) <= lv_obj_get_width(disconnect));
   kioskTap("Concluir");
   assert(persistedOrder.empty() && kioskFlow.state() == kiosk::State::Idle);
+  reading.connected = false;
   // De volta às telas atuais (reconstruídas).
   kioskApply(kioskSyncJson(simulatedBlock));
   kioskShot(out, "kiosk-back-to-ready");
   assert(darkRoot && alertRoot && ui::routerScreen() == kiosk::Screen::None && kioskFlow.canStart());
 
+  // Optional account access through the actual LVGL keyboard queue.
+  lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick(); refresh();
+  kioskTap("Entrar na minha conta");
+  kioskShot(out, "kiosk-login-email");
+  for (const char* c = "marina@example.com"; *c; ++c) { ui::pushKey(*c); panelTick(); }
+  kioskTap("Continuar");
+  for (const char* c = "Private2!"; *c; ++c) { ui::pushKey(*c); panelTick(); }
+  kioskShot(out, "kiosk-login-password");
+  assert(!hasLabel(ui::routerRoot(), "Private2!") && hasLabel(ui::routerRoot(), "*********"));
+  kioskTap("Entrar");
+  kioskApi(200, R"({"access_token":"test-user-jwt"})", kiosk::RequestKind::Login);
+  JsonDocument accountOffer; deserializeJson(accountOffer, offer);
+  accountOffer["account"]["name"] = "Marina";
+  accountOffer["account"]["vehicle"]["name"] = "BYD Dolphin";
+  accountOffer["account"]["wallet"]["balance"] = "214.80";
+  accountOffer["balance_available"] = true;
+  accountOffer["connector_type"] = "Tipo 2"; accountOffer["public_code"] = "CG-01";
+  std::string accountBody; serializeJson(accountOffer, accountBody);
+  kioskApi(200, accountBody, kiosk::RequestKind::Offer);
+  kioskTap("Próximo passo"); kioskShot(out, "kiosk-choose-account");
+  kioskTap("Por autonomia"); kioskShot(out, "kiosk-autonomy");
+  kioskTap("60 km"); kioskTap("Reduzida - 3,6 kW - R$ 1,84/kWh");
+  kioskApi(200, quote, kiosk::RequestKind::Quote);
+  kioskShot(out, "kiosk-payment-balance");
+  kioskTap("Saldo do app - R$ 214,80");
+  kioskShot(out, "kiosk-review-balance");
+  ui::pushAction(kiosk::Action::Cancel); panelTick(); refresh();
+  assert(!kioskFlow.authToken()[0] && kioskFlow.state() == kiosk::State::Idle);
+
+  // The central's screen can select and stop a child charger while the primary stays untouched.
+  FakeChargerClient childClient(&testMillis, 2);
+  extra::Slot& child = extra::slots[0];
+  child.used = true; child.address = 2; child.state = "idle"; child.lastContact = testMillis;
+  child.link.setClient(&childClient);
+  charger::LinkConfig childConfig;
+  assert(charger::makeConfig("goodwe_hca_g2", "modbus_tcp", 2, nullptr, 502, childConfig));
+  child.link.configure(childConfig); child.link.poll(testMillis);
+  assert(child.link.online());
+  JsonDocument childSync; deserializeJson(childSync, kioskSyncJson(simulatedBlock));
+  kiosk::readSync(childSync.as<JsonObjectConst>(), child.kioskSync);
+  // Primary session belongs to somebody else; a free child keeps self-service available.
+  state = "charging"; sessionId = "primary-session-untouched";
+  panelTick(); refresh(); assert(kioskFlow.canStart());
+  lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick(); refresh();
+  kioskTap("Continuar sem login");
+  JsonDocument choices; deserializeJson(choices, offer);
+  JsonArray connectors = choices["connectors"].to<JsonArray>();
+  JsonObject first = connectors.add<JsonObject>(); first["address"] = 0;
+  first["label"] = "Tipo 2 / CG-01 (em uso)"; first["available"] = false;
+  JsonObject second = connectors.add<JsonObject>(); second["address"] = 2;
+  second["label"] = "Tipo 2 / CG-02"; second["available"] = true;
+  std::string childOffer; serializeJson(choices, childOffer);
+  kioskApi(200, childOffer, kiosk::RequestKind::Offer);
+  kioskShot(out, "kiosk-connectors"); kioskTap("Tipo 2 / CG-02");
+  kioskApi(200, childOffer, kiosk::RequestKind::Offer);
+  assert(kioskFlow.chargerAddress() == 2);
+  kioskTap("Por valor"); kioskTap("R$ 20,00"); kioskTap("Máxima - 7,2 kW - R$ 2,30/kWh");
+  kioskApi(200, quote, kiosk::RequestKind::Quote); kioskTap("Cartão de crédito / débito");
+  kioskTap("Aceitar e pagar");
+  kioskApi(201, orderJson("held", "simulated", "null"), kiosk::RequestKind::CreateOrder);
+  kioskTap("Já efetuei o pagamento");
+  kioskApi(200, orderJson("paid", "simulated", R"({"status":"paid","method":"simulated"})"), kiosk::RequestKind::Pay);
+  assert(child.link.start(3600, testMillis, nullptr) == charger::Error::None);
+  child.state = "charging"; child.sessionId = kKioskSessionId; child.limitW = 3600;
+  child.price = 2; child.maxCost = 20; child.energyWh = 1000; child.started = testMillis;
+  deserializeJson(childSync, kioskSyncJson(simulatedBlock, syncOrder("charging", "null").c_str()));
+  kiosk::readSync(childSync.as<JsonObjectConst>(), child.kioskSync);
+  kioskShot(out, "kiosk-live-extra");
+  assert(ui::routerScreen() == kiosk::Screen::Live && hasLabel(ui::routerRoot(), "3,6 kW"));
+  kioskTap("Encerrar"); kioskTap("Sim, encerrar");
+  assert(child.state == "stopped" && !childClient.device.relayClosed());
+  assert(state == "charging" && sessionId == "primary-session-untouched");
+  kioskShot(out, "kiosk-receipt-extra");
+  kioskTap("Concluir");
+  child.link.setClient(nullptr); child = extra::Slot();
+  state = "idle"; sessionId = ""; kioskApply(kioskSyncJson(simulatedBlock)); panelTick(); refresh();
+
   // Stripe: QR do pedido na tela.
   kioskApply(kioskSyncJson(stripeBlock));
   panelTick(); refresh();
   lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  kioskTap("Continuar sem login");
   std::string stripeOffer = offer; stripeOffer.replace(stripeOffer.find("\"simulated\",\"label\":\"SIMULADO\""), 30, "\"stripe\",\"label\":\"TESTE\"");
   kioskApi(200, stripeOffer, kiosk::RequestKind::Offer); panelTick(); refresh();
+  kioskTap("Próximo passo");
   kioskTap("Por tempo"); kioskTap("30 min");
+  kioskTap("Máxima - 7,2 kW - R$ 2,30/kWh");
   std::string stripeQuote = quote; stripeQuote.replace(stripeQuote.find("\"simulated\",\"label\":\"SIMULADO\""), 30, "\"stripe\",\"label\":\"TESTE\"");
   kioskApi(200, stripeQuote, kiosk::RequestKind::Quote); panelTick(); refresh();
+  kioskTap("Cartão de crédito / débito");
   kioskTap("Aceitar e pagar");
   kioskApi(201, orderJson("held", "stripe", "null"), kiosk::RequestKind::CreateOrder);
   kioskApi(200, orderJson("awaiting_payment", "stripe", (std::string(R"({"status":"awaiting_payment","method":"stripe","qr_url":")") + kKioskOrderQr + "\"}").c_str()),
            kiosk::RequestKind::Pay);
   kioskShot(out, "kiosk-pay-stripe");
-  assert(ui::routerScreen() == kiosk::Screen::Pay && hasLabel(ui::routerRoot(), "TESTE"));
+  assert(ui::routerScreen() == kiosk::Screen::Pay && !hasLabel(ui::routerRoot(), "TESTE"));
   kioskTap("Cancelar");
   kioskApi(200, orderJson("canceled", "stripe", "null"), kiosk::RequestKind::Cancel);
   kioskShot(out, "kiosk-notice-canceled");
@@ -400,6 +505,7 @@ static void runKioskScreens(const char* out) {
   kioskApply(kioskSyncJson(simulatedBlock));
   panelTick(); refresh();
   lv_event_send(kioskStartButton, LV_EVENT_CLICKED, nullptr); panelTick();
+  kioskTap("Continuar sem login");
   kioskApi(200, offer, kiosk::RequestKind::Offer);
   const std::string appSession = std::string(R"({"id":")") + kKioskSessionId + R"(","status":"starting","origin":"app"})";
   kioskApply(kioskSyncJson(simulatedBlock, "null", appSession.c_str()));
@@ -413,7 +519,7 @@ static void runKioskScreens(const char* out) {
   lv_event_send(stopButton, LV_EVENT_CLICKED, nullptr); panelTick();
   assert(state == "charging");
   kioskShot(out, "kiosk-confirm-app-stop");
-  assert(hasLabel(ui::routerRoot(), "Encerrar a recarga do app?"));
+  assert(hasLabel(ui::routerRoot(), "Encerrar a recarga do app?") && hasLabel(ui::routerRoot(), "Esta recarga foi iniciada pelo app"));
   kioskTap("Sim, encerrar");
   assert(state == "stopped");
   state = "idle"; sessionId = ""; endReason = ""; reading = {20, 0, 0, false};
@@ -440,6 +546,8 @@ static void runKioskScreens(const char* out) {
     ++glyphChecks;
   }
   assert(fontCovers(ui::tokens::symbol(), LV_SYMBOL_BACKSPACE));
+  for (const char** map : {ui::view_login::lower, ui::view_login::upper, ui::view_login::symbols})
+    for (const char** key = map; **key; ++key) assert(fontCovers(ui::tokens::bodyLarge(), *key));
   assert(!ui::boldCovers("Pico \xE2\x80\x94 2") && !ui::boldCovers("Verificando\xE2\x80\xA6") && !ui::boldCovers("a \xC2\xB7 b"));
 
   // Memória do pool LVGL (64 KB, host 64 bits: superestima a placa de 32 bits).
@@ -497,6 +605,204 @@ static JsonDocument linkedResponse(const char* type, const char* id, uint32_t co
   }
   return doc;
 }
+static void runChargerLinkScenarios();
+static void runLinkTransitionScenarios() {
+  FakeChargerClient client(&testMillis);
+  chargerLink.setClient(&client);
+  auto screen = linkedResponse(nullptr, nullptr, 0, nullptr);
+  state = "idle"; sessionId = ""; apply(screen);
+  nextSync = testMillis + 5000;
+  chargerLinkService();
+  assert(chargerLink.online() && nextSync == testMillis && !client.device.relayClosed());
+  auto revision = syncRequests.revision();
+  nextSync = testMillis + 5000; chargerLinkService();
+  assert(syncRequests.revision() == revision && nextSync == testMillis + 5000);
+  client.offline = true; testMillis += 1000; chargerLinkService();
+  assert(!chargerLink.online() && nextSync == testMillis);
+  revision = syncRequests.revision();
+  chargerLinkService(); assert(syncRequests.revision() == revision);
+  client.offline = false; testMillis += 1000; chargerLinkService();
+  assert(chargerLink.online() && nextSync == testMillis && !client.device.relayClosed());
+  chargerLink.configure(charger::LinkConfig{}); chargerLink.setClient(nullptr);
+  puts("PASS: transições offline/online pedem sync imediato uma vez, sem reboot ou START automático");
+}
+// Carregadores ADICIONAIS da tela (multi_charger_v1): a resposta do sync da tela lista
+// "chargers"; cada um tem sessão própria (sync endereçado), sempre por Modbus, com START estrito.
+static JsonDocument extraResponse(uint8_t address, const char* type, const char* id, uint32_t commandVersion,
+                                  const char* session) {
+  JsonDocument doc = linkedResponse(type, id, commandVersion, session);
+  doc["connector"]["public_code"] = "CG-02";
+  doc["connector"]["charger_link"]["address"] = address;
+  doc["connector"]["charger_link"]["host"] = address == 2 ? "cg-hca-2.local" : "cg-hca-3.local";
+  return doc;
+}
+static void runExtraChargerScenarios() {
+  FakeChargerClient two(&testMillis, 2), three(&testMillis, 3);
+  extra::setClient(0, &two);
+  extra::setClient(1, &three);
+  sessionId = ""; lastCommand = ""; version = 0; state = "idle"; endReason = "";
+  panelOwned = true; connectorOwnershipKnown = true; connectorActive = true; lastContact = testMillis;
+  // A tela recebe a lista de carregadores adicionais no sync dela.
+  auto screen = linkedResponse(nullptr, nullptr, 1, nullptr, false);
+  JsonArray listed = screen["chargers"].to<JsonArray>();
+  for (uint8_t address : {2, 3}) {
+    JsonObject item = listed.add<JsonObject>();
+    item["address"] = address; item["public_code"] = address == 2 ? "CG-02" : "CG-03";
+    item["charger_link"]["model"] = "goodwe_hca_g2"; item["charger_link"]["transport"] = "modbus_tcp";
+    item["charger_link"]["address"] = address;
+  }
+  apply(screen);
+  extra::Slot& slot = extra::slots[0];
+  assert(slot.used && slot.address == 2 && extra::slots[1].used && extra::slots[1].address == 3);
+  assert(std::string(slot.link.config().host) == "cg-hca-2.local" && slot.state == "idle");
+  // Corpo endereçado: charger_address, capacidades e o link (ainda sem leitura = offline).
+  JsonDocument body; extra::fillBody(slot, body);
+  assert(body["charger_address"] == 2 && body["charger"]["address"] == 2 && body["charger"]["link"] == "offline");
+  assert(body["capabilities"][1] == "multi_charger_v1" && body["physical_state"] == "idle" && body["session_id"].isNull());
+  nextSync = testMillis + 5000;
+  testMillis += 1000; extra::service(testMillis);
+  assert(nextSync == testMillis && extra::slots[0].syncNow && extra::slots[1].syncNow);
+  body.clear(); extra::fillBody(slot, body);
+  assert(body["charger"]["link"] == "online" && body["charger"]["model"] == "goodwe_hca_g2");
+  // START no carregador 2: ACK só após releitura; o ponto da tela continua livre.
+  auto start = extraResponse(2, "START", "x-start-1", 1, "x-session-1");
+  start["commands"][0]["parameters"]["power_limit_w"] = 3650;
+  assert(extra::apply(slot, start, testMillis));
+  assert(slot.acks[0]["status"] == "applied" && slot.state == "charging" && slot.sessionId == "x-session-1");
+  assert(two.writes() == "W 10032=0|W 10029=36|W 10060=2" && two.device.relayClosed() && slot.limitW == 3600);
+  assert(state == "idle" && sessionId == "" && !three.device.relayClosed());
+  for (int i = 0; i < 60; ++i) { testMillis += 1000; slot.lastContact = testMillis; extra::service(testMillis); }
+  assert(std::abs(slot.energyWh - 60) < 0.1 && slot.state == "charging");
+  body.clear(); extra::fillBody(slot, body);
+  assert(body["physical_state"] == "charging" && body["power_w"] == 3600 && body["applied_power_w"] == 3600);
+  assert(body["session_id"] == "x-session-1" && body["connected"] == true);
+  // SET_POWER 2 kW por releitura; reentrega confirma o valor instalado.
+  auto power = extraResponse(2, "SET_POWER", "x-power-1", 2, "x-session-1");
+  power["commands"][0]["parameters"]["power_limit_w"] = 2000;
+  extra::apply(slot, power, testMillis);
+  assert(slot.acks[0]["status"] == "applied" && slot.acks[0]["applied_power_w"] == 2000);
+  extra::apply(slot, power, testMillis);
+  assert(slot.acks[0]["status"] == "applied" && slot.acks[0]["applied_power_w"] == 2000);
+  // Carregador 3 offline: START recusado (charger_offline), sem sessão.
+  extra::Slot& other = extra::slots[1];
+  three.offline = true;
+  auto refused = extraResponse(3, "START", "x-start-3", 1, "x-session-3");
+  extra::apply(other, refused, testMillis);
+  assert(other.acks[0]["status"] == "failed" && other.acks[0]["error"] == "charger_offline");
+  assert(other.state == "idle" && !other.sessionId.length() && three.count("R 10032x1") == charger::kStartAttempts);
+  // A lista da tela sem o carregador 2 não o descarta no meio da recarga.
+  auto shrink = linkedResponse(nullptr, nullptr, 1, nullptr, false);
+  shrink["chargers"].to<JsonArray>();
+  apply(shrink);
+  assert(slot.used && slot.state == "charging" && !other.used);
+  // Carregador 2 some: em 5 s parada segura (device_fault) e sync imediato.
+  two.offline = true;
+  for (int i = 0; i < 5; ++i) { testMillis += 1000; slot.lastContact = testMillis; extra::service(testMillis); }
+  assert(slot.state == "stopped" && slot.endReason == "device_fault" && nextSync == testMillis);
+  body.clear(); extra::fillBody(slot, body);
+  assert(body["physical_state"] == "stopped" && body["end_reason"] == "device_fault" && body["power_w"] == 0);
+  // A API encerra mesmo sem confirmação física: a sessão some, mas o endpoint do STOP fica.
+  auto ended = extraResponse(2, nullptr, nullptr, 2, nullptr);
+  extra::apply(slot, ended, testMillis);
+  assert(slot.state == "idle" && !slot.sessionId.length());
+  assert(slot.link.pendingStop() && two.device.relayClosed());
+  const charger::LinkConfig pendingEndpoint = slot.link.config();
+  const int resetsBefore = two.resets;
+  auto prematureStart = extraResponse(2, "START", "x-start-before-stop", 3, "x-session-before-stop");
+  two.log.clear();
+  extra::apply(slot, prematureStart, testMillis);
+  assert(slot.acks[0]["status"] == "failed" &&
+         slot.acks[0]["error"] == "previous_session_requires_reconciliation");
+  assert(!slot.sessionId.length() && slot.link.pendingStop() && two.log.empty());
+  // Nem a lista da tela nem o sync endereçado podem trocar o endpoint pendente.
+  JsonDocument changedEndpoint = screen;
+  changedEndpoint["chargers"][0]["charger_link"]["host"] = "replacement.local";
+  changedEndpoint["chargers"][0]["charger_link"]["port"] = 1502;
+  apply(changedEndpoint);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint) && two.resets == resetsBefore);
+  ended["connector"]["charger_link"]["host"] = "replacement.local";
+  ended["connector"]["charger_link"]["port"] = 1502;
+  extra::apply(slot, ended, testMillis);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint) && two.resets == resetsBefore);
+  // Remover da lista não perde o slot; outro endereço só ocupa um slot diferente.
+  apply(shrink);
+  assert(slot.used && slot.address == 2 && slot.link.pendingStop());
+  apply(screen);
+  assert(extra::slots[1].used && extra::slots[1].address == 3 && slot.address == 2);
+  testMillis += 1000; extra::service(testMillis);
+  assert(slot.used && slot.link.pendingStop() && charger::sameConfig(slot.link.config(), pendingEndpoint));
+  // Reconexão: escreve STOP no carregador antigo, mas readback interrompido ainda o retém.
+  two.offline = false; two.failReadAt = hca::kStartStop; two.failReads = 1;
+  testMillis += 1000; extra::service(testMillis);
+  assert(!two.device.relayClosed() && slot.link.pendingStop());
+  apply(shrink);
+  assert(slot.used && slot.address == 2 && slot.link.pendingStop());
+  // Releitura completa confirma 10060 = 1 / potência 0; agora o slot pode ser liberado/reusado.
+  testMillis += 1000; extra::service(testMillis);
+  assert(!slot.link.pendingStop() && !two.device.relayClosed());
+  // As duas origens voltam a aceitar configuração depois de confirmar STOP.
+  extra::apply(slot, ended, testMillis);
+  assert(std::string(slot.link.config().host) == "replacement.local" && slot.link.config().port == 1502);
+  apply(screen);
+  assert(charger::sameConfig(slot.link.config(), pendingEndpoint));
+  apply(shrink);
+  assert(!slot.used);
+  // Vigia de 45 s sem a API no carregador adicional.
+  apply(screen);
+  extra::Slot& again = extra::slots[0];
+  two.offline = false; two.log.clear();
+  testMillis += 1000; extra::service(testMillis);
+  start = extraResponse(2, "START", "x-start-2", 5, "x-session-2");
+  extra::apply(again, start, testMillis);
+  assert(again.state == "charging");
+  for (int i = 0; i < 46; ++i) { testMillis += 1000; extra::service(testMillis); }
+  assert(again.state == "stopped" && again.endReason == "communication_lost" && !two.device.relayClosed());
+  // Reboot da tela: diário do carregador adicional relatado como device_reboot, nunca retomado.
+  extra::slots[0] = extra::Slot(); extra::slots[1] = extra::Slot();
+  extra::setClient(0, &two); extra::setClient(1, &three);
+  extra::restore(2, "x-session-2", 12.5f, 5, "x-start-2", testMillis);
+  assert(extra::slots[0].used && extra::slots[0].state == "stopped" && extra::slots[0].endReason == "device_reboot");
+  assert(extra::slots[0].energyWh == 12.5f && extra::slots[0].lastCommand == "x-start-2");
+  // API antiga (sem "chargers"): nenhum adicional novo.
+  extra::slots[0] = extra::Slot();
+  apply(shrink);
+  for (const extra::Slot& item : extra::slots) assert(!item.used);
+  extra::setClient(0, nullptr); extra::setClient(1, nullptr);
+  puts("PASS: carregadores adicionais da tela (lista do sync, corpo endereçado, START estrito por Modbus, energia "
+       "pelo 10015, SET_POWER, charger_offline, perda → device_fault, STOP pendente retém endpoint/slot e bloqueia "
+       "START até releitura confirmar, reconexão e reuso, vigia de 45 s, reboot → device_reboot)");
+}
+
+static void runBlockingSlotClockScenarios() {
+  struct SlowClient : FakeChargerClient {
+    explicit SlowClient() : FakeChargerClient(&testMillis, 2) { offline = true; }
+    bool readHolding(const charger::LinkConfig& config, uint16_t address, uint16_t count,
+                     uint16_t* out, uint8_t* exception) override {
+      testMillis += 1500;
+      return FakeChargerClient::readHolding(config, address, count, out, exception);
+    }
+  } slow;
+  FakeChargerClient active(&testMillis, 3);
+  extra::setClient(0, &slow); extra::setClient(1, &active);
+  for (int i = 0; i < 2; ++i) {
+    auto& slot = extra::slots[i]; slot.used = true; slot.address = i + 2;
+    charger::LinkConfig config;
+    assert(charger::makeConfig("goodwe_hca_g2", "modbus_tcp", slot.address, nullptr, 502, config));
+    slot.link.configure(config);
+  }
+  auto& charging = extra::slots[1];
+  assert(charging.link.start(2000, testMillis, nullptr) == charger::Error::None);
+  charging.state = "charging"; charging.sessionId = "clock-session";
+  charging.started = charging.lastTick = testMillis;
+  charging.lastContact = testMillis - 44000;
+  extra::service(testMillis);
+  assert(charging.state == "stopped" && charging.endReason == "communication_lost");
+  assert(!active.device.relayClosed()); // O slot anterior bloqueou: vigia usa a hora nova.
+  for (auto& slot : extra::slots) slot = extra::Slot();
+  extra::setClient(0, nullptr); extra::setClient(1, nullptr);
+  puts("PASS: bloqueio de outro slot não atrasa o vigia de 45 s nem a parada física");
+}
+
 static void runChargerLinkScenarios() {
   FakeChargerClient client(&testMillis);
   chargerLink.setClient(&client);
@@ -591,87 +897,91 @@ static void runChargerLinkScenarios() {
   assert(acknowledgements[0]["status"] == "applied" && endReason == "device_fault");
   reset();
 
-  // Carregador some entre a última leitura (online) e o START: a sessão começa na simulação
-  // interna (ACK applied), nada fica ligado no carregador e o link é reportado offline.
+  // Carregador some entre a última leitura (online) e o START: a tela tenta de novo (2ª tentativa
+  // com resolução imediata) e, sem resposta, recusa: ACK failed charger_offline, sem sessão local,
+  // sem relé interno/simulação (bug do teste real: a tela dava OK sem o carregador).
   client.offline = true;
   assert(chargerLink.online());
+  client.log.clear(); client.urgent = 0;
   start = linkedResponse("START", "hca-start-2", 7, "hca-session-2");
   start["commands"][0]["parameters"]["power_limit_w"] = 7200;
   apply(start);
-  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["error"].isNull());
-  assert(state == "charging" && sessionId == "hca-session-2" && !sessionOnCharger);
-  assert(chargePowerW == 7200 && reading.powerW == 7200 && !client.device.relayClosed());  // limite da bancada
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_offline");
+  assert(state == "idle" && sessionId == "" && !sessionOnCharger && reading.powerW == 0);
+  // Online na última leitura: a 1ª tentativa usa a conexão atual; a 2ª refaz conexão/resolução.
+  assert(client.count("R 10029x1") == charger::kStartAttempts && client.urgent == charger::kStartAttempts - 1);
+  assert(lastCommand != "hca-start-2" && !client.device.relayClosed());
   body.clear(); fillSyncBody(body, true);
-  assert(body["charger"]["model"] == "esp32_bench" && body["charger"]["transport"] == "simulated");
-  assert(body["charger"]["max_power_w"] == 7200 && body["charger"]["address"] == 1 && body["charger"]["link"] == "offline");
-  assert(body["source"] == "simulated" && body["applied_power_w"] == 7200);
-  // Simulada: a perda do carregador não para a sessão; a energia é a da simulação.
-  const float simulatedStart = reading.energyWh;
-  service(10);
-  assert(state == "charging" && std::abs(reading.energyWh - simulatedStart - 20) < 0.05);
-  // STOP da API: só local, ACK applied mesmo com o carregador fora do ar.
-  auto stopSimulated = linkedResponse("STOP", "hca-stop-1", 8, "hca-session-2");
-  apply(stopSimulated);
-  assert(acknowledgements[0]["status"] == "applied" && state == "stopped" && endReason == "requested");
+  assert(body["physical_state"] == "idle" && body["session_id"].isNull() && body["charger"]["link"] == "offline");
+  assert(body["charger"]["address"] == 1 && body["power_w"] == 0);
+  // A API encerra a sessão (STOP charger_offline): confirmado sem depender do carregador.
+  client.log.clear();
+  auto stopFailedStart = linkedResponse("STOP", "hca-stop-1", 8, "hca-session-2");
+  stopFailedStart["authorized"]["session"] = nullptr;
+  stopFailedStart["commands"][0]["parameters"]["reason"] = "charger_offline";
+  apply(stopFailedStart);
+  assert(acknowledgements[0]["status"] == "applied" && client.writes().empty());
   reset();
 
-  // Carregador já offline na leitura: START direto na simulação, sem tentar escrever nele.
+  // Já offline há várias leituras (recuo de 5 s): o START ainda tenta agora e recusa.
   service(6);
   assert(!chargerLink.online());
   client.log.clear();
   start = linkedResponse("START", "hca-start-2b", 9, "hca-session-2b");
   start["commands"][0]["parameters"]["power_limit_w"] = 3650;
   apply(start);
-  assert(acknowledgements[0]["status"] == "applied" && state == "charging" && !sessionOnCharger);
-  assert(chargePowerW == 3600 && client.writes().empty());
-  // O carregador aparece no meio: a sessão continua simulada (não troca de modo), mas o link
-  // já é reportado online; SET_POWER segue a bancada (7,2 kW), sem escrever no carregador.
-  client.offline = false;
-  service(2);
-  assert(chargerLink.online() && state == "charging" && !sessionOnCharger && !client.device.relayClosed());
-  assert(!chargerLink.pendingStop());  // o 10060 = 1 pendente do START anterior saiu
-  client.log.clear();
-  body.clear(); fillSyncBody(body, true);
-  assert(body["charger"]["model"] == "esp32_bench" && body["charger"]["link"] == "online");
-  auto simulatedPower = linkedResponse("SET_POWER", "hca-power-sim", 10, "hca-session-2b");
-  simulatedPower["commands"][0]["parameters"]["power_limit_w"] = 7200;
-  apply(simulatedPower);
-  assert(acknowledgements[0]["status"] == "applied" && acknowledgements[0]["applied_power_w"] == 7200);
-  assert(client.writes().empty() && reading.powerW == 7200);
-  stopSimulated = linkedResponse("STOP", "hca-stop-1b", 11, "hca-session-2b");
-  apply(stopSimulated);
-  assert(acknowledgements[0]["status"] == "applied" && client.writes().empty());
+  assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_offline");
+  assert(state == "idle" && !sessionOnCharger && client.count("R 10029x1") == charger::kStartAttempts);
   reset();
-  // Fora de recarga, com o carregador online, o corpo já declara o GoodWe (próximo START).
+  // O carregador volta: a leitura periódica o encontra e o sync já o declara online.
+  client.offline = false;
+  service(5);
+  assert(chargerLink.online() && !chargerLink.pendingStop());
   body.clear(); fillSyncBody(body, true);
   assert(body["charger"]["model"] == "goodwe_hca_g2" && body["charger"]["link"] == "online");
-  // Próxima recarga: usa o carregador que apareceu (Modbus).
+  // Primeira tentativa sem resposta (conexão velha/mDNS após reboot), segunda confirma: START ok.
+  client.failNext = 1; client.urgent = 0; client.log.clear();
   start = linkedResponse("START", "hca-start-2c", 12, "hca-session-2c");
   start["commands"][0]["parameters"]["power_limit_w"] = 5000;
   apply(start);
   assert(acknowledgements[0]["status"] == "applied" && sessionOnCharger && client.device.relayClosed());
-  assert(client.writes() == "W 10029=50|W 10060=2" && chargePowerW == 5000);
+  // 1ª tentativa: leitura perdida → desliga por segurança (10060 = 1); 2ª: liga e confirma.
+  assert(client.urgent == 1 && client.writes() == "W 10060=1|W 10029=50|W 10060=2" && chargePowerW == 5000);
   auto stop = linkedResponse("STOP", "hca-stop-1c", 13, "hca-session-2c");
   apply(stop);
   assert(acknowledgements[0]["status"] == "applied" && !client.device.relayClosed());
   reset();
+  // Exceção Modbus (endereço errado → 0x0B) não é repetida: recusa na hora com charger_rejected.
+  {
+    FakeChargerClient wrong(&testMillis, 2);  // carregador responde como unit 2; a tela fala com 1
+    chargerLink.setClient(&wrong);
+    auto relinked = linkedResponse(nullptr, nullptr, 13, nullptr, false);
+    apply(relinked);  // sem link: zera o estado do Link
+    start = linkedResponse("START", "hca-start-2d", 14, "hca-session-2d");
+    apply(start);
+    assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_rejected");
+    assert(wrong.urgent == 1 && wrong.count("R 10032x1") == 1 && state == "idle");
+    chargerLink.setClient(&client);
+    apply(relinked);
+    reset();
+  }
 
   // STOP normal: ACK applied só com 10060 = 1 e 10015 = 0 relidos.
-  start = linkedResponse("START", "hca-start-3", 9, "hca-session-3");
+  start = linkedResponse("START", "hca-start-3", 15, "hca-session-3");
   apply(start);
   assert(acknowledgements[0]["status"] == "applied" && client.device.relayClosed());
   service(5);
   client.log.clear();
-  stop = linkedResponse("STOP", "hca-stop-2", 10, "hca-session-3");
+  stop = linkedResponse("STOP", "hca-stop-2", 16, "hca-session-3");
   apply(stop);
   assert(acknowledgements[0]["status"] == "applied" && state == "stopped" && endReason == "requested");
   assert(client.writes() == "W 10060=1" && !client.device.relayClosed());
   reset();
   // STOP perdido: a sessão termina (stopped) mas sem ACK applied; a parada sai na leitura.
-  start = linkedResponse("START", "hca-start-4", 11, "hca-session-4");
+  start = linkedResponse("START", "hca-start-4", 17, "hca-session-4");
   apply(start);
   client.dropWrites = 1;
-  stop = linkedResponse("STOP", "hca-stop-3", 12, "hca-session-4");
+  stop = linkedResponse("STOP", "hca-stop-3", 18, "hca-session-4");
   apply(stop);
   assert(acknowledgements[0]["status"] == "failed" && acknowledgements[0]["error"] == "charger_readback_mismatch");
   assert(state == "stopped" && client.device.relayClosed());
@@ -679,14 +989,14 @@ static void runChargerLinkScenarios() {
   assert(!client.device.relayClosed() && !chargerLink.pendingStop());
   reset();
   // Parada local (toque/CG_STOP) também desliga o carregador.
-  start = linkedResponse("START", "hca-start-5", 13, "hca-session-5");
+  start = linkedResponse("START", "hca-start-5", 19, "hca-session-5");
   apply(start);
   assert(client.device.relayClosed());
   requestLocalSafeStop();
   assert(state == "stopped" && !client.device.relayClosed());
   reset();
   // Carregador reiniciou no meio da recarga (boot seguro): falha em 3 leituras.
-  start = linkedResponse("START", "hca-start-6", 14, "hca-session-6");
+  start = linkedResponse("START", "hca-start-6", 20, "hca-session-6");
   apply(start);
   client.device.boot(testMillis, 70, 0);
   service(3);
@@ -694,7 +1004,7 @@ static void runChargerLinkScenarios() {
   reset();
 
   // API antiga (sem charger_link): volta exatamente ao corpo da bancada.
-  auto unlinked = linkedResponse(nullptr, nullptr, 14, nullptr, false);
+  auto unlinked = linkedResponse(nullptr, nullptr, 21, nullptr, false);
   apply(unlinked);
   assert(!chargerLink.configured());
   body.clear(); fillSyncBody(body, true);
@@ -702,10 +1012,68 @@ static void runChargerLinkScenarios() {
   assert(body["charger"]["max_power_w"] == 7200 && body["charger"]["link"].isNull() && body["charger"]["address"].isNull());
   chargerLink.setClient(nullptr);
   reset();
-  puts("PASS: carregador GoodWe HCA G2 do conector pelo controlador real (online no START: START/SET_POWER/STOP com ACK "
-       "após releitura, perda → device_fault, STOP pendente, reboot do carregador; offline no START: simulação da tela até "
-       "o fim, link offline e limites da bancada; carregador que aparece depois → próxima recarga por Modbus; sem "
-       "charger_link = bancada de sempre)");
+  puts("PASS: carregador GoodWe HCA G2 do conector pelo controlador real (START/SET_POWER/STOP com ACK após releitura, "
+       "perda → device_fault, STOP pendente, reboot do carregador; offline no START → 2 tentativas e ACK failed "
+       "charger_offline sem simulação da tela; 1ª tentativa perdida e 2ª ok → START aplicado; exceção Modbus sem "
+       "repetir; carregador que volta → online no sync; sem charger_link = bancada de sempre)");
+}
+
+static void runSharedSessionScreens(const char* out) {
+  sessionOnCharger = false; overstayEnabled = false; endReason = "";
+  sessionId = "app-shared-session"; state = "charging";
+  panelOwned = connectorOwnershipKnown = connectorActive = true;
+  panelIntegrationEnabled = panelNetworkConfigured = hasSynced = true;
+  WiFi.connection = WL_CONNECTED; lastSyncHttpStatus = 200; lastContact = testMillis;
+  for (auto& slot : extra::slots) slot = extra::Slot();
+  FakeChargerClient client(&testMillis);
+  charger::LinkConfig config;
+  assert(charger::makeConfig("goodwe_hca_g2", "modbus_tcp", 1, nullptr, 502, config));
+  chargerLink.setClient(&client); chargerLink.configure(config); chargerLink.poll(testMillis);
+  reading = {41, 2500, 7200, true}; chargePowerW = 7200;
+  price = 2.3; discount = 0; maxCost = 20; sessionPricingKnown = true;
+  sessionAppliedPowerKw = 7.2; started = testMillis - 1200000UL; maxDurationMs = 1800000;
+  socSource = "phone"; phoneSocPercent = 41;
+  kioskSync = kiosk::SyncFacts{}; // O app usa a mesma tela mesmo com totem desligado.
+  kioskSync.sessionPresent = true; snprintf(kioskSync.sessionOrigin, sizeof(kioskSync.sessionOrigin), "app");
+  kioskFlow = kiosk::Flow{}; kioskFlow.followAppSessions();
+  kioskShot(out, "kiosk-shared-app-live");
+  assert(kioskFlow.state() == kiosk::State::Live && ui::routerScreen() == kiosk::Screen::Live);
+  assert(!hasLabel(ui::routerRoot(), "SIMULADO") && hasLabel(ui::routerRoot(), "2,50 kWh"));
+  kiosk::KioskView appView = kioskFlow.view();
+  kioskFlow = kiosk::Flow{};
+  kioskFlow.resume(kKioskOrderId, testMillis);
+  snprintf(kioskSync.sessionOrigin, sizeof(kioskSync.sessionOrigin), "kiosk_totem");
+  kioskShot(out, "kiosk-shared-totem-live");
+  assert(ui::routerScreen() == kiosk::Screen::Live);
+  for (int i = 0; i < 4; ++i) {
+    assert(std::string(appView.metrics[i].name) == kioskFlow.view().metrics[i].name);
+    assert(std::string(appView.metrics[i].value) == kioskFlow.view().metrics[i].value);
+  }
+  kioskFlow = kiosk::Flow{}; kioskFlow.followAppSessions();
+  snprintf(kioskSync.sessionOrigin, sizeof(kioskSync.sessionOrigin), "app");
+  panelTick(); refresh();
+  ui::pushAction(kiosk::Action::Stop); panelTick(); refresh();
+  assert(ui::routerScreen() == kiosk::Screen::ConfirmStop && hasLabel(ui::routerRoot(), "2,50 kWh"));
+  ui::pushAction(kiosk::Action::ConfirmYes); panelTick(); panelTick(); refresh();
+  assert(state == "stopped" && kioskFlow.state() == kiosk::State::Receipt);
+  kioskShot(out, "kiosk-shared-app-receipt");
+  assert(hasLabel(ui::routerRoot(), "2,50 kWh") && hasLabel(ui::routerRoot(), "R$ 5,75"));
+  assert(hasLabel(ui::routerRoot(), "20 min"));
+  sessionId = ""; state = "idle"; reading.connected = false; reading.energyWh = 0; sessionPricingKnown = false;
+  kioskSync.sessionPresent = false;
+  kioskShot(out, "kiosk-shared-app-receipt-reconciled");
+  assert(hasLabel(ui::routerRoot(), "2,50 kWh") && hasLabel(ui::routerRoot(), "R$ 5,75"));
+  ui::pushAction(kiosk::Action::Done); panelTick(); refresh();
+  client.offline = true; testMillis += 5000; chargerLink.poll(testMillis); lastContact = testMillis;
+  kioskShot(out, "kiosk-charger-offline");
+  assert(!kioskFlow.canStart() && hasLabel(alertRoot, "Carregador indisponível"));
+  assert(std::string(snapshot.connection) == "Central online");
+  client.offline = false; testMillis += 5000; chargerLink.poll(testMillis); lastContact = testMillis;
+  lastSyncHttpStatus = 503; // Um erro HTTP isolado não derruba 45 s de contato válido.
+  panelTick(); refresh(); assert(snapshot.mode == PanelMode::Ready && snapshot.online);
+  lastSyncHttpStatus = 200;
+  chargerLink.configure(charger::LinkConfig{}); chargerLink.setClient(nullptr);
+  puts("PASS: actual LVGL shared app/totem charging and receipt, hidden method badge, final values retained, charger offline vs central online and transient HTTP recovery");
 }
 
 int main(int argc, char** argv) {
@@ -873,14 +1241,15 @@ int main(int argc, char** argv) {
   assert(panelLatin1(nullptr, 40).empty());
   resetSession();
   JsonDocument syncBody; fillSyncBody(syncBody, true);
-  assert(syncBody["firmware_version"] == "0.8.0" && syncBody["connected"] == false);
-  assert(syncBody["capabilities"].size() == 1 && syncBody["capabilities"][0] == "set_power_v1");
+  assert(syncBody["firmware_version"] == CHARGEGRID_FIRMWARE_VERSION && syncBody["connected"] == false);
+  assert(syncBody["capabilities"].size() == 2 && syncBody["capabilities"][0] == "set_power_v1");
+  assert(syncBody["capabilities"][1] == "multi_charger_v1");
   assert(syncBody["applied_power_w"] == 0); // Idle: nothing installed.
   assert(syncBody["charger"]["model"] == "esp32_bench" && syncBody["charger"]["transport"] == "simulated");
   assert(syncBody["charger"]["min_power_w"] == 1400 && syncBody["charger"]["max_power_w"] == 7200);
   assert(syncBody["charger"]["step_w"] == 100);
   JsonDocument legacySync; fillSyncBody(legacySync, false); // Older API (extra="forbid").
-  assert(legacySync["firmware_version"] == "0.8.0" && legacySync["capabilities"].isNull());
+  assert(legacySync["firmware_version"] == CHARGEGRID_FIRMWARE_VERSION && legacySync["capabilities"].isNull());
   assert(legacySync["applied_power_w"].isNull() && legacySync["charger"].isNull());
   assert(!legacySync["acks"].isNull() && !legacySync["energy_wh"].isNull());
   // START: power_limit_w wins over the legacy max_power_kw; integer W, rounded down to the step.
@@ -1019,7 +1388,7 @@ int main(int argc, char** argv) {
   resetSession();
   apply(withOverstay); lastContact = testMillis; requestLocalSafeStop(); assert(reading.connected);
   applyBootSafety(); // Simulated reboot with the session journal still present.
-  assert(!reading.connected && !overstayEnabled && state == "stopped" && endReason == "communication_lost");
+  assert(!reading.connected && !overstayEnabled && state == "stopped" && endReason == "device_reboot");
   assert(chargePowerW == kBenchPowerW && reading.powerW == 0);
   // Payment kiosk fields: https URL only; unknown/absent fields mean no QR (older API).
   JsonDocument kiosk;
@@ -1149,6 +1518,9 @@ int main(int argc, char** argv) {
   static lv_disp_drv_t dd; lv_disp_drv_init(&dd);
   dd.hor_res = 800; dd.ver_res = 480; dd.flush_cb = flush; dd.draw_buf = &db;
   lv_disp_drv_register(&dd); panelSetup();
+  // Referência do renderer antigo somente para regressão. No firmware de produção,
+  // panelSetup habilita o acompanhamento compartilhado incondicionalmente.
+  kioskFlow.followAppSessions(false);
   sessionId = ""; state = "idle"; lastContact = testMillis;
   panelOwned = true; connectorOwnershipKnown = true; connectorActive = true;
   connectorPublicCode = "CG-01";
@@ -1184,6 +1556,17 @@ int main(int argc, char** argv) {
   assert(flushCount > 0); // A real state transition still reaches the display.
   assert(std::string(lv_label_get_text(timeLabel)) == "1 min");
   assert(!lv_obj_has_flag(reservationCard, LV_OBJ_FLAG_HIDDEN));
+  assert(lv_obj_is_visible(timeLabel) && lv_obj_is_visible(codeTimerLabel) && lv_obj_is_visible(codeProgressBar));
+  assert(hasLabel(reservationCard, "Inicie em"));
+  assert(std::string(lv_label_get_text(codeLabel)) == "#F12345");
+  assert(std::string(lv_label_get_text(codeCaptionLabel)) == "CÓDIGO DO PONTO");
+  assert(std::string(lv_label_get_text(codeTimerLabel)).find("Troca em") == 0);
+  presenceCodeTtlMs = 0; panelTick(); refresh();
+  assert(std::string(lv_label_get_text(codeLabel)) == "--");
+  stationPresenceCode = "#F54321"; presenceCodeTtlMs = 300000; presenceCodeReceivedAt = testMillis;
+  panelTick(); refresh();
+  assert(std::string(lv_label_get_text(codeLabel)) == "#F54321");
+  assert(std::string(lv_label_get_text(codeTimerLabel)) == "Troca em 05:00");
   state = "charging"; sessionId = "test-session"; reading = {42, 3210, 7200, true};
   screenshot(argv[1], "panel-charging");
   assert(!lv_obj_has_flag(sessionCard, LV_OBJ_FLAG_HIDDEN));
@@ -1381,7 +1764,11 @@ int main(int argc, char** argv) {
   apply(factoryReset);
   assert(acknowledgements[0]["status"] == "failed");
   assert(acknowledgements[0]["new_device_key_hash"].isNull());
+  runLinkTransitionScenarios();
   runChargerLinkScenarios();
+  runExtraChargerScenarios();
+  runBlockingSlotClockScenarios();
+  runSharedSessionScreens(argv[1]);
   puts("PASS: open Wi-Fi validation, password removal/persistence and configuration UI");
   puts("PASS: actual controller authorization, replay, watchdog, cost limit, local touch stop, car SoC (simulated rise, phone passthrough, battery_full local stop and API stop), reserved reboot/recovery, countdown, status text and keyboard");
   puts("PASS: 0.7.0 SET_POWER (raise, reduce, replay, 0 W pause, rounding, wrong session, invalid, after stop), START power_limit_w (incl. 0 W), sync capabilities/charger/applied_power_w and legacy body");

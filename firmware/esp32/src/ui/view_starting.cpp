@@ -11,11 +11,9 @@ struct { Chrome chrome; lv_obj_t* mark = nullptr; } h;
 
 void create(lv_obj_t* root, const kiosk::KioskView&) {
   chrome(root, h.chrome);
-  h.mark = block(root, 360, 150, 80, 80);
+  h.mark = block(root, t::kCardX + (t::kCardW - 80) / 2, 210, 80, 80);
   lv_obj_set_style_radius(h.mark, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(h.mark, t::green(), 0);
-  lv_obj_set_pos(h.chrome.title, t::kMargin, 250);
-  lv_obj_set_pos(h.chrome.subtitle, t::kMargin, 300);
 }
 void update(const kiosk::KioskView& view) { updateChrome(h.chrome, view); }
 void destroy() { h = {}; }

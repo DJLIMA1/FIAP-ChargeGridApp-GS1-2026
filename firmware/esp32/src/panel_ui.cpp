@@ -20,6 +20,7 @@ void panelTick() {}
 #include "panel_claim.h"
 #ifdef CHARGEGRID_KIOSK
 #include "kiosk_flow.h"
+#include "extra_chargers.h"
 #include "ui/router.h"
 #include "ui/strings_ptbr.h"
 #endif
@@ -63,8 +64,9 @@ char lastClaimQr[80]{};
 // 0.7.0: QR de pagamento (modo teste) na tela Pronto e botão "Desconectar" da permanência.
 lv_obj_t *kioskCard, *kioskTitle, *kioskDetail, *kioskQrBox, *kioskQr, *disconnectButton;
 char lastKioskQr[164]{};
-// 0.8.0: botão "Carregar agora" do totem na tela Pronto (oculto com o totem desligado).
+// 0.8.0: botão "Iniciar recarga" do totem na tela Pronto (oculto com o totem desligado).
 lv_obj_t* kioskStartButton = nullptr;
+lv_obj_t* kioskAlertStartButton = nullptr;
 lv_obj_t* panelScreen = nullptr;
 unsigned long logoPressedAt = 0, clearArmedAt = 0;
 volatile bool configSaveRequested = false, configClearRequested = false;
@@ -222,6 +224,7 @@ const char* statusTitle() {
   if (millis() - lastContact >= 45000 && state == "idle") return "Ponto indisponível";
   if (connectorOwnershipKnown && !panelOwned) return "Em configuração";
   if (!connectorActive) return "Em breve";
+  if (chargerLink.configured() && !chargerLink.online()) return "Carregador indisponível";
   return "Pronto para você";
 }
 
@@ -240,6 +243,7 @@ const char* instruction() {
   if (millis() - lastContact >= 45000) return "A conexão caiu. Encontre outro ponto pelo app.";
   if (connectorOwnershipKnown && !panelOwned) return "O responsável está preparando este ponto.";
   if (!connectorActive) return "Estamos fazendo alguns ajustes para melhorar sua experiência.";
+  if (chargerLink.configured() && !chargerLink.online()) return "A central está online, mas o carregador não responde. Aguarde a reconexão.";
   return "Abra o app ChargeGrid e use o código ao lado para iniciar a recarga.";
 }
 
@@ -386,8 +390,8 @@ void refresh() {
   if (lv_obj_get_y(disconnectButton) != stopY) {
     lv_obj_set_y(disconnectButton, stopY); lv_obj_set_height(disconnectButton, stopHeight);
   }
-  setHiddenIfChanged(codeProgressBar, mode != PanelMode::Ready);
-  setHiddenIfChanged(codeTimerLabel, mode != PanelMode::Ready);
+  setHiddenIfChanged(codeProgressBar, mode != PanelMode::Ready && mode != PanelMode::Reserved);
+  setHiddenIfChanged(codeTimerLabel, mode != PanelMode::Ready && mode != PanelMode::Reserved);
   if (current.showClaim) {
     if (std::strcmp(lastClaimQr, current.claimUrl) != 0) {
       if (lv_qrcode_update(claimQr, current.claimUrl, std::strlen(current.claimUrl)) == LV_RES_OK)
@@ -404,14 +408,15 @@ void refresh() {
     }
   }
 #ifdef CHARGEGRID_KIOSK
-  // Totem ligado: "Carregar agora" à esquerda, sob o título; o cartão do código vira
-  // "Tem o app?". Desligado: nada muda (mesmos objetos, mesmas posições).
-  const bool kioskStart = detail && mode == PanelMode::Ready && current.showKioskStart;
+  // Totem ligado: "Iniciar recarga" à esquerda, sob o título, terminando na mesma linha do
+  // cartão do código ("Tem o app?"). Desligado: nada muda (mesmos objetos, mesmas posições).
+  const bool kioskStart = detail && current.showKioskStart;
   setHiddenIfChanged(kioskStartButton, !kioskStart);
+  setHiddenIfChanged(kioskAlertStartButton, !(alert && current.showKioskStart));
   if (kioskStart != cache.lastKioskStart || !painted) {
-    lv_obj_set_y(leftBlock, kioskStart ? 100 : 124);
-    lv_obj_set_height(leftBlock, kioskStart ? 150 : 200);
-    lv_obj_set_style_pad_row(leftBlock, kioskStart ? 16 : 36, 0);
+    lv_obj_set_y(leftBlock, kioskStart ? 118 : 124);
+    lv_obj_set_height(leftBlock, kioskStart ? 120 : 200);
+    lv_obj_set_style_pad_row(leftBlock, kioskStart ? 10 : 36, 0);
     cache.lastKioskStart = kioskStart;
   }
 #endif
@@ -565,9 +570,10 @@ void buildDark(lv_obj_t* screen) {
   lv_obj_add_flag(disconnectButton, LV_OBJ_FLAG_HIDDEN);
 
 #ifdef CHARGEGRID_KIOSK
-  // Totem: botão grande (alvo de 390x72) na coluna do título. Só aparece com o totem ligado.
+  // Totem: botão grande na coluna do título; a base coincide com a do cartão do código
+  // (130 + 180 = 310). Só aparece com o totem ligado.
   kioskStartButton = lv_btn_create(darkRoot);
-  lv_obj_set_pos(kioskStartButton, 39, 256); lv_obj_set_size(kioskStartButton, 390, 72);
+  lv_obj_set_pos(kioskStartButton, 39, 246); lv_obj_set_size(kioskStartButton, 380, 64);
   lv_obj_set_style_bg_color(kioskStartButton, COLOR_RED, 0);
   lv_obj_set_style_radius(kioskStartButton, 14, 0);
   lv_obj_set_style_shadow_width(kioskStartButton, 0, 0);
@@ -613,11 +619,14 @@ void buildDark(lv_obj_t* screen) {
   }
 
   reservationCard = plain(darkRoot, 39, 341, 711, 90);
-  // O prazo aparece no cartão de destaque; timeLabel segue atualizado, porém oculto.
-  timeLabel = label(reservationCard, "--", &chargegrid_body_14, COLOR_TEXT);
-  lv_obj_add_flag(timeLabel, LV_OBJ_FLAG_HIDDEN);
+  // Prazo da reserva separado do código temporário e da sua validade.
+  lv_obj_t* reservationCaption = label(reservationCard, "Inicie em", &chargegrid_body_14, COLOR_MUTED);
+  lv_obj_set_pos(reservationCaption, 8, 14);
+  timeLabel = label(reservationCard, "--", &chargegrid_brand_30, COLOR_TEXT);
+  lv_obj_set_pos(timeLabel, 8, 36);
   lv_obj_t* reservationHelp = label(reservationCard, "Seu ponto está guardado. Inicie a recarga no aplicativo.", &chargegrid_body_19, COLOR_SOFT);
-  lv_obj_set_pos(reservationHelp, 8, 34);
+  lv_obj_set_pos(reservationHelp, 190, 30);
+  lv_obj_set_width(reservationHelp, 500);
 
   sessionCard = plain(darkRoot, 39, 341, 711, 90);
   const char* metricNames[] = {"ENERGIA", "VALOR ESTIMADO", "TEMPO RESTANTE"};
@@ -722,6 +731,15 @@ void buildAlert(lv_obj_t* screen) {
   lv_obj_set_pos(alertTitle, 54, 163);
   alertSub = label(alertRoot, "", &chargegrid_body_22, lv_color_white());
   lv_obj_set_width(alertSub, 370);
+#ifdef CHARGEGRID_KIOSK
+  kioskAlertStartButton = lv_btn_create(alertRoot);
+  lv_obj_set_pos(kioskAlertStartButton, 54, 388); lv_obj_set_size(kioskAlertStartButton, 390, 64);
+  lv_obj_set_style_bg_color(kioskAlertStartButton, lv_color_white(), 0);
+  lv_obj_set_style_radius(kioskAlertStartButton, 14, 0);
+  lv_obj_add_event_cb(kioskAlertStartButton, kioskStartClicked, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* alternate = label(kioskAlertStartButton, "Usar outro carregador", &chargegrid_brand_30, lv_color_black());
+  lv_obj_center(alternate); lv_obj_add_flag(kioskAlertStartButton, LV_OBJ_FLAG_HIDDEN);
+#endif
   lv_label_set_long_mode(alertSub, LV_LABEL_LONG_WRAP);
   lv_obj_set_pos(alertSub, 54, 324);
   lv_obj_add_flag(alertRoot, LV_OBJ_FLAG_HIDDEN);
@@ -736,6 +754,7 @@ void releasePanelScreens() {
   lv_obj_del(alertRoot);
   darkRoot = alertRoot = nullptr;
   kioskStartButton = nullptr;
+  kioskAlertStartButton = nullptr;
 }
 void restorePanelScreens() {
   buildDark(panelScreen);
@@ -759,7 +778,8 @@ void kioskFacts(kiosk::Facts& f, const PanelSnapshot& next) {
   f.nowMs = millis();
   const bool authRejected = lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403;
   f.online = panelIntegrationEnabled && WiFi.status() == WL_CONNECTED && !authRejected &&
-             hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
+             hasSynced && millis() - lastContact < 45000;
+  f.chargerOffline = chargerLink.configured() && !chargerLink.online();
   f.pointReady = panelIntegrationEnabled && next.mode == PanelMode::Ready && !next.showClaim;
   f.reserved = state == "reserved" || kioskSync.reservationPresent;
   f.carConnected = overstayView();
@@ -786,9 +806,58 @@ void kioskFacts(kiosk::Facts& f, const PanelSnapshot& next) {
     copyText(f.overstayDetail, sizeof(f.overstayDetail), next.messageDetail);
   }
   f.sync = kioskSync;
+  // A busy/offline charger does not hide other free chargers of this central.
+  const auto stage = kioskFlow.state();
+  const bool selecting = stage == kiosk::State::Idle || stage == kiosk::State::Off || stage == kiosk::State::Welcome ||
+      stage == kiosk::State::Login || stage == kiosk::State::LoadingOffer || stage == kiosk::State::Connector;
+  if (!kioskFlow.chargerAddress() && selecting && panelOwned && f.online) {
+    for (const extra::Slot& slot : extra::slots) {
+      if (slot.used && slot.active && slot.state == "idle" && !slot.connected && slot.link.online()) {
+        f.pointReady = true; f.charging = false; f.reserved = false; f.carConnected = false;
+        f.sessionAuthorized = false; f.maintenance = false;
+        f.chargerOffline = false;
+        break;
+      }
+    }
+  }
+  if (kioskFlow.chargerAddress()) {
+    for (const extra::Slot& slot : extra::slots) {
+      if (!slot.used || slot.address != kioskFlow.chargerAddress()) continue;
+      f.online = f.online && millis() - slot.lastContact < kiosk::Flow::kResumeGiveUpMs;
+      f.pointReady = slot.active && slot.state == "idle" && !slot.connected;
+      f.chargerOffline = slot.link.configured() && !slot.link.online();
+      f.reserved = slot.state == "reserved" || slot.kioskSync.reservationPresent;
+      f.carConnected = false;
+      f.maintenance = !slot.active;
+      f.charging = slot.state == "charging"; f.stopped = slot.state == "stopped";
+      f.sessionAuthorized = slot.kioskSync.sessionPresent;
+      copyText(f.sessionId, sizeof(f.sessionId), slot.sessionId.c_str());
+      copyText(f.endReason, sizeof(f.endReason), slot.endReason.c_str());
+      f.energyKwh = slot.energyWh / 1000;
+      f.costCents = static_cast<int32_t>(lroundf(f.energyKwh * slot.price * (1 - slot.discount / 100) * 100));
+      f.capCents = slot.maxCost >= 0 ? static_cast<int32_t>(lroundf(slot.maxCost * 100)) : -1;
+      f.appliedPowerKw = slot.limitW / 1000;
+      f.socPercent = -1;
+      f.elapsedS = f.charging ? (millis() - slot.started) / 1000 : 0;
+      f.remainingS = f.elapsedS * 1000 < slot.maxDurationMs ? slot.maxDurationMs / 1000 - f.elapsedS : 0;
+      f.powerReason[0] = 0; f.overstayTitle[0] = 0; f.overstayDetail[0] = 0;
+      f.sync = slot.kioskSync;
+      if (!f.sync.kiosk.present) f.sync.kiosk = kioskSync.kiosk;
+      break;
+    }
+  }
 }
 
 void kioskTick(PanelSnapshot& next) {
+  if (kioskFlow.state() == kiosk::State::Idle || kioskFlow.state() == kiosk::State::Off) {
+    uint8_t address = 0;
+    if (state != "charging") for (const auto& slot : extra::slots) {
+      if (slot.used && slot.state == "charging" && std::strcmp(slot.kioskSync.sessionOrigin, "kiosk_totem") != 0) {
+        address = slot.address; break;
+      }
+    }
+    kioskFlow.followAppCharger(address);
+  }
   static kiosk::Facts facts;   // ~1 KB: fora da pilha da tarefa
   facts = kiosk::Facts{};
   kioskFacts(facts, next);
@@ -798,7 +867,12 @@ void kioskTick(PanelSnapshot& next) {
     if (input.key) kioskFlow.key(input.value, millis());
     else kioskFlow.touch(input.action, millis());
   }
-  if (kioskFlow.takeLocalStop()) requestLocalSafeStop();
+  if (kioskFlow.takeLocalStop()) {
+    if (!kioskFlow.chargerAddress()) requestLocalSafeStop();
+    else for (extra::Slot& slot : extra::slots) if (slot.used && slot.address == kioskFlow.chargerAddress()) {
+      extra::stop(slot, "requested"); slot.syncNow = true; requestImmediateSync();
+    }
+  }
   if (kioskFlow.takeLocalDisconnect()) requestLocalDisconnect();
   char order[kiosk::kIdSize];
   if (kioskFlow.takePersist(order, sizeof(order))) kioskPersistOrder(order);
@@ -810,9 +884,9 @@ void kioskTick(PanelSnapshot& next) {
 }
 }  // namespace
 
-void kioskResume(const char* orderId, uint32_t seed) {
+void kioskResume(const char* orderId, uint32_t seed, uint8_t chargerAddress) {
   kioskFlow.setSeed(seed);
-  kioskFlow.resume(orderId, millis());
+  kioskFlow.resume(orderId, millis(), chargerAddress);
 }
 #endif
 
@@ -879,6 +953,7 @@ void panelSetup() {
   lv_obj_add_flag(configScreen, LV_OBJ_FLAG_HIDDEN);
 #ifdef CHARGEGRID_KIOSK
   ui::routerInit(screen, releasePanelScreens, restorePanelScreens);
+  kioskFlow.followAppSessions(); // acompanhamento e finalização únicos, inclusive com totem desligado
 #endif
   ready = true;
   panelTick();
@@ -941,20 +1016,22 @@ void panelTick() {
   } else {
   const bool authRejected = lastSyncHttpStatus == 401 || lastSyncHttpStatus == 403;
   const bool apiOnline = WiFi.status() == WL_CONNECTED && !authRejected &&
-      hasSynced && lastSyncHttpStatus == 200 && millis() - lastContact < 45000;
-  const bool unavailable = state != "stopped" && std::strcmp(statusTitle(), "Ponto indisponível") == 0;
+      hasSynced && millis() - lastContact < 45000;
+  const bool chargerOffline = apiOnline && chargerLink.configured() && !chargerLink.online();
+  const bool unavailable = state != "stopped" &&
+      (chargerOffline || std::strcmp(statusTitle(), "Ponto indisponível") == 0);
   const bool overstay = overstayView();
   next.mode = state == "charging" ? PanelMode::Charging :
       overstay ? PanelMode::Message :
       state == "reserved" ? PanelMode::Reserved :
-      state == "idle" && apiOnline && connectorActive && panelOwned ? PanelMode::Ready :
+      state == "idle" && apiOnline && !chargerOffline && connectorActive && panelOwned ? PanelMode::Ready :
       unavailable ? PanelMode::Unavailable :
       state == "idle" && apiOnline && panelOwned && !connectorActive ? PanelMode::Maintenance :
       PanelMode::Message;
   next.online = apiOnline && (next.mode != PanelMode::Message || state == "stopped" || overstay);
   snprintf(next.status, sizeof(next.status), "%s", statusTitle());
   snprintf(next.alertTitle, sizeof(next.alertTitle), "%s",
-      next.mode == PanelMode::Maintenance ? "Estamos em manutenção" : "Ponto Indisponível");
+      next.mode == PanelMode::Maintenance ? "Estamos em manutenção" : chargerOffline ? "Carregador indisponível" : "Ponto Indisponível");
   const unsigned long codeElapsed = millis() - presenceCodeReceivedAt;
   const unsigned long codeRemaining = codeElapsed < presenceCodeTtlMs ? presenceCodeTtlMs - codeElapsed : 0UL;
   const bool rotatingCodeKnown = stationPresenceCode.length() == 7 &&
@@ -980,7 +1057,7 @@ void panelTick() {
   const char* connection = apiOnline ?
       (state == "charging" ? "Em uso" : overstay ? "Carro conectado" : state == "reserved" ? "Reservado" :
       state == "stopped" ? "Recarga concluída" : !panelOwned ? "Aguardando vínculo" :
-      !connectorActive ? "Em preparação" : "Pronto para uso") :
+      !connectorActive ? "Em preparação" : chargerOffline ? "Central online" : "Pronto para uso") :
       "Temporariamente offline";
   snprintf(next.connection, sizeof(next.connection), "%s", connection);
   const bool hasValidSessionData = sessionId.length() && hasSynced;
@@ -1036,11 +1113,8 @@ void panelTick() {
       snprintf(next.instruction, sizeof(next.instruction), "%s", next.kioskDetail);
     }
   }
-  if (next.mode == PanelMode::Reserved) {
-    // O cartão de destaque mostra o prazo da reserva no lugar do código.
-    snprintf(next.codeCaption, sizeof(next.codeCaption), "TEMPO PARA INICIAR");
-    snprintf(next.code, sizeof(next.code), "%s", next.remaining);
-  }
+  // O código temporário continua visível durante a reserva. O prazo já aparece
+  // no cartão de reserva e em remaining, sem substituir código/validade.
   // SoC só aparece quando a API informou (simulado pela energia ou nível do celular).
   next.showSoc = sessionId.length() && hasSynced && (state == "charging" || state == "stopped") &&
       sessionSocKnown();

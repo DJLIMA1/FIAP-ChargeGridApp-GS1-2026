@@ -19,7 +19,7 @@ struct ViewOps {
   void (*destroy)();   // só zera os ponteiros; o router apaga a árvore
 };
 extern const ViewOps viewChoose, viewAmount, viewReview, viewPay, viewStarting, viewLive,
-    viewConfirmStop, viewReceipt, viewNotice;
+    viewConfirmStop, viewReceipt, viewNotice, viewLogin;
 
 // releasePanel/restorePanel: liberam e reconstroem as telas atuais.
 void routerInit(lv_obj_t* screen, void (*releasePanel)(), void (*restorePanel)());

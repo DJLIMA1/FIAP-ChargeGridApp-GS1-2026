@@ -13,4 +13,4 @@ void deviceHttpEnd(int code);
 // Retorna o status HTTP (out = corpo) ou <= 0 sem resposta: -10 recusado localmente
 // (recarga em andamento, sem rede/chave/API https).
 int deviceRequest(const char* method, const char* path, const char* body, String& out,
-                  const char* idempotencyKey = nullptr);
+                  const char* idempotencyKey = nullptr, uint8_t chargerAddress = 0);

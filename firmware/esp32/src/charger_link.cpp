@@ -61,10 +61,10 @@ bool Link::configure(const LinkConfig& config) {
 bool Link::read(uint16_t address, uint16_t count, uint16_t* out, Error& error) {
   uint8_t exception = 0;
   if (client_->readHolding(config_, address, count, out, &exception)) {
-    online_ = true; failures_ = 0; lastOkMs_ = now_;
+    online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_);
     return true;
   }
-  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = now_; error = Error::Rejected; }
+  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_); error = Error::Rejected; }
   else { online_ = false; ++failures_; error = Error::Offline; }
   return false;
 }
@@ -72,12 +72,12 @@ bool Link::read(uint16_t address, uint16_t count, uint16_t* out, Error& error) {
 bool Link::write(uint16_t address, uint16_t value, Error& error) {
   uint8_t exception = 0;
   if (client_->writeSingle(config_, address, value, &exception)) {
-    online_ = true; failures_ = 0; lastOkMs_ = now_;
+    online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_);
     if (address == hca::kMaxChargingPower) limit29_ = value;
     if (address == hca::kStartStop) run60_ = value;
     return true;
   }
-  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = now_; error = Error::Rejected; }
+  if (exception) { online_ = true; failures_ = 0; lastOkMs_ = client_->nowMs(now_); error = Error::Rejected; }
   else { online_ = false; ++failures_; error = Error::Offline; }
   return false;
 }
@@ -120,16 +120,13 @@ Error Link::apply(uint16_t value) {
   return Error::None;
 }
 
-Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
-  if (!active()) return lastError_ = Error::NoLink;
-  now_ = nowMs;
+Error Link::startOnce(uint16_t value) {
   Error error = Error::None;
-  const uint16_t value = hca::registerForPowerW(limitW);
   if (!modeWritten_) {
     // Modo rápido (sem FV/bateria), escrito uma vez por link; grava flash no HCA.
     uint16_t mode = 0;
-    if (!read(hca::kChargeMode, 1, &mode, error)) return lastError_ = error;
-    if (mode != hca::kFastMode && !write(hca::kChargeMode, hca::kFastMode, error)) return lastError_ = error;
+    if (!read(hca::kChargeMode, 1, &mode, error)) return error;
+    if (mode != hca::kFastMode && !write(hca::kChargeMode, hca::kFastMode, error)) return error;
     modeWritten_ = true;
   }
   error = apply(value);
@@ -138,6 +135,20 @@ Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
     Error ignored = Error::None;
     expectRunning_ = false;
     if (!write(hca::kStartStop, hca::kStopValue, ignored)) pendingStop_ = true;
+  }
+  return error;
+}
+
+Error Link::start(long limitW, uint32_t nowMs, long* appliedW) {
+  if (!active()) return lastError_ = Error::NoLink;
+  now_ = nowMs;
+  const uint16_t value = hca::registerForPowerW(limitW);
+  // Sem resposta (link caído, mDNS lento após reboot, conexão velha): refaz e tenta de novo.
+  // Recusa (exceção Modbus) ou releitura diferente não se resolvem repetindo: devolve já.
+  Error error = Error::Offline;
+  for (uint8_t attempt = 0; attempt < kStartAttempts && error == Error::Offline; ++attempt) {
+    if (attempt || !online_) client_->prepareUrgent();
+    error = startOnce(value);
   }
   if (error == Error::None && appliedW) *appliedW = hca::powerWForRegister(value);
   return lastError_ = error;
@@ -167,8 +178,10 @@ void Link::poll(uint32_t nowMs) {
   lastPollMs_ = now_ = nowMs;
   Error error = Error::None;
   if (pendingStop_) {
-    if (write(hca::kStartStop, hca::kStopValue, error)) pendingStop_ = false;
-    else if (!online_) return;
+    // Eco da escrita não prova que o relé abriu. Use a mesma confirmação do STOP
+    // síncrono (10060 = 1 e 10015 = 0); releitura perdida mantém a pendência.
+    lastError_ = apply(0);
+    return;
   }
   uint16_t live[3];
   if (!read(hca::kChargingPower, 3, live, error)) return;
@@ -180,7 +193,7 @@ void Link::poll(uint32_t nowMs) {
     } else stoppedPolls_ = 0;
   } else if (status_ == hca::kStatusCharging || power_ > 0) {
     // Carregador ligado sem recarga na tela (tela reiniciou, outro mestre): desliga.
-    if (!write(hca::kStartStop, hca::kStopValue, error)) pendingStop_ = true;
+    lastError_ = apply(0);
   }
 }
 

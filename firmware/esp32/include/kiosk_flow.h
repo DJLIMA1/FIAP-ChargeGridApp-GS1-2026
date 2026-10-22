@@ -18,7 +18,7 @@ constexpr size_t kLabelSize = 16;
 constexpr size_t kShortcuts = 4;
 
 enum class Method : uint8_t { Unknown, Simulated, Stripe };
-enum class Mode : uint8_t { None, Value, Time, Energy };
+enum class Mode : uint8_t { None, Value, Time, Energy, Autonomy };
 
 // ---------------------------------------------------------------- blocos do sync (aditivos)
 // connector.kiosk {enabled, method, label}. Ausente/nulo/inválido (API antiga): totem desligado.
@@ -48,6 +48,7 @@ struct OrderBlock {
   char sessionId[kIdSize]{};
   char paymentStatus[24]{};
   char paymentLabel[kLabelSize]{};
+  char fundingSource[12]{};
   Method paymentMethod = Method::Unknown;
   char qrUrl[kUrlSize]{};     // payment.qr_url: QR do pedido ainda válido (retomada)
   char receiptUrl[kUrlSize]{};// receipt_url do pedido (GET /orders/{id})
@@ -71,6 +72,7 @@ struct Facts {
   uint32_t nowMs = 0;
   bool online = false;          // API respondeu há < 45 s
   bool pointReady = false;      // tela "Pronto": ocioso, ativo, vinculado, sem sessão/reserva
+  bool chargerOffline = false;  // central online, mas o carregador Modbus não responde
   bool reserved = false;        // reserva confirmada (estado reserved ou authorized.reservation)
   bool carConnected = false;    // permanência: carro ainda conectado fora de recarga
   bool maintenance = false;     // ponto/posto inativo
@@ -93,13 +95,14 @@ struct Facts {
 };
 
 // ---------------------------------------------------------------- API do dispositivo
-enum class RequestKind : uint8_t { None, Offer, Quote, CreateOrder, Pay, Cancel, GetOrder };
+enum class RequestKind : uint8_t { None, Login, Offer, Quote, CreateOrder, Pay, Cancel, GetOrder };
 struct ApiRequest {
+  uint8_t chargerAddress = 0;
   RequestKind kind = RequestKind::None;
   uint32_t seq = 0;
   const char* method = "GET";
   char path[96]{};
-  char body[256]{};
+  char body[512]{};
   char idempotencyKey[kIdSize + 8]{};
 };
 struct ApiResult {
@@ -114,6 +117,8 @@ enum class Action : uint8_t {
   None, StartFlow, Back, Cancel, ModeValue, ModeTime, ModeEnergy,
   Shortcut0, Shortcut1, Shortcut2, Shortcut3, OtherValue, KeypadOk,
   Accept, SimulatePay, Stop, ConfirmYes, ConfirmNo, Done, Continue, Disconnect, Retry,
+  Guest, Login, LoginNext, ModeAutonomy, Next, PowerMax, PowerReduced, PayBalance, PayPix, PayCard,
+  Connector0, Connector1, Connector2, Connector3,
 };
 // Teclas do teclado numérico: '0'-'9', ',' (só kWh), 'B' apagar, 'C' limpar.
 
@@ -128,11 +133,12 @@ struct Event {
 };
 
 // ---------------------------------------------------------------- view
-// T0 é a tela "Pronto" atual (painel) com o botão "Carregar agora"; Screen::None mantém as
+// T0 é a tela "Pronto" atual (painel) com o botão "Iniciar recarga"; Screen::None mantém as
 // telas atuais. As demais telas substituem o painel enquanto o fluxo está aberto.
 enum class Screen : uint8_t {
   None, Choose /*T1*/, Amount /*T2*/, Review /*T3*/, Pay /*T4*/, Starting /*T5*/, Live /*T6*/,
   ConfirmStop /*T7*/, Receipt /*T8*/, Notice /*TE*/, Verifying,
+  Welcome, Login, Connector, Power, PaymentMethod,
 };
 enum class Tone : uint8_t { Neutral, Waiting, Success, Error };
 struct ViewButton {
@@ -166,15 +172,21 @@ struct KioskView {
   char qrCaption[48]{};
   bool stillThere = false;      // "Ainda está aí?" (overlay com Continuar)
   bool disconnect = false;      // permanência: botão Desconectar no recibo
+  bool password = false;
+  char loginEntry[128]{};       // password is always masked, never copied here
+  char context[192]{};
+  float socPercent = -1;
 };
 
 enum class State : uint8_t {
   Off,        // totem desligado (compilação, connector.kiosk ou API antiga)
   Idle,       // T0
   LoadingOffer, Choose, Amount, Review, Pay, Starting, Live, ConfirmStop, Receipt, Notice, Verifying,
+  Welcome, Login, Connector, Power, PaymentMethod,
 };
 
 struct Offer {
+  bool modern = false;
   bool loaded = false;
   bool active = false;       // enabled + método decidido pelo servidor
   bool available = true;     // ponto livre agora
@@ -191,9 +203,16 @@ struct Offer {
   int32_t timeMin = 0, timeMax = 0;       // minutos
   int32_t energyMin = 0, energyMax = 0;   // Wh
   float pricePerKwh = -1, basePrice = -1, multiplier = -1, powerKw = -1;
+  float maxPricePerKwh = -1, reducedPricePerKwh = -1;
   char demandReason[64]{};
   char overstaySummary[96]{};
   char overstayVersion[44]{};  // a API aceita até 40
+  bool loggedIn = false, hasVehicle = false, balanceAvailable = false;
+  bool pixAvailable = true, cardAvailable = true;
+  int32_t balanceCents = 0;
+  char accountName[64]{}, vehicleName[64]{}, connectorType[32]{}, publicCode[32]{};
+  struct ConnectorChoice { uint8_t address = 0; bool available = false; char label[48]{}; } connectors[4];
+  uint8_t connectorCount = 0;
 };
 struct Quote {
   bool loaded = false;
@@ -209,6 +228,7 @@ struct Quote {
   char overstaySummary[96]{};
   char overstayVersion[44]{};  // a API aceita até 40
   char label[kLabelSize]{};
+  char autonomyNote[128]{};
 };
 struct Order {
   char id[kIdSize]{};
@@ -231,18 +251,23 @@ class Flow {
   static constexpr uint32_t kReviewTimeoutMs = 90000, kReviewPromptMs = 80000;
   static constexpr uint32_t kQrTimeoutMs = 600000, kHoldMs = 300000;
   static constexpr uint32_t kStartTimeoutMs = 60000, kConfirmTimeoutMs = 10000;
-  static constexpr uint32_t kReceiptTimeoutMs = 60000, kNoticeMs = 6000;
+  static constexpr uint32_t kReceiptTimeoutMs = 30000, kNoticeMs = 6000;
   static constexpr uint32_t kResumeGiveUpMs = 120000;
 
   void setSeed(uint32_t seed) { rng_ = seed ? seed : 0x9E3779B9u; }
   // Retomada após reboot: id salvo na NVS ("kord"). Vazio: nada a retomar.
-  void resume(const char* orderId, uint32_t nowMs);
+  void resume(const char* orderId, uint32_t nowMs, uint8_t chargerAddress = 0);
   void handle(const Event& event);
   void touch(Action action, uint32_t nowMs);
   void key(char key, uint32_t nowMs);
   void tick(uint32_t nowMs);
   void facts(const Facts& facts);
   void apiResult(const ApiResult& result);
+  // O painel usa o mesmo acompanhamento/recibo para sessões iniciadas pelo app.
+  void followAppSessions(bool enabled = true) { followAppSessions_ = enabled; }
+  void followAppCharger(uint8_t address) {
+    if (followAppSessions_ && (state_ == State::Off || state_ == State::Idle) && !order_.id[0]) chargerAddress_ = address;
+  }
 
   // Próximo pedido à API (um por vez). Depois de executar, chame apiResult() com o mesmo seq.
   bool takeRequest(ApiRequest& out);
@@ -255,7 +280,7 @@ class Flow {
 
   State state() const { return state_; }
   bool enabled() const { return enabled_; }
-  // Botão "Carregar agora" na tela Pronto.
+  // Botão "Iniciar recarga" na tela Pronto.
   bool canStart() const;
   // Tela do totem por cima das telas atuais.
   bool active() const { return view_.screen != Screen::None; }
@@ -264,11 +289,14 @@ class Flow {
   const Quote& quote() const { return quote_; }
   const Order& order() const { return order_; }
   bool apiUnsupported() const { return apiUnsupported_; }
+  const char* authToken() const { return token_; }
+  uint8_t chargerAddress() const { return chargerAddress_; }
 
  private:
   void go(State next, uint32_t nowMs);
   void toIdle(uint32_t nowMs);
   void notice(const char* title, const char* detail, Tone tone, uint32_t nowMs);
+  void retryNotice(const char* title, const char* detail, uint32_t nowMs);
   void queue(RequestKind kind, const char* method, const char* path, const char* body, const char* key);
   void requestQuote();
   void requestOrder();
@@ -286,6 +314,9 @@ class Flow {
   void onPaid(uint32_t nowMs);
   void enterReceipt(uint32_t nowMs);
   void render();
+  void loadOffer(uint32_t nowMs);
+  void clearIdentity();
+  void selectionBody(char* out, size_t size, bool order);
   bool sessionIsOurs(const Facts& facts) const;
   void newKey(char* out, size_t size, const char* prefix);
   uint32_t random();
@@ -299,6 +330,8 @@ class Flow {
   uint32_t seq_ = 0;
   ApiRequest queued_, inFlight_;
   Facts facts_;
+  Facts lastSessionFacts_;
+  bool followAppSessions_ = false, appSession_ = false;
   bool haveFacts_ = false;
   Offer offer_;
   Quote quote_;
@@ -310,6 +343,8 @@ class Flow {
   char error_[96]{};
   char noticeTitle_[64]{}, noticeDetail_[128]{};
   Tone noticeTone_ = Tone::Neutral;
+  bool noticeRetry_ = false;
+  State retryFrom_ = State::LoadingOffer;
   State returnFrom_ = State::Idle;  // T7 volta para cá
   bool localStop_ = false, localDisconnect_ = false;
   bool persistDirty_ = false;
@@ -320,6 +355,11 @@ class Flow {
   uint32_t missingOrderSince_ = 0;
   KioskView view_;
   KioskView scratch_;
+  char token_[2048]{}, email_[128]{}, password_[128]{}, loginEntry_[128]{};
+  bool passwordStep_ = false, reducedPower_ = false;
+  Action paymentSource_ = Action::PayCard;
+  uint8_t chargerAddress_ = 0;
+  bool selectingConnector_ = false;
 };
 
 // Formatação pt-BR (vírgula decimal), só ASCII/Latin-1.

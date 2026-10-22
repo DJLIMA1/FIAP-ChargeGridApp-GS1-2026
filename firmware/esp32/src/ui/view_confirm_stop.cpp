@@ -11,8 +11,6 @@ struct { Chrome chrome; } h;
 
 void create(lv_obj_t* root, const kiosk::KioskView&) {
   chrome(root, h.chrome);
-  lv_obj_set_pos(h.chrome.title, t::kMargin, 170);
-  lv_obj_set_pos(h.chrome.subtitle, t::kMargin, 226);
   lv_obj_set_style_bg_color(h.chrome.primary, t::red(), 0);
   lv_obj_set_style_text_color(lv_obj_get_child(h.chrome.primary, 0), t::text(), 0);
 }

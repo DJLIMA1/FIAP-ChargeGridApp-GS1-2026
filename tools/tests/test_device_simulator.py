@@ -243,7 +243,7 @@ def test_payload_declares_live_power_capability_and_applied_power():
     device = Device(clock=lambda: now[0])
     device.response(response())
     body = device.payload()
-    assert body["capabilities"] == ["set_power_v1"]
+    assert body["capabilities"] == ["set_power_v1", "multi_charger_v1"]
     assert body["applied_power_w"] == 7200
     assert body["charger"]["model"] == "simulated_bench" and body["charger"]["transport"] == "simulated"
     legacy = Device(clock=lambda: now[0], legacy=True)
@@ -374,8 +374,8 @@ def test_payload_reports_the_panel_firmware_version():
     from pathlib import Path
 
     runtime = (Path(__file__).resolve().parents[2] / "firmware/esp32/include/runtime.h").read_text()
-    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.8.0"' in runtime
-    assert Device().payload()["firmware_version"] == "0.8.0"
+    assert '#define CHARGEGRID_FIRMWARE_VERSION "0.9.4"' in runtime
+    assert Device().payload()["firmware_version"] == "0.9.4"
     assert Device(legacy=True).payload()["firmware_version"] == "0.4.0"
 
 
@@ -473,7 +473,7 @@ def test_every_connector_is_a_charger_the_screen_follows_the_api_address():
 
 
 def test_without_a_charger_answering_the_screen_reports_the_address_offline():
-    device = Device()  # nenhum carregador simulado na rede
+    device = Device(hca_link=False)  # nenhum carregador simulado na rede
     device.response(_idle(HCA_LINK))
     charger = device.payload()["charger"]
     assert device.link_address == 1 and charger["model"] == "simulated_bench"
@@ -513,40 +513,58 @@ def test_online_charger_start_drives_registers_and_losing_it_stops_the_session()
     assert body["charger"]["link"] == "offline"
 
 
-def test_offline_charger_start_uses_the_screen_simulation_until_the_end():
+def test_offline_charger_refuses_start_without_screen_simulation():
+    """Como o painel: carregador do endereço sem resposta → ACK failed charger_offline, sem sessão."""
     now = [0]
-    device = Device(clock=lambda: now[0], hca_address=1)  # carregador não responde
-    writes = []
-    original = device.hca_transport.write
-    device.hca_transport.write = lambda address, value: (writes.append((address, value)), original(address, value))[1]
+    device = Device(clock=lambda: now[0], hca_link=False, hca_address=1)  # carregador não responde
     device.response(_start())
-    assert device.acks[0]["status"] == "applied" and device.state == "charging"
-    assert not device.session_on_charger and device.transport is None  # bancada interna
-    assert writes == []  # nada escrito no carregador
+    assert device.acks[0] == {"command_id": "command", "status": "failed", "error": "charger_offline"}
+    assert device.state == "idle" and device.session_id is None and not device.session_on_charger
     body = device.payload()
-    assert body["source"] == "simulated" and body["charger"]["link"] == "offline"
-    # O carregador aparece no meio: a sessão continua simulada (não troca de modo).
-    device.link_online = True
-    now[0] = 10
-    body = device.payload()
-    assert body["physical_state"] == "charging" and body["charger"]["link"] == "online"
-    assert body["charger"]["model"] == "simulated_bench"  # quem carrega é a simulação
-    assert not device.session_on_charger and writes == []
-    assert body["energy_wh"] > 0
+    assert body["physical_state"] == "idle" and body["charger"]["link"] == "offline" and body["power_w"] == 0
+
+
+def test_default_bench_charger_is_online_with_bench_limits():
+    """Padrão da bancada: carregador simulado respondendo no endereço (limites de 7,2 kW)."""
+    device = Device()
+    device.response(_start(power_w=7200))
+    assert device.state == "charging" and device.session_on_charger and device.transport is None
+    charger = device.payload()["charger"]
+    assert charger["link"] == "online" and charger["address"] == 1 and charger["max_power_w"] == 7200
+
+
+def test_station_follows_the_screen_chargers_and_syncs_each_address(tmp_path):
+    from tools.device_simulator import Station
+
+    screen = Device(tmp_path / "screen.json")
+    station = Station(screen, lambda address: Device(tmp_path / f"c{address}.json", hca_address=address,
+                                                     charger_address=address))
+    sent = []
+
+    def post(body):
+        sent.append(body)
+        address = body.get("charger_address", 1)
+        reply = _idle({**HCA_LINK, "address": address, "host": f"cg-hca-{address}.local"})
+        if "charger_address" not in body:
+            reply["chargers"] = [{"address": 2, "charger_link": {**HCA_LINK, "address": 2, "host": "cg-hca-2.local"}}]
+        return reply
+
+    station.exchange_all(post)
+    assert set(station.children) == {2}
+    station.exchange_all(post)
+    assert [body.get("charger_address") for body in sent] == [None, 2, None, 2]  # o novo carregador já sincroniza
+    assert sent[-1]["charger"]["address"] == 2 and "multi_charger_v1" in sent[-1]["capabilities"]
+    station.follow({"chargers": []})
+    assert station.children == {}
 
 
 def test_charger_that_appears_later_is_used_by_the_next_charge():
     now = [0]
-    device = Device(clock=lambda: now[0], hca_address=1)
+    device = Device(clock=lambda: now[0], hca_link=True, hca_address=1)
+    device.link_online = False
     device.response(_start(session="first"))
-    assert not device.session_on_charger
-    stop = response(version=3, identifier="stop")
-    stop["commands"][0].update(type="STOP", session_id="first")
-    stop["authorized"]["session"]["id"] = "first"
-    device.response(stop)
-    assert device.state == "stopped"
-    idle = _idle(HCA_LINK)
-    device.response(idle)
+    assert device.acks[0]["error"] == "charger_offline" and device.state == "idle"
+    device.response(_idle(HCA_LINK))
     device.link_online = True  # carregador ligado/achado na rede
     device.response(_start(power_w=5000, identifier="second-start", version=4, session="second"))
     assert device.state == "charging" and device.session_on_charger

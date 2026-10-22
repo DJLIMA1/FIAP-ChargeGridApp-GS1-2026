@@ -22,6 +22,9 @@ bool chargegridPanelHardwareSetup() {
   auto* bus = lcd ? lcd->getBus() : nullptr;
   if (!lcd || !bus || bus->getBasicAttributes().type != ESP_PANEL_BUS_TYPE_RGB) return false;
   if (!lcd->configFrameBufferNumber(LVGL_PORT_DISP_BUFFER_NUM)) return false;
+  // Preserva os 16 MHz do perfil Waveshare. Nesta placa, 10 MHz produziu
+  // alternância de cores no LCD apesar do framebuffer correto.
+  if (!static_cast<BusRGB*>(bus)->configRGB_FreqHz(16000000)) return false;
   // 20 linhas por bloco (antes 10) dão mais margem à DMA durante o Wi-Fi.
   if (!static_cast<BusRGB*>(bus)->configRGB_BounceBufferSize(lcd->getFrameWidth() * 20)) return false;
   if (!board->begin()) return false;

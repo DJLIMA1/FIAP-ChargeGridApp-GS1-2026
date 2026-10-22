@@ -19,8 +19,8 @@ constexpr const char* kReceiptUrl = "https://chargegrid-api-preview-djlima1s-pro
 std::string offerJson(const char* method, const char* label, bool available = true, const char* reason = "null",
                       const char* openOrder = "null") {
   char out[2048];
-  snprintf(out, sizeof(out), R"({"enabled":true,"available":%s,"reason":%s,"reason_label":null,"open_order_id":%s,
-    "method":"%s","label":"%s","currency":"BRL","public_code":"CG-7KQ2","power_kw":"7.200",
+  snprintf(out, sizeof(out), R"({"ui_version":2,"enabled":true,"available":%s,"reason":%s,"reason_label":null,"open_order_id":%s,
+    "method":"%s","label":"%s","currency":"BRL","public_code":"CG-7KQ2","power_kw":"7.200","speed_prices":{"max":"2.3000","reduced":"1.8400"},
     "price":{"price_per_kwh":"2.3000","base_price_per_kwh":"2.0000","demand_multiplier":"1.15",
              "reason_label":"Alta demanda","level_label":"Alta","increase_percent":15},
     "limits":{"max_total":"200.00","overstay_reserve":"30.00"},
@@ -45,12 +45,13 @@ std::string quoteJson(const char* method, const char* label, const char* hash = 
   return out;
 }
 std::string orderJson(const char* status, const char* method, const char* payment = "null", int expires = 300) {
+  const std::string qr = strcmp(method, "simulated") == 0 ? std::string("\"") + kQr + "\"" : "null";
   char out[2048];
   snprintf(out, sizeof(out), R"({"id":"%s","status":"%s","status_label":"x","method":"%s","label":"%s",
     "expires_at":"2026-10-20T12:05:00+00:00","expires_in_seconds":%d,
     "quote":{"mode":"value","amount":"20.00","total":"50.00","energy_cap":"20.00","overstay_reserve":"30.00"},
-    "payment":%s,"session_id":null,"session":null,"receipt":null,"receipt_url":"%s","error":null})",
-           kOrderId, status, method, strcmp(method, "stripe") == 0 ? "TESTE" : "SIMULADO", expires, payment, kReceiptUrl);
+    "qr_url":%s,"payment":%s,"session_id":null,"session":null,"receipt":null,"receipt_url":"%s","error":null})",
+           kOrderId, status, method, strcmp(method, "stripe") == 0 ? "TESTE" : "SIMULADO", expires, qr.c_str(), payment, kReceiptUrl);
   return out;
 }
 std::string syncJson(bool kiosk, const char* method = "simulated", const char* order = "null",
@@ -106,8 +107,17 @@ struct Harness {
   void reply(const ApiRequest& r, int status, const std::string& body) {
     ApiResult result; result.kind = r.kind; result.seq = r.seq; result.status = status; result.body = body.c_str();
     flow.apiResult(result);
+    // Legacy scenario helpers traverse the new optional stages. Dedicated tests below
+    // drive the raw Flow to assert every new stage independently.
+    if (r.kind == RequestKind::Offer && flow.state() == State::Connector) flow.touch(Action::Next, now);
+    if (r.kind == RequestKind::Quote && flow.state() == State::PaymentMethod) flow.touch(Action::PayCard, now);
   }
-  void touch(Action a) { flow.touch(a, now); }
+  void touch(Action a) {
+    flow.touch(a, now);
+    if (a == Action::StartFlow && flow.state() == State::Welcome) flow.touch(Action::Guest, now);
+    if (flow.state() == State::Power && (a == Action::Shortcut0 || a == Action::Shortcut1 || a == Action::Shortcut2 || a == Action::Shortcut3 || a == Action::KeypadOk))
+      flow.touch(Action::PowerMax, now);
+  }
   void keys(const char* sequence) { for (const char* c = sequence; *c; ++c) flow.key(*c, now); }
   const KioskView& view() const { return flow.view(); }
   std::string persisted() { char out[64] = "?"; return flow.takePersist(out, sizeof(out)) ? std::string(out) : std::string("<none>"); }
@@ -116,7 +126,7 @@ struct Harness {
   void toChoose(const char* method = "simulated", const char* label = "SIMULADO") {
     assert(flow.canStart());
     touch(Action::StartFlow);
-    assert(flow.state() == State::LoadingOffer && view().screen == Screen::Choose && view().busy);
+    assert(flow.state() == State::LoadingOffer && view().screen == Screen::Notice && view().busy);
     ApiRequest r = take();
     assert(r.kind == RequestKind::Offer && std::string(r.method) == "GET" && std::string(r.path) == "/v1/devices/kiosk/offer");
     reply(r, 200, offerJson(method, label));
@@ -129,7 +139,7 @@ struct Harness {
     touch(Action::Shortcut1);
     ApiRequest r = take();
     assert(r.kind == RequestKind::Quote && std::string(r.path) == "/v1/devices/kiosk/quote");
-    assert(std::string(r.body) == R"({"mode":"value","amount":"20.00"})");
+    assert(std::string(r.body) == R"({"mode":"value","power":"max","amount":20})");
     reply(r, 200, quoteJson(method, label));
     assert(flow.state() == State::Review);
   }
@@ -138,7 +148,7 @@ struct Harness {
     ApiRequest r = take();
     assert(r.kind == RequestKind::CreateOrder && std::string(r.method) == "POST" && std::string(r.path) == "/v1/devices/kiosk/orders");
     assert(std::strncmp(r.idempotencyKey, "ko-", 3) == 0 && std::strlen(r.idempotencyKey) == 19);
-    assert(std::string(r.body) == R"({"quote_hash":"0123456789abcdef0123456789abcdef","mode":"value","amount":"20.00","overstay_terms_version":"ov-3"})");
+    assert(std::string(r.body) == R"({"mode":"value","power":"max","amount":20,"quote_hash":"0123456789abcdef0123456789abcdef","overstay_terms_version":"ov-3"})");
     reply(r, 201, orderJson("held", method));
     assert(flow.state() == State::Pay);
     assert(persisted() == kOrderId);   // NVS "kord"
@@ -224,16 +234,16 @@ void testHappySimulated() {
   assert(text(review.metrics[1].value) == "R$ 2,00 x 1,15 Alta demanda");
   assert(text(review.metrics[2].name) == "VALOR MÁXIMO" && text(review.metrics[2].value) == "R$ 50,00");
   assert(text(review.metrics[3].value) == "8,7 kWh" && text(review.metrics[4].value) == "73 min");
-  assert(text(review.metrics[5].value).find("R$ 1,00 por minuto") != std::string::npos);
+  assert(text(review.context).find("R$ 1,00 por minuto") != std::string::npos);
   assert(review.primary.action == Action::Accept && review.primary.enabled);
   h.acceptOrder();
   // T4 simulado: o totem não paga sozinho; botão rotulado (sem cobrança).
-  assert(h.view().screen == Screen::Pay && text(h.view().primary.text) == "Simular pagamento de R$ 50,00 (sem cobrança)");
-  assert(h.view().qr[0] == '\0' && !h.hasRequest());
+  assert(h.view().screen == Screen::Pay && text(h.view().primary.text) == "Já efetuei o pagamento");
+  assert(text(h.view().qr) == kQr && !h.hasRequest());
   h.touch(Action::SimulatePay);
   ApiRequest pay = h.take();
   assert(pay.kind == RequestKind::Pay && std::string(pay.path) == std::string("/v1/devices/kiosk/orders/") + kOrderId + "/pay");
-  assert(std::string(pay.idempotencyKey) == std::string("pay-") + kOrderId && std::string(pay.body) == "{}");
+  assert(std::string(pay.idempotencyKey) == std::string("pay-") + kOrderId && std::string(pay.body) == R"({"funding_source":"card"})");
   h.reply(pay, 200, orderJson("charging", "simulated", R"J({"id":"p","status":"in_use","label":"Pago (simulado) · em uso","method":"simulated","amount":"50.00","qr_url":null})J"));
   assert(h.flow.state() == State::Starting && h.view().screen == Screen::Starting);
   // START aplicado (sessão do pedido) -> T6 ao vivo.
@@ -245,10 +255,14 @@ void testHappySimulated() {
   assert(h.flow.state() == State::Live && h.view().screen == Screen::Live);
   assert(text(h.view().metrics[0].value) == "1,25 kWh" && text(h.view().metrics[1].value) == "6,0 kW");
   assert(text(h.view().metrics[2].value) == "R$ 2,88 / R$ 20,00" && text(h.view().metrics[3].value) == "10 min / faltam 50");
-  assert(text(h.view().metrics[4].value) == "47%" && text(h.view().subtitle) == "Loja 24/30 kW \xC2\xB7 3 carros");
+  assert(text(h.view().metrics[4].value) == "47%" && text(h.view().subtitle) == "Para parar antes, toque em Encerrar." &&
+         text(h.view().context) == "Potência: Loja 24/30 kW \xC2\xB7 3 carros");
   assert(!h.hasRequest());   // nada de rede durante a recarga
   // Encerrar com confirmação (T7); Não volta; Sim pede requestLocalSafeStop().
+  const KioskView live = h.view();
   h.touch(Action::Stop); assert(h.flow.state() == State::ConfirmStop && h.view().screen == Screen::ConfirmStop);
+  assert(text(h.view().title) == text(live.title) && h.view().socPercent == live.socPercent);
+  for (int i = 0; i < live.metricCount; ++i) assert(text(h.view().metrics[i].value) == live.metrics[i].value);
   h.touch(Action::ConfirmNo); assert(h.flow.state() == State::Live && !h.flow.takeLocalStop());
   h.touch(Action::Stop); h.touch(Action::ConfirmYes);
   assert(h.flow.takeLocalStop() && !h.flow.takeLocalStop());
@@ -279,8 +293,12 @@ void testHappyStripe() {
   h.reply(pay, 200, orderJson("awaiting_payment", "stripe",
       (std::string(R"J({"id":"p","status":"awaiting_payment","label":"Aguardando (teste)","method":"stripe","amount":"50.00","qr_url":")J") + kQr + "\"}").c_str(), 600));
   assert(h.flow.state() == State::Pay && text(h.view().qr) == kQr && h.view().notice[0]);
-  assert(text(h.view().qrCaption) == "Pagamento em modo teste R$ 50,00");
-  assert(!h.view().primary.visible);    // sem botão de simular no modo Stripe
+  assert(text(h.view().qrCaption) == "Total: R$ 50,00");
+  assert(h.view().primary.visible && text(h.view().primary.text) == "Já efetuei o pagamento");
+  h.touch(Action::SimulatePay); ApiRequest check = h.take();
+  assert(check.kind == RequestKind::GetOrder && text(check.method) == "GET");
+  h.reply(check, 200, orderJson("awaiting_payment", "stripe"));
+  assert(h.flow.state() == State::Pay && !h.flow.order().paid); // botão jamais confirma Stripe localmente
   // QR não vence pela inatividade de 60 s: só quando a trava acaba (10 min).
   h.step(120000); assert(h.flow.state() == State::Pay);
   h.sync(syncJson(true, "stripe", kioskOrder("awaiting_payment", "declined", kQr, false, false, "stripe").c_str()));
@@ -297,7 +315,8 @@ void testHappyStripe() {
   assert(h.flow.state() == State::Receipt && text(h.view().title) == "Valor máximo atingido");
   assert(text(h.view().metrics[2].name) == "DEVOLVIDO" && text(h.view().metrics[2].value) == "R$ 45,00");
   // Recibo volta sozinho em 60 s (sem carro conectado).
-  h.step(59000); assert(h.flow.state() == State::Receipt);
+  h.step(29000); assert(h.flow.state() == State::Receipt && text(h.view().qrCaption) == "Saindo em 1 segundo");
+  h.touch(Action::Continue); // touching cannot extend privacy timeout
   h.step(2000); assert(h.flow.state() == State::Idle && h.persisted() == "");
   // Trava do QR vence: cancela (libera e devolve) e volta ao início.
   Harness q("stripe");
@@ -333,7 +352,7 @@ void testKeypad() {
   h.touch(Action::KeypadOk); assert(!h.hasRequest());   // acima de R$ 170,00
   h.keys("C"); h.keys("25"); h.touch(Action::KeypadOk);
   ApiRequest r = h.take();
-  assert(std::string(r.body) == R"({"mode":"value","amount":"25.00"})");
+  assert(std::string(r.body) == R"({"mode":"value","power":"max","amount":25})");
   h.reply(r, 0, "");                            // sem resposta: fica em T2 com aviso
   assert(h.flow.state() == State::Amount && text(h.view().notice) == "Sem resposta do servidor. Tente de novo.");
   h.touch(Action::Back); assert(!h.view().keypad && h.flow.state() == State::Amount);
@@ -345,14 +364,14 @@ void testKeypad() {
   h.keys("C"); h.keys("12,57,"); assert(text(h.view().entry) == "12,5");
   h.touch(Action::KeypadOk);
   r = h.take();
-  assert(std::string(r.body) == R"({"mode":"energy","energy_kwh":"12.5"})");
+  assert(std::string(r.body) == R"({"mode":"energy","power":"max","energy_kwh":12.5})");
   h.reply(r, 422, R"({"error":{"code":"amount_above_limit","message":"x"}})");
   assert(h.flow.state() == State::Amount && text(h.view().notice) == "Valor fora do limite: 1 kWh a 73,9 kWh");
   // Minutos: atalhos e corpo inteiro.
   h.touch(Action::Back); h.touch(Action::Back); h.touch(Action::ModeTime);
   assert(text(h.view().options[0].text) == "15 min" && text(h.view().options[2].text) == "60 min" && !h.view().options[3].visible);
   h.touch(Action::Shortcut1);
-  r = h.take(); assert(std::string(r.body) == R"({"mode":"time","minutes":30})");
+  r = h.take(); assert(std::string(r.body) == R"({"mode":"time","power":"max","minutes":30})");
   puts("PASS: numeric keypad (digits, leading zero, comma only in kWh, backspace, clear, min/max, 422) and shortcuts per mode");
 }
 
@@ -410,7 +429,7 @@ void testBlockedAndAbort() {
   Harness r; r.toChoose(); r.touch(Action::ModeTime);
   r.sync(syncJson(true, "simulated", "null", false, "", true)); r.step();
   assert(r.flow.state() == State::Notice && text(r.view().title) == "Ponto reservado");
-  // Reserva / carro conectado / manutenção / sessão: botão "Carregar agora" desativado.
+  // Reserva / carro conectado / manutenção / sessão: botão "Iniciar recarga" desativado.
   Harness b;
   b.facts.reserved = true; b.step(); assert(!b.flow.canStart());
   b.facts.reserved = false; b.facts.carConnected = true; b.step(); assert(!b.flow.canStart());
@@ -429,7 +448,7 @@ void testBlockedAndAbort() {
   Harness a; a.charging(true, "app"); a.step();
   assert(!a.flow.canStart());
   a.touch(Action::Stop);
-  assert(a.flow.state() == State::ConfirmStop && text(a.view().title) == "Encerrar a recarga do app?");
+  assert(a.flow.state() == State::ConfirmStop && text(a.view().title) == "Recarga em andamento" && text(a.view().context).find("iniciada pelo app") != std::string::npos);
   a.touch(Action::ConfirmYes);
   assert(a.flow.takeLocalStop() && a.flow.state() == State::Idle);
   puts("PASS: app start/session/reservation during T1-T3 aborts, reservation/car/maintenance block the button, app session stop with confirmation");
@@ -445,6 +464,8 @@ void testOfflineAndNetworkDrops() {
   assert(h.flow.state() == State::Notice && text(h.view().title) == "Sem conexão" && !h.hasRequest());
   // Oferta sem resposta.
   h.facts.online = true; h.step(6000);
+  assert(h.flow.state() == State::Notice && h.view().primary.action == Action::Retry);
+  h.touch(Action::Done);
   h.touch(Action::StartFlow); ApiRequest offer = h.take(); h.reply(offer, 0, "");
   assert(h.flow.state() == State::Notice);
   h.step(6000);
@@ -479,10 +500,76 @@ void testOfflineAndNetworkDrops() {
   std::snprintf(s.facts.overstayDetail, sizeof(s.facts.overstayDetail), "Após a tolerância: R$ 1,00 a cada 1 min, até R$ 30,00.");
   s.step(120000);
   assert(s.flow.state() == State::Receipt && s.view().disconnect && text(s.view().subtitle).find("desconecte") != std::string::npos);
+  assert(!s.view().qr[0]); // QR privado nunca permanece com o carro conectado após 30 s
   s.touch(Action::Disconnect); assert(s.flow.takeLocalDisconnect());
   s.facts.carConnected = false; s.step(60000);
   assert(s.flow.state() == State::Idle);
   puts("PASS: offline blocks the button, network drop in T2 (back to start), T4 (verifying, QR again via sync), T5 (resumes to live), T6 (receipt in review), overstay integration");
+}
+
+void testMissingChargersAndRetry() {
+  Harness h;
+  h.facts.chargerOffline = true; h.step();
+  assert(!h.flow.canStart());
+  h.facts.chargerOffline = false; h.step();
+  h.touch(Action::StartFlow);
+  assert(h.view().screen == Screen::Notice && h.view().metricCount == 0 && !h.view().options[0].visible);
+  ApiRequest request = h.take();
+  JsonDocument doc; deserializeJson(doc, offerJson("simulated", "SIMULADO", false, "\"offline\""));
+  auto choices = doc["connectors"].to<JsonArray>();
+  for (int address : {0, 2}) {
+    auto c = choices.add<JsonObject>(); c["address"] = address; c["available"] = false;
+    c["label"] = "Carregador sem resposta";
+  }
+  std::string offline; serializeJson(doc, offline);
+  h.reply(request, 200, offline);
+  assert(h.flow.state() == State::Notice && text(h.view().title) == "Carregador indisponível");
+  assert(h.view().primary.action == Action::Retry && h.view().secondary.action == Action::Done);
+  h.step(6000);
+  assert(h.flow.state() == State::Notice); // Permite ler e recuperar, sem voltar sozinho em 6 s.
+  h.touch(Action::Retry); request = h.take();
+  assert(request.kind == RequestKind::Offer && !h.flow.order().id[0]);
+  h.reply(request, 200, offerJson("simulated", "SIMULADO"));
+  assert(h.flow.state() == State::Choose);
+  h.touch(Action::ModeValue);
+  h.facts.chargerOffline = true; h.step();
+  assert(h.flow.state() == State::Notice && text(h.view().title) == "Carregador indisponível");
+  h.facts.chargerOffline = false; h.step(6000);
+  h.touch(Action::Retry); request = h.take();
+  h.reply(request, 200, offerJson("simulated", "SIMULADO"));
+  assert(h.flow.state() == State::Choose);
+  h.facts.chargerOffline = true; h.step();
+  h.step(Flow::kIdleTimeoutMs);
+  assert(h.flow.state() == State::Idle && !h.flow.authToken()[0]);
+  puts("PASS: central online/charger offline, all chargers unavailable, explicit retry, restored charger, no zero-value loading screen, private inactivity timeout");
+}
+
+void testSharedAppSessionScreens() {
+  Harness h;
+  h.flow.followAppSessions();
+  h.sync(syncJson(false)); h.step();
+  assert(h.flow.state() == State::Off); // Funciona mesmo sem autoatendimento no posto.
+  h.charging(true, "app");
+  h.facts.energyKwh = 2.5; h.facts.costCents = 575; h.facts.capCents = 2000;
+  h.facts.appliedPowerKw = 7.2; h.facts.elapsedS = 1200; h.facts.remainingS = 600; h.facts.socPercent = 41;
+  h.step();
+  assert(h.flow.state() == State::Live && h.view().screen == Screen::Live);
+  assert(text(h.view().title) == "Recarga em andamento" && text(h.view().metrics[0].value) == "2,50 kWh");
+  h.touch(Action::Stop); assert(h.flow.state() == State::ConfirmStop);
+  h.touch(Action::ConfirmNo); assert(h.flow.state() == State::Live);
+  h.touch(Action::Stop); h.touch(Action::ConfirmYes); assert(h.flow.takeLocalStop());
+  h.facts.charging = false; h.facts.stopped = true; h.facts.appliedPowerKw = 0;
+  std::snprintf(h.facts.endReason, sizeof(h.facts.endReason), "requested");
+  h.step(); assert(h.flow.state() == State::Receipt && h.view().screen == Screen::Receipt);
+  h.facts.sessionId[0] = 0; h.facts.energyKwh = 0; h.facts.costCents = -1;
+  h.step(1000);
+  assert(text(h.view().metrics[0].value) == "2,50 kWh" && text(h.view().metrics[1].value) == "R$ 5,75");
+  assert(!h.view().qr[0] && !h.hasRequest()); // Sem pedido de pagamento/recibo inventado.
+  h.touch(Action::Done); assert(h.flow.state() == State::Idle);
+  h.flow.followAppCharger(2); h.charging(true, "app"); h.step();
+  assert(h.flow.state() == State::Live && h.flow.chargerAddress() == 2);
+  h.touch(Action::Stop); h.touch(Action::ConfirmYes); assert(h.flow.takeLocalStop() && h.flow.chargerAddress() == 2);
+  puts("PASS: shared app/self-service Live/Receipt renderer, app stop confirmation, final values retained after reconciliation, additional charger addressing");
 }
 
 void testRebootResume() {
@@ -591,9 +678,108 @@ void testQuoteChangedAndErrors() {
   puts("PASS: quote_changed / overstay_terms_changed redo T3, same Idempotency-Key on retry, point_unavailable, order_open, stale results, one request at a time");
 }
 
+
+
+void testAddressedKioskFlow() {
+  Harness h;
+  h.touch(Action::StartFlow); ApiRequest offer = h.take();
+  JsonDocument doc; deserializeJson(doc, offerJson("simulated", "SIMULADO"));
+  JsonArray choices = doc["connectors"].to<JsonArray>();
+  for (int address : {0, 2}) {
+    JsonObject c = choices.add<JsonObject>(); c["address"] = address; c["available"] = true;
+    c["label"] = address ? "Tipo 2 / CG-02" : "Tipo 2 / CG-01";
+  }
+  std::string payload; serializeJson(doc, payload);
+  // Raw result leaves the connection selector on screen.
+  ApiResult result; result.kind = offer.kind; result.seq = offer.seq; result.status = 200; result.body = payload.c_str();
+  h.flow.apiResult(result);
+  assert(h.flow.state() == State::Connector && h.view().options[1].action == Action::Connector1);
+  h.touch(Action::Connector1); offer = h.take(); assert(offer.chargerAddress == 2);
+  h.reply(offer, 200, payload); assert(h.flow.chargerAddress() == 2 && h.flow.state() == State::Choose);
+  h.touch(Action::ModeValue); h.touch(Action::Shortcut1); ApiRequest quote = h.take(); assert(quote.chargerAddress == 2);
+  h.reply(quote, 200, quoteJson("simulated", "SIMULADO")); h.acceptOrder();
+  h.touch(Action::Cancel); h.touch(Action::Done);
+  assert(h.flow.chargerAddress() == 0 && h.flow.state() == State::Idle);
+  ApiRequest cancel = h.take(); assert(cancel.kind == RequestKind::Cancel && cancel.chargerAddress == 2);
+  Harness reboot; reboot.flow.resume(kOrderId, reboot.now, 2); reboot.step();
+  assert(reboot.flow.chargerAddress() == 2 && reboot.take().chargerAddress == 2);
+  puts("PASS: addressed charger selection, quote/order target, cancellation survives home navigation and reboot restores the charger address");
+}
+
+void testOptionalAccountFlow() {
+  Harness h;
+  auto tap = [&](Action action) { h.flow.touch(action, h.now); };
+  auto replyRaw = [&](const ApiRequest& request, int status, const std::string& payload) {
+    ApiResult result; result.kind = request.kind; result.seq = request.seq;
+    result.status = status; result.body = payload.c_str(); h.flow.apiResult(result);
+  };
+  tap(Action::StartFlow);
+  assert(h.flow.state() == State::Welcome && !h.flow.requestInFlight());
+  tap(Action::Login);
+  assert(h.flow.state() == State::Login && !h.view().password);
+  h.keys("driver@example.com"); tap(Action::LoginNext);
+  assert(h.view().password && text(h.view().loginEntry).empty());
+  h.keys("Strong2!\"\\");
+  assert(text(h.view().loginEntry) == "**********");
+  tap(Action::LoginNext);
+  ApiRequest login = h.take();
+  assert(login.kind == RequestKind::Login && text(login.path) == "/v1/auth/login");
+  JsonDocument body; assert(!deserializeJson(body, login.body));
+  assert(body["password"] == "Strong2!\"\\");
+  assert(text(h.view().loginEntry).empty());
+  replyRaw(login, 401, R"({"error":{"code":"auth_rejected"}})");
+  assert(h.flow.state() == State::Login && !h.flow.authToken()[0]);
+  h.keys("Correct2!"); tap(Action::LoginNext); login = h.take();
+  replyRaw(login, 200, R"({"access_token":"short-lived-user-jwt","refresh_token":"must-not-be-kept"})");
+  assert(text(h.flow.authToken()) == "short-lived-user-jwt");
+  ApiRequest offer = h.take();
+  JsonDocument offered; assert(!deserializeJson(offered, offerJson("simulated", "SIMULADO")));
+  offered["account"]["name"] = "Marina";
+  offered["account"]["vehicle"]["name"] = "BYD Dolphin";
+  offered["account"]["wallet"]["balance"] = "100.00";
+  offered["balance_available"] = true;
+  std::string offeredBody; serializeJson(offered, offeredBody);
+  replyRaw(offer, 200, offeredBody);
+  assert(h.flow.state() == State::Connector); tap(Action::Next);
+  assert(h.view().options[2].visible && h.view().options[2].action == Action::ModeAutonomy);
+  tap(Action::ModeAutonomy); tap(Action::Shortcut1);
+  assert(h.flow.state() == State::Power);
+  assert(text(h.view().options[0].text).find("R$ 2,30/kWh") != std::string::npos);
+  assert(text(h.view().options[1].text).find("R$ 1,84/kWh") != std::string::npos);
+  tap(Action::PowerReduced);
+  ApiRequest quote = h.take(); body.clear(); assert(!deserializeJson(body, quote.body));
+  assert(body["mode"] == "autonomy" && body["autonomy_km"] == 60 && body["power"] == "reduced");
+  replyRaw(quote, 200, quoteJson("simulated", "SIMULADO"));
+  assert(h.flow.state() == State::PaymentMethod && h.view().options[2].enabled);
+  tap(Action::PayBalance); assert(h.flow.state() == State::Review);
+  tap(Action::Accept); ApiRequest order = h.take();
+  replyRaw(order, 201, orderJson("held", "simulated")); tap(Action::SimulatePay);
+  ApiRequest pay = h.take(); body.clear(); deserializeJson(body, pay.body);
+  assert(body["funding_source"] == "balance");
+  replyRaw(pay, 401, R"({"error":{"code":"unauthorized"}})");
+  assert(h.flow.state() == State::Notice && !h.flow.authToken()[0]);
+  ApiRequest cancel = h.take(); assert(cancel.kind == RequestKind::Cancel);
+  replyRaw(cancel, 200, orderJson("canceled", "simulated"));
+  tap(Action::Done); assert(h.flow.state() == State::Idle && !h.flow.authToken()[0]);
+
+  // No car: autonomy remains absent; a forged local action cannot select it.
+  tap(Action::StartFlow); tap(Action::Login); h.keys("driver@example.com"); tap(Action::LoginNext);
+  h.keys("Correct2!"); tap(Action::LoginNext); login = h.take();
+  replyRaw(login, 200, R"({"access_token":"user-jwt"})"); offer = h.take();
+  offered["account"]["vehicle"] = nullptr; offeredBody.clear(); serializeJson(offered, offeredBody);
+  replyRaw(offer, 200, offeredBody); tap(Action::Next);
+  assert(h.view().options[2].visible && !h.view().options[2].enabled && text(h.view().options[2].text).find("requer carro") != std::string::npos); tap(Action::ModeAutonomy);
+  assert(h.flow.state() == State::Choose);
+  h.flow.tick(h.now + Flow::kIdleTimeoutMs);
+  assert(!h.flow.authToken()[0] && h.flow.state() == State::Idle);
+  puts("PASS: optional login, password masking/escaping, account vehicle gate, autonomy km, reduced power, balance, expired JWT cancellation and identity timeout");
+}
+
 }  // namespace
 
 int main() {
+  testAddressedKioskFlow();
+  testOptionalAccountFlow();
   testReadSync();
   testLegacyApi();
   testHappySimulated();
@@ -602,6 +788,8 @@ int main() {
   testInactivity();
   testBlockedAndAbort();
   testOfflineAndNetworkDrops();
+  testMissingChargersAndRetry();
+  testSharedAppSessionScreens();
   testRebootResume();
   testQuoteChangedAndErrors();
   puts("PASS: kiosk_flow (T0-T8/TE) in simulated and Stripe modes");

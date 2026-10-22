@@ -5,9 +5,10 @@
 // O transporte de verdade (WiFiClient + mDNS) fica em src/charger_modbus_esp32.cpp.
 //
 // Todo conector é um carregador: a API manda connector.charger_link (endereço) e a tela lê o
-// carregador sempre (~1 s online; 5 s offline). No START, online → recarga por Modbus; offline →
-// simulação interna da tela (o controlador decide; ver sessionOnCharger). API antiga, sem
-// charger_link: nada aqui é chamado.
+// carregador sempre (~1 s online; 5 s offline). Com charger_link, TODA recarga é por Modbus: o
+// START tenta o carregador (kStartAttempts tentativas curtas, com resolução imediata) e, sem
+// confirmação pela releitura, o ACK sai "failed" (charger_offline) — não existe mais recarga na
+// simulação interna da tela. API antiga, sem charger_link: nada aqui é chamado.
 #include <stddef.h>
 #include <stdint.h>
 #include "hca_g2_map.h"
@@ -18,6 +19,7 @@ constexpr uint32_t kPollMs = 1000;        // leitura de 10015..10017 a cada ~1 s
 constexpr uint32_t kIdleRetryMs = 5000;   // fora de recarga e offline: tenta a cada 5 s
 constexpr uint32_t kLossMs = 5000;        // sem resposta por 5 s durante a recarga = perda
 constexpr uint8_t kStoppedPolls = 3;      // parado sozinho por 3 leituras durante a recarga = falha
+constexpr uint8_t kStartAttempts = 2;     // START: carregador sem resposta → mais uma tentativa antes de recusar
 
 struct LinkConfig {
   bool present = false;
@@ -39,6 +41,11 @@ class ModbusClient {
                            uint8_t* exception) = 0;
   virtual bool writeSingle(const LinkConfig& link, uint16_t address, uint16_t value, uint8_t* exception) = 0;
   virtual void reset() {}  // descarta conexão e resolução (link mudou)
+  // Próxima transação é de um comando (START): pode resolver o nome agora (sem esperar o recuo
+  // da resolução) e refazer a conexão. Sem efeito no cliente de teste.
+  virtual void prepareUrgent() {}
+  // Hora ao concluir uma operação bloqueante. No host, fallback preserva clientes simples.
+  virtual uint32_t nowMs(uint32_t fallback) const { return fallback; }
 };
 
 enum class Error : uint8_t { None, NoLink, Offline, Rejected, ReadbackMismatch };
@@ -56,7 +63,8 @@ class Link {
 
   // Comandos síncronos e curtos. Só retornam None depois de confirmar pela releitura.
   // START: 10032 = 0 (uma vez por link), 10029 = limite (só se mudou), 10060 = 2.
-  // Limite abaixo do mínimo (ou 0): começa pausado (10060 = 1).
+  // Limite abaixo do mínimo (ou 0): começa pausado (10060 = 1). Sem resposta: até
+  // kStartAttempts tentativas (a 2ª refaz conexão/resolução) antes de devolver Offline.
   Error start(long limitW, uint32_t nowMs, long* appliedW);
   // SET_POWER: 10029 (só se mudou) e 10060 = 2; abaixo do mínimo pausa com 10060 = 1.
   Error setPower(long limitW, uint32_t nowMs, long* appliedW);
@@ -86,6 +94,7 @@ class Link {
   bool write(uint16_t address, uint16_t value, Error& error);
   bool readLive(Error& error);
   Error apply(uint16_t value);
+  Error startOnce(uint16_t value);
 
   ModbusClient* client_ = nullptr;
   LinkConfig config_;

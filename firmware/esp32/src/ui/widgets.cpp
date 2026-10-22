@@ -5,6 +5,7 @@
 #include "ui/router.h"
 #include "ui/strings_ptbr.h"
 #include "ui/tokens.h"
+#include "chargegrid_logo.h"
 
 namespace ui {
 namespace {
@@ -62,8 +63,11 @@ lv_obj_t* root(lv_obj_t* parent) {
   plainStyle(obj);
   lv_obj_set_pos(obj, 0, 0);
   lv_obj_set_size(obj, t::kScreenW, t::kScreenH);
+  // Mesmo degradê da tela Pronto: o totem continua a mesma tela, não um app à parte.
   lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(obj, t::bg(), 0);
+  lv_obj_set_style_bg_color(obj, t::card(), 0);
+  lv_obj_set_style_bg_grad_color(obj, t::bg(), 0);
+  lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
   return obj;
 }
 
@@ -100,6 +104,7 @@ lv_obj_t* button(lv_obj_t* parent, int x, int y, int width, int height, ButtonSt
   lv_obj_set_style_radius(btn, t::kRadius, 0);
   lv_obj_set_style_shadow_width(btn, 0, 0);
   lv_obj_set_style_pad_all(btn, 8, 0);
+  lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
   if (style == ButtonStyle::Option) {
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_border_color(btn, t::line(), 0);
@@ -136,12 +141,17 @@ void setButton(lv_obj_t* btn, const kiosk::ViewButton& model) {
   if (model.enabled) lv_obj_clear_state(btn, LV_STATE_DISABLED);
   else lv_obj_add_state(btn, LV_STATE_DISABLED);
   lv_obj_t* label = lv_obj_get_child(btn, 0);
+  lv_obj_set_style_text_opa(label, model.enabled ? LV_OPA_COVER : LV_OPA_40, 0);
   // Texto com glifo fora da Bold (ou longo demais para uma linha): Barlow Medium 22.
   lv_point_t size;
   lv_txt_get_size(&size, model.text, t::button(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
   // Largura pedida (estilo), não as coordenadas: na criação o layout ainda não rodou.
   const lv_coord_t width = lv_obj_get_style_width(btn, LV_PART_MAIN);
   const lv_font_t* font = boldCovers(model.text) && size.x <= width - 24 ? t::button() : t::bodyLarge();
+  if (font == t::bodyLarge()) {
+    lv_txt_get_size(&size, model.text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    if (size.x > width - 24) font = t::small();   // nunca quebra em duas linhas
+  }
   if (lv_obj_get_style_text_font(label, 0) != font) lv_obj_set_style_text_font(label, font, 0);
   setText(label, model.text);
   lv_obj_center(label);
@@ -150,12 +160,19 @@ void setButton(lv_obj_t* btn, const kiosk::ViewButton& model) {
 Metric metric(lv_obj_t* parent, int x, int y, int width, int height) {
   Metric m;
   m.box = block(parent, x, y, width, height);
-  m.name = text(m.box, t::caption(), t::muted(), 16, 8, width - 32, LV_TEXT_ALIGN_LEFT);
+  m.name = text(m.box, t::caption(), t::muted(), 14, 8, width - 28, LV_TEXT_ALIGN_LEFT);
   lv_obj_set_style_text_letter_space(m.name, 2, 0);
-  m.value = text(m.box, t::bodyLarge(), t::text(), 16, 28, width - 32, LV_TEXT_ALIGN_LEFT);
-  lv_label_set_long_mode(m.value, LV_LABEL_LONG_DOT);
+  m.value = text(m.box, t::bodyLarge(), t::text(), 14, 28, width - 28, LV_TEXT_ALIGN_LEFT);
+  lv_label_set_long_mode(m.value, LV_LABEL_LONG_WRAP);
   lv_obj_set_height(m.value, height - 32);
   return m;
+}
+
+void resizeMetric(Metric& m, int width, int height) {
+  if (lv_obj_get_style_width(m.box, 0) == width && lv_obj_get_style_height(m.box, 0) == height) return;
+  lv_obj_set_size(m.box, width, height);
+  lv_obj_set_width(m.name, width - 28);
+  lv_obj_set_size(m.value, width - 28, height - 32);
 }
 
 void setMetric(Metric& m, const kiosk::ViewMetric* model) {
@@ -163,6 +180,15 @@ void setMetric(Metric& m, const kiosk::ViewMetric* model) {
   if (!model) return;
   setText(m.name, model->name);
   setText(m.value, model->value);
+  const lv_font_t* fonts[] = {t::bodyLarge(), t::body(), t::small(), t::caption()};
+  for (const lv_font_t* font : fonts) {
+    lv_point_t size;
+    lv_txt_get_size(&size, model->value, font, 0, 0,
+                   lv_obj_get_style_width(m.box, 0) - 28, LV_TEXT_FLAG_NONE);
+    if (size.y <= lv_obj_get_style_height(m.box, 0) - 32 || font == t::caption()) {
+      lv_obj_set_style_text_font(m.value, font, 0); break;
+    }
+  }
 }
 
 lv_obj_t* keypad(lv_obj_t* parent, int x, int y) {
@@ -170,10 +196,10 @@ lv_obj_t* keypad(lv_obj_t* parent, int x, int y) {
   lv_obj_t* pad = lv_obj_create(parent);
   plainStyle(pad);
   lv_obj_set_pos(pad, x, y);
-  lv_obj_set_size(pad, 3 * t::kKeyWidth + 2 * 8, 4 * t::kKeyHeight + 3 * 8);
+  lv_obj_set_size(pad, 3 * t::kKeyWidth + 2 * 6, 4 * t::kKeyHeight + 3 * 6);
   for (int i = 0; i < 12; ++i) {
     lv_obj_t* key = lv_btn_create(pad);
-    lv_obj_set_pos(key, (i % 3) * (t::kKeyWidth + 8), (i / 3) * (t::kKeyHeight + 8));
+    lv_obj_set_pos(key, (i % 3) * (t::kKeyWidth + 6), (i / 3) * (t::kKeyHeight + 6));
     lv_obj_set_size(key, t::kKeyWidth, t::kKeyHeight);
     lv_obj_set_style_bg_color(key, t::control(), 0);
     lv_obj_set_style_bg_color(key, t::disabled(), LV_STATE_DISABLED);
@@ -211,7 +237,7 @@ Qr qr(lv_obj_t* parent, int x, int y, int size) {
   lv_obj_set_style_bg_color(q.box, lv_color_white(), 0);
   q.code = lv_qrcode_create(q.box, size, lv_color_black(), lv_color_white());
   lv_obj_center(q.code);
-  q.caption = text(parent, t::small(), t::soft(), x - 20, y + size + 32, size + 64);
+  q.caption = text(parent, t::small(), t::soft(), x - 20, y + size + 30, size + 64);
   return q;
 }
 
@@ -226,43 +252,104 @@ void setQr(Qr& q, const char* value, const char* caption) {
 }
 
 void chrome(lv_obj_t* rootObj, Chrome& c) {
-  c = Chrome{};
-  c.root = rootObj;
-  lv_obj_t* brand = text(rootObj, t::brand(), t::text(), t::kMargin, t::kHeaderY, 300, LV_TEXT_ALIGN_LEFT);
+  c = Chrome{}; c.root = rootObj;
+  // Cabeçalho idêntico ao da tela Pronto (painel): logo 30 px, marca e estado à direita.
+  lv_obj_t* logo = lv_img_create(rootObj);
+  lv_img_set_src(logo, &chargegrid_logo_64x64);
+  lv_img_set_pivot(logo, 0, 0); lv_img_set_zoom(logo, 120);
+  lv_obj_set_pos(logo, t::kMargin, t::kHeaderY + 3);
+  lv_obj_t* brand = text(rootObj, t::brand(), t::text(), t::kMargin + 34, t::kHeaderY, 240, LV_TEXT_ALIGN_LEFT);
   lv_label_set_text(brand, "ChargeGrid");
-  c.badge = block(rootObj, t::kScreenW - t::kMargin - 150, t::kHeaderY, 150, 36);
-  lv_obj_set_style_bg_color(c.badge, t::amber(), 0);
-  lv_obj_set_style_radius(c.badge, 18, 0);
-  c.badgeText = text(c.badge, t::small(), t::ink(), 0, 7, 150);
-  c.title = text(rootObj, t::title(), t::text(), t::kMargin, t::kTitleY, t::kScreenW - 2 * t::kMargin);
-  c.subtitle = text(rootObj, t::body(), t::muted(), t::kMargin, t::kSubtitleY, t::kScreenW - 2 * t::kMargin);
-  c.notice = text(rootObj, t::small(), t::soft(), t::kMargin, 360, t::kScreenW - 2 * t::kMargin);
-  c.secondary = button(rootObj, t::kMargin, t::kBarY, 230, t::kMinTarget, ButtonStyle::Secondary);
-  c.primary = button(rootObj, t::kMargin + 230 + t::kGap, t::kBarY, t::kScreenW - 2 * t::kMargin - 230 - t::kGap,
-                     t::kMinTarget, ButtonStyle::Primary);
+  lv_obj_t* pill = lv_obj_create(rootObj);
+  plainStyle(pill);
+  lv_obj_set_pos(pill, 450, t::kHeaderY - 2); lv_obj_set_size(pill, 300, 36);
+  lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(pill, 10, 0);
+  lv_obj_t* dot = block(pill, 0, 0, 11, 11);
+  lv_obj_set_style_bg_color(dot, t::green(), 0); lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_t* status = lv_label_create(pill);
+  lv_obj_set_style_text_font(status, t::small(), 0);
+  lv_obj_set_style_text_color(status, t::text(), 0);
+  lv_label_set_text(status, "Recarga ChargeGrid");
+  c.panel = block(rootObj, t::kCardX, t::kCardY, t::kCardW, t::kCardH);
+  lv_obj_set_style_radius(c.panel, 16, 0);
+  lv_obj_set_style_border_width(c.panel, 1, 0);
+  lv_obj_set_style_border_color(c.panel, t::line(), 0);
+  c.step = text(rootObj, t::caption(), t::muted(), t::kFormX, t::kCardY + 14, t::kFormW, LV_TEXT_ALIGN_LEFT);
+  lv_obj_set_style_text_letter_space(c.step, 2, 0);
+  c.badge = block(rootObj, t::kMargin, 112, 120, 28);
+  lv_obj_set_style_bg_color(c.badge, t::control(), 0);
+  lv_obj_set_style_radius(c.badge, 7, 0);
+  c.badgeText = text(c.badge, t::caption(), t::amber(), 0, 5, 120);
+  c.title = text(rootObj, t::title(), t::text(), t::kMargin, t::kTitleY, t::kLeftW, LV_TEXT_ALIGN_LEFT);
+  c.subtitle = text(rootObj, t::body(), t::muted(), t::kMargin, t::kSubtitleY, t::kLeftW - 10, LV_TEXT_ALIGN_LEFT);
+  c.context = text(rootObj, t::small(), t::soft(), t::kMargin, 326, t::kLeftW - 10, LV_TEXT_ALIGN_LEFT);
+  c.notice = text(rootObj, t::small(), t::soft(), t::kMargin, 404, t::kLeftW - 10, LV_TEXT_ALIGN_LEFT);
+  c.secondary = button(rootObj, t::kFormX, t::kBarY, 106, t::kMinTarget, ButtonStyle::Secondary);
+  c.primary = button(rootObj, t::kFormX + 118, t::kBarY, t::kFormW - 118, t::kMinTarget, ButtonStyle::Primary);
 }
 
 void updateChrome(Chrome& c, const kiosk::KioskView& view) {
-  setHidden(c.badge, !view.label[0]);
-  setText(c.badgeText, view.label);
+  // O método continua no contrato/pagamento; a etiqueta não ocupa o topo da UI.
+  setHidden(c.badge, true);
+  setText(c.badgeText, "");
   setText(c.title, view.title);
   setText(c.subtitle, view.subtitle);
+  setText(c.context, view.context);
+  const char* step = "Recarga ChargeGrid";
+  switch (view.screen) {
+    case kiosk::Screen::Welcome: step = "01 / Comece por aqui"; break;
+    case kiosk::Screen::Login: step = "Acesso à sua conta"; break;
+    case kiosk::Screen::Connector: step = "02 / Confira a conexão"; break;
+    case kiosk::Screen::Choose: case kiosk::Screen::Amount: step = "03 / Defina sua recarga"; break;
+    case kiosk::Screen::Power: step = "04 / Potência e velocidade"; break;
+    case kiosk::Screen::PaymentMethod: case kiosk::Screen::Pay: step = "05 / Método de pagamento"; break;
+    case kiosk::Screen::Review: step = "06 / Revise antes de iniciar"; break;
+    case kiosk::Screen::Starting: step = "Preparando sua recarga"; break;
+    case kiosk::Screen::Live: case kiosk::Screen::ConfirmStop: step = "Acompanhe sua recarga"; break;
+    case kiosk::Screen::Receipt: step = "Seu comprovante"; break;
+    default: break;
+  }
+  setText(c.step, step);
   setText(c.notice, view.notice);
+  if (c.flow) {
+    // Título, subtítulo, contexto e aviso empilhados com vãos fixos, centrados no cartão.
+    lv_obj_t* parts[] = {c.title, c.subtitle, c.context, c.notice};
+    const int gaps[] = {0, 14, 22, 14};
+    int heights[4], total = 0;
+    for (int i = 0; i < 4; ++i) {
+      const char* value = lv_label_get_text(parts[i]);
+      heights[i] = 0;
+      if (lv_obj_has_flag(parts[i], LV_OBJ_FLAG_HIDDEN) || !value || !*value) continue;
+      lv_point_t size;
+      lv_txt_get_size(&size, value, lv_obj_get_style_text_font(parts[i], 0), 0,
+                      lv_obj_get_style_text_line_space(parts[i], 0), lv_obj_get_style_width(parts[i], 0),
+                      LV_TEXT_FLAG_NONE);
+      heights[i] = size.y; total += size.y + (total ? gaps[i] : 0);
+    }
+    int y = t::kCardY + (t::kCardH - total) / 2 - 8;
+    if (y < t::kCardY) y = t::kCardY;
+    bool first = true;
+    for (int i = 0; i < 4; ++i) {
+      if (!heights[i]) continue;
+      if (!first) y += gaps[i];
+      lv_obj_set_y(parts[i], y);
+      y += heights[i]; first = false;
+    }
+  }
   const lv_color_t tones[] = {t::soft(), t::amber(), t::green(), t::danger()};
   lv_obj_set_style_text_color(c.notice, tones[static_cast<int>(view.tone) & 3], 0);
   setButton(c.primary, view.primary);
   setButton(c.secondary, view.secondary);
-  // Só um botão: ocupa a barra inteira (alvo maior, centrado).
   if (view.primary.visible && !view.secondary.visible) {
-    lv_obj_set_x(c.primary, t::kMargin); lv_obj_set_width(c.primary, t::kScreenW - 2 * t::kMargin);
+    lv_obj_set_pos(c.primary, t::kFormX, t::kBarY); lv_obj_set_width(c.primary, t::kFormW);
   } else {
-    lv_obj_set_x(c.primary, t::kMargin + 230 + t::kGap);
-    lv_obj_set_width(c.primary, t::kScreenW - 2 * t::kMargin - 230 - t::kGap);
+    lv_obj_set_pos(c.primary, t::kFormX + 118, t::kBarY); lv_obj_set_width(c.primary, t::kFormW - 118);
   }
-  if (view.primary.visible) {
-    lv_obj_t* label = lv_obj_get_child(c.primary, 0);
-    lv_obj_set_width(label, lv_obj_get_style_width(c.primary, LV_PART_MAIN) - 16);
-    setButton(c.primary, view.primary);
+  for (lv_obj_t* btn : {c.primary, c.secondary}) {
+    lv_obj_set_width(lv_obj_get_child(btn, 0), lv_obj_get_style_width(btn, 0) - 16);
+    lv_obj_center(lv_obj_get_child(btn, 0));
   }
   // "Ainda está aí?": criado só quando aparece (memória) e apagado ao sumir.
   if (view.stillThere && !c.modal) {

@@ -22,7 +22,7 @@ def _constant(path, name):
 
 
 def test_package_and_reboot_qa_use_the_firmware_version_from_runtime_h():
-    assert _runtime_version() == "0.8.0"
+    assert _runtime_version() == "0.9.4"
     assert package_panel.FIRMWARE_VERSION == _runtime_version()
     assert _constant(ROOT / "tools/qa_panel_reboot.py", "FIRMWARE_VERSION") == _runtime_version()
 
