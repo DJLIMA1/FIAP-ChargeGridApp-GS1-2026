@@ -133,3 +133,52 @@ def test_kiosk_selects_only_chargers_managed_by_its_central(http, presentation, 
     assert http.get(f'/v1/devices/kiosk/orders/{order_id}', headers=DEVICE).status_code == 404
     assert http.get(f'/v1/devices/kiosk/orders/{order_id}', headers=headers).status_code == 200
     assert http.get('/v1/devices/kiosk/offer', headers={**DEVICE, 'X-Kiosk-Charger-Address': '3'}).status_code == 409
+
+
+def _account_start(http, factory):
+    """Recarga por valor da conta no totem até o START; devolve os parâmetros e a sessão."""
+    from app.models import ChargingSession
+    bench = Bench(http)
+    bench.sync()
+    order = bench.order().json()
+    assert bench.pay(order['id']).status_code == 200
+    session_id, synced = bench.apply_start()
+    start = next(cmd for cmd in synced['commands'] if cmd['type'] == 'START')['parameters']
+    with factory() as db:
+        session = db.get(ChargingSession, uuid.UUID(session_id))
+        return bench, start, session
+
+
+def _finish(bench, session_id):
+    bench.charge_and_stop_locally(session_id, energy_wh=1000)
+    bench.sync(connected=False)
+
+
+@pytest.mark.parametrize('saved', [False, True])
+def test_account_without_battery_history_gets_simulated_battery(http, presentation, logged, factory, saved):
+    if saved:
+        car = {'vehicle': {'preset': 'byd_seal'}, 'preferences': {}}
+        assert http.put('/v1/me/vehicle', json=car).status_code == 200
+    _, start, session = _account_start(http, factory)
+    assert start['soc_source'] == 'simulated' and 15 <= start['soc_percent'] <= 60
+    assert start['battery_kwh'] == (82.5 if saved else 44.9)  # carro salvo; sem carro, o padrão do app
+    assert session.start_soc_percent == Decimal(str(start['soc_percent']))
+
+
+@pytest.mark.parametrize('previous, inherited', [('80.00', True), ('94.99', True), ('95.00', False),
+                                                 ('100.00', False)])
+def test_account_inherits_last_soc_below_95_else_redraws(http, presentation, logged, factory, seed,
+                                                         previous, inherited):
+    from app.models import ChargingSession
+    assert http.put('/v1/me/vehicle', json={'vehicle': {'preset': 'byd_dolphin'}, 'preferences': {}}).status_code == 200
+    bench, _, first = _account_start(http, factory)
+    _finish(bench, str(first.id))
+    with factory.begin() as db:
+        db.get(ChargingSession, first.id).soc_percent = Decimal(previous)
+    _, start, session = _account_start(http, factory)
+    assert start['soc_source'] == 'simulated' and start['battery_kwh'] == 44.9
+    if inherited:
+        assert Decimal(str(start['soc_percent'])) == Decimal(previous)
+    else:
+        assert 15 <= start['soc_percent'] <= 60
+    assert session.status in ('starting', 'charging') and session.end_reason is None
