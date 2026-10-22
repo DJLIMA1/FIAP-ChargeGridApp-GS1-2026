@@ -101,8 +101,8 @@ Mídia
   logo()                                               # marca do cabeçalho
 Shell (usado por app.py)
   app_header(app), bottom_nav(app, entries, active)
-Imagens ficam em ``assets/design/`` (``/design/<nome>``): avatar_joao.jpg, car_byd_dolphin.png,
-car_hatch.svg / car_sedan.svg / car_suv.svg / car_compact.svg (silhuetas por carroceria),
+Imagens ficam em ``assets/design/`` (``/design/<nome>``): avatar_joao.jpg, car_<preset>.png (foto de cada
+modelo, créditos em CREDITS.md), car_hatch.svg (silhueta do carro personalizado),
 totem_goodwe.png, map_villa_lobos.jpg, qr_pix_demo.png, icon_station_pin.svg, nav_*.svg.
 """
 
@@ -126,13 +126,26 @@ ASSET_DIR = '/design/'
 AVATAR_SRC = ASSET_DIR + 'avatar_joao.jpg'
 CAR_SRC = ASSET_DIR + 'car_byd_dolphin.png'
 TOTEM_SRC = ASSET_DIR + 'totem_goodwe.png'
-# Carro do motorista (preset do perfil): foto do BYD Dolphin (a do design) ou silhueta da carroceria
-# para os modelos sem foto própria; carro personalizado = hatch; sem carro/desconhecido = Dolphin.
-CAR_BODY_SRC = {body: f'{ASSET_DIR}car_{body}.svg' for body in ('hatch', 'sedan', 'suv', 'compact')}
-CAR_PHOTOS = {'byd_dolphin': CAR_SRC, 'byd_dolphin_mini': CAR_SRC}
-CAR_BODIES = {'byd_seal': 'sedan', 'byd_yuan_plus': 'suv', 'volvo_ex30': 'suv', 'chevrolet_spark_euv': 'suv',
-              'gwm_ora_03': 'hatch', 'chevrolet_bolt': 'hatch', 'renault_kwid_etech': 'compact',
-              'jac_ej1': 'compact', 'custom': 'hatch'}
+# Carro do motorista (preset do perfil): foto real de cada modelo, mesma vista 3/4 dianteira do Dolphin
+# (1168x702, fundo transparente). Carro personalizado = silhueta neutra (o modelo é desconhecido, então
+# nenhuma foto de outro carro); sem carro/preset desconhecido = Dolphin (o preset padrão).
+CAR_CUSTOM_SRC = ASSET_DIR + 'car_hatch.svg'
+CAR_PHOTOS = {key: f'{ASSET_DIR}car_{key}.png' for key in (
+    'byd_dolphin', 'byd_dolphin_mini', 'byd_seal', 'byd_yuan_plus', 'gwm_ora_03', 'renault_kwid_etech',
+    'volvo_ex30', 'chevrolet_bolt', 'chevrolet_spark_euv', 'jac_ej1')}
+# Fotos do Wikimedia Commons (licenças livres exigem atribuição): modelo, autor, licença.
+# Links e alterações em assets/design/CREDITS.md. A do Dolphin vem do design de referência.
+CAR_PHOTO_CREDITS = (
+    ('BYD Dolphin Mini', 'Alexander-93', 'CC BY-SA 4.0'),
+    ('BYD Seal', 'Ethan Llamas', 'CC BY-SA 4.0'),
+    ('BYD Yuan Plus', 'Hubert Berberich (HubiB)', 'CC BY 4.0'),
+    ('GWM Ora 03', 'KitsuneDP', 'CC0'),
+    ('Renault Kwid E-Tech', 'Autos de Primera', 'CC BY 4.0'),
+    ('Volvo EX30', 'Alexander-93', 'CC BY-SA 4.0'),
+    ('Chevrolet Bolt EV', 'Greg Gjerdingen', 'CC BY 2.0'),
+    ('Chevrolet Spark EUV', 'Autos de Primera', 'CC BY 3.0'),
+    ('JAC E-JS1', 'Matti Blume', 'CC BY-SA 4.0'),
+)
 QR_SRC = ASSET_DIR + 'qr_pix_demo.png'
 STATION_PIN_SRC = ASSET_DIR + 'icon_station_pin.svg'
 WORDMARK_SRC = '/figma/wordmark-dark.svg'
@@ -473,9 +486,9 @@ def car_src(vehicle=None):
     key = vehicle.get('preset') or vehicle.get('key')
     if not key and vehicle.get('usable_battery_kwh') is not None:
         key = 'custom'
-    if key in CAR_PHOTOS:
-        return CAR_PHOTOS[key]
-    return CAR_BODY_SRC[CAR_BODIES[key]] if key in CAR_BODIES else CAR_SRC
+    if key == 'custom':
+        return CAR_CUSTOM_SRC
+    return CAR_PHOTOS.get(key, CAR_SRC)
 
 
 def car_image(width=None, height=None, vehicle=None):

@@ -57,6 +57,23 @@ def _row(title_text, subtitle, icon, on_click, trailing=None, chevron=True):
                         padding=ft.Padding(left=5, right=5, top=7.5, bottom=7.5))
 
 
+def photo_credits(app):
+    """Atribuição das fotos dos carros (licenças CC exigem): linha discreta que abre a lista."""
+    lines = [design.txt(f'{model}: {author}, {terms}', 10.5, 'regular', theme.GRAY_TEXT)
+             for model, author, terms in design.CAR_PHOTO_CREDITS]
+    lines.append(design.txt('Fotos do Wikimedia Commons (commons.wikimedia.org), com fundo removido e recortadas. '
+                            'Licenças em creativecommons.org/licenses.', 10, 'regular', theme.GRAY_TEXT))
+    details = ft.Container(ft.Column(lines, spacing=3), visible=False, data='photo-credits',
+                           padding=ft.Padding(left=56, right=5, top=0, bottom=4))
+
+    def toggle(_):
+        details.visible = not details.visible
+        app.page.update()
+    row = _row('Créditos das imagens', 'Fotos dos carros: Wikimedia Commons', ft.Icons.PHOTO_LIBRARY_OUTLINED,
+               toggle, chevron=False)
+    return [row, details]
+
+
 async def build(app, mode=None, **_):
     demo = getattr(app.api, 'is_demo', False)
     if mode == 'password':
@@ -148,6 +165,7 @@ async def build(app, mode=None, **_):
         # Versão instalada + checagem na hora (o aviso automático roda ao abrir e ao voltar ao app).
         rows.append(_row(f'Versão {version}', 'Verificar atualização', ft.Icons.SYSTEM_UPDATE_OUTLINED,
                          app.action(lambda: app.offer_update(version, delay=0, manual=True))))
+    rows.extend(photo_credits(app))
     notes = []
     if demo:
         notes.append(design.txt('Os dados desta conta reiniciam ao sair', 10,
