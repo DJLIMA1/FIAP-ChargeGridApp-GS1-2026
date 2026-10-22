@@ -146,8 +146,12 @@ def test_receipt_pdf_contains_honest_labels(factory, seed, monkeypatch):
     assert response.headers["content-disposition"].startswith('attachment; filename="chargegrid-recibo-')
     body = response.content
     assert body.startswith(b"%PDF") and b"%%EOF" in body[-64:]
-    for text in (b"Recibo de recarga", b"SIMULADO", b"Documento sem valor fiscal", b"Pre\\347o travado"):
+    for text in (b"Recibo de recarga", b"SIMULADO", b"Documento sem valor fiscal", b"Pre\\347o por kWh",
+                 b"n\\343o muda durante a recarga"):
         assert text in body, text
+    # O motorista nunca vê ajuste por demanda nem tarifa base/do horário no recibo.
+    for text in (b"Ajuste por demanda", b"Sem ajuste por demanda", b"Tarifa base", b"Tarifa do hor"):
+        assert text not in body, text
 
 
 def test_receipt_is_only_for_the_session_owner(factory, seed):

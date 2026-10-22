@@ -6,17 +6,20 @@ encerradas com energia positiva e término dentro do período.
 """
 
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from chargegrid_core import analytics, economics
+from chargegrid_core import rent as rent_rules
 
 from ...errors import fail
-from ...models import ChargingSession, Connector, Station, now
+from ...models import CentralRentRate, ChargingSession, Connector, Device, DeviceClaim, Station, now
 from ..owner.service import EXPORT_LIMIT, _eligible, _owned_sessions
 from ..payments.funding import channel_by_session, payments_by_session
 from ..receipts.registry import extras_for
 
 FEE_READ_ONLY = "A comissão da plataforma é definida em contrato e não pode ser alterada no painel."
+RENT_READ_ONLY = ("Aluguel mensal por central: definido em contrato, rateado pelos dias de vínculo no mês e "
+                  "descontado do repasse.")
 
 
 # ------------------------------------------------------------ configuração
@@ -33,7 +36,9 @@ def snapshot_session(db, session, connector, terms, coupon=None):
     session.platform_fee_percent = station.platform_fee_percent
 
 
-def station_economics(station, notes=True) -> dict:
+def station_economics(station, notes=True, db=None, rates=None, centrals=None) -> dict:
+    """Configuração do posto. Com ``db`` (ou ``rates``/``centrals`` já carregados), também o
+    aluguel mensal por central vigente hoje (``None`` = sem aluguel) e as centrais vinculadas."""
     cost = station.energy_cost_per_kwh
     result = {
         "station_id": str(station.id),
@@ -42,13 +47,77 @@ def station_economics(station, notes=True) -> dict:
         "fee_editable": False,
         "currency": "BRL",
     }
+    if db is not None or rates is not None:
+        rates = rent_rates(db, [station.id]) if rates is None else rates
+        monthly = rent_rules.current_rate(rates, station.id, now())
+        if centrals is None:
+            centrals = linked_centrals_count(db, [station.id]).get(station.id, 0)
+        result.update(central_monthly_rent=analytics.decimal_text(monthly) if monthly is not None else None,
+                      centrals=centrals, rent_editable=False)
     if notes:
         result["notes"] = [
             "Custo do kWh: informe o valor médio pago à distribuidora (R$/kWh). Vale para as próximas "
             "recargas; as anteriores mantêm o custo travado no início.",
             FEE_READ_ONLY,
         ]
+        if result.get("central_monthly_rent") is not None:
+            result["notes"].append(RENT_READ_ONLY)
     return result
+
+
+# --------------------------------------------------------- aluguel das centrais
+
+def rent_rates(db, station_ids) -> list[dict]:
+    """Linhas de ``central_rent_rates`` do padrão e dos postos informados."""
+    rows = db.scalars(select(CentralRentRate).where(or_(
+        CentralRentRate.station_id.is_(None), CentralRentRate.station_id.in_(list(station_ids) or [None])))).all()
+    return [{"station_id": row.station_id, "monthly_amount": row.monthly_amount,
+             "effective_from": row.effective_from} for row in rows]
+
+
+def _central_query(*columns):
+    """Centrais = telas (dispositivo sem tela-mãe) de pontos vinculados por QR a um dono.
+    Revogadas antes do registro de ``revoked_at`` ficam de fora (nunca cobradas)."""
+    return (
+        select(*columns)
+        .select_from(Device)
+        .join(Connector, Connector.id == Device.connector_id)
+        .join(Station, Station.id == Connector.station_id)
+        .join(DeviceClaim, DeviceClaim.connector_id == Connector.id)
+        .where(Device.parent_device_id.is_(None), DeviceClaim.claimed_at.is_not(None), Station.owner_id.is_not(None),
+               or_(Device.revoked.is_(False), Device.revoked_at.is_not(None)))
+    )
+
+
+def linked_centrals_count(db, station_ids) -> dict:
+    rows = db.execute(_central_query(Station.id).where(Station.id.in_(list(station_ids) or [None]),
+                                                       Device.revoked.is_(False))).scalars().all()
+    counts: dict = {}
+    for station_id in rows:
+        counts[station_id] = counts.get(station_id, 0) + 1
+    return counts
+
+
+def central_rent(db, scope, window, moment=None) -> dict:
+    """``chargegrid_core.rent.accrual`` das centrais do dono (ou do posto) na janela."""
+    moment = moment or now()
+    station_ids = db.scalars(scope.stations(select(Station.id))).all()
+    rates = rent_rates(db, station_ids)
+    if not rates or not station_ids:
+        return rent_rules.accrual([], [], window.start, window.end, moment)
+    records = db.execute(scope.stations(_central_query(
+        Device.id, Device.created_at, Device.revoked_at, DeviceClaim.claimed_at,
+        Station.id.label("station_id"), Station.name.label("station_name"), Connector.public_code,
+    ).where(DeviceClaim.claimed_at < window.end,
+            or_(Device.revoked_at.is_(None), Device.revoked_at > window.start),
+            or_(Device.created_at.is_(None), Device.created_at < window.end)))).mappings().all()
+    centrals = [{
+        "device_id": record["id"], "station_id": record["station_id"], "station_name": record["station_name"],
+        "central": record["public_code"],
+        "linked_at": max(filter(None, (record["claimed_at"], record["created_at"]))),
+        "unlinked_at": record["revoked_at"],
+    } for record in records]
+    return rent_rules.accrual(centrals, rates, window.start, window.end, moment)
 
 
 def update_station_economics(station, body) -> None:
@@ -107,13 +176,17 @@ def margin_rows(db, scope, window) -> list[dict]:
 
 def stations_config(db, scope) -> list[dict]:
     stations = db.scalars(scope.stations(select(Station)).order_by(Station.name, Station.id)).all()
-    return [{**station_economics(station, notes=False), "station_name": station.name} for station in stations]
+    ids = [station.id for station in stations]
+    rates = rent_rates(db, ids) if ids else []
+    counts = linked_centrals_count(db, ids) if ids else {}
+    return [{**station_economics(station, notes=False, rates=rates, centrals=counts.get(station.id, 0)),
+             "station_name": station.name} for station in stations]
 
 
 def margin_report(db, scope, window, rows=None) -> dict:
     """Relatório completo (``Decimal``): totais, efeitos, quebra por posto, linhas e método."""
     rows = margin_rows(db, scope, window) if rows is None else rows
-    report = economics.aggregate(rows)
+    report = economics.aggregate(rows, rent=central_rent(db, scope, window))
     report.update(
         schema_version=economics.SCHEMA_VERSION,
         period={"from": window.start.isoformat(), "to": window.end.isoformat(),

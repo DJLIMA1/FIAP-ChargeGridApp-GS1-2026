@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import JSONResponse, Response
 
 from chargegrid_core import analytics, economics
+from chargegrid_core import rent as rent_rules
 
 from ...database import db_session
 from ...models import now
@@ -25,7 +26,7 @@ NO_STORE = {"Cache-Control": "no-store"}
 
 @router.get("/stations/{station_id}/economics")
 def get_economics(station_id: UUID, user=Depends(current_user), db=Depends(db_session)):
-    return JSONResponse(service.station_economics(owned(db, user, station_id)), headers=NO_STORE)
+    return JSONResponse(service.station_economics(owned(db, user, station_id), db=db), headers=NO_STORE)
 
 
 @router.put("/stations/{station_id}/economics")
@@ -33,7 +34,7 @@ def put_economics(station_id: UUID, body: dict = Body(...), user=Depends(current
     station = owned(db, user, station_id)
     service.update_station_economics(station, body)
     db.flush()
-    return JSONResponse(service.station_economics(station), headers=NO_STORE)
+    return JSONResponse(service.station_economics(station, db=db), headers=NO_STORE)
 
 
 @router.get("/owner/margin")
@@ -49,6 +50,21 @@ def margin(
     report = service.margin_report(db, scope_for(db, user, station_id), window_for(start, end))
     report.update(items=report["items"][offset:offset + limit], limit=limit, offset=offset)
     return JSONResponse(economics.serialize(report), headers=NO_STORE)
+
+
+@router.get("/owner/export/central-rent.csv")
+def central_rent_export(
+    start: datetime | None = Query(None, alias="from"),
+    end: datetime | None = Query(None, alias="to"),
+    station_id: UUID | None = None,
+    user=Depends(current_user),
+    db=Depends(db_session),
+):
+    """Aluguel das centrais do período: uma linha por central, mês e valor mensal."""
+    rent = service.central_rent(db, scope_for(db, user, station_id), window_for(start, end))
+    stamp = now().astimezone(analytics.REPORT_TZ).strftime("%Y%m%d-%H%M")
+    headers = {**NO_STORE, "Content-Disposition": f'attachment; filename="chargegrid-aluguel-centrais-{stamp}.csv"'}
+    return Response(rent_rules.rent_csv(rent["lines"]), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @router.get("/owner/export/margin.{fmt}")

@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     FetchedValue,
     ForeignKey,
@@ -195,9 +196,62 @@ class Device(Base):
     # própria (sessões/comandos/estado do ponto) sem chave utilizável, ligada à tela; a tela
     # sincroniza por ele com ``charger_address`` no corpo do sync (migração d3f8a1c6e2b7).
     parent_device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id"), index=True)
+    # Aluguel das centrais (migração c4f1a8e6d2b9): quando a linha nasceu (NULL = antes da migração;
+    # vale o vínculo do QR) e quando foi revogada (gatilho ``device_revoked_at``: revogar, restaurar
+    # de fábrica ou aposentar carregadores sem tocar nesses fluxos).
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=now,
+                                                        server_default=text("now()"))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         Index("one_active_device", "connector_id", unique=True, postgresql_where=text("NOT revoked")),
         CheckConstraint("parent_device_id IS NULL OR parent_device_id <> id", name="device_parent_not_self"),
+    )
+
+
+# Mesmo gatilho da migração c4f1a8e6d2b9: a primeira revogação grava ``revoked_at`` (fim do
+# aluguel da central), qualquer que seja o caminho que revogou.
+DEVICE_REVOKED_AT_TRIGGER = (
+    """
+CREATE OR REPLACE FUNCTION device_revoked_at() RETURNS trigger AS $$
+BEGIN
+    IF NEW.revoked AND NEW.revoked_at IS NULL AND (TG_OP = 'INSERT' OR NOT OLD.revoked) THEN
+        NEW.revoked_at := now();
+    END IF;
+    RETURN NEW;
+END
+$$ LANGUAGE plpgsql
+""",
+    """
+CREATE TRIGGER device_revoked_at BEFORE INSERT OR UPDATE OF revoked ON devices
+FOR EACH ROW EXECUTE FUNCTION device_revoked_at()
+""",
+)
+for _statement in DEVICE_REVOKED_AT_TRIGGER:
+    event.listen(Device.__table__, "after_create", DDL(_statement).execute_if(dialect="postgresql"))
+
+
+class CentralRentRate(Base):
+    """Aluguel mensal por central (contrato; ``chargegrid_core.rent``), com vigência por data local.
+
+    ``station_id`` NULL = padrão da plataforma; numa linha de posto, ``monthly_amount`` NULL =
+    volta ao padrão a partir de ``effective_from``. Gravado só pela administração
+    (``tools/set_central_rent.py``); o dono só lê.
+    """
+
+    __tablename__ = "central_rent_rates"
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    station_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("stations.id"), index=True)
+    monthly_amount: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    effective_from: Mapped[datetime] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, server_default=text("now()"))
+    __table_args__ = (
+        CheckConstraint("monthly_amount IS NULL OR monthly_amount BETWEEN 0 AND 10000",
+                        name="central_rent_amount_range"),
+        CheckConstraint("station_id IS NOT NULL OR monthly_amount IS NOT NULL", name="central_rent_default_amount"),
+        Index("uq_central_rent_default", "effective_from", unique=True, postgresql_where=text("station_id IS NULL")),
+        Index("uq_central_rent_station", "station_id", "effective_from", unique=True,
+              postgresql_where=text("station_id IS NOT NULL")),
     )
 
 

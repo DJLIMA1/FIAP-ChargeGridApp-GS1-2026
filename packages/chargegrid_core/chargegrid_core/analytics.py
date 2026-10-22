@@ -110,6 +110,12 @@ def to_decimal(value) -> Decimal:
     return number if number.is_finite() else Decimal(0)
 
 
+def charged_cents(cost_estimate) -> Decimal:
+    """Valor cobrado de uma sessão ao centavo (meio para cima), como o ``round(cost_estimate, 2)``
+    da API: as somas da demo fecham com as da API e com a margem."""
+    return to_decimal(cost_estimate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def decimal_text(value, places: str = "0.01") -> str | None:
     """Decimal → string com casas fixas; ``None`` é preservado (sem dados)."""
     if value is None:
@@ -237,7 +243,7 @@ def summarize_sessions(sessions: Iterable[Mapping], start: datetime, end: dateti
         status = session.get("status")
         ended = parse_time(session.get("ended_at"))
         if is_eligible(session, start, end):
-            totals["revenue"] += to_decimal(session.get("cost_estimate"))
+            totals["revenue"] += charged_cents(session.get("cost_estimate"))
             totals["energy_wh"] += to_decimal(session.get("energy_wh"))
             totals["sessions"] += 1
         if ended is not None and start <= ended < end:
@@ -337,7 +343,8 @@ def series_payload(rows: Iterable, start: datetime, end: datetime, granularity: 
 def series_rows(sessions: Iterable[Mapping], start: datetime, end: datetime, granularity: str,
                 tz=REPORT_TZ) -> list[tuple]:
     """Agrega registros elegíveis em tuplas aceitas por :func:`series_payload`."""
-    return [(bucket_key(parse_time(s["ended_at"]), granularity, tz), s.get("cost_estimate"), s.get("energy_wh"), 1)
+    return [(bucket_key(parse_time(s["ended_at"]), granularity, tz), charged_cents(s.get("cost_estimate")),
+             s.get("energy_wh"), 1)
             for s in sessions if is_eligible(s, start, end)]
 
 
@@ -401,7 +408,7 @@ def ranking_rows(sessions: Iterable[Mapping], points: Iterable[Mapping], start: 
         if row is None:
             continue
         if is_eligible(session, start, end):
-            row["revenue"] += to_decimal(session.get("cost_estimate"))
+            row["revenue"] += charged_cents(session.get("cost_estimate"))
             row["energy_wh"] += to_decimal(session.get("energy_wh"))
             row["sessions"] += 1
         row["busy_minutes"] += busy_minutes(session, start, end, now)

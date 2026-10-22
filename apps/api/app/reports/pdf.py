@@ -192,6 +192,33 @@ def _power_chart(kit, samples, width):
     return drawing
 
 
+DRIVER_PRICE_KEYS = ("power_tier", "locked_price", "coupon")
+
+
+def _driver_price(price: dict) -> tuple[list, list]:
+    """Preço do recibo do MOTORISTA: velocidade, preço travado e cupom. Ajuste por demanda e tarifa
+    base/do horário não aparecem para o motorista (o dono vê tudo nas exportações dele)."""
+    rows = []
+    for line in price["lines"]:
+        if line.get("key") not in DRIVER_PRICE_KEYS:
+            continue
+        unit = line.get("unit")
+        if line["key"] == "locked_price":
+            rows.append(("Preço por kWh", per_kwh(line["value"])))
+        elif unit == "%":
+            rows.append((line["label"], f"{line['value']}%"))
+        else:
+            rows.append((line["label"], str(line["value"])))
+    moment = "na reserva" if price.get("locked_by") == "reservation" else "no início da recarga"
+    explanation = [f"Preço de {per_kwh(price.get('price_per_kwh'))} travado {moment} "
+                   f"({when(price.get('locked_at'), '%d/%m %H:%M')}); não muda durante a recarga."]
+    coupon = price.get("coupon") or {}
+    if coupon.get("discount_percent"):
+        label = f"Cupom {coupon['code']}" if coupon.get("code") else "Cupom"
+        explanation.append(f"{label}: −{coupon['discount_percent']}% sobre a energia.")
+    return rows, explanation
+
+
 def receipt_pdf(receipt: dict) -> bytes:
     kit = _Kit()
     labels, times, price = receipt["labels"], receipt["times"], receipt["price"]
@@ -210,20 +237,9 @@ def receipt_pdf(receipt: dict) -> bytes:
         ("Situação", times.get("status_label") or "—"),
         ("Motivo de término", times.get("end_reason_label") or "—"),
     ])]
-    rows = []
-    for line in price["lines"]:
-        unit = line.get("unit")
-        if unit == "R$/kWh":
-            value = per_kwh(line["value"])
-        elif unit == "×":
-            value = _number(line["value"]).rstrip("0").rstrip(",") + "×"
-        elif unit == "%":
-            value = f"{line['value']}%"
-        else:
-            value = str(line["value"])
-        rows.append((line["label"], value + (f" — {line['detail']}" if line.get("detail") else "")))
+    rows, explanation = _driver_price(price)
     story += [kit.p("Preço aceito", "h2"), kit.pairs(rows)]
-    story += [kit.p(text, "small") for text in price["explanation"]]
+    story += [kit.p(text, "small") for text in explanation]
     story += [kit.p("Energia", "h2"), kit.pairs([
         ("Energia", _kwh(energy["kwh"])), ("Origem", energy["source_label"]), ("Confirmação", energy["note"]),
         ("Bateria", f"{_number(energy['soc_start'], 0)}% → {_number(energy['soc_end'], 0)}%"
@@ -317,12 +333,19 @@ def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
                ["= Receita da energia", money(totals["revenue"])]]
     if totals.get("overstay_revenue") is not None:
         cascade.append(["+ Taxa de permanência", money(totals["overstay_revenue"])])
-        cascade.append(["= Receita cobrada", money(totals["revenue_total"])])
+    adjustment = Decimal(str(totals.get("payment_adjustment") or 0))
+    if adjustment:
+        cascade.append(["± Ajuste do pagamento (perdoado/não cobrado)", money(adjustment)])
+    cascade.append(["= Receita cobrada", money(totals["revenue_total"])])
     cascade.append(["- Comissão da plataforma", money(totals["platform_fee"])])
     if totals.get("provider_fee") is not None:
         cascade.append(["- Tarifa do provedor de pagamento", money(totals["provider_fee"])])
-    cascade += [["= Repasse ao dono", money(totals["owner_net"])],
-                ["- Custo estimado da energia", money(totals["energy_cost"])]]
+    rent = totals.get("central_rent")
+    cascade.append(["= Repasse das recargas", money(totals["owner_net"])])
+    if rent is not None:
+        cascade += [[f"- Aluguel das centrais ({totals.get('centrals') or 0})", money(rent)],
+                    ["= Repasse líquido (descontado da folha)", money(totals["owner_net_after_rent"])]]
+    cascade.append(["- Custo estimado da energia", money(totals["energy_cost"])])
     if totals["margin"] is not None:
         margin = money(totals["margin"]) + (f" ({_number(totals['margin_percent'], 1)}% da receita)"
                                             if totals.get("margin_percent") is not None else "")
@@ -330,7 +353,14 @@ def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
         coverage = totals["coverage"]
         margin = (f"não calculada: {coverage['missing_energy_cost']} de {coverage['sessions']} sessões sem custo "
                   f"da energia (margem das cobertas: {money(totals['margin_covered'])})")
-    cascade.append(["= Margem estimada", margin])
+    if rent is None:
+        cascade.append(["= Margem estimada", margin])
+    else:
+        result = money(totals["result"]) + (f" ({_number(totals['result_percent'], 1)}% da receita)"
+                                            if totals.get("result_percent") is not None else "") \
+            if totals.get("result") is not None else "não calculado (custo da energia não informado)"
+        cascade.append(["Margem de contribuição (antes do aluguel)", margin])
+        cascade.append(["= Resultado estimado (após o aluguel)", result])
     story.append(kit.grid(["Linha", "Valor"], cascade, widths=[80 * kit.mm, None], bold_last=True))
     dynamic, coupons = report["dynamic_pricing"], report["coupons"]
     effects = [f"Preço dinâmico (demanda): {money(dynamic['demand_effect'])} em "
@@ -338,15 +368,32 @@ def margin_pdf(report: dict, station_name: str | None = None) -> bytes:
                + (f", multiplicador médio {_number(dynamic['average_multiplier'])}×"
                   if dynamic.get("average_multiplier") else "") + "."]
     if dynamic.get("schedule_effect") is not None:
-        effects.append(f"Tarifa por horário: {money(dynamic['schedule_effect'])} acima da base dos conectores.")
+        effects.append(f"Tarifa por horário: {money(dynamic['schedule_effect'])} em relação à base dos conectores.")
+    if dynamic.get("speed_effect") is not None:
+        effects.append(f"Velocidade escolhida: {money(dynamic['speed_effect'])} em relação à base dos conectores.")
     effects.append(f"Cupons: {money(coupons['discount'])} de desconto em {coupons['sessions']} recarga(s).")
     story += [kit.p("Efeito do preço dinâmico e dos cupons", "h2"), *[kit.p(text) for text in effects]]
+    rent_block = report.get("central_rent")
+    if rent_block:
+        story += [kit.p("Aluguel das centrais", "h2"),
+                  kit.p("Valor mensal por central rateado pelos dias de vínculo no mês (horário de São Paulo); "
+                        "descontado do repasse.", "small"),
+                  kit.grid(["Posto", "Central", "Mês", "Dias", "Mensal", "Valor"],
+                           [[line["station_name"], line["central"] or "—", line["month"],
+                             f"{line['days']}/{line['days_in_month']}", money(line["monthly_amount"]),
+                             money(line["amount"])] for line in rent_block["lines"]]
+                           + [["Total", "", "", "", "", money(rent_block["total"])]],
+                           bold_last=True)]
     if len(report["by_station"]) > 1 or not station_name:
-        story += [kit.p("Por posto", "h2"), kit.grid(
-            ["Posto", "Recargas", "kWh", "Receita cobrada", "Comissão", "Repasse", "Custo energia", "Margem"],
-            [[item["station_name"], str(item["sessions"]), _number(item["energy_kwh"], 3),
-              money(item["revenue_total"]), money(item["platform_fee"]), money(item["owner_net"]),
-              money(item["energy_cost"]), money(item["margin"])] for item in report["by_station"]])]
+        header = ["Posto", "Recargas", "kWh", "Receita cobrada", "Comissão", "Repasse", "Custo energia", "Margem"]
+        if rent_block:
+            header += ["Aluguel", "Resultado"]
+        story += [kit.p("Por posto", "h2"), kit.grid(header, [
+            [item["station_name"], str(item["sessions"]), _number(item["energy_kwh"], 3),
+             money(item["revenue_total"]), money(item["platform_fee"]), money(item["owner_net"]),
+             money(item["energy_cost"]), money(item["margin"])]
+            + ([money(item.get("central_rent")), money(item.get("result"))] if rent_block else [])
+            for item in report["by_station"]])]
     items = report["items"]
     story.append(kit.p("Recargas", "h2"))
     if len(items) > MAX_DETAIL_ROWS:
@@ -372,7 +419,8 @@ def history_pdf(report: dict) -> bytes:
     kit = _Kit()
     totals = report["totals"]
     title = "Histórico de recargas"
-    notes = ["Valores estimados pela energia registrada; sem pagamento confirmado."]
+    notes = ["Valor de cada recarga igual ao do recibo: energia e taxa de permanência ou, com pagamento "
+             "confirmado, o valor cobrado."]
     if totals["sources"].get("simulated"):
         notes.insert(0, "SIMULADO: há recargas com energia calculada pelo simulador do equipamento, não por medidor.")
     story = [kit.p(title, "title"), kit.p(_period(report["period"]), "small"), kit.Spacer(1, 4), kit.banner(notes),

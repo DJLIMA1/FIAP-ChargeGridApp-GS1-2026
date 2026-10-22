@@ -116,8 +116,24 @@ def line_chart(values, labels, *, color, fill, plot_height, dot_color=None, dots
     return ft.Row([ft.Semantics(content=canvas, label=summary, expand=True)], spacing=0)
 
 
+MONTH_CURRENT, MONTH_PREVIOUS = -1, -2  # "dias" especiais do resultado: a folha do mês
+
+
+def _month_window(code):
+    """Mês civil local: o atual (até o fim do mês; o aluguel e as recargas só contam o que já houve)
+    ou o anterior inteiro."""
+    first = datetime.now(analytics.REPORT_TZ).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if code == MONTH_PREVIOUS:
+        start, end = (first - timedelta(days=1)).replace(day=1), first
+    else:
+        start, end = first, (first + timedelta(days=32)).replace(day=1)
+    return {'from': start.astimezone(timezone.utc).isoformat(), 'to': end.astimezone(timezone.utc).isoformat()}
+
+
 def _window(days, shift=0):
     """``days`` dias locais completos terminando hoje (baldes alinhados à meia-noite do relatório)."""
+    if days in (MONTH_CURRENT, MONTH_PREVIOUS):
+        return _month_window(days)
     midnight = datetime.now(analytics.REPORT_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     end = midnight + timedelta(days=1 - shift)
     return {'from': (end - timedelta(days=days)).astimezone(timezone.utc).isoformat(),
@@ -135,14 +151,6 @@ async def _series(app, days):
 def _row_card(content, on_click=None):
     return card_box(content, padding=ft.Padding(left=15, right=12, top=4, bottom=0), radius=12, on_click=on_click,
                     height=39.5, alignment=ft.Alignment(-1, 0))
-
-
-def _chat_button(app):
-    return ft.Container(ft.Row([ft.Image(src='/design/nav_chat.svg', width=20, height=20, color=theme.BTN_PRIMARY_FG, exclude_from_semantics=True),
-                                txt('Fale com o ChatBot', 15.7, 'regular', theme.BTN_PRIMARY_FG)],
-                               spacing=12, alignment=ft.MainAxisAlignment.CENTER),
-                        padding=ft.Padding(left=0, right=22, top=0, bottom=0),
-                        bgcolor=theme.BTN_PRIMARY, border_radius=12, height=38, on_click=app.link('chat'), ink=True)
 
 
 def _stat(caption, value, *, align=ft.CrossAxisAlignment.START, size=22.6):
@@ -191,7 +199,6 @@ async def dashboard(app, *, chart=True):
         body.append(ft.Container(height=31.5))
     else:
         body.append(ft.Container(height=36))
-    body.append(_chat_button(app))
     return body
 
 
@@ -244,7 +251,6 @@ async def energy_page(app, *, days=7):
         line_chart(values, labels, color=BLUE, fill=BLUE_FILL, plot_height=183, dots=(0, 2, 4, 6)),
         ft.Container(height=32),
         await _forecast_slot(app),
-        _chat_button(app),
     ]
     back = ft.Container(ft.Icon(ft.Icons.KEYBOARD_ARROW_LEFT, size=34, color=theme.TEXT_COLOR), width=28, height=34,
                         on_click=app.link('history', manage=True), tooltip='Voltar', alignment=ft.Alignment(-1, 0),
@@ -352,7 +358,11 @@ async def forecast_page(app, *, station=None):
 # ------------------------------------------------- resultado do período (margem)
 RESULT_TITLE = 'Resultado do período'
 NOT_PROFIT = 'Receita bruta não é lucro.'
-ECONOMICS_PERIODS = PERIODS
+ECONOMICS_PERIODS = PERIODS + ((MONTH_CURRENT, 'Mês atual'), (MONTH_PREVIOUS, 'Mês anterior'))
+
+
+def period_label(days):
+    return next((text for value, text in ECONOMICS_PERIODS if value == days), f'Últimos {days} dias')
 
 
 async def _margin(app, params):
@@ -381,14 +391,47 @@ def _cascade_row(label, value, *, strong=False, color=None):
                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
+def _nonzero(value):
+    try:
+        return value not in (None, '') and Decimal(str(value)) != 0
+    except ArithmeticError:
+        return False
+
+
+def _signed(value):
+    number = Decimal(str(value))
+    return ('+ ' if number > 0 else '− ') + _brl(abs(number))
+
+
 def cascade(report, *, detailed=False):
-    """Receita bruta → comissão → (tarifa do pagamento) → repasse → custo da energia → margem."""
+    """(Receita bruta → cupons → permanência → ajuste →) receita cobrada → comissão → (tarifa do
+    pagamento) → repasse → (aluguel das centrais → repasse líquido) → custo da energia → margem/resultado.
+
+    "Receita bruta" é sempre a de antes do cupom (como no painel e no PDF); o valor cobrado é a
+    "Receita cobrada"."""
     totals = report.get('totals') or {}
-    rows = [_cascade_row('Receita bruta', _brl(totals.get('revenue_total'))),
-            _cascade_row(_fee_label(report), '− ' + _brl(totals.get('platform_fee')))]
+    rows = []
+    if detailed:
+        coupons = report.get('coupons') or {}
+        rows.append(_cascade_row('Receita bruta', _brl(totals.get('gross'))))
+        if _nonzero(totals.get('discount')):
+            label = f"Cupons ({coupons['sessions']} recargas)" if coupons.get('sessions') else 'Cupons'
+            rows.append(_cascade_row(label, '− ' + _brl(totals.get('discount'))))
+        if totals.get('overstay_revenue') is not None:
+            rows.append(_cascade_row('Taxa de permanência', '+ ' + _brl(totals['overstay_revenue'])))
+        if _nonzero(totals.get('payment_adjustment')):
+            rows.append(_cascade_row('Ajuste do pagamento', _signed(totals['payment_adjustment'])))
+    rows += [_cascade_row('Receita cobrada', _brl(totals.get('revenue_total'))),
+             _cascade_row(_fee_label(report), '− ' + _brl(totals.get('platform_fee')))]
     if totals.get('provider_fee') is not None:
         rows.append(_cascade_row('Tarifa do pagamento', '− ' + _brl(totals['provider_fee'])))
     rows.append(_cascade_row('Repasse ao dono', _brl(totals.get('owner_net')), strong=True))
+    rent = totals.get('central_rent')
+    if rent is not None:
+        count = int(totals.get('centrals') or 0)
+        rows.append(_cascade_row(f"Aluguel das centrais ({count} {'central' if count == 1 else 'centrais'})",
+                                 '− ' + _brl(rent)))
+        rows.append(_cascade_row('Repasse líquido', _brl(totals.get('owner_net_after_rent')), strong=True))
     energy_cost = totals.get('energy_cost')
     coverage = totals.get('coverage') or {}
     missing = int(coverage.get('missing_energy_cost') or 0)
@@ -398,23 +441,25 @@ def cascade(report, *, detailed=False):
         cost = '− ' + _brl(energy_cost) + ('*' if missing else '')
     rows.append(_cascade_row('Custo da energia', cost))
     margin = totals.get('margin')
+    final = margin if rent is None else totals.get('result')
     color = None
-    if margin is not None:
-        color = GREEN if Decimal(str(margin)) >= 0 else theme.RED
-    rows.append(_cascade_row('Margem estimada', _brl(margin) if margin is not None else '—', strong=True, color=color))
+    if final is not None:
+        color = GREEN if Decimal(str(final)) >= 0 else theme.RED
+    label = 'Margem estimada' if rent is None else 'Resultado estimado'
+    rows.append(_cascade_row(label, _brl(final) if final is not None else '—', strong=True, color=color))
+    if rent is not None and margin is not None:
+        rows.append(txt(f'Margem de contribuição antes do aluguel: {_brl(margin)}', 10, 'regular', theme.GRAY_TEXT))
     if detailed:
-        coupons = report.get('coupons') or {}
         dynamic = report.get('dynamic_pricing') or {}
-        if coupons.get('sessions'):
-            rows.append(_cascade_row(f"Cupons ({coupons['sessions']} recargas)", '− ' + _brl(coupons.get('discount'))))
         if dynamic.get('sessions_with_increase'):
             rows.append(_cascade_row(f"Preço dinâmico ({dynamic['sessions_with_increase']} recargas)",
                                      '+ ' + _brl(dynamic.get('demand_effect'))))
     if missing:
         rows.append(txt(f"* {missing} de {coverage.get('sessions')} recargas sem custo do kWh: margem total não "
                         'calculada. Informe o custo do kWh do posto.', 10, 'regular', theme.WARNING))
-    rows.append(txt(NOT_PROFIT + ' Margem = repasse − custo estimado da energia (sem custos fixos).', 10,
-                    'regular', theme.GRAY_TEXT))
+    rule = (' Margem = repasse − custo estimado da energia (sem custos fixos).' if rent is None else
+            ' Resultado = repasse líquido (descontado o aluguel das centrais) − custo estimado da energia.')
+    rows.append(txt(NOT_PROFIT + rule, 10, 'regular', theme.GRAY_TEXT))
     return rows
 
 
@@ -424,7 +469,7 @@ def result_card(app, report, *, days=7, on_click=None):
     head = [txt(RESULT_TITLE, 11.6, 'bold', expand=True)]
     if on_click:
         head.append(ft.Icon(ft.Icons.CHEVRON_RIGHT, size=22, color=theme.GRAY_TEXT))
-    caption = f"Últimos {days} dias · {sessions} {'recarga' if sessions == 1 else 'recargas'}"
+    caption = f"{period_label(days)} · {sessions} {'recarga' if sessions == 1 else 'recargas'}"
     return card_box(ft.Column([ft.Row(head, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                txt(caption, 9.7, 'regular', theme.GRAY_TEXT), ft.Container(height=4),
                                *cascade(report, detailed=on_click is None)], spacing=8),
@@ -440,6 +485,12 @@ async def result_section(app, days=7):
     except Exception:  # API antiga, sem rede ou dados incompletos: o dashboard segue sem o cartão
         return []
     return [card, ft.Container(height=35.5)]
+
+
+def _month_text(month):
+    """``'2026-10'`` -> ``'10/2026'``."""
+    year, _, number = str(month or '').partition('-')
+    return f'{number}/{year}' if number else str(month or '')
 
 
 def cost_text(value):
@@ -476,11 +527,19 @@ def station_cost_editor(app, station, days):
 
     fee = station.get('platform_fee_percent')
     fee_text = (f"{cost_text(fee).replace(',00', '')}%" if fee else 'padrão do contrato')
+    rent = station.get('central_monthly_rent')
+    rent_line = []
+    if rent is not None:
+        count = int(station.get('centrals') or 0)
+        rent_line = [txt(f"Aluguel por central: {_brl(rent)}/mês · {count} {'central' if count == 1 else 'centrais'} · "
+                         'definido em contrato, rateado por dia e descontado do repasse (só leitura).', 10.5,
+                         'regular', theme.GRAY_TEXT)]
     return card_box(ft.Column([
         txt(station.get('station_name') or 'Posto', 13.5, 'semibold'),
         labeled('Custo do kWh pago à distribuidora', field),
         txt(f'Comissão da plataforma: {fee_text} · definida em contrato (só leitura).', 10.5, 'regular',
             theme.GRAY_TEXT),
+        *rent_line,
         primary_button('Salvar custo', app.action(save), height=42, size=13),
     ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
         padding=ft.Padding(left=16, right=16, top=16, bottom=16), radius=16)
@@ -488,10 +547,10 @@ def station_cost_editor(app, station, days):
 
 async def economics_page(app, *, days=7):
     """Subpágina ``history?manage=1&page=economics``: resultado, custo do kWh por posto e exportação."""
-    days = days if days in (7, 14, 30) else 7
+    days = days if days in {value for value, _ in ECONOMICS_PERIODS} else 7
     params = _window(days)
     report = await _margin(app, {**params, 'limit': 1})
-    label = next(text for value, text in ECONOMICS_PERIODS if value == days)
+    label = period_label(days)
     selector = ft.PopupMenuButton(
         content=card_box(ft.Row([txt(label, 12.5, 'bold'), ft.Icon(ft.Icons.CALENDAR_TODAY_OUTLINED, size=19,
                                                                   color=theme.TEXT_COLOR)],
@@ -520,6 +579,17 @@ async def economics_page(app, *, days=7):
     controls = [ft.Container(height=24), selector, ft.Container(height=24), result_card(app, report, days=days)]
     if warnings:
         controls += [ft.Container(height=14), ft.Column(warnings, spacing=4)]
+    rent = report.get('central_rent') or {}
+    if rent.get('lines'):
+        lines = [_cascade_row(f"{line.get('station_name')} · {line.get('central') or 'central'} · "
+                              f"{_month_text(line.get('month'))} · {line.get('days')}/{line.get('days_in_month')} dias",
+                              _brl(line.get('amount'))) for line in rent['lines']]
+        controls += [ft.Container(height=30), txt('Aluguel das centrais', 15, 'bold'), ft.Container(height=12),
+                     card_box(ft.Column([*lines, _cascade_row('Total', _brl(rent.get('total')), strong=True),
+                                         txt('Valor mensal por central rateado pelos dias de vínculo no mês; '
+                                             'descontado do repasse.', 10, 'regular', theme.GRAY_TEXT)], spacing=8),
+                              padding=ft.Padding(left=16.5, right=16.5, top=16, bottom=16), radius=16,
+                              data='central-rent')]
     controls += [ft.Container(height=30), txt('Custo da energia', 15, 'bold'), ft.Container(height=12)]
     controls += [ft.Column(stations, spacing=14)] if stations else [
         txt('Cadastre um posto para informar o custo do kWh.', 11, 'regular', theme.GRAY_TEXT)]

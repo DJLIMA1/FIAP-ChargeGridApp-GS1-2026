@@ -20,10 +20,17 @@ Por sessão, em centavos (``ROUND_HALF_UP``):
 * ``provider_fee``: tarifa do provedor de pagamento (frente A); ``None`` sem pagamento;
 * ``owner_net`` (repasse) = ``revenue_total`` − ``platform_fee`` − ``provider_fee``;
 * ``energy_cost`` = kWh × custo do kWh informado pelo dono; ``None`` se não informado;
-* ``margin`` (margem de contribuição estimada) = ``owner_net`` − ``energy_cost``.
+* ``margin`` (margem de contribuição estimada) = ``owner_net`` − ``energy_cost``;
+* ``payment_adjustment`` = ``revenue_total`` − ``revenue`` − ``overstay_revenue``: diferença do
+  valor capturado no pagamento (perdoado acima do teto, abaixo do mínimo, não cobrado) — fecha
+  a cascata receita bruta → receita cobrada;
+* ``schedule_effect``/``speed_effect``: diferença da base travada para a tarifa base do conector,
+  atribuída ao horário (base do horário) ou à velocidade escolhida (base do conector).
 
 Custo ausente nunca vira zero: a margem fica ``None`` e a cobertura é declarada. A margem
-não inclui custos fixos (equipamento, aluguel, manutenção, tarifa de demanda em R$/kW).
+não inclui custos fixos (equipamento, manutenção, tarifa de demanda em R$/kW). O aluguel das
+centrais (``chargegrid_core.rent``) é descontado nos totais: ``owner_net_after_rent`` (folha) e
+``result`` (margem − aluguel); as linhas por sessão não mudam.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from . import rent as rent_rules
 from .analytics import (
     PAYMENT_EXPORT_COLUMNS,
     csv_cell,
@@ -47,6 +55,7 @@ MAX_ENERGY_COST = Decimal(100)
 MONEY_FIELDS = (
     "list_value", "schedule_effect", "demand_effect", "gross", "discount", "revenue", "overstay_revenue",
     "revenue_total", "platform_fee", "provider_fee", "owner_net", "energy_cost", "margin",
+    "payment_adjustment", "speed_effect",
 )
 COST_BASIS_LABELS = {
     "snapshot": "custo travado no início da recarga",
@@ -59,9 +68,11 @@ METHODOLOGY = (
     "Comissão sobre o valor cobrado depois do cupom, incluindo a taxa de permanência. O cupom é "
     "um desconto do dono do posto.",
     "Custo da energia = kWh × custo do kWh informado pelo dono, travado no início de cada recarga. "
-    "Não inclui custos fixos (equipamento, aluguel, manutenção) nem tarifa de demanda (R$/kW).",
+    "Não inclui custos fixos (equipamento, manutenção) nem tarifa de demanda (R$/kW).",
     "Sessões encerradas (concluídas ou interrompidas) com energia positiva, atribuídas à data de "
-    "término (horário de São Paulo). Valores estimados até a confirmação do pagamento.",
+    "término (horário de São Paulo). Valores estimados até a confirmação do pagamento; a diferença do "
+    "valor capturado (perdoado ou não cobrado) aparece como ajuste do pagamento.",
+    rent_rules.METHODOLOGY,
 )
 MARGIN_EXPORT_COLUMNS = (
     ("session_id", "ID da sessão"),
@@ -95,6 +106,8 @@ MARGIN_EXPORT_COLUMNS = (
     ("margin_percent", "Margem (%)"),
     ("revenue_basis", "Base da receita"),
     *PAYMENT_EXPORT_COLUMNS,  # totem 0.8.0: canal e método (no fim; vazios em linhas sem a informação)
+    ("speed_effect", "Efeito da velocidade (R$)"),  # novas colunas sempre no fim
+    ("payment_adjustment", "Ajuste do pagamento (R$)"),
 )
 
 
@@ -176,9 +189,16 @@ def session_economics(session: Mapping, *, station_energy_cost=None, station_fee
     discount = gross - revenue
     at_base = _value(kwh * base)
     demand_effect = gross - at_base
+    speed_effect = None
     if connector_base is not None:
         list_value = _value(kwh * connector_base)
-        schedule_effect = at_base - list_value
+        difference = at_base - list_value
+        if terms.get("power_tier") and terms.get("base_source") != "schedule":
+            # Base do conector: a diferença é a velocidade escolhida (reduzida/tarifa própria),
+            # não horário. Com horário a base já é a do horário (reduzida mantém a proporção).
+            schedule_effect, speed_effect = Decimal("0.00"), difference
+        else:
+            schedule_effect = difference
     else:
         list_value, schedule_effect = at_base, None
 
@@ -201,6 +221,7 @@ def session_economics(session: Mapping, *, station_energy_cost=None, station_fee
         _dec(station_fee_percent) if _dec(station_fee_percent) is not None else DEFAULT_PLATFORM_FEE_PERCENT)
     platform_fee = cents(revenue_total * fee_percent / 100)
     owner_net = revenue_total - platform_fee - (provider_fee or 0)
+    payment_adjustment = revenue_total - revenue - (overstay_revenue or 0)
 
     cost_snapshot = _dec(session.get("energy_cost_per_kwh"))
     if cost_snapshot is not None:
@@ -232,12 +253,14 @@ def session_economics(session: Mapping, *, station_energy_cost=None, station_fee
         "discount_percent": int(session.get("discount_percent") or 0),
         "list_value": list_value,
         "schedule_effect": schedule_effect,
+        "speed_effect": speed_effect,
         "demand_effect": demand_effect,
         "gross": gross,
         "discount": discount,
         "revenue": revenue,
         "overstay_revenue": overstay_revenue,
         "revenue_total": revenue_total,
+        "payment_adjustment": payment_adjustment,
         "revenue_basis": revenue_basis,
         "payment_environment": (payment or {}).get("environment"),
         "platform_fee_percent": fee_percent.quantize(CENT, rounding=ROUND_HALF_UP),
@@ -274,6 +297,9 @@ def _totals(rows: list[dict]) -> dict:
         margin_percent=(margin / revenue_total * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         if margin is not None and revenue_total else None,
         schedule_effect=_sum(rows, "schedule_effect") if any(r["schedule_effect"] is not None for r in rows) else None,
+        speed_effect=_sum(rows, "speed_effect") if any(r.get("speed_effect") is not None for r in rows) else None,
+        payment_adjustment=sum((r.get("payment_adjustment") or Decimal("0.00") for r in rows), Decimal("0.00")),
+        estimated_sessions=sum(1 for r in rows if r.get("revenue_basis") != "captured"),
         provider_fee=_sum(rows, "provider_fee") if any(r["provider_fee"] is not None for r in rows) else None,
         overstay_revenue=_sum(rows, "overstay_revenue") if any(r["overstay_revenue"] is not None for r in rows)
         else None,
@@ -283,35 +309,60 @@ def _totals(rows: list[dict]) -> dict:
     return totals
 
 
-def aggregate(rows: Iterable[dict]) -> dict:
+def _apply_rent(totals: dict, rent: Decimal | None, centrals: int = 0) -> dict:
+    """Aluguel das centrais nos totais: folha (repasse − aluguel) e resultado (margem − aluguel)."""
+    totals["central_rent"] = rent
+    totals["centrals"] = centrals
+    totals["owner_net_after_rent"] = totals["owner_net"] - (rent or 0)
+    margin = totals["margin"]
+    totals["result"] = margin - (rent or 0) if margin is not None else None
+    totals["result_percent"] = (totals["result"] / totals["revenue_total"] * 100).quantize(
+        Decimal("0.1"), rounding=ROUND_HALF_UP) if totals["result"] is not None and totals["revenue_total"] else None
+    return totals
+
+
+def aggregate(rows: Iterable[dict], rent: Mapping | None = None) -> dict:
     """Totais, efeito do preço dinâmico/cupons e quebra por posto (``Decimal``).
 
     Os totais somam as linhas já arredondadas ao centavo: tela, CSV e PDF fecham.
     A margem total só existe quando todas as sessões têm custo da energia; senão vem
     ``None`` e ``margin_covered`` traz a margem das sessões cobertas.
+    ``rent``: ``chargegrid_core.rent.accrual`` do mesmo período (``None`` = sem aluguel).
     """
     rows = list(rows)
+    rent = rent if rent and rent.get("total") is not None else None
     surge = [row for row in rows if row["demand_multiplier"] > 1]
     coupons = [row for row in rows if row["discount_percent"]]
     stations: dict[str, list[dict]] = {}
     for row in rows:
         stations.setdefault(row["station_id"] or "", []).append(row)
     by_station = []
-    for station_id, items in stations.items():
+    names = {station_id: items[0]["station_name"] for station_id, items in stations.items()}
+    rent_by_station = dict((rent or {}).get("by_station") or {})
+    for line in (rent or {}).get("lines") or []:
+        names.setdefault(line["station_id"] or "", line["station_name"])
+    for station_id, name in names.items():
+        items = stations.get(station_id, [])
         entry = _totals(items)
-        entry.update(station_id=station_id or None, station_name=items[0]["station_name"])
+        station_lines = [line for line in (rent or {}).get("lines") or [] if (line["station_id"] or "") == station_id]
+        _apply_rent(entry, rent_by_station.get(station_id or None) if rent else None,
+                    len({line["device_id"] for line in station_lines}))
+        entry.update(station_id=station_id or None, station_name=name)
         by_station.append(entry)
     by_station.sort(key=lambda item: (-item["revenue_total"], item["station_name"]))
     sources: dict[str, int] = {}
     for row in rows:
         key = row["source"] or "unknown"
         sources[key] = sources.get(key, 0) + 1
-    totals = _totals(rows)
+    totals = _apply_rent(_totals(rows), rent["total"] if rent else None, rent["centrals"] if rent else 0)
     return {
         "totals": totals,
+        "central_rent": {"total": rent["total"], "centrals": rent["centrals"], "lines": list(rent["lines"])}
+        if rent else None,
         "dynamic_pricing": {
             "demand_effect": totals["demand_effect"],
             "schedule_effect": totals["schedule_effect"],
+            "speed_effect": totals["speed_effect"],
             "sessions_with_increase": len(surge),
             "average_multiplier": (sum((row["demand_multiplier"] for row in surge), Decimal(0)) / len(surge))
             .quantize(CENT, rounding=ROUND_HALF_UP) if surge else None,
@@ -334,8 +385,12 @@ def warnings(totals: Mapping, sources: Mapping) -> list[str]:
     if sources.get("simulated"):
         result.append(f"{sources['simulated']} sessão(ões) com energia simulada pelo equipamento: não é medição "
                       "de medidor.")
-    if totals["sessions"] and totals.get("provider_fee") is None:
+    estimated = totals.get("estimated_sessions", 0)
+    if totals["sessions"] and estimated == totals["sessions"]:
         result.append("Sem pagamento confirmado: receitas estimadas pela energia registrada.")
+    elif estimated:
+        result.append(f"{estimated} de {totals['sessions']} recargas sem pagamento confirmado: receita estimada "
+                      "pela energia registrada.")
     return result
 
 
@@ -351,7 +406,8 @@ def _out(value, places="0.01"):
 
 PLACES = {"energy_kwh": "0.001", "connector_base_per_kwh": "0.0001", "base_per_kwh": "0.0001",
           "price_per_kwh": "0.0001", "energy_cost_per_kwh": "0.0001", "margin_percent": "0.1",
-          "demand_multiplier": "0.01", "platform_fee_percent": "0.01", "average_multiplier": "0.01"}
+          "demand_multiplier": "0.01", "platform_fee_percent": "0.01", "average_multiplier": "0.01",
+          "result_percent": "0.1"}
 
 
 def serialize(value):

@@ -709,7 +709,8 @@ def test_seller_history_and_exports_carry_channel_and_method(http, presentation,
     # Resultado do dono: CSV com as colunas no fim e PDF com a coluna Canal.
     margin = list(csv.DictReader(io.StringIO(owner.get("/v1/owner/export/margin.csv").text)))
     margin_rows = {row["ID da sessão"]: row for row in margin}
-    assert list(margin[0])[-3:] == ["Base da receita", "Canal", "Pagamento"]
+    assert list(margin[0])[-5:] == ["Base da receita", "Canal", "Pagamento", "Efeito da velocidade (R$)",
+                                    "Ajuste do pagamento (R$)"]
     assert (margin_rows[totem_session]["Canal"], margin_rows[totem_session]["Pagamento"]) == ("Totem", "Simulado")
     assert (margin_rows[app_session]["Canal"], margin_rows[app_session]["Pagamento"]) == ("App", "")
     screen = {item["session_id"]: item for item in owner.get("/v1/owner/margin").json()["items"]}

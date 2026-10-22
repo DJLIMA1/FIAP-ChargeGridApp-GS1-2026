@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import type { StationEconomics } from '../../api/operations'
 import { useAuth } from '../../auth/AuthContext'
-import { formatNumber, toNumber } from '../../lib/format'
+import { formatCurrency, formatNumber, toNumber } from '../../lib/format'
 import { validateEnergyCost } from '../../lib/margin'
 import { useApi } from '../../lib/useApi'
 import { Icon } from '../Icon'
@@ -95,12 +95,23 @@ export function EconomicsCard({ stationId }: { stationId: string }) {
                 <span className="affix">%</span>
               </div>
             </Field>
+            {current.central_monthly_rent !== null && current.central_monthly_rent !== undefined ? (
+              <Field label="Aluguel por central" hint={`definido em contrato · ${formatNumber(current.centrals ?? 0)} ${current.centrals === 1 ? 'central vinculada' : 'centrais vinculadas'}`}>
+                <div className="input-affix">
+                  <input className="input" value={formatCurrency(current.central_monthly_rent)} readOnly disabled aria-readonly="true" aria-label="Aluguel mensal por central" />
+                  <span className="affix">/mês</span>
+                </div>
+              </Field>
+            ) : null}
           </div>
           <p className="dim" style={{ margin: 0, fontSize: 12.5 }}>
             {current.energy_cost_per_kwh === null
               ? 'Sem o custo do kWh, o Resultado mostra a margem como "—" (nunca como zero). '
               : ''}
             Vale para as próximas recargas: as anteriores mantêm o custo travado no início. A comissão incide sobre o valor cobrado depois do cupom e só é alterada pela plataforma.
+            {current.central_monthly_rent !== null && current.central_monthly_rent !== undefined
+              ? ' O aluguel de cada central é rateado pelos dias de vínculo no mês e descontado do repasse.'
+              : ''}
           </p>
           {saveError ? <ErrorBanner error={saveError} title="Custo não salvo" /> : null}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
