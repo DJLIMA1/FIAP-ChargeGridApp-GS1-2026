@@ -29,14 +29,14 @@ A revisão de bugs de 25/09/2026 recupera essa base após o uso temporário da 0
 O nome exibido pelo Android e o identificador do pacote ficam em `apps/mobile/pyproject.toml`. Para gerar um APK com o nome **ChargeGrid**, use o ambiente virtual criado na raiz:
 
 ```bash
-.venv/bin/python tools/configure_mobile.py
-cd apps/mobile
-../../.venv/bin/flet build apk . --yes
+.venv/bin/python tools/build_mobile_apk.py
 ```
 
-O primeiro comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/mobile/assets/app_config.json`, que contém apenas essa URL pública. O Flet 1.0.0 prepara automaticamente o Flutter 3.44.8, o JDK 17 e o Android SDK usados pelo build na primeira execução. O APK gerado fica em `apps/mobile/build/apk/chargegrid.apk`. Instale esse arquivo novamente no aparelho depois de cada build; o APK já instalado conserva os metadados da versão com que foi compilado. O build usa a identidade visual aprovada em `apps/mobile/assets/icon.png` e `apps/mobile/assets/splash_android.png`.
+O comando lê somente `CHARGEGRID_API_URL` do `.env` raiz e gera `apps/mobile/assets/app_config.json`, com essa URL pública, versão e build. Também declara no projeto Android gerado a versão do plugin Gradle ktlint exigido pelo MapLibre, sem alterar caches globais. O Flet 1.0.0 prepara automaticamente o Flutter 3.44.8, o JDK 17 e o Android SDK usados pelo build na primeira execução. O APK gerado fica em `apps/mobile/build/apk/chargegrid.apk`. Instale esse arquivo novamente no aparelho depois de cada build; o APK já instalado conserva os metadados da versão com que foi compilado. O build usa a identidade visual aprovada em `apps/mobile/assets/icon.png` e `apps/mobile/assets/splash_android.png`.
 
 #### Publicar uma versão (atualização automática)
+
+O wrapper também aplica `tools/android/map-proguard-rules.pro` ao release. O MapLibre cria interfaces Android por proxies JNI no Dart; sem essas regras, o R8 substitui o retorno de `MapLibreMapFactory.create` por `null`, embora o build termine com sucesso. Após compilar, `tools/verify_android_map_release.py` inspeciona o DEX e rejeita esse retorno descartado (o APK 0.8.2 reproduz a falha). Para validar alterações nessa integração, execute o APK release num Android e confirme o mapa na Recarga e no detalhe do posto, incluindo movimento e seleção. A compilação web e testes de widgets não exercitam essa otimização Android.
 
 Um comando faz tudo, sem enviar o APK manualmente:
 

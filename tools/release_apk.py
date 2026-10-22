@@ -33,7 +33,6 @@ BUILDS = ROOT / "builds"
 API_ENV = ROOT / "apps" / "api" / ".env.local"
 BLOB_PREFIX = "app"
 PYTHON = ROOT / ".venv" / "bin" / "python"
-FLET = ROOT / ".venv" / "bin" / "flet"
 MIN_FREE_GB = 4
 
 
@@ -166,7 +165,7 @@ def main():
         PYPROJECT.write_text(bumped(text, args.version, build), encoding="utf-8")
     run([PYTHON, ROOT / "tools" / "configure_mobile.py"], args.dry_run)
     if not args.skip_build:
-        run([FLET, "build", "apk", ".", "--yes"], args.dry_run, cwd=MOBILE)
+        run([PYTHON, ROOT / "tools" / "build_mobile_apk.py"], args.dry_run, cwd=MOBILE)
         if not args.dry_run:
             BUILDS.mkdir(exist_ok=True)
             shutil.copyfile(MOBILE / "build" / "apk" / "chargegrid.apk", apk)
